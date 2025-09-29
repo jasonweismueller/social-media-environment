@@ -218,29 +218,6 @@ export function AdminDashboard({
     if (row) setCachedPosts(id, row.checksum, arr);
   };
 
-const saveToLoadedFeed = async () => {
-  if (!feedId) { alert("No feed is loaded."); return; }
-
-  // extra safety: find the loaded feed row (for name/checksum refresh)
-  const row = feeds.find(f => f.feed_id === feedId);
-
-  const ok = await savePostsToBackend(posts, { feedId, name: feedName || feedId });
-  if (!ok) { alert("Failed to save feed. Please re-login and try again."); return; }
-
-  // refresh list + posts/cache for the loaded feed
-  const list = await listFeedsFromBackend();
-  const nextFeeds = Array.isArray(list) ? list : [];
-  setFeeds(nextFeeds);
-
-  const freshRow = nextFeeds.find(x => x.feed_id === feedId);
-  const fresh = await loadPostsFromBackend(feedId, { force: true });
-  const arr = Array.isArray(fresh) ? fresh : [];
-  setPosts(arr);
-  if (freshRow) setCachedPosts(feedId, freshRow.checksum, arr);
-
-  alert("Feed saved.");
-};
-
   const createNewFeed = () => {
     const id = prompt("New feed ID (letters/numbers/underscores):", `feed_${(feeds.length || 0) + 1}`);
     if (!id) return;
@@ -458,37 +435,43 @@ const saveToLoadedFeed = async () => {
                           <button className="btn" title="Load this feed into the editor" onClick={() => selectFeed(f.feed_id)} disabled={isLoaded}>Load</button>
 
                           <RoleGate min="editor">
-  <button
-    className="btn"
-    title="Make this the backend default feed"
-    onClick={async () => {
-      const ok = await setDefaultFeedOnBackend(f.feed_id);
-      if (ok) setDefaultFeedId(f.feed_id);
-    }}
-    disabled={isDefault}
-  >
-    Default
-  </button>
+                            <button
+                              className="btn"
+                              title="Make this the backend default feed"
+                              onClick={async () => {
+                                const ok = await setDefaultFeedOnBackend(f.feed_id);
+                                if (ok) setDefaultFeedId(f.feed_id);
+                              }}
+                              disabled={isDefault}
+                            >
+                              Default
+                            </button>
 
-  {/* Save only allowed on the LOADED feed */}
-  {isLoaded ? (
-    <button
-      className="btn"
-      title="Save CURRENT editor posts to the LOADED feed"
-      onClick={saveToLoadedFeed}
-    >
-      Save
-    </button>
-  ) : (
-    <button
-      className="btn"
-      title="Load this feed first to enable Save"
-      disabled
-    >
-      Save
-    </button>
-  )}
-</RoleGate>
+                            <button
+                              className="btn"
+                              title="Save CURRENT editor posts into this feed"
+                              onClick={async () => {
+                                const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id });
+                                if (ok) {
+                                  const list = await listFeedsFromBackend();
+                                  const nextFeeds = Array.isArray(list) ? list : [];
+                                  setFeeds(nextFeeds);
+                                  const row = nextFeeds.find(x => x.feed_id === f.feed_id);
+                                  if (row) {
+                                    const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
+                                    const arr = Array.isArray(fresh) ? fresh : [];
+                                    setPosts(arr);
+                                    setCachedPosts(f.feed_id, row.checksum, arr);
+                                  }
+                                  alert("Feed saved.");
+                                } else {
+                                  alert("Failed to save feed. Please re-login and try again.");
+                                }
+                              }}
+                            >
+                              Save
+                            </button>
+                          </RoleGate>
 
                           {!stats && (
                             <button className="btn ghost" title="Load participant stats for this feed" onClick={() => loadStatsFor(f.feed_id)}>
