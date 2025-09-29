@@ -1,16 +1,12 @@
-// AdminFeedsPanel.jsx — Instagram-only
 import React, { useEffect, useMemo, useState } from "react";
 
 /**
- * AdminFeedsPanel (Instagram)
+ * AdminFeedsPanel
  * Props:
- *  - apiBase: string   e.g. your Apps Script web app URL (required)
+ *  - apiBase: string   e.g. your Apps Script web app URL
  *  - adminToken: string (required for admin-only endpoints)
- *  - app: (ignored; we force "ig" to guarantee IG spreadsheets)
  */
-export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignored */ }) {
-  const APP = "ig"; // 🔒 hard-force Instagram namespace
-
+export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
   const [feeds, setFeeds] = useState([]);
   const [defaultFeedId, setDefaultFeedId] = useState("");
   const [selectedFeedId, setSelectedFeedId] = useState("");
@@ -27,59 +23,45 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignore
     [feeds, selectedFeedId]
   );
 
-  // --- HTTP helpers ---------------------------------------------------------
-  const assertBase = () => {
-    if (!apiBase) throw new Error("Missing apiBase (Apps Script URL)");
-  };
-
   const apiGet = async (path, params = {}) => {
-    assertBase();
     const url = new URL(apiBase);
     url.searchParams.set("path", path);
-    url.searchParams.set("app", APP); // ✅ IG scope
-    // Forward admin token when provided (backend may ignore for public endpoints)
-    if (adminToken) url.searchParams.set("admin_token", adminToken);
     Object.entries(params).forEach(([k, v]) => {
-      if (v != null && v !== "") url.searchParams.set(k, String(v));
+      if (v != null && v !== "") url.searchParams.set(k, v);
     });
-    url.searchParams.set("_", Date.now()); // cache-buster
     const res = await fetch(url.toString(), { method: "GET" });
     if (!res.ok) throw new Error(`GET ${path} failed (${res.status})`);
     return res.json();
   };
 
-  // Use text/plain for parity with other admin POSTs
   const apiPost = async (payload) => {
-    assertBase();
     const res = await fetch(apiBase, {
       method: "POST",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ app: APP, admin_token: adminToken, ...payload }), // ✅ IG + token
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`POST ${payload.action} failed (${res.status})`);
     return res.json();
   };
 
-  // --- Data loaders ---------------------------------------------------------
   const refreshFeeds = async () => {
     const [list, def] = await Promise.all([
       apiGet("feeds"),
       apiGet("default_feed")
     ]);
-    const feedsList = Array.isArray(list) ? list : [];
-    setFeeds(feedsList);
+    setFeeds(list || []);
     setDefaultFeedId(def?.feed_id || "");
+    // keep selection valid
     setSelectedFeedId(prev => {
-      if (prev && feedsList.some(f => String(f.feed_id) === String(prev))) return prev;
-      return feedsList[0]?.feed_id ? String(feedsList[0].feed_id) : "";
+      if (prev && (list || []).some(f => String(f.feed_id) === String(prev))) return prev;
+      return (list && list[0]?.feed_id) ? String(list[0].feed_id) : "";
     });
   };
 
   const refreshStats = async (feedId) => {
     if (!feedId) { setStats(null); return; }
-    // admin-only endpoints (token added by apiGet)
-    const data = await apiGet("participants", { feed_id: feedId }).catch(() => null);
-    const s = await apiGet("participants_stats", { feed_id: feedId }).catch(() => null);
+    const data = await apiGet("participants", { feed_id: feedId, admin_token: adminToken }).catch(() => null);
+    const s = await apiGet("participants_stats", { feed_id: feedId, admin_token: adminToken }).catch(() => null);
     setStats(s ? { ...s, _rows: data || [] } : null);
   };
 
@@ -94,17 +76,22 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignore
     (async () => {
       try { await refreshStats(selectedFeedId); } catch (_) {}
     })();
-  }, [selectedFeedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedFeedId]);
 
-  // --- Actions --------------------------------------------------------------
   const onAddFeed = async () => {
     const fid = newFeedId.trim();
     const name = newFeedName.trim() || newFeedId.trim();
     if (!fid) { setErr("Feed ID is required"); return; }
     setBusy(true); setErr("");
     try {
-      // Create by publishing an empty posts array; registry row is upserted there
-      await apiPost({ action: "publish_posts", feed_id: fid, name, posts: [] });
+      // create by publishing an empty posts array; registry row is upserted there
+      await apiPost({
+        action: "publish_posts",
+        admin_token: adminToken,
+        feed_id: fid,
+        name,
+        posts: []
+      });
       await refreshFeeds();
       setNewFeedId(""); setNewFeedName("");
       setSelectedFeedId(fid);
@@ -118,7 +105,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignore
     if (!window.confirm(`Delete feed "${fid}"? This removes posts, registry row, and participants for that feed.`)) return;
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "delete_feed", feed_id: fid });
+      await apiPost({ action: "delete_feed", admin_token: adminToken, feed_id: fid });
       await refreshFeeds();
       if (selectedFeedId === fid) setSelectedFeedId("");
     } catch (e) {
@@ -130,7 +117,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignore
     if (!fid) return;
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "set_default_feed", feed_id: fid });
+      await apiPost({ action: "set_default_feed", admin_token: adminToken, feed_id: fid });
       setDefaultFeedId(fid);
     } catch (e) {
       setErr(String(e.message || e));
@@ -140,7 +127,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignore
   const onClearDefault = async () => {
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "set_default_feed", feed_id: "" });
+      await apiPost({ action: "set_default_feed", admin_token: adminToken, feed_id: "" });
       setDefaultFeedId("");
     } catch (e) {
       setErr(String(e.message || e));
@@ -152,19 +139,18 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken /* app ignore
     if (!window.confirm(`Wipe participants for "${fid}"?`)) return;
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "wipe_participants", feed_id: fid });
+      await apiPost({ action: "wipe_participants", admin_token: adminToken, feed_id: fid });
       await refreshStats(fid);
     } catch (e) {
       setErr(String(e.message || e));
     } finally { setBusy(false); }
   };
 
-  // --- Render ---------------------------------------------------------------
   return (
     <div className="card" style={{ padding: "1rem" }}>
-      <h3 style={{ marginTop: 0 }}>Feeds (Instagram)</h3>
+      <h3 style={{ marginTop: 0 }}>Feeds</h3>
       <p className="subtle" style={{ marginTop: 4 }}>
-        Manage IG feeds. Create, delete, set a default feed, and review basic participation stats.
+        Manage multiple feeds. Create, delete, set a default feed, and review basic participation stats.
       </p>
 
       {/* Add feed */}

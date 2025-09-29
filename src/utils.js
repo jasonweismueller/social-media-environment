@@ -1,13 +1,3 @@
-/* =========================== Instagram Utils ============================== */
-/* App namespace (force "ig", allow override by URL or window.APP for debug) */
-export const getApp = () => {
-  const q = new URLSearchParams(window.location.search);
-  const fromUrl = (q.get("app") || "").toLowerCase();
-  const fromWin = (window.APP || "").toLowerCase();
-  return fromUrl === "ig" || fromWin === "ig" ? "ig" : "ig"; // hard default IG
-};
-export const APP = getApp();
-
 /* ------------------------------ Basics ------------------------------------ */
 export const uid = () =>
   Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -49,8 +39,13 @@ export const toggleInSet = (setObj, id) => {
 
 /* ======================= Admin User Management APIs ======================= */
 /**
- * Backend actions (global – no app scoping needed):
- *  - admin_list_users / admin_create_user / admin_update_user / admin_delete_user
+ * Backend is expected to support actions:
+ *  - admin_list_users                → { ok: true, users: [{email, role, disabled}] }
+ *  - admin_create_user               → { ok: true }
+ *  - admin_update_user               → { ok: true }
+ *  - admin_delete_user               → { ok: true }
+ *
+ * All require admin_token (owner level for create/update/delete).
  */
 
 export async function adminListUsers() {
@@ -141,102 +136,15 @@ export async function adminDeleteUser(email) {
 }
 
 /* --------------------- Reactions helpers ---------------------------------- */
-// --- Participants: summarizer for roster rows (IG-ready; legacy-safe) ---
-export function summarizeRoster(rows = []) {
-  const out = {
-    counts: { total: 0, completed: 0, completionRate: 0 },
-    timing: {
-      avgEnterToSubmit: null,
-      medEnterToSubmit: null,
-      avgEnterToLastInteraction: null,
-      medEnterToLastInteraction: null,
-    },
-    perPost: {}, // id -> { reacted, expandable, expanded, expandRate, commented, saved, reported }
-  };
-
-  if (!Array.isArray(rows) || rows.length === 0) return out;
-
-  const enterToSubmit = [];
-  const enterToLast = [];
-
-  out.counts.total = rows.length;
-
-  for (const r of rows) {
-    // "Completed" if it has a submit timestamp OR a numeric ms_enter_to_submit
-    const completed =
-      !!r.submitted_at_iso ||
-      Number.isFinite(Number(r.ms_enter_to_submit));
-    if (completed) out.counts.completed += 1;
-
-    const msSubmit = Number(r.ms_enter_to_submit);
-    if (Number.isFinite(msSubmit)) enterToSubmit.push(msSubmit);
-
-    const msLast = Number(r.ms_enter_to_last_interaction);
-    if (Number.isFinite(msLast)) enterToLast.push(msLast);
-
-    // ---- Per-post aggregation ----
-    try {
-      const perPostHash =
-        typeof extractPerPostFromRosterRow === "function"
-          ? extractPerPostFromRosterRow(r) || {}
-          : {};
-
-      for (const [postId, agg] of Object.entries(perPostHash)) {
-        if (!out.perPost[postId]) {
-          out.perPost[postId] = {
-            reacted: 0,
-            expandable: 0,
-            expanded: 0,
-            commented: 0,
-            saved: 0,      // IG metric (fallback to shared)
-            reported: 0,
-            expandRate: null,
-          };
-        }
-        const p = out.perPost[postId];
-
-        const asBool = (v) => Number(v) === 1 || v === true;
-
-        if (asBool(agg.reacted)) p.reacted += 1;
-        if (asBool(agg.expandable)) p.expandable += 1;
-        if (asBool(agg.expanded)) p.expanded += 1;
-        if (asBool(agg.commented)) p.commented += 1;
-
-        if (asBool(agg.saved ?? agg.shared)) p.saved += 1;
-
-        if (asBool(agg.reported ?? agg.reported_misinfo)) p.reported += 1;
-      }
-    } catch {
-      // keep going
-    }
-  }
-
-  // Completion rate
-  out.counts.completionRate =
-    out.counts.total > 0 ? out.counts.completed / out.counts.total : 0;
-
-  // Averages / medians
-  const avg = (arr) =>
-    arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-  const med = (arr) => {
-    if (!arr.length) return null;
-    const a = [...arr].sort((x, y) => x - y);
-    const mid = Math.floor(a.length / 2);
-    return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
-  };
-
-  out.timing.avgEnterToSubmit = avg(enterToSubmit);
-  out.timing.medEnterToSubmit = med(enterToSubmit);
-  out.timing.avgEnterToLastInteraction = avg(enterToLast);
-  out.timing.medEnterToLastInteraction = med(enterToLast);
-
-  // Compute expandRate per post
-  for (const p of Object.values(out.perPost)) {
-    p.expandRate = p.expandable > 0 ? p.expanded / p.expandable : null;
-  }
-
-  return out;
-}
+export const REACTION_META = {
+  like:  { emoji: "👍", label: "Like"  },
+  love:  { emoji: "❤️", label: "Love"  },
+  care:  { emoji: "🤗", label: "Care"  },
+  haha:  { emoji: "😆", label: "Haha"  },
+  wow:   { emoji: "😮", label: "Wow"   },
+  sad:   { emoji: "😢", label: "Sad"   },
+  angry: { emoji: "😡", label: "Angry" },
+};
 
 export const sumSelectedReactions = (reactions = {}, selected = []) =>
   selected.reduce((acc, k) => acc + (Number(reactions[k]) || 0), 0);
@@ -283,12 +191,15 @@ function hashStrToInt_(s) {
  * Returns { names: string[], remaining: number }
  */
 export function fakeNamesFor(postId, a, b, maxShow = 5) {
+  // argument normalization
   let kind = "comments";
   let count = 0;
   if (typeof a === "string") {
+    // (postId, kind, count)
     kind = a;
     count = Number(b) || 0;
   } else {
+    // (postId, count, kind?)
     count = Number(a) || 0;
     if (typeof b === "string") kind = b;
   }
@@ -299,6 +210,7 @@ export function fakeNamesFor(postId, a, b, maxShow = 5) {
   const seed = hashStrToInt_(`${postId}::${kind}::v1`);
   const rnd = mulberry32_(seed);
 
+  // Fisher–Yates shuffle over indices (deterministic by seed)
   const idx = NAME_POOL.map((_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1));
@@ -312,6 +224,9 @@ export function fakeNamesFor(postId, a, b, maxShow = 5) {
   return { names, remaining };
 }
 
+/**
+ * Legacy helper… (returns names list w/ “and X more”)
+ */
 export function fakeNamesList(postId, kindOrCount, countMaybe, maxShow = 5) {
   let kind = "comments";
   let count = 0;
@@ -350,32 +265,17 @@ export function neutralAvatarDataUrl(seed = "") {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-/* --------------------- Backend config (via API Gateway proxy) ------------- */
-// If you set these in window.CONFIG they will override the defaults:
-export const GAS_PROXY_BASE =
-  (window.CONFIG && window.CONFIG.GAS_PROXY_BASE) ||
-  "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com";
-
-export const GAS_PROXY_PATH =
-  (window.CONFIG && window.CONFIG.GAS_PROXY_PATH) ||
-  "/default/gas";
-
-// Final Apps Script endpoint (proxied through API Gateway -> Lambda)
-function joinUrl(base, path) {
-  return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
-}
-
-export const GS_ENDPOINT = joinUrl(GAS_PROXY_BASE, GAS_PROXY_PATH);
+/* --------------------- Backend config ------------------------------------- */
+export const GS_ENDPOINT =
+  "https://script.google.com/macros/s/AKfycbyMfkPHIax4dbL1TePsdRYRUXoaEIPrh9lW-9HmrvCROYzpNNx9xSOlzqWgKs29ab1OyQ/exec";
 
 // NOTE: This token is ONLY for participant logging. Admin actions use admin_token from login.
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
-/* IG-scoped GET URLs (same query strings, just against the proxy) */
-const FEEDS_GET_URL         = `${GS_ENDPOINT}?path=feeds&app=${APP}`;
-const DEFAULT_FEED_GET_URL  = `${GS_ENDPOINT}?path=default_feed&app=${APP}`;
-const POSTS_GET_URL         = `${GS_ENDPOINT}?path=posts&app=${APP}`;
-const PARTICIPANTS_GET_URL  = `${GS_ENDPOINT}?path=participants&app=${APP}`;
-const WIPE_POLICY_GET_URL   = `${GS_ENDPOINT}?path=wipe_policy`; // global
+const FEEDS_GET_URL         = GS_ENDPOINT + "?path=feeds";
+const DEFAULT_FEED_GET_URL  = GS_ENDPOINT + "?path=default_feed";
+const POSTS_GET_URL         = GS_ENDPOINT + "?path=posts";
+const PARTICIPANTS_GET_URL  = GS_ENDPOINT + "?path=participants";
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -404,13 +304,14 @@ async function getJsonWithRetry(url, opts = {}, { retries = 1, timeoutMs = 8000 
   throw lastErr;
 }
 
-/* --------------------- Admin auth (session token + role/email) ------------ */
-/* Namespaced keys for Instagram so FB admin sessions don’t collide */
-const ADMIN_TOKEN_KEY     = "ig_admin_token_v1";
-const ADMIN_TOKEN_EXP_KEY = "ig_admin_token_exp_v1";
-const ADMIN_ROLE_KEY      = "ig_admin_role_v1";
-const ADMIN_EMAIL_KEY     = "ig_admin_email_v1";
+/* --------------------- Admin auth (session token) ------------------------- */
+/* --------------------- Admin auth (session token + role/email) ------------- */
+const ADMIN_TOKEN_KEY     = "fb_admin_token_v1";
+const ADMIN_TOKEN_EXP_KEY = "fb_admin_token_exp_v1";
+const ADMIN_ROLE_KEY      = "fb_admin_role_v1";
+const ADMIN_EMAIL_KEY     = "fb_admin_email_v1";
 
+// role rank helper
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
 
 export function hasAdminRole(minRole = "viewer") {
@@ -418,6 +319,7 @@ export function hasAdminRole(minRole = "viewer") {
   return (ROLE_RANK[r] || 0) >= (ROLE_RANK[minRole] || 0);
 }
 
+/** Save admin session returned by backend. Shape: { token, ttlSec, role, email } */
 export function setAdminSession({ token, ttlSec, role, email } = {}) {
   try {
     if (!token) { clearAdminSession(); return; }
@@ -524,8 +426,8 @@ export async function adminLogout() {
   try {
     await fetch(GS_ENDPOINT, {
       method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({ action: "admin_logout", admin_token }),
       keepalive: true,
     });
@@ -536,21 +438,15 @@ export async function adminLogout() {
 /* --------------------- Logging participants & events ---------------------- */
 export async function sendToSheet(header, row, events, feed_id) {
   if (!feed_id) { console.warn("sendToSheet: feed_id required"); return false; }
-  const payload = { token: GS_TOKEN, action: "log_participant", app: APP, feed_id, header, row, events };
+  const payload = { token: GS_TOKEN, action: "log_participant", feed_id, header, row, events };
+  const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" });
 
   if (navigator.sendBeacon) {
-    const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" });
     return navigator.sendBeacon(GS_ENDPOINT, blob);
   }
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      keepalive: true,
-    });
-    return res.ok;
+    await fetch(GS_ENDPOINT, { method: "POST", mode: "no-cors", body: blob, keepalive: true });
+    return true;
   } catch (err) {
     console.warn("sendToSheet failed:", err);
     return false;
@@ -591,20 +487,17 @@ export async function setDefaultFeedOnBackend(feedId) {
   const admin_token = getAdminToken();
   if (!admin_token) { console.warn("setDefaultFeedOnBackend: missing admin_token"); return false; }
   try {
-    const res = await fetch(GS_ENDPOINT, {
+    await fetch(GS_ENDPOINT, {
       method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({
         action: "set_default_feed",
-        app: APP,
         feed_id: feedId || "",
         admin_token,
       }),
       keepalive: true,
     });
-    if (!res.ok) return false;
-    // optional: await res.json().catch(()=>null);
     return true;
   } catch (e) {
     console.warn("setDefaultFeedOnBackend failed:", e);
@@ -614,29 +507,22 @@ export async function setDefaultFeedOnBackend(feedId) {
 
 export async function deleteFeedOnBackend(feedId) {
   const admin_token = getAdminToken();
-  if (!admin_token) {
-    return { ok: false, err: "admin auth required" };
-  }
+  if (!admin_token) return false;
   try {
     const res = await fetch(GS_ENDPOINT, {
       method: "POST",
       mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" }, // avoid preflight
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "delete_feed",
-        app: APP,
         admin_token,
         feed_id: feedId,
       }),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) {
-      return { ok: false, err: data?.err || `HTTP ${res.status}` };
-    }
-    return { ok: true };
+    return res.ok;
   } catch (e) {
     console.error("deleteFeedOnBackend failed", e);
-    return { ok: false, err: String(e.message || e) };
+    return false;
   }
 }
 
@@ -644,6 +530,7 @@ export async function deleteFeedOnBackend(feedId) {
 const DRIVE_RE = /(?:^|\/\/)(?:drive\.google\.com|drive\.usercontent\.google\.com)/i;
 const __videoPreloadSet = new Set();
 
+/** Add a <link rel="preload" as="video"> to speed up first play (non-Drive only). */
 export function injectVideoPreload(url, mime = "video/mp4") {
   if (!url || DRIVE_RE.test(url)) return;
   if (__videoPreloadSet.has(url)) return;
@@ -662,6 +549,7 @@ export function injectVideoPreload(url, mime = "video/mp4") {
   __videoPreloadSet.add(url);
 }
 
+/** Create a hidden <video> to warm the cache (non-Drive only). */
 export function primeVideoCache(url) {
   if (!url || DRIVE_RE.test(url)) return;
   if (__videoPreloadSet.has(`prime:${url}`)) return;
@@ -678,141 +566,32 @@ export function primeVideoCache(url) {
   setTimeout(() => { try { v.src = ""; } catch {} }, 30000);
 }
 
-/* --- In-view autoplay hook for videos --- */
-import { useEffect, useRef, useState } from "react";
-
-export function useInViewAutoplay(threshold = 0.6, opts = {}) {
-  const { startMuted = true, unmuteOnFirstGesture = true } = opts;
-  const ref = useRef(null);
-  const [inView, setInView] = useState(false);
-  const [didUnmute, setDidUnmute] = useState(false);
-
-  // Observe viewport visibility
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) =>
-        setInView(entry.isIntersecting && entry.intersectionRatio >= threshold),
-      { threshold }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [threshold]);
-
-  // Autoplay/pause based on inView
-  useEffect(() => {
-    const v = ref.current;
-    if (!v) return;
-
-    if (inView) {
-      // Autoplay compliance
-      v.muted = startMuted || !didUnmute;
-      v.playsInline = true;
-
-      v.play().catch(() => {
-        // Some mobile browsers might still need a tap before play
-      });
-    } else {
-      v.pause();
-    }
-  }, [inView, startMuted, didUnmute]);
-
-  // One-time auto-unmute on first user gesture while in view
-  useEffect(() => {
-    if (!unmuteOnFirstGesture) return;
-    let handled = false;
-
-    const handler = () => {
-      if (handled) return;
-      handled = true;
-
-      const v = ref.current;
-      if (!v) return;
-      if (!inView) return;
-
-      try {
-        v.muted = false;
-        setDidUnmute(true);
-        const p = v.play();
-        if (p && typeof p.then === "function") p.catch(() => {});
-      } catch (_) {}
-      // remove listener after first gesture
-      remove();
-    };
-
-    const events = ["pointerdown", "keydown", "touchstart", "mousedown"];
-    const add = () => events.forEach(e => window.addEventListener(e, handler, { once: true }));
-    const remove = () => events.forEach(e => window.removeEventListener(e, handler, { once: true }));
-    add();
-    return remove;
-  }, [inView, unmuteOnFirstGesture]);
-
-  return ref;
-}
-
-
-export async function tryEnterFullscreen(target) {
-  const el = target || document.documentElement;
-  try {
-    if (document.fullscreenElement) return true;
-
-    if (el.requestFullscreen) {
-      await el.requestFullscreen();
-      return true;
-    }
-    // Safari prefixes
-    const anyEl = /** @type {*} */ (el);
-    if (anyEl.webkitRequestFullscreen) {
-      anyEl.webkitRequestFullscreen();
-      return true;
-    }
-  } catch (_) {}
-
-  // iOS <= 15: only <video> can go fullscreen programmatically
-  try {
-    const v = document.querySelector('video');
-    const anyVid = /** @type {*} */ (v);
-    if (v && anyVid?.webkitEnterFullscreen) {
-      anyVid.webkitEnterFullscreen();
-      return true;
-    }
-  } catch (_) {}
-
-  return false;
-}
-
-export async function exitFullscreen() {
-  try {
-    if (document.fullscreenElement && document.exitFullscreen) {
-      await document.exitFullscreen();
-    }
-    const anyDoc = /** @type {*} */ (document);
-    if (anyDoc.webkitExitFullscreen) anyDoc.webkitExitFullscreen();
-  } catch (_) {}
-}
 /* ------------------------- POSTS API (multi-feed + cache) ----------------- */
-/* Cache is namespaced by app to avoid cross-app contamination */
-const __postsCache = new Map(); // key: `${APP}::${feedId||''}` -> { at, data }
+const __postsCache = new Map(); // key: feedId|null -> { at, data }
 const POSTS_STALE_MS = 60_000;
 
-function __cacheKey(feedId) { return `${APP}::${feedId || ""}`; }
 function __getCachedPosts(feedId) {
-  const rec = __postsCache.get(__cacheKey(feedId));
+  const rec = __postsCache.get(feedId || null);
   if (!rec) return null;
   if (Date.now() - rec.at > POSTS_STALE_MS) return null;
   return rec.data;
 }
 function __setCachedPosts(feedId, data) {
-  __postsCache.set(__cacheKey(feedId), { at: Date.now(), data });
+  __postsCache.set(feedId || null, { at: Date.now(), data });
 }
 
 export function invalidatePostsCache(feedId = null) {
-  __postsCache.delete(__cacheKey(feedId));
+  if (feedId === undefined) feedId = null;
+  __postsCache.delete(feedId);
 }
 
 /**
  * loadPostsFromBackend(feedId?, opts?)
+ *  - loadPostsFromBackend("feed_a")
+ *  - loadPostsFromBackend("feed_a", { force: true })
+ *  - loadPostsFromBackend({ force: true })
+ *
+ * Now also preloads streamable video URLs (non-Drive) for faster playback.
  */
 export async function loadPostsFromBackend(arg1, arg2) {
   let feedId = null;
@@ -863,85 +642,32 @@ export async function loadPostsFromBackend(arg1, arg2) {
     return cached || [];
   }
 }
+
 /**
- * Validate, sanitize, and save posts to backend.
- * savePostsToBackend(posts, { feedId, name, app } = {})
+ * savePostsToBackend(posts, { feedId, name } = {})
  */
-export async function savePostsToBackend(rawPosts, ctx = {}) {
-  const { feedId = null, name = null, app = (typeof APP !== "undefined" ? APP : "ig") } = ctx || {};
+export async function savePostsToBackend(posts, ctx = {}) {
+  const { feedId = null, name = null } = ctx || {};
   const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("savePostsToBackend: missing admin_token");
-    return false;
-  }
-
-  // 1) Block any lingering data: URLs (these blow up payload size & CORS)
-  const offenders = [];
-  (rawPosts || []).forEach((p) => {
-    const id = p?.id || "(no id)";
-    if (p?.image?.url?.startsWith?.("data:")) offenders.push({ id, field: "image.url" });
-    if (p?.video?.url?.startsWith?.("data:")) offenders.push({ id, field: "video.url" });
-    if (p?.videoPosterUrl?.startsWith?.("data:")) offenders.push({ id, field: "videoPosterUrl" });
-  });
-  if (offenders.length) {
-    const lines = offenders.map(o => `• Post ${o.id}: ${o.field}`).join("\n");
-    alert(
-      "One or more posts still contain local data URLs.\n\n" +
-      "Please upload images/videos so they use https URLs, then try saving again.\n\n" +
-      lines
-    );
-    return false;
-  }
-
-  // 2) Sanitize (remove editor-only properties / reduce payload bloat)
-  const posts = (rawPosts || []).map((p) => {
-    const q = { ...p };
-    // remove any transient/admin preview bits if you have them
-    delete q._localMyCommentText;
-    delete q._tempUpload;
-    // Ensure only {url, alt, focalX, focalY} shape for images
-    if (q.image && q.image.svg && q.image.url) {
-      // Prefer URL if present; or drop svg if you never need to persist it
-      delete q.image.svg;
-    }
-    return q;
-  });
-
+  if (!admin_token) { console.warn("savePostsToBackend: missing admin_token"); return false; }
   try {
-    const res = await fetch(GS_ENDPOINT, {
+    await fetch(GS_ENDPOINT, {
       method: "POST",
-      // IMPORTANT: no 'no-cors', no 'keepalive'
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({
         action: "publish_posts",
-        app,
         posts,
         feed_id: feedId,
         name,
         admin_token,
       }),
+      keepalive: true,
     });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.warn("savePostsToBackend: HTTP error", res.status, text);
-      alert(`Save failed: HTTP ${res.status}${text ? ` — ${text}` : ""}`);
-      return false;
-    }
-
-    // Apps Script often returns JSON; try to parse but don’t require it
-    const out = await res.json().catch(() => null);
-    if (out && out.error) {
-      alert(`Save failed: ${out.error}`);
-      return false;
-    }
-
-    // success
     invalidatePostsCache(feedId);
     return true;
   } catch (err) {
     console.warn("Publish failed:", err);
-    alert(`Save failed: ${String(err?.message || err)}`);
     return false;
   }
 }
@@ -979,9 +705,16 @@ export function fileToDataURL(file) {
 // utils.js
 
 /***
- * Upload via your local signer (unchanged)
+ * Upload a File/Blob to S3 using your local signer (AWS SDK v2).
+ * Returns the public file URL to save on the post (post.video.url).
+ *
+ * @param {File|Blob|string} fileOrDataUrl  - File, Blob, or dataURL string
+ * @param {string} filename                  - desired filename (e.g., "clip.mp4")
+ * @param {string} mime                      - e.g., "video/mp4"
+ * @param {string} signerBase                - e.g., "http://localhost:4000"
  */
 export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "video/mp4", signerBase = "http://localhost:4000") {
+  // 1) Normalize to a Blob
   let blob;
   if (typeof fileOrDataUrl === "string" && fileOrDataUrl.startsWith("data:")) {
     const base64 = fileOrDataUrl.split(",")[1] || "";
@@ -998,6 +731,7 @@ export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "vide
     throw new Error("uploadVideoToBackend: expected File/Blob or dataURL");
   }
 
+  // 2) Ask your signer for a presigned PUT URL
   const q = new URLSearchParams({
     filename: filename || `video-${Date.now()}.mp4`,
     type: mime || "video/mp4",
@@ -1012,6 +746,7 @@ export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "vide
     throw new Error(error || "Signer did not return uploadUrl/fileUrl");
   }
 
+  // 3) PUT the file directly to S3
   const putRes = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": mime },
@@ -1022,49 +757,8 @@ export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "vide
     throw new Error(`S3 PUT failed: HTTP ${putRes.status} ${txt}`);
   }
 
+  // 4) Return the public URL (ensure your bucket policy/CORS are set for reads)
   return fileUrl;
-}
-
-export async function uploadImageToS3(file, { app = "ig" } = {}) {
-  const base = window.CONFIG?.API_BASE;
-  const admin = getAdminToken();
-  if (!base || !admin) throw new Error("Missing API_BASE or admin token");
-
-  // Ask backend to sign an upload. Your video flow likely uses a very similar route.
-  // Return shape A (PUT): { kind:"put", upload_url:"...", public_url:"...", headers:{...} }
-  // Return shape B (POST): { kind:"post", url:"...", fields:{...}, public_url:"..." }
-  const ext = (file.name?.split(".").pop() || "jpg").toLowerCase();
-  const mime = file.type || (ext === "png" ? "image/png" : "image/jpeg");
-  const signUrl =
-    `${base}?path=sign_upload&kind=image&ext=${encodeURIComponent(ext)}&app=${encodeURIComponent(app)}&admin_token=${encodeURIComponent(admin)}`;
-
-  const sigRes = await fetch(signUrl);
-  if (!sigRes.ok) throw new Error(`Sign failed: ${sigRes.status}`);
-  const sig = await sigRes.json();
-
-  if (sig.kind === "put") {
-    // Presigned PUT
-    const putRes = await fetch(sig.upload_url, {
-      method: "PUT",
-      headers: { "Content-Type": mime, ...(sig.headers || {}) },
-      body: file,
-    });
-    if (!putRes.ok) throw new Error(`Upload PUT failed: ${putRes.status}`);
-    return sig.public_url; // <- store this in your post.image.url
-  }
-
-  if (sig.kind === "post") {
-    // Presigned POST (multipart/form-data)
-    const form = new FormData();
-    Object.entries(sig.fields || {}).forEach(([k, v]) => form.append(k, v));
-    form.append("Content-Type", mime);
-    form.append("file", file);
-    const postRes = await fetch(sig.url, { method: "POST", body: form });
-    if (!postRes.ok) throw new Error(`Upload POST failed: ${postRes.status}`);
-    return sig.public_url;
-  }
-
-  throw new Error("Unknown signing response from backend");
 }
 
 /* --------------------------- Feed ID helper -------------------------------- */
@@ -1094,12 +788,12 @@ export function buildMinimalHeader(posts) {
     const id = p.id || "unknown";
     perPost.push(
       `${id}_reacted`,
-      `${id}_reactions`,
-      `${id}_reaction_type`,
+      `${id}_reactions`,        // compat: numeric (blank if 0)
+      `${id}_reaction_type`,    // spelled-out ("like", "care", …)
       `${id}_expandable`,
       `${id}_expanded`,
-      `${id}_commented`,
-      `${id}_comment_texts`,
+      `${id}_commented`,        // boolean (blank if false)
+      `${id}_comment_texts`,    // em dash if none
       `${id}_shared`,
       `${id}_reported_misinfo`,
       `${id}_dwell_s`
@@ -1109,9 +803,11 @@ export function buildMinimalHeader(posts) {
   return [...base, ...perPost];
 }
 
+// Sum total visible time per post based on view_start/view_end events
+/** Collapse view_start/view_end pairs into total SECONDS per post (rounded). */
 export function computePostDwellSecondsFromEvents(events) {
-  const open = new Map();
-  const totalMs = new Map();
+  const open = new Map();   // post_id -> tStart (ms)
+  const totalMs = new Map(); // post_id -> total milliseconds
 
   for (const e of events) {
     if (!e || !e.action || !e.post_id) continue;
@@ -1129,18 +825,22 @@ export function computePostDwellSecondsFromEvents(events) {
     }
   }
 
+  // flush any still-open intervals to the last timestamp we saw
   const lastTs = events.length ? events[events.length - 1].ts_ms : 0;
   for (const [post_id, t0] of open) {
     const dur = Math.max(0, lastTs - t0);
     totalMs.set(post_id, (totalMs.get(post_id) || 0) + dur);
   }
 
+  // convert to whole seconds (rounded)
   const totalSec = new Map();
   for (const [post_id, ms] of totalMs) {
     totalSec.set(post_id, Math.round(ms / 1000));
   }
-  return totalSec;
+  return totalSec; // Map(post_id -> seconds)
 }
+
+function isoToMs(iso) { try { return new Date(iso).getTime(); } catch { return null; } }
 
 export function buildParticipantRow({
   session_id,
@@ -1173,11 +873,12 @@ export function buildParticipantRow({
 
   const dwellSecMap = computePostDwellSecondsFromEvents(events);
 
+  // per-post aggregation (single reaction + single comment allowed)
   const per = new Map();
   const ensure = (id) => {
     if (!per.has(id)) {
       per.set(id, {
-        reaction_type: "",
+        reaction_type: "",     // "", or "like" | "care" | ...
         expandable: false,
         expanded: false,
         commented: false,
@@ -1247,22 +948,26 @@ export function buildParticipantRow({
       reported_misinfo: false,
     };
 
+    // REACTIONS
     const reactedFlag = agg.reaction_type ? 1 : 0;
-    row[`${id}_reacted`]       = reactedFlag ? 1 : "";
-    row[`${id}_reactions`]     = reactedFlag ? 1 : "";
-    row[`${id}_reaction_type`] = agg.reaction_type;
+    row[`${id}_reacted`]       = reactedFlag ? 1 : "";   // blank → UI shows "—"
+    row[`${id}_reactions`]     = reactedFlag ? 1 : "";   // compat numeric (blank when 0)
+    row[`${id}_reaction_type`] = agg.reaction_type;      // spelled-out or ""
 
+    // EXPAND/COMMENTS/SHARE/REPORT
     row[`${id}_expandable`] = agg.expandable ? 1 : "";
     row[`${id}_expanded`]   = agg.expanded ? 1 : "";
 
-    row[`${id}_commented`] = agg.commented ? 1 : "";
+    row[`${id}_commented`] = agg.commented ? 1 : "";     // ✓/— in UI
+
     row[`${id}_comment_texts`] = agg.comment_texts.length
       ? agg.comment_texts.join(" | ")
-      : "—";
+      : "—";                                             // em dash for “no text”
 
     row[`${id}_shared`]            = agg.shared ? 1 : "";
     row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
 
+    // DWELL
     row[`${id}_dwell_s`] = dwellSecMap.get(id) ?? 0;
   }
 
@@ -1272,6 +977,8 @@ export function buildParticipantRow({
 /* ---------------------- Participants (admin panels) ----------------------- */
 export function extractPerPostFromRosterRow(row) {
   if (!row || typeof row !== "object") return {};
+
+  // If backend returns a JSON blob, parse it first
   const blob = row.per_post_json || row.per_post || row.perPostJson || null;
   if (blob) {
     try {
@@ -1285,19 +992,21 @@ export function extractPerPostFromRosterRow(row) {
           ? rx.split(",").map(s => s.trim()).filter(Boolean)
           : [];
 
+        // comment text (string); prefer explicit text, else join array
         const cTextRaw = (() => {
-          const t = agg?.comment_text ?? agg?.comment ?? null;
-          const arr = agg?.comment_texts;
-          if (typeof t === "string") return t;
-          if (Array.isArray(arr)) return arr.map(String).join(" | ");
-          if (typeof arr === "string") return arr;
-          return "";
-        })();
-        const cText = (() => {
-          const s = String(cTextRaw || "").trim();
-          return (!s || s === "—" || s === "-" || /^[-—\s]+$/.test(s)) ? "" : s;
-        })();
+  const t = agg?.comment_text ?? agg?.comment ?? null;
+  const arr = agg?.comment_texts;
+  if (typeof t === "string") return t;
+  if (Array.isArray(arr)) return arr.map(String).join(" | ");
+  if (typeof arr === "string") return arr;
+  return "";
+})();
+const cText = (() => {
+  const s = String(cTextRaw || "").trim();
+  return (!s || s === "—" || s === "-" || /^[-—\s]+$/.test(s)) ? "" : s;
+})();
 
+        // dwell seconds preferred; else convert ms → s
         const dwell_s = Number.isFinite(agg?.dwell_s)
           ? Number(agg.dwell_s)
           : Number.isFinite(agg?.dwell_ms)
@@ -1312,18 +1021,23 @@ export function extractPerPostFromRosterRow(row) {
           expandable: Number(agg?.expandable || 0),
           expanded: Number(agg?.expanded || 0),
 
+          // reactions
           reactions: rxArr,
           reaction_types: rxArr,
           reaction_type: (agg?.reaction_type || rxArr[0] || "").trim(),
 
+          // comments
           comment_text: cText,
           comment_count: Number(agg?.comment_count || (cText ? 1 : 0)),
 
+          // dwell
           dwell_s,
         };
       }
 
+      // ⬇️ Overlay flat columns if present (prefer explicit flat values)
       for (const [key, val] of Object.entries(row)) {
+        // *_commented → overwrite boolean
         let m = /^(.+?)_commented$/.exec(key);
         if (m) {
           const id = m[1];
@@ -1331,6 +1045,7 @@ export function extractPerPostFromRosterRow(row) {
           clean[id].commented = Number(val || 0);
           continue;
         }
+        // *_comment_texts → attach the actual text (also flips commented)
         m = /^(.+?)_comment_texts$/.exec(key);
         if (m) {
           const id = m[1];
@@ -1342,6 +1057,7 @@ export function extractPerPostFromRosterRow(row) {
             clean[id].comment_count = clean[id].comment_count || 1;
           }
         }
+        // spelled-out single reaction from flat columns (if provided)
         m = /^(.+?)_reaction_type$/.exec(key);
         if (m) {
           const id = m[1];
@@ -1355,9 +1071,12 @@ export function extractPerPostFromRosterRow(row) {
       }
 
       return clean;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through to flat-columns parsing */
+    }
   }
 
+  // Otherwise parse flat columns
   const out = {};
   const ensure = (id) => {
     if (!out[id]) {
@@ -1373,6 +1092,7 @@ export function extractPerPostFromRosterRow(row) {
   };
 
   for (const [key, val] of Object.entries(row)) {
+    // booleans (as numbers/blanks)
     {
       const m = /^(.+?)_(reacted|commented|shared|reported_misinfo|expanded|expandable)$/.exec(key);
       if (m) {
@@ -1386,6 +1106,8 @@ export function extractPerPostFromRosterRow(row) {
         continue;
       }
     }
+
+    // spelled-out single reaction
     {
       const r1 = /^(.+?)_reaction_type$/.exec(key);
       if (r1) {
@@ -1399,6 +1121,8 @@ export function extractPerPostFromRosterRow(row) {
         continue;
       }
     }
+
+    // legacy reactions list
     {
       const r2 = /^(.+?)_(reactions|reaction_types)$/.exec(key);
       if (r2) {
@@ -1415,19 +1139,29 @@ export function extractPerPostFromRosterRow(row) {
         continue;
       }
     }
-    {
-      const ct = /^(.+?)_comment_texts$/.exec(key);
-      if (ct) {
-        const [, postId] = ct;
-        const obj = ensure(postId);
-        const raw = String(val || "").trim();
-        const text = (!raw || raw === "—" || raw === "-" || /^[-—\s]+$/.test(raw)) ? "" : raw;
-        obj.comment_text = text;
-        obj.commented = obj.commented || (text ? 1 : 0);
-        obj.comment_count = obj.comment_count || (text ? 1 : 0);
-        continue;
-      }
-    }
+
+    // comment TEXT (preferred for participant detail UI)
+{
+  // comment TEXT (preferred for participant detail UI)
+{
+  const ct = /^(.+?)_comment_texts$/.exec(key);
+  if (ct) {
+    const [, postId] = ct;
+    const obj = ensure(postId);
+
+    // treat em dashes, hyphens, and whitespace as "no comment"
+    const raw = String(val || "").trim();
+    const text = (!raw || raw === "—" || raw === "-" || /^[-—\s]+$/.test(raw)) ? "" : raw;
+
+    obj.comment_text = text;
+    obj.commented = obj.commented || (text ? 1 : 0);
+    obj.comment_count = obj.comment_count || (text ? 1 : 0);
+    continue;
+  }
+}
+}
+
+    // dwell (s then ms→s)
     {
       const ds = /^(.+?)_dwell_s$/.exec(key);
       if (ds) { const [, postId] = ds; ensure(postId).dwell_s = Number(val || 0); continue; }
@@ -1439,7 +1173,7 @@ export function extractPerPostFromRosterRow(row) {
 }
 
 /**
- * Load participants roster (IG-scoped)
+ * Load participants roster…
  */
 export async function loadParticipantsRoster(arg1, arg2) {
   let feedId = null;
@@ -1473,34 +1207,28 @@ export async function loadParticipantsRoster(arg1, arg2) {
   }
 }
 
-// --- Admin: wipe participants for a feed (IG-scoped)
+// --- Admin: wipe participants for a feed
 export async function wipeParticipantsOnBackend(feedId) {
   const admin_token = getAdminToken();
-  if (!admin_token) {
-    return { ok: false, err: "admin auth required" };
-  }
+  if (!admin_token || !feedId) return false;
+
   try {
     const res = await fetch(GS_ENDPOINT, {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({
-        action: "wipe_participants",
-        app: APP,
-        admin_token,
-        feed_id: feedId,
-      }),
+      body: JSON.stringify({ action: "wipe_participants", feed_id: feedId, admin_token }),
+      keepalive: true,
     });
+
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) {
-      return { ok: false, err: data?.err || `HTTP ${res.status}` };
-    }
-    return { ok: true };
-  } catch (e) {
-    console.error("wipeParticipantsOnBackend failed", e);
-    return { ok: false, err: String(e.message || e) };
+    return !!(res.ok && data.ok !== false);
+  } catch {
+    return false;
   }
 }
+
+const WIPE_POLICY_GET_URL = GS_ENDPOINT + "?path=wipe_policy";
 
 export async function getWipePolicyFromBackend() {
   const admin_token = getAdminToken();
@@ -1512,6 +1240,7 @@ export async function getWipePolicyFromBackend() {
       { method: "GET", mode: "cors", cache: "no-store" },
       { retries: 1, timeoutMs: 8000 }
     );
+    // expected shape: { ok: true, wipe_on_change: boolean }
     if (data && data.ok !== false && typeof data.wipe_on_change !== "undefined") {
       return !!data.wipe_on_change;
     }
@@ -1529,16 +1258,17 @@ export async function setWipePolicyOnBackend(wipeOnChange) {
   try {
     const res = await fetch(GS_ENDPOINT, {
       method: "POST",
-      mode: "cors",
+      mode: "cors", // or "no-cors" if you prefer, but "cors" + text/plain is fine
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({
         action: "set_wipe_policy",
         admin_token,
-        wipe_on_change: !!wipeOnChange, // global, not app-scoped
+        wipe_on_change: !!wipeOnChange,
       }),
       keepalive: true,
     });
 
+    // If you keep mode:"no-cors", you can't read the body; with "cors" you can:
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
       return { ok: false, err: data?.err || `HTTP ${res.status}` };
@@ -1549,7 +1279,71 @@ export async function setWipePolicyOnBackend(wipeOnChange) {
   }
 }
 
+// ---- dashboard math helpers ----
+const median = (arr) => {
+  if (!arr.length) return null;
+  const a = [...arr].sort((x, y) => x - y);
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+};
+const avg = (arr) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : null);
+
+export function summarizeRoster(rows) {
+  const total = rows.length;
+  const completedRows = rows.filter(r => r.submitted_at_iso && String(r.submitted_at_iso).trim());
+  const completed = completedRows.length;
+
+  const toNum = (v) => (v === "" || v == null ? null : Number(v));
+  const submitTimes = completedRows.map(r => toNum(r.ms_enter_to_submit)).filter(Number.isFinite);
+  const lastInteractionTimes = completedRows.map(r => toNum(r.ms_enter_to_last_interaction)).filter(Number.isFinite);
+
+  const postKeys = new Set();
+  rows.forEach(r => {
+    Object.keys(r).forEach(k => {
+      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_reported_misinfo$/.test(k)) {
+        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|reported_misinfo)$/, "");
+        postKeys.add(base);
+      }
+    });
+  });
+
+  const perPost = {};
+  for (const base of postKeys) {
+    const reacted    = rows.reduce((acc, r) => acc + (Number(r[`${base}_reacted`]) || 0), 0);
+    const expandable = rows.reduce((a, r)   => a + (Number(r[`${base}_expandable`]) || 0), 0);
+    const expanded   = rows.reduce((acc, r) => acc + (Number(r[`${base}_expanded`]) || 0), 0);
+    const commented  = rows.reduce((acc, r) => acc + (Number(r[`${base}_commented`]) || 0), 0);
+    const shared     = rows.reduce((acc, r) => acc + (Number(r[`${base}_shared`]) || 0), 0);
+    const reported   = rows.reduce((acc, r) => acc + (Number(r[`${base}_reported_misinfo`]) || 0), 0);
+    const expandRate = expandable > 0 ? expanded / expandable : null;
+    const dwellSArr = rows
+  .map(r => {
+    const s = Number(r[`${base}_dwell_s`]);
+    if (Number.isFinite(s)) return s;
+    const ms = Number(r[`${base}_dwell_ms`]);
+    return Number.isFinite(ms) ? Math.round(ms / 1000) : null;
+  })
+  .filter(n => Number.isFinite(n));
+const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
+
+perPost[base] = { reacted, expandable, expanded, expandRate, commented, shared, reported, avgDwellS };
+  }
+
+  return {
+    counts: { total, completed, completionRate: total ? completed / total : 0 },
+    timing: {
+      avgEnterToSubmit: avg(submitTimes),
+      medEnterToSubmit: median(submitTimes),
+      avgEnterToLastInteraction: avg(lastInteractionTimes),
+      medEnterToLastInteraction: median(lastInteractionTimes),
+    },
+    perPost,
+  };
+}
+
 /* ========================= S3 Upload via Presigner ========================= */
+// ---- S3 Upload via Presigner (GET, no preflight) ----
+
 export const CF_BASE =
   (window.CONFIG && window.CONFIG.CF_BASE) ||
   "https://d2bihrgvtn9bga.cloudfront.net";
@@ -1560,7 +1354,11 @@ export const SIGNER_BASE =
 
 export const SIGNER_PATH =
   (window.CONFIG && window.CONFIG.SIGNER_PATH) ||
-  "/default/presign-upload";
+  "/default/presign-upload"; // this is your working route
+
+function joinUrl(base, path) {
+  return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
+}
 
 export function encodePathKeepSlashes(path) {
   return String(path).split("/").map(encodeURIComponent).join("/");
@@ -1583,6 +1381,7 @@ function sniffFileMeta(file) {
   return { contentType, ext, nameNoExt };
 }
 
+// Ask your signer for a presigned PUT URL via GET (no custom headers → no preflight)
 export async function getPresignedPutUrl({ key, contentType, timeoutMs = 15000 }) {
   const url = new URL(joinUrl(SIGNER_BASE, SIGNER_PATH));
   url.searchParams.set("key", key);
@@ -1612,6 +1411,7 @@ export async function getPresignedPutUrl({ key, contentType, timeoutMs = 15000 }
   }
 }
 
+// PUT file with progress
 export async function putToS3({ file, signedPutUrl, onProgress, contentType }) {
   await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -1636,6 +1436,7 @@ export async function putToS3({ file, signedPutUrl, onProgress, contentType }) {
   });
 }
 
+// High-level helper used by Admin editor
 export async function uploadFileToS3ViaSigner({ file, feedId, onProgress, prefix = "videos" }) {
   if (!file) throw new Error("No file selected");
   if (!feedId) throw new Error("Missing feedId");
@@ -1645,9 +1446,13 @@ export async function uploadFileToS3ViaSigner({ file, feedId, onProgress, prefix
   const base = sanitizeName(nameNoExt) || `file_${ts}`;
   const key = `${prefix}/${feedId}/${ts}_${base}.${ext}`;
 
+  // presign via GET (no preflight)
   const { uploadUrl, fileUrl } = await getPresignedPutUrl({ key, contentType });
+
+  // upload
   await putToS3({ file, signedPutUrl: uploadUrl, onProgress, contentType });
 
+  // return CloudFront URL (fallback to CF_BASE if signer didn't return one)
   const cdnUrl = fileUrl || `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
   return { key, cdnUrl };
 }
