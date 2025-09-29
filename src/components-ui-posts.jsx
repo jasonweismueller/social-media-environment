@@ -1,1214 +1,717 @@
 // components-ui-posts.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor
-} from "./utils";
+import ReactDOM from "react-dom";
+import { Modal, neutralAvatarDataUrl, PostText } from "./components-ui-core";
+import { IGCarousel } from "./components-ui-ig-carousel";
+import { useInViewAutoplay } from "./utils";
 
-import {
-  IconBadge, IconDots, IconGlobe, IconInfo, IconUsers,
-  IconThumb, IconComment, IconShare,
-  ActionBtn, PostText, Modal, NamesPeek, neutralAvatarDataUrl, IconVolume, IconVolumeMute,
-} from "./components-ui-core";
-
-/* --- In-view autoplay hook --- */
-function useInViewAutoplay(threshold = 0.6) {
-  const wrapRef = React.useRef(null);
-  const [inView, setInView] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!wrapRef.current) return;
-    const el = wrapRef.current;
-    const obs = new IntersectionObserver(
-      ([e]) => setInView(!!(e?.isIntersecting && e.intersectionRatio >= threshold)),
-      { root: null, threshold: [0, threshold, 1] }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [threshold]);
-
-  return { wrapRef, inView };
+/* ---------------- Small utils ---------------- */
+function useIsMobile(breakpointPx = 640) {
+  const isBrowser = typeof window !== "undefined";
+  const [isMobile, setIsMobile] = useState(
+    isBrowser ? window.matchMedia(`(max-width:${breakpointPx}px)`).matches : false
+  );
+  useEffect(() => {
+    if (!isBrowser) return;
+    const mq = window.matchMedia(`(max-width:${breakpointPx}px)`);
+    const h = (e) => setIsMobile(e.matches);
+    mq.addEventListener?.("change", h);
+    mq.addListener && mq.addListener(h);
+    return () => {
+      mq.removeEventListener?.("change", h);
+      mq.removeListener && mq.removeListener(h);
+    };
+  }, [breakpointPx, isBrowser]);
+  return isMobile;
 }
 
-/* ----------------------------- Post Card ---------------------------------- */
-export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false }) {
-  const [reportAck, setReportAck] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [showComment, setShowComment] = useState(false);
-  const [commentText, setCommentText] = useState("");
+/* ---------------- Icons ---------------- */
+function HeartIcon({ filled = false, ...props }) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
+      <path
+        d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-.99-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.77-8.84a5.5 5.5 0 0 0 0-7.78Z"
+        fill={filled ? "#ef4444" : "none"}
+        stroke={filled ? "#ef4444" : "currentColor"}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function CommentIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
+      <path
+        d="M21 15a4 4 0 0 1-4 4H8l-5 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function SendIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
+      <path d="M22 2 11 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <path d="M22 2 15 22l-4-9-9-4 20-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+function SaveIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
+      <path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function SaveIconFilled(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
+      <path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z" fill="currentColor" />
+    </svg>
+  );
+}
+function DotsIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" {...props}>
+      <circle cx="5" cy="12" r="1.6" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
 
-  // FB-like video settings UI
-  const [playbackRate, setPlaybackRate] = useState(1);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsRef = useRef(null);
-  const [volume, setVolume] = useState(0); // start muted visually & logically
-  // Volume popover state (hover-in open, hover-out delayed close with fade)
-  const [volOpen, setVolOpen] = useState(false);
-  const [volFading, setVolFading] = useState(false);
-  const volHideTimer = useRef(null);
+/* ---------------- Helpers ---------------- */
+const sumReactions = (rx) => (rx ? Object.values(rx).reduce((a, b) => a + (Number(b) || 0), 0) : 0);
 
-  // cleanup
-  useEffect(() => () => clearTimeout(volHideTimer.current), []);
+/* ---------------- Mobile “Stories” ghost bar (non-sticky, no scroll) ---- */
+function useStoriesCount() {
+  const [count, setCount] = useState(0);
 
-  // when closing, briefly apply the fade class
   useEffect(() => {
-    if (volOpen) {
-      setVolFading(false);
-      return;
-    }
-    setVolFading(true);
-    const t = setTimeout(() => setVolFading(false), 180); // match your CSS transition
-    return () => clearTimeout(t);
-  }, [volOpen]);
-
-  // Participant comment (this session)
-  const [mySubmittedComment, setMySubmittedComment] = useState(post._localMyCommentText || "");
-  const [participantComments, setParticipantComments] = useState(mySubmittedComment ? 1 : 0);
-
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
-  const dotsRef = useRef(null);
-
-  const ALL_REACTIONS = { like:"👍", love:"❤️", care:"🤗", haha:"😆", wow:"😮", sad:"😢", angry:"😡" };
-  const [myReaction, setMyReaction] = useState(null);
-
-  const OPEN_DELAY = 400;
-  const CLOSE_DELAY = 250;
-  const SUPPRESS_MS = 300;
-  const [flyoutOpen, setFlyoutOpen] = useState(false);
-  const openTimer  = useRef(null);
-  const closeTimer = useRef(null);
-  const suppressHoverUntil = useRef(0);
-
-  useEffect(() => {
+    const calc = () => {
+      const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+      const sidePad = 12;      // px horizontal padding of the bar
+      const itemW   = 72;      // px card width
+      const gapMin  = 10;      // px minimum gap between items
+      const usable = vw - sidePad * 2;
+      const per = itemW + gapMin;
+      const n = Math.max(1, Math.floor((usable + gapMin) / per));
+      setCount(n);
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    window.addEventListener("orientationchange", calc);
     return () => {
-      clearTimeout(openTimer.current);
-      clearTimeout(closeTimer.current);
+      window.removeEventListener("resize", calc);
+      window.removeEventListener("orientationchange", calc);
     };
   }, []);
 
-  // in-view detector for media
-  const { wrapRef, inView } = useInViewAutoplay(0.6);
+  return count;
+}
 
-  const scheduleOpen = () => {
-    if (Date.now() < suppressHoverUntil.current) return; // suppress hover reopen
-    clearTimeout(openTimer.current);
-    clearTimeout(closeTimer.current);
-    openTimer.current = setTimeout(() => {
-      if (Date.now() < suppressHoverUntil.current) return;
-      setFlyoutOpen(true);
-    }, OPEN_DELAY);
-  };
-  const scheduleClose = () => {
-    clearTimeout(openTimer.current);
-    clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setFlyoutOpen(false), CLOSE_DELAY);
-  };
+function StoryBar() {
+  const isMobile = useIsMobile(700);
+  const n = isMobile ? useStoriesCount() : 0;
+  const items = Array.from({ length: n || 0 });
+  if (!isMobile || n === 0) return null;
 
-  // close NOW + suppress hover for a bit
-  const closeNowAndSuppress = () => {
-    clearTimeout(openTimer.current);
-    clearTimeout(closeTimer.current);
-    setFlyoutOpen(false);
-    suppressHoverUntil.current = Date.now() + SUPPRESS_MS;
-  };
-
-  const showReactions = post.showReactions ?? false;
-  const ALL_RX_KEYS = useMemo(() => Object.keys(REACTION_META), []);
-
-  const baseReactions = useMemo(() => ({
-    like: 0, love: 0, care: 0, haha: 0, wow: 0, sad: 0, angry: 0,
-    ...(post.reactions || {}),
-  }), [post.reactions]);
-
-  const liveReactions = useMemo(() => {
-    const obj = { ...baseReactions };
-    if (myReaction) obj[myReaction] = (obj[myReaction] || 0) + 1;
-    return obj;
-  }, [baseReactions, myReaction]);
-
-  // --- COMMENTS/SHARES
-  const baseCommentCount = Number(post.metrics?.comments) || 0;
-  const displayedCommentCount = baseCommentCount + participantComments;
-
-  const baseShareCount = Number(post.metrics?.shares) || 0;
-  const [hasShared, setHasShared] = useState(false);
-  const displayedShareCount = baseShareCount + (hasShared ? 1 : 0);
-
-  const totalReactions = useMemo(
-    () => sumSelectedReactions(liveReactions, ALL_RX_KEYS),
-    [liveReactions, ALL_RX_KEYS]
+  return (
+    <div className="ig-stories-bar noscroll" aria-hidden="true">
+      <div className="ig-stories-row">
+        {items.map((_, i) => (
+          <div className="ig-story-ghost" key={i}>
+            <div className="ig-story-ring">
+              <div className="ig-story-avatar" />
+            </div>
+            <div className="ig-story-name" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
-  const top3 = useMemo(
-    () => topReactions(liveReactions, ALL_RX_KEYS, 3),
-    [liveReactions, ALL_RX_KEYS]
+}
+
+/* ---------------- Mobile sheet ---------------- */
+function MobileSheet({ open, onClose, children }) {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.5)",
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "flex-end"
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          background: "#1f2937",
+          color: "#fff",
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          padding: 8,
+          maxHeight: "75vh",
+          overflowY: "auto",
+          boxShadow: "0 -12px 32px rgba(0,0,0,.35)"
+        }}
+      >
+        <div style={{ width: 42, height: 4, background: "rgba(255,255,255,.25)", borderRadius: 999, margin: "8px auto 10px" }} />
+        {children}
+        <button className="btn" style={{ width: "100%", marginTop: 8, background: "#374151", color: "#fff" }} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+function sheetBtn({ danger = false, disabled = false } = {}) {
+  return {
+    width: "100%",
+    background: disabled ? "#374151" : (danger ? "#ef4444" : "#4b5563"),
+    color: "#fff",
+    border: 0,
+    padding: "10px 12px",
+    borderRadius: 10,
+    fontWeight: 600,
+    fontSize: 15,
+    opacity: disabled ? 0.75 : 1
+  };
+}
+
+/* ---------------- Desktop menu ---------------- */
+function DesktopMenu({ anchorEl, open, onClose, onPick, id }) {
+  const [pos, setPos] = useState({ top: 0, left: 0, w: 180 });
+
+  useEffect(() => {
+    if (!open || !anchorEl) return;
+    const place = () => {
+      const r = anchorEl.getBoundingClientRect();
+      const w = 180;
+      const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+      const top = r.bottom + 6;
+      setPos({ top, left, w });
+    };
+    place();
+
+    const onEsc = (e) => e.key === "Escape" && onClose?.();
+    const onDoc = (e) => {
+      const menu = document.getElementById(`ig-menu-${id}`);
+      if (!menu) return;
+      const insideMenu = menu.contains(e.target);
+      const insideBtn = anchorEl.contains(e.target);
+      if (!insideMenu && !insideBtn) onClose?.();
+    };
+
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    document.addEventListener("keydown", onEsc);
+    document.addEventListener("mousedown", onDoc);
+
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      document.removeEventListener("keydown", onEsc);
+      document.removeEventListener("mousedown", onDoc);
+    };
+  }, [open, anchorEl, id, onClose]);
+
+  if (!open) return null;
+
+  const items = [
+    { label: "Report", action: "report", danger: true, disabled: false },
+    { label: "Unfollow", action: "unfollow", disabled: true },
+    { label: "Go to post", action: "goto", disabled: true },
+    { label: "Copy link", action: "copy", disabled: true },
+    { label: "Cancel", action: "cancel", bold: true, disabled: false },
+  ];
+
+  const ui = (
+    <div
+      id={`ig-menu-${id}`}
+      role="menu"
+      style={{
+        position: "fixed",
+        top: pos.top,
+        left: pos.left,
+        minWidth: pos.w,
+        zIndex: 10050,
+        background: "#fff",
+        border: "1px solid var(--line)",
+        borderRadius: 8,
+        boxShadow: "0 12px 32px rgba(0,0,0,.15)",
+        overflow: "hidden"
+      }}
+    >
+      {items.map((item, idx) => {
+        const isDisabled = !!item.disabled;
+        return (
+          <button
+            key={idx}
+            role="menuitem"
+            aria-disabled={isDisabled}
+            disabled={isDisabled}
+            tabIndex={isDisabled ? -1 : 0}
+            onClick={() => {
+              if (isDisabled) return;
+              onClose?.();
+              if (item.action !== "cancel") onPick?.(item.action, { id });
+            }}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "center",
+              padding: "10px",
+              border: "none",
+              background: "transparent",
+              fontSize: 14,
+              cursor: isDisabled ? "default" : "pointer",
+              color: isDisabled ? "#9ca3af" : (item.danger ? "#ef4444" : "#111827"),
+              fontWeight: item.bold ? 600 : 400,
+              opacity: isDisabled ? 0.6 : 1,
+              pointerEvents: isDisabled ? "none" : "auto"
+            }}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
   );
 
-  const hasRx = respectShowReactions ? (showReactions && totalReactions > 0) : (totalReactions > 0);
+  return ReactDOM.createPortal(ui, document.body);
+}
 
-  const click = (action, meta = {}) => { if (!disabled) onAction(action, { post_id: post.id, ...meta }); };
+/* ---------------- PostCard (IG) ---------------- */
+export function PostCard({ post, onAction = () => {}, disabled = false, registerViewRef }) {
+  const {
+    id, author = "", avatarUrl = "", text = "", image, imageMode, video, videoMode,
+    videoPosterUrl, reactions, metrics, time,
+  } = post || {};
 
-  // 👇 Provide NamesPeek with a version of the post that always:
-  // - has showReactions=true (unblocks internal gates),
-  // - contains the *displayed* counts so names match what the user sees.
-  const postForCounts = useMemo(() => ({
-    ...post,
-    showReactions: true,
-    metrics: {
-      ...post.metrics,
-      comments: displayedCommentCount,
-      shares: displayedShareCount,
-      reactions: totalReactions,
-    },
-  }), [post, displayedCommentCount, displayedShareCount, totalReactions]);
+  const images = Array.isArray(post?.images) ? post.images : [];
+  const hasCarousel = imageMode === "multi" && images.length > 1;
 
-  const onLike = () => {
-    closeNowAndSuppress();           // also suppress when toggling like
-    setMyReaction(prev => {
-      if (prev == null) { click("react_pick", { type: "like", prev: null }); return "like"; }
-      click("react_clear", { type: prev, prev }); return null;
+  const isMobile = useIsMobile(700);
+
+  const baseLikes = useMemo(() => sumReactions(reactions), [reactions]);
+  const baseComments = Number(metrics?.comments || 0);
+  const baseShares = Number(metrics?.shares || 0);
+  const shouldShowGhosts = baseComments > 0;
+
+  const [liked, setLiked] = useState(false);
+  const [openComments, setOpenComments] = useState(false);
+  const [shared, setShared] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveToast, setSaveToast] = useState(false);
+
+  // caption expand state
+  const [expanded, setExpanded] = useState(false);
+
+  const [menuOpenMobile, setMenuOpenMobile] = useState(false);
+  const [menuOpenDesktop, setMenuOpenDesktop] = useState(false);
+  const dotsBtnRef = useRef(null);
+
+  const [commentText, setCommentText] = useState("");
+  const [mySubmittedComment, setMySubmittedComment] = useState(post._localMyCommentText || "");
+  const [participantComments, setParticipantComments] = useState(mySubmittedComment ? 1 : 0);
+
+  const likes = baseLikes + (liked ? 1 : 0);
+  const comments = baseComments + participantComments;
+  const shares = baseShares + (shared ? 1 : 0);
+
+  const myParticipantId =
+    ((typeof window !== "undefined" && (window.SESSION?.participant_id || window.PARTICIPANT_ID)) || null) ||
+    "Participant";
+
+  const hasVideo = videoMode && videoMode !== "none" && !!video;
+  const hasImage = imageMode && imageMode !== "none" && !!image;
+  const refFromTracker = typeof registerViewRef === "function" ? registerViewRef(id) : undefined;
+
+  // Autoplay in view (keeps native controls)
+  const videoRef = useInViewAutoplay(0.6, { startMuted: true, unmuteOnFirstGesture: true });
+
+  const toggleLike = () => {
+    if (disabled) return;
+    setLiked((v) => {
+      const next = !v;
+      onAction(next ? "react_pick" : "react_clear", { id, type: "like" });
+      return next;
     });
   };
-  const onPickReaction = (key) => {
-    setMyReaction(prev => {
-      if (prev === key) { click("react_clear", { type: key, prev }); return null; }
-      click("react_pick", { type: key, prev }); return key;
+  const openCommentsPanel = () => {
+    if (disabled) return;
+    setOpenComments(true);
+    onAction("comment_open", { id });
+  };
+  const doShare = () => {
+    if (disabled || shared) return;
+    setShared(true);
+    onAction("share", { id });
+  };
+  const toggleSave = () => {
+    if (disabled) return;
+    setSaved((prev) => {
+      const next = !prev;
+      onAction(next ? "save" : "unsave", { id });
+      if (next) {
+        setSaveToast(true);
+        window.clearTimeout(toggleSave._t);
+        toggleSave._t = window.setTimeout(() => setSaveToast(false), 1600);
+      } else {
+        setSaveToast(false);
+      }
+      return next;
     });
-    // close AFTER the state update has been queued
-    closeNowAndSuppress();
   };
 
-  const onShare = () => {
-    if (hasShared) return; // only once
-    click("share");
-    setHasShared(true);
-  };
-  const onExpand = () => { setExpanded(true); click("expand_text"); };
-  const onOpenComment = () => { setShowComment(true); click("comment_open"); };
-
-  // comment submit
   const onSubmitComment = () => {
     const txt = commentText.trim();
     if (!txt) return;
-    click("comment_submit", { text: txt, length: txt.length });
+    onAction("comment_submit", { id, text: txt, length: txt.length });
     setMySubmittedComment(txt);
     setParticipantComments((c) => c + 1);
     setCommentText("");
   };
 
-  // media (image/video)
-  const onImageOpen = () => { if (post.image) click("image_open", { alt: post.image.alt || "" }); };
-
-  // --- VIDEO SUPPORT (FB-like UI) -----------------------------------------
-  const videoRef = useRef(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true); // start muted (reliable autoplay)
-  const [duration, setDuration] = useState(0);
-  const [current, setCurrent] = useState(0);
-  const [bufferedEnd, setBufferedEnd] = useState(0);
-
-  // time formatter
-  const fmtTime = (s) => {
-    if (!Number.isFinite(s)) return "0:00";
-    const m = Math.floor(s / 60);
-    const sec = String(Math.floor(s % 60)).padStart(2, "0");
-    return `${m}:${sec}`;
+  const onDotsClick = (e) => {
+    if (disabled) return;
+    e.stopPropagation();
+    if (isMobile) setMenuOpenMobile(true);
+    else setMenuOpenDesktop((v) => !v);
+    onAction("menu_open", { id, surface: isMobile ? "mobile" : "desktop" });
   };
+  const closeMobileMenu = () => setMenuOpenMobile(false);
+  const closeDesktopMenu = () => setMenuOpenDesktop(false);
 
-  // wire native video events (mount-only)
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-
-    // start in a reliable autoplay state
-    v.muted = true;
-    v.volume = 0; // apply initial volume
-
-    const onLoadedMeta = () => setDuration(Number.isFinite(v.duration) ? v.duration : 0);
-    const onTime      = () => setCurrent(v.currentTime || 0);
-    const onProg      = () => { try { const b = v.buffered; if (b.length) setBufferedEnd(b.end(b.length - 1)); } catch {} };
-    const onPlay      = () => setIsVideoPlaying(true);
-    const onPause     = () => setIsVideoPlaying(false);
-
-    // keep React state in sync with element changes
-    const onVol       = () => {
-      setVolume(v.volume);
-      setIsMuted(v.muted);
-    };
-
-    v.addEventListener("loadedmetadata", onLoadedMeta);
-    v.addEventListener("timeupdate", onTime);
-    v.addEventListener("progress", onProg);
-    v.addEventListener("play", onPlay);
-    v.addEventListener("pause", onPause);
-    v.addEventListener("volumechange", onVol);
-
-    return () => {
-      v.removeEventListener("loadedmetadata", onLoadedMeta);
-      v.removeEventListener("timeupdate", onTime);
-      v.removeEventListener("progress", onProg);
-      v.removeEventListener("play", onPlay);
-      v.removeEventListener("pause", onPause);
-      v.removeEventListener("volumechange", onVol);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const closeOnRouteChange = () => setMenuOpenDesktop(false);
+    window.addEventListener("hashchange", closeOnRouteChange);
+    return () => window.removeEventListener("hashchange", closeOnRouteChange);
   }, []);
 
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-
-    // keep element in sync with React state
-    v.volume = volume;
-
-    // slider at 0 ⇒ muted; >0 ⇒ unmuted
-    const shouldMute = volume === 0;
-    if (v.muted !== shouldMute) v.muted = shouldMute;
-
-    // reflect any normalization back to UI
-    setIsMuted(v.muted);
-  }, [volume]);
-
-  const onVideoTogglePlay = async () => {
-    const v = videoRef.current;
-    if (!v) return;
-    try {
-      if (v.paused) {
-        await v.play();
-        click("video_play");
-      } else {
-        v.pause();
-        click("video_pause");
-      }
-    } catch { /* ignore */ }
-  };
-
-  const onVideoToggleMute = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = !v.muted;
-    setIsMuted(v.muted);
-    click(v.muted ? "video_mute" : "video_unmute");
-  };
-
-  const onVideoEnded = () => {
-    setIsVideoPlaying(false);
-    click("video_ended");
-  };
-
-  const setRate = (r) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.playbackRate = r;
-    setPlaybackRate(r);
-    setSettingsOpen(false);
-    click("video_rate_change", { rate: r });
-  };
-
-  const toggleFullscreen = () => {
-    const el = videoRef.current;
-    if (!el) return;
-    const doc = document;
-    const isFull =
-      doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement;
-    if (isFull) {
-      (doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen)?.call(doc);
-      click("video_fullscreen_exit");
-    } else {
-      (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen)?.call(el);
-      click("video_fullscreen_enter");
-    }
-  };
-
-  // progress bar interactions
-  const seekTo = (time) => {
-    const v = videoRef.current;
-    if (!v || !Number.isFinite(time)) return;
-    v.currentTime = Math.max(0, Math.min(time, v.duration || time));
-  };
-  const handleBarClick = (e) => {
-    const bar = e.currentTarget.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - bar.left) / bar.width));
-    seekTo(pct * (duration || 0));
-  };
-
-  // Close settings on outside click / Esc
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const onDocClick = (e) => {
-      if (!settingsRef.current) return;
-      if (!settingsRef.current.contains(e.target)) setSettingsOpen(false);
-    };
-    const onEsc = (e) => { if (e.key === "Escape") setSettingsOpen(false); };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onEsc);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onEsc);
-    };
-  }, [settingsOpen]);
-
-  useEffect(() => {
-    if (!reportAck) return;
-    const t = setTimeout(() => setReportAck(false), 2800);
-    return () => clearTimeout(t);
-  }, [reportAck]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDocClick = (e) => {
-      const insideMenu = menuRef.current && menuRef.current.contains(e.target);
-      const insideBtn  = dotsRef.current && dotsRef.current.contains(e.target);
-      if (!insideMenu && !insideBtn) setMenuOpen(false);
-    };
-    const onKey = (e) => { if (e.key === "Escape") setMenuOpen(false); };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDocClick); document.removeEventListener("keydown", onKey); };
-  }, [menuOpen]);
-
-  const LikeIcon = (p) =>
-    myReaction ? <span style={{ fontSize: 18, lineHeight: 1 }} {...p}>{ALL_REACTIONS[myReaction]}</span> : <IconThumb {...p}/>;
-  const likeLabel = myReaction ? (REACTION_META[myReaction]?.label || "Like") : "Like";
-
-  // Participant id
-  const myParticipantId =
-    ((typeof window !== "undefined" && (window.SESSION?.participant_id || window.PARTICIPANT_ID)) || null) ||
-    "Participant";
-
-  /* Reaction chip with tooltip */
-  function ReactionIconWithNames({ rxKey, count, z, post, idx = 0 }) {
-    const [open, setOpen] = React.useState(false);
-    const label = REACTION_META[rxKey]?.label || rxKey;
-    const { names, remaining } = fakeNamesFor(post.id, count, rxKey, 4);
-
-    return (
-      <span
-        className="rx"
-        style={{
-          zIndex: z,
-          position: "relative",
-          width: 22,
-          height: 22,
-          fontSize: 16,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: "999px",
-          marginLeft: idx === 0 ? 0 : -2,
-          cursor: count > 0 ? "pointer" : "default"
-        }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onPointerDown={closeNowAndSuppress}
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-label={label}
-      >
-        {REACTION_META[rxKey].emoji}
-        {open && count > 0 && (
-          <div
-            role="tooltip"
-            style={{
-              position: "absolute",
-              bottom: "130%",
-              right: 0,
-              background: "#111827",
-              color: "white",
-              padding: "8px 10px",
-              borderRadius: 8,
-              fontSize: 12,
-              lineHeight: 1.25,
-              boxShadow: "0 6px 24px rgba(0,0,0,.2)",
-              whiteSpace: "nowrap",
-              zIndex: 50,
-              maxWidth: 260,
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
-            {names.length ? (
-              <>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {names.map((n) => (<li key={n} style={{ margin: "2px 0" }}>{n}</li>))}
-                </ul>
-                {remaining > 0 && (<div style={{ opacity: 0.8, marginTop: 4 }}>and {remaining} more</div>)}
-              </>
-            ) : (
-              <div style={{ opacity: 0.8 }}>No {label.toLowerCase()} yet</div>
-            )}
-          </div>
-        )}
-      </span>
-    );
-  }
-
-  // --- GHOST SHOW/HIDE RULES ---
-  const shouldShowGhosts = showReactions && baseCommentCount > 0;
-
-  // Inline styles for FB-like controls (minus button box/background)
-  const fb = {
-    wrap: { position: "relative" },
-    bottom: {
-      position: "absolute", left: 0, right: 0, bottom: 0,
-      padding: "8px 10px",
-      color: "#fff",
-      zIndex: 2,
-      pointerEvents: "none",
-      display: "grid",
-      gap: 6,
-      background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%)",
-    },
-    progress: {
-      position: "relative",
-      height: 6,
-      borderRadius: 999,
-      background: "rgba(255,255,255,.25)",
-      cursor: "pointer",
-      overflow: "hidden",
-      pointerEvents: "auto"
-    },
-    progBuffered: (pct) => ({
-      position: "absolute", top: 0, left: 0, bottom: 0,
-      width: `${pct}%`,
-      background: "rgba(255,255,255,.35)"
-    }),
-    progPlayed: (pct) => ({
-      position: "absolute", top: 0, left: 0, bottom: 0,
-      width: `${pct}%`,
-      background: "#fff"
-    }),
-    row: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-    time: { fontSize: 12, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.5)" },
-    // NOTE: removed fb.btn — we now use className="fb-btn" so CSS controls the look
-    settingsWrap: { position: "relative", pointerEvents: "auto" },
-    menu: {
-      position: "absolute",
-      bottom: "110%",
-      right: 0,
-      background: "#111827",
-      color: "#fff",
-      border: "1px solid rgba(255,255,255,.12)",
-      borderRadius: 8,
-      boxShadow: "0 10px 24px rgba(0,0,0,.35)",
-      padding: 6,
-      minWidth: 120,
-      zIndex: 3
-    },
-    menuBtn: (active) => ({
-      display: "block",
-      width: "100%",
-      textAlign: "left",
-      border: 0,
-      background: active ? "rgba(255,255,255,.08)" : "transparent",
-      color: "#fff",
-      padding: "6px 8px",
-      borderRadius: 6,
-      cursor: "pointer",
-      fontSize: 13
-    }),
+  // Pause other playing videos when this one starts
+  const handlePlay = () => {
+    const current = videoRef.current;
+    if (!current) return;
+    document.querySelectorAll('video[data-ig-video="1"]').forEach(v => {
+      if (v !== current && !v.paused) v.pause();
+    });
+    onAction("video_play", { id });
   };
 
   return (
-    <article ref={registerViewRef(post.id)} className="card">
-      <header className="card-head">
-        <div className="avatar">
-          {post.avatarUrl ? (
-            <img
-              src={post.avatarUrl}
-              alt=""
-              className="avatar-img"
-              loading="lazy"
-              decoding="async"
-              onLoad={() => click("avatar_load")}
-              onError={() => click("avatar_error")}
-            />
-          ) : null}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div className="name-row">
-            <div className="name">{post.author}</div>
-            {post.badge && <span className="badge"><IconBadge /></span>}
-          </div>
-
-          {/* Sponsored for ads; otherwise time + globe */}
-          <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            {post.adType === "ad" ? (
-              <>
-                <span className="subtle">Sponsored</span>
-                <span className="sep" aria-hidden="true">·</span>
-                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-              </>
-            ) : (
-              <>
-                {post.showTime !== false && post.time ? (
-                  <>
-                    <span className="subtle">{post.time}</span>
-                    <span className="sep" aria-hidden="true">·</span>
-                  </>
-                ) : null}
-                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-              </>
-            )}
-          </div>
-        </div>
-        <div className="menu-wrap">
-          <button
-            ref={dotsRef}
-            className="dots"
-            onClick={() => { if (!disabled) { setMenuOpen(v => !v); onAction("post_menu_toggle", { post_id: post.id }); } }}
-            aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Post menu" disabled={disabled}
-          >
-            <IconDots />
-          </button>
-
-          {menuOpen && (
-            <div className="menu" role="menu" ref={menuRef}>
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1} title="Unavailable in this study">
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12"/><path d="M12 7v10M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Interested</span><span className="mi-sub">More of your posts will be like this.</span></span>
-              </button>
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1} title="Unavailable in this study">
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12"/><path d="M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Not interested</span><span className="mi-sub">Less of your posts will be like this.</span></span>
-              </button>
-
-              <div className="menu-divider" />
-
-              {/* report — active */}
-              <button
-                className="menu-item"
-                role="menuitem"
-                tabIndex={0}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onAction("report_misinformation_click", { post_id: post.id });
-                  setReportAck(true);
-                }}
-              >
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                    <line x1="7" y1="3" x2="7" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M7 4h10l-2 4 2 4H7z" fill="currentColor" />
-                  </svg>
-                </span>
-                <span className="mi-text">
-                  <span className="mi-title">Report post</span>
-                  <span className="mi-sub">Tell us if it is misinformation.</span>
-                </span>
-              </button>
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v16l-6-4-6 4V4z" fill="currentColor"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Save post</span><span className="mi-sub">Add this to your saved items.</span></span>
-              </button>
-
-              <div className="menu-divider" />
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 8a6 6 0 10-12 0v5l-2 2h16l-2-2V8zM9 19a3 3 0 006 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Turn on notifications for this post</span></span>
-              </button>
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5L3 12l5 7M16 5l5 7-5 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Embed</span></span>
-              </button>
-
-              <div className="menu-divider" />
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="5" width="16" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Hide post</span><span className="mi-sub">See fewer posts like this.</span></span>
-              </button>
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Snooze {post.author} for 30 days</span><span className="mi-sub">Temporarily stop seeing posts.</span></span>
-              </button>
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Hide all from {post.author}</span><span className="mi-sub">Stop seeing posts from this Page.</span></span>
-              </button>
-
-              <div className="menu-divider" />
-
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Dismiss</span></span>
-              </button>
-            </div>
+    <article
+      ref={refFromTracker}
+      className="insta-card"
+      style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 12, overflow: "visible" }}
+    >
+      {/* Header */}
+      <header className="insta-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover" }} />
+          ) : (
+            <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
+          <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {author || "username"}
+          </div>
         </div>
+
+        <button
+          ref={dotsBtnRef}
+          className="dots"
+          title="More"
+          aria-label="More"
+          aria-haspopup="menu"
+          aria-expanded={isMobile ? menuOpenMobile : menuOpenDesktop}
+          onClick={onDotsClick}
+          style={{ border: "none", background: "transparent", color: "#6b7280", cursor: "pointer", padding: ".25rem .4rem", lineHeight: 1, display: "inline-flex" }}
+          disabled={disabled}
+        >
+          <DotsIcon />
+        </button>
       </header>
 
-      <div className="card-body">
-        <PostText text={post.text || ""} expanded={expanded} onExpand={onExpand} onClamp={() => click("text_clamped")} />
-        {expanded && post.links?.length ? (
-          <div className="link-row">
-            {post.links.map((lnk, i) => (
-              <a
-                key={i}
-                href={lnk.href}
-                onClick={(e) => { e.preventDefault(); click("link_click", { label: lnk.label, href: lnk.href }); }}
-                className="link"
-              >
-                {lnk.label}
-              </a>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      {!isMobile && (
+        <DesktopMenu
+          anchorEl={dotsBtnRef.current}
+          open={menuOpenDesktop}
+          onClose={closeDesktopMenu}
+          onPick={onAction}
+          id={id}
+        />
+      )}
 
-      {/* Media: prefer video, else image */}
-      {post.video && post.videoMode !== "none" ? (
-        (() => {
-          const u = post.video?.url || "";
-
-          // Detect Drive URLs
-          const isDrive =
-            /(?:^|\/\/)(?:drive\.google\.com|drive\.usercontent\.google\.com)/i.test(u);
-
-          /// Extract Drive file ID from ?id=... or /d/<id>/
-          let driveId = null;
-          {
-            const qMatch = /[?&]id=([a-zA-Z0-9_-]+)/.exec(u);
-            const dMatch = /\/d\/([a-zA-Z0-9_-]+)/.exec(u);
-            if (qMatch) driveId = qMatch[1];
-            else if (dMatch) driveId = dMatch[1];
-          }
-
-          if (isDrive && driveId) {
-            // Drive preview player (autoplay not guaranteed)
-            return (
-              <div className="video-wrap drive-embed" ref={wrapRef}>
-                <iframe
-                  src={`https://drive.google.com/file/d/${driveId}/preview`}
-                  title="Drive video"
-                  loading="lazy"
-                  allow="autoplay; fullscreen"
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    border: 0,
-                    display: "block",
-                    background: "#000",
-                  }}
-                />
-              </div>
-            );
-          }
-
-          // Non-Drive (e.g., S3/CloudFront) → native <video> w/ in-view autoplay
-          const playedPct   = duration ? Math.min(current / duration, 1) * 100 : 0;
-          const bufferedPct = duration ? Math.min(bufferedEnd / duration, 1) * 100 : 0;
-
-          return (
-            <div
-              className="video-wrap"
-              ref={wrapRef}
-              onMouseEnter={() => setSettingsOpen(false)}
-              style={fb.wrap}
-            >
-              <video
-                ref={videoRef}
-                className="video-el"
-                src={u}
-                poster={post.videoPosterUrl || undefined}
-                playsInline
-                muted={isMuted}
-                autoPlay={inView}
-                preload="auto"
-                loop={!!post.videoLoop}
-                onPlay={() => setIsVideoPlaying(true)}
-                onPause={() => setIsVideoPlaying(false)}
-                onEnded={onVideoEnded}
-                controls={!!post.videoShowControls}
-                disablePictureInPicture
-                controlsList="nodownload noremoteplayback"
-                style={{
-                  display: "block",
-                  width: "auto",
-                  height: "auto",
-                  maxWidth: "100%",
-                  maxHeight: "min(78vh, 600px)",
-                  objectFit: "contain",
-                  background: "#000",
-                  margin: "0 auto",
-                  cursor: "pointer",
-                }}
-                // toggle play/pause like FB
-                onClick={onVideoTogglePlay}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === " " || e.key === "Enter") {
-                    e.preventDefault();
-                    onVideoTogglePlay();
-                  }
-                }}
-              />
-
-              {/* FB-like bottom bar when using custom controls */}
-              {!post.videoShowControls && (
-                <div style={fb.bottom}>
-                  <div className="fb-ctrls">
-                    {/* LEFT: play + time */}
-                    <div className="fb-ctrl-left">
-                      <button
-                        type="button"
-                        className="fb-btn"
-                        onClick={onVideoTogglePlay}
-                        aria-label={isVideoPlaying ? "Pause" : "Play"}
-                        title={isVideoPlaying ? "Pause" : "Play"}
-                        disabled={disabled}
-                      >
-                        {isVideoPlaying ? "❚❚" : "▶"}
-                      </button>
-
-                      <div style={fb.time} aria-label={`Time ${fmtTime(current)} of ${fmtTime(duration)}`}>
-                        {fmtTime(current)} / {fmtTime(duration)}
-                      </div>
-                    </div>
-
-                    {/* CENTER: inline progress */}
-                    <div
-                      className="fb-progress-inline"
-                      role="slider"
-                      aria-valuemin={0}
-                      aria-valuemax={Math.round(duration || 0)}
-                      aria-valuenow={Math.round(current || 0)}
-                      aria-label="Video progress"
-                      tabIndex={0}
-                      onClick={handleBarClick}
-                      onKeyDown={(e) => {
-                        if (e.key === "ArrowLeft") { seekTo(current - 5); e.preventDefault(); }
-                        if (e.key === "ArrowRight") { seekTo(current + 5); e.preventDefault(); }
-                      }}
-                      title="Seek"
-                    >
-                      <div style={fb.progBuffered(bufferedPct)} />
-                      <div style={fb.progPlayed(playedPct)} />
-                    </div>
-
-                    {/* RIGHT: volume popover, settings, fullscreen */}
-                    <div className="fb-ctrl-right">
-                      <div
-                        className="fb-vol"
-                        onMouseEnter={() => { clearTimeout(volHideTimer.current); setVolOpen(true); }}
-                        onMouseLeave={() => {
-                          clearTimeout(volHideTimer.current);
-                          volHideTimer.current = setTimeout(() => setVolOpen(false), 600);
-                        }}
-                      >
-                        <button
-                          type="button"
-                          className="fb-btn"
-                          onClick={() => {
-                            const v = videoRef.current; if (!v) return;
-                            const next = !v.muted;
-                            v.muted = next; setIsMuted(next);
-                            if (!next && v.volume === 0) { v.volume = 0.25; setVolume(0.25); }
-                            click(next ? "video_mute" : "video_unmute");
-                            setVolOpen(true);
-                          }}
-                          aria-label={isMuted ? "Unmute" : "Mute"}
-                          title={isMuted ? "Unmute" : "Mute"}
-                          disabled={disabled}
-                        >
-                          {isMuted || volume === 0 ? <IconVolumeMute /> : <IconVolume />}
-                        </button>
-
-                        {volOpen && (
-                          <div className={`fb-vol-pop${volFading ? " hide" : ""}`}>
-                            <div className="fb-vol-box">
-                              <div
-                                className="fb-vol-visual"
-                                aria-hidden="true"
-                                style={{
-                                  ['--vol-val']: Math.round(volume * 100),
-                                  ['--vol-fill']: isMuted || volume === 0 ? 'rgba(255,255,255,.25)' : '#fff'
-                                }}
-                              />
-                              <input
-                                className="fb-vol-slider"
-                                type="range"
-                                min="0" max="100" step="1"
-                                value={Math.round(volume * 100)}
-                                aria-label="Volume"
-                                aria-orientation="vertical"
-                                onInput={(e) => {
-                                  const v = videoRef.current;
-                                  const pct = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-                                  const vol = pct / 100;
-                                  setVolume(vol);
-                                  if (v) v.volume = vol;
-                                  const shouldMute = vol === 0;
-                                  if (v && v.muted !== shouldMute) v.muted = shouldMute;
-                                  setIsMuted(shouldMute);
-                                  const vis = e.currentTarget.previousElementSibling;
-                                  vis?.style.setProperty('--vol-val', String(pct));
-                                  vis?.style.setProperty('--vol-fill', shouldMute ? 'rgba(255,255,255,.25)' : '#fff');
-                                }}
-                                onChange={() => {}}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={fb.settingsWrap} ref={settingsRef}>
-                        <button
-                          type="button"
-                          className="fb-btn"
-                          aria-haspopup="menu"
-                          aria-expanded={settingsOpen}
-                          onClick={() => setSettingsOpen(o => !o)}
-                          title="Settings"
-                          disabled={disabled}
-                        >
-                          ⚙
-                        </button>
-                        {settingsOpen && (
-                          <div style={fb.menu} role="menu">
-                            {[0.5, 1, 1.25, 1.5, 2].map((r) => (
-                              <button
-                                key={r}
-                                type="button"
-                                role="menuitem"
-                                style={fb.menuBtn(r === playbackRate)}
-                                onClick={() => setRate(r)}
-                                title={`${r}×`}
-                                disabled={disabled}
-                              >
-                                {r}× {r === playbackRate ? "✓" : ""}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        className="fb-btn"
-                        onClick={toggleFullscreen}
-                        aria-label="Fullscreen"
-                        title="Fullscreen"
-                        disabled={disabled}
-                      >
-                        ⛶
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()
-      ) : post.image && post.imageMode !== "none" ? (
-        <button className="image-btn" onClick={onImageOpen} disabled={disabled} aria-label="Open image">
-          {post.image.svg ? (
-            <div
-              dangerouslySetInnerHTML={{
-                __html: post.image.svg.replace(
-                  "<svg ",
-                  "<svg preserveAspectRatio='xMidYMid slice' style='display:block;width:100%;height:auto;max-height:min(60vh,520px)' "
-                ),
-              }}
-            />
-          ) : post.image.url ? (
-            <img
-              src={post.image.url}
-              alt={post.image.alt || ""}
-              style={{
-                display: "block",
-                width: "100%",
-                height: "auto",
-                maxHeight: "min(60vh, 520px)",
-                objectFit: "cover",
-              }}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : null}
-        </button>
-      ) : null}
-
-      {/* Ensure programmatic in-view play/pause on inView change */}
-      <InViewVideoController inView={inView} videoRef={videoRef} setIsVideoPlaying={setIsVideoPlaying} muted={isMuted} />
-
-      {/* Ad card */}
-      {post.adType === "ad" && (
-        <div
-          className="ad-block"
+      {/* Media */}
+{(hasVideo || hasCarousel || hasImage) && (
+  <div className="insta-media" style={{ position: "relative", background: "#000" }}>
+    <div
+      style={{
+        width: "100%",
+        aspectRatio: hasVideo ? "4 / 5" : "1 / 1",
+        maxHeight: "80vh",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {hasVideo ? (
+        <video
+          ref={videoRef}
+          data-ig-video="1"
+          src={video?.url || video}
+          poster={videoPosterUrl || undefined}
+          controls
+          playsInline
+          muted
+          autoPlay
+          loop
+          preload="auto"
           style={{
-            marginTop: 0,
-            padding: ".75rem",
-            background: "var(--bg, #f3f4f6)",
-            borderRadius: 0,
-            borderTop: "1px solid var(--line)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "1rem"
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
           }}
-        >
-          <div style={{ minWidth: 0 }}>
-            {post.adDomain && (
-              <div className="subtle" style={{ fontSize: ".85rem", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {String(post.adDomain).toUpperCase()}
-              </div>
-            )}
-            <div style={{ fontWeight: 700, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {post.adHeadline || "Free Shipping"}
-            </div>
-            <div className="subtle" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {post.adSubheadline || "Premium Crystal Glass 🥃"}
-            </div>
-          </div>
+          onPlay={handlePlay}
+          onPause={() => onAction("video_pause", { id })}
+          onEnded={() => onAction("video_ended", { id })}
+        />
+      ) : hasCarousel ? (
+        <IGCarousel items={images} />
+      ) : imageMode === "multi" && images.length === 1 ? (
+        <img
+          src={images[0].url}
+          alt={images[0].alt || ""}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : image?.svg ? (
+        <div
+          dangerouslySetInnerHTML={{
+            __html: image.svg.replace(
+              "<svg ",
+              "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+            ),
+          }}
+        />
+      ) : image?.url ? (
+        <img
+          src={image.url}
+          alt={image.alt || ""}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+            // honor focal point if provided
+            objectPosition: `${image.focalX ?? 50}% ${image.focalY ?? 50}%`,
+          }}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : null}
+    </div>
+  </div>
+)}
 
+      {/* Actions row */}
+      <div
+        className="insta-actions"
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px 6px 10px", color: "#111827" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button
-            className="btn primary"
-            style={{ borderRadius: 999, padding: ".5rem 1rem", flexShrink: 0 }}
-            onClick={() => onAction?.("ad_cta_click", { post_id: post.id })}
+            aria-label="Like"
+            onClick={toggleLike}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}
             disabled={disabled}
           >
-            {post.adButtonText || "Shop now"}
+            <HeartIcon filled={liked} />
+            {isMobile && likes > 0 && <span style={{ fontWeight: 600, fontSize: 14 }}>{likes.toLocaleString()}</span>}
+          </button>
+
+          <button
+            aria-label="Comment"
+            onClick={openCommentsPanel}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}
+            disabled={disabled}
+          >
+            <CommentIcon />
+            {isMobile && comments > 0 && <span style={{ fontWeight: 600, fontSize: 14 }}>{comments.toLocaleString()}</span>}
+          </button>
+
+          <button
+            aria-label="Share"
+            onClick={doShare}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}
+            disabled={disabled}
+          >
+            <SendIcon />
+            {isMobile && shares > 0 && <span style={{ fontWeight: 600, fontSize: 14 }}>{shares.toLocaleString()}</span>}
           </button>
         </div>
-      )}
 
-      {/* intervention surfaces */}
-      {post.interventionType === "label" && (
-        <div className="info-bar info-clean">
-          <div className="info-head">
-            <div className="info-icon"><IconInfo /></div>
-            <div className="info-title">False information</div>
-          </div>
-          <div className="info-sub">This is information that third-party fact-checkers say is false.</div>
-          <div className="info-row">
-            <div>Want to see why?</div>
-            <button className="btn" onClick={() => onAction("intervention_learn_more", { post_id: post.id })}>Learn more</button>
-          </div>
-        </div>
-      )}
-
-      {post.interventionType === "note" && (
-        <div className="note-bar">
-          <div className="note-head">
-            <div className="note-icon"><IconUsers /></div>
-            <div className="note-title">Third-party fact checkers added context</div>
-          </div>
-          <div className="note-sub">{post.noteText || ""}</div>
-          <div className="note-row">
-            <div>Do you find this helpful?</div>
-            <button className="btn" onClick={() => onAction("note_rate_open", { post_id: post.id })}>Rate it</button>
-          </div>
-        </div>
-      )}
-
-      {reportAck && (
-        <div className="ack-overlay" role="status" aria-live="polite">
-          <div className="ack-overlay-box">
-            <span className="ack-check" aria-hidden="true">✓</span>
-            <div className="ack-text">
-              <strong>Thanks</strong><br />
-              Your report was recorded for this study.
+        <button
+          aria-label="Save"
+          onClick={toggleSave}
+          style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", position: "relative", color: "#111827" }}
+          disabled={disabled}
+        >
+          {saved ? <SaveIconFilled /> : <SaveIcon />}
+          {saveToast && (
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                position: "absolute",
+                right: 0,
+                top: "-34px",
+                background: "rgba(0,0,0,0.85)",
+                color: "#fff",
+                padding: "4px 8px",
+                borderRadius: 6,
+                fontSize: 12,
+                pointerEvents: "none",
+                transform: "translateY(6px)",
+                opacity: 0,
+                animation: "igSavedToast 1.6s ease forwards",
+                boxShadow: "0 6px 18px rgba(0,0,0,.25)",
+                whiteSpace: "nowrap",
+                zIndex: 10000
+              }}
+            >
+              Saved
             </div>
-          </div>
+          )}
+        </button>
+      </div>
+
+      {/* Desktop-only likes label with the word “likes” */}
+      {!isMobile && likes > 0 && (
+        <div style={{ padding: "0 12px 6px 12px", fontWeight: 600 }}>
+          {likes.toLocaleString()} likes
         </div>
       )}
 
-      {/* stats bar */}
-      {(() => {
-        const hasComments = displayedCommentCount > 0;
-        const hasShares   = displayedShareCount > 0;
-        const showStatsBar = hasRx || hasComments || hasShares;
-
-        return showStatsBar ? (
-          <div className="bar-stats">
-            {hasRx ? (
-              <div className="left">
-                <div className="rx-stack">
-                  {top3.map((r, i) => (
-                    <ReactionIconWithNames
-                      key={r.key}
-                      rxKey={r.key}
-                      count={liveReactions[r.key] || 0}
-                      z={10 - i}
-                      post={post}
-                      idx={i}
-                    />
-                  ))}
-                  <span className="muted rx-count" style={{ marginLeft: 8 }}>
-                    <NamesPeek post={postForCounts} count={totalReactions} kind="reactions" label="reactions" hideInlineLabel />
-                  </span>
-                </div>
-              </div>
-            ) : <div />}
-
-            {(hasComments || hasShares) && (
-              <div className="right muted" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {hasComments && (
-                  <NamesPeek
-                    post={postForCounts}
-                    count={displayedCommentCount}
-                    kind="comments"
-                    label={displayedCommentCount === 1 ? "comment" : "comments"}
-                  />
-                )}
-                {hasShares && (
-                  <NamesPeek
-                    post={postForCounts}
-                    count={displayedShareCount}
-                    kind="shares"
-                    label={displayedShareCount === 1 ? "share" : "shares"}
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        ) : null;
-      })()}
-
-      <footer className="footer">
-        <div className="actions">
-          <div
-            className="like-wrap"
-            onMouseEnter={scheduleOpen}
-            onMouseLeave={() => {
-              scheduleClose();
-              suppressHoverUntil.current = 0; // reset so hover can work again
-            }}
-          >
-            <ActionBtn label={likeLabel} active={!!myReaction} onClick={onLike} Icon={LikeIcon} disabled={disabled} />
-            {flyoutOpen && (
-              <div
-                className="react-flyout"
-                role="menu"
-                aria-label="Pick a reaction"
-                onMouseEnter={scheduleOpen}
-                onMouseLeave={scheduleClose}
-              >
-                {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
-                  <button key={key} aria-label={key} onClick={() => onPickReaction(key)} title={key}>
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <ActionBtn label="Comment" onClick={onOpenComment} Icon={IconComment} disabled={disabled} />
-          <ActionBtn label="Share" onClick={onShare} Icon={IconShare} active={hasShared} disabled={disabled || hasShared} />
+{/* Caption with IG PostText (username floats for first line) */}
+{text?.trim() && (
+  <div className="ig-caption-row">
+    <PostText
+      prefix={<span className="ig-username">{author || "username"}</span>}
+      text={text}
+      expanded={expanded}
+      onExpand={() => setExpanded(true)}
+      onClamp={() => onAction("text_clamped", { id })}
+    />
+  </div>
+)}
+      {time && (
+        <div style={{ padding: "6px 12px 12px 12px", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".02em" }}>
+          {time}
         </div>
-      </footer>
+      )}
 
-      {showComment && (
-        <Modal onClose={() => setShowComment(false)} title="Write a comment">
-          {(shouldShowGhosts || !!mySubmittedComment) && (
-            <div className="ghost-comments" style={{ marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid var(--line)" }}>
-              {shouldShowGhosts && Array.from({ length: Math.min(3, baseCommentCount) }).map((_, i) => (
-                <div key={`ghost-${i}`} className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: i === 0 ? 2 : 10 }}>
-                  <div className="ghost-avatar sm" />
-                  <div className="ghost-lines" style={{ flex: 1 }}>
-                    <div className="ghost-line w-80" />
-                    <div className="ghost-line w-50" />
-                  </div>
-                </div>
-              ))}
+      {openComments && (
+        <Modal
+          title="Comments"
+          onClose={() => { setOpenComments(false); onAction("comment_close", { id }); }}
+          wide={false}
+        >
+          {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : [0]).map((_, i) => (
+            <div key={`ig-ghost-${i}`} className="ghost-row" style={{ display: "flex", alignItems: "flex-start", gap: ".6rem", marginTop: i === 0 ? 2 : 10 }}>
+              <div className="ghost-avatar sm" />
+              <div className="ghost-lines" style={{ flex: 1 }}>
+                <div className="ghost-line w-80" />
+                <div className="ghost-line w-50" />
+              </div>
+            </div>
+          ))}
 
-              {!!mySubmittedComment && (
-                <div className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: shouldShowGhosts ? 10 : 2 }}>
-                  <img
-                    src={neutralAvatarDataUrl(28)}
-                    alt=""
-                    width={28}
-                    height={28}
-                    style={{ display: "block", borderRadius: "999px", flexShrink: 0 }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: ".9rem", fontWeight: 600, lineHeight: 1.2 }}>
-                      {String(myParticipantId)}
-                    </div>
-                    <div style={{ marginTop: 2, color: "#111827", fontSize: ".95rem", lineHeight: 1.35, whiteSpace: "pre-wrap" }}>
-                      {mySubmittedComment}
-                    </div>
-                  </div>
+          {!!mySubmittedComment && (
+            <div className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: shouldShowGhosts ? 10 : 2 }}>
+              <img src={neutralAvatarDataUrl(28)} alt="" width={28} height={28} style={{ display: "block", borderRadius: "999px", flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: ".9rem", fontWeight: 600, lineHeight: 1.2 }}>{String(myParticipantId)}</div>
+                <div style={{ marginTop: 2, color: "#111827", fontSize: ".95rem", lineHeight: 1.35, whiteSpace: "pre-wrap" }}>
+                  {mySubmittedComment}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
-          <textarea
-            className="textarea"
-            rows={4}
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Write your comment..."
-          />
-          <div className="row-end">
-            <button className="btn" onClick={() => { onAction("comment_cancel", { post_id: post.id }); setShowComment(false); }}>
-              Close
-            </button>
-            <button className="btn primary" onClick={onSubmitComment} disabled={!commentText.trim()}>
-              Post
-            </button>
+          <div style={{ marginTop: 12 }}>
+            <textarea className="textarea" rows={4} value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Write your comment..." disabled={disabled} />
+          </div>
+
+          <div className="row-end" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+            <button className="btn" onClick={() => { setOpenComments(false); onAction("comment_close", { id }); }}>Close</button>
+            <button className="btn primary" onClick={onSubmitComment} disabled={!commentText.trim() || disabled}>Post</button>
           </div>
         </Modal>
       )}
+
+      {isMobile && (
+        <MobileSheet open={menuOpenMobile} onClose={closeMobileMenu}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <button className="btn" style={sheetBtn({ danger: true })} onClick={() => { onAction("menu_report", { id, surface: "mobile" }); closeMobileMenu(); }}>
+              Report
+            </button>
+            <button className="btn" style={sheetBtn({ disabled: true })} disabled>Unfollow</button>
+            <button className="btn" style={sheetBtn({ disabled: true })} disabled>Go to post</button>
+            <button className="btn" style={sheetBtn({ disabled: true })} disabled>Copy link</button>
+            <button className="btn" style={sheetBtn({ disabled: true })} disabled>About this account</button>
+          </div>
+        </MobileSheet>
+      )}
+
+      <style>{`
+        @keyframes igSavedToast {
+          0%   { opacity: 0; transform: translateY(6px); }
+          12%  { opacity: 1; transform: translateY(0); }
+          85%  { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(6px); }
+        }
+      `}</style>
     </article>
   );
 }
 
-/* Programmatic in-view play/pause for native <video> */
-function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
-  useEffect(() => {
-    const v = videoRef?.current;
-    if (!v) return;
-    try {
-      if (inView) {
-        v.muted = muted !== false; // keep muted true unless explicitly false
-        v.play().then(() => setIsVideoPlaying(true)).catch(() => {});
-      } else {
-        v.pause();
-        setIsVideoPlaying(false);
-      }
-    } catch { /* ignore */ }
-  }, [inView, videoRef, setIsVideoPlaying, muted]);
-
-  return null;
-}
-
-/* ------------------------------- Feed ------------------------------------- */
+/* ---------------- Feed (IG) ---------------- */
 export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
   const STEP = 6;
-  const FIRST_PAINT = Math.min(8, posts.length || 0);
-  const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
+  const FIRST = Math.min(8, posts.length || 0);
+  const [visibleCount, setVisibleCount] = useState(FIRST);
+  const isMobile = useIsMobile(700);
 
   useEffect(() => {
     if (!posts?.length) return;
-    const ric = window.requestIdleCallback || ((fn) => setTimeout(() => fn({ didTimeout:false }), 200));
+    const ric = window.requestIdleCallback || ((fn) => setTimeout(() => fn({ didTimeout: false }), 200));
     const handle = ric(() => setVisibleCount((c) => Math.min(c + STEP, posts.length)));
     return () => (window.cancelIdleCallback ? window.cancelIdleCallback(handle) : clearTimeout(handle));
   }, [posts]);
@@ -1217,9 +720,10 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
   useEffect(() => {
     if (!sentinelRef.current) return;
     const el = sentinelRef.current;
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) if (e.isIntersecting) setVisibleCount((c) => Math.min(c + STEP, posts.length));
-    }, { root: null, rootMargin: "600px 0px 600px 0px", threshold: 0.01 });
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => e.isIntersecting && setVisibleCount((c) => Math.min(c + STEP, posts.length))),
+      { root: null, rootMargin: "600px 0px", threshold: 0.01 }
+    );
     io.observe(el);
     return () => io.unobserve(el);
   }, [posts.length]);
@@ -1227,80 +731,46 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
   const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
 
   return (
-    <div className="page">
-      {/* left rail skeletons, same as before */}
-      <aside className="rail rail-left" aria-hidden="true" tabIndex={-1}>
-        <div className="ghost-card ghost-profile">
-          <div className="ghost-avatar xl" />
-          <div className="ghost-lines">
-            <div className="ghost-line w-60" />
-            <div className="ghost-line w-35" />
-          </div>
-        </div>
-        <div className="ghost-list">
-          {["Home","AI","Friends","Events","Memories","Saved","Groups","Marketplace","Feeds","Video"].map((t,i)=>(
-            <div key={i} className="ghost-item icon">
-              <div className="ghost-icon" />
-              <div className="ghost-line w-70" />
-            </div>
-          ))}
-        </div>
-        <div className="ghost-title" />
-        <div className="ghost-list">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="ghost-item">
-              <div className="ghost-avatar sm" />
-              <div className="ghost-line w-60" />
-            </div>
-          ))}
-        </div>
-      </aside>
+    <div className="feed-wrap">
+      {isMobile && <StoryBar />}
 
-      <main className="container feed">
+      <main className="insta-feed">
         {renderPosts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            onAction={log}
-            disabled={disabled}
-            registerViewRef={registerViewRef}
-          />
+          <PostCard key={p.id} post={p} onAction={log} disabled={disabled} registerViewRef={registerViewRef} />
         ))}
         <div ref={sentinelRef} aria-hidden="true" />
-        {visibleCount >= posts.length && <div className="end">End of Feed</div>}
-        <div className="submit-wrap">
-          <button type="button" className="btn primary btn-wide" onClick={onSubmit} disabled={disabled === true}>
+
+        {visibleCount >= posts.length && (
+          <div
+            className="feed-end"
+            style={{
+              gridColumn: "1 / -1",
+              textAlign: "center",
+              margin: "1.2rem 0",
+              fontSize: 14,
+              color: "#6b7280"
+            }}
+          >
+            End of Feed
+          </div>
+        )}
+
+        <div
+          className="feed-submit"
+          style={{
+            gridColumn: "1 / -1",
+            display: "flex",
+            justifyContent: "center",
+            margin: "1.5rem 0"
+          }}
+        >
+          <button type="button" className="btn primary" onClick={onSubmit} disabled={disabled === true}>
             Submit
           </button>
         </div>
       </main>
-
-      {/* right rail skeletons, same as before */}
-      <aside className="rail rail-right" aria-hidden="true" tabIndex={-1}>
-        <div className="ghost-card banner" />
-        <div className="ghost-card banner" />
-        <div className="ghost-card box">
-          <div className="ghost-line w-40" style={{marginBottom:8}} />
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="ghost-row">
-              <div className="ghost-avatar sm" />
-              <div className="ghost-lines">
-                <div className="ghost-line w-70" />
-                <div className="ghost-line w-45" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="ghost-card box">
-          <div className="ghost-line w-35" style={{marginBottom:8}} />
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="ghost-row">
-              <div className="ghost-avatar sm online" />
-              <div className="ghost-line w-60" />
-            </div>
-          ))}
-        </div>
-      </aside>
     </div>
   );
 }
+
+export default {};

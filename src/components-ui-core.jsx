@@ -1,30 +1,55 @@
-// components-ui-core.jsx
+// components-ui-core.jsx (Instagram variant - rails + top placeholder, no floating icons)
 import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { fakeNamesFor as utilsFakeNamesFor } from "./utils";
+import { tryEnterFullscreen, exitFullscreen } from "./utils";
 
-/* ------------------------------- Icons ------------------------------------- */
-export const IconLike = (p) => (
-  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" {...p}>
-    <path fill="currentColor" d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3z"/>
+/* ------------------------------- Tiny helper ------------------------------- */
+function useIsMobile(breakpointPx = 700) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined"
+      ? window.matchMedia(`(max-width:${breakpointPx}px)`).matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width:${breakpointPx}px)`);
+    const onChange = (e) => setIsMobile(e.matches);
+    mq.addEventListener?.("change", onChange);
+    mq.addListener && mq.addListener(onChange); // older Safari
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      mq.removeListener && mq.removeListener(onChange);
+    };
+  }, [breakpointPx]);
+  return isMobile;
+}
+
+/* ------------------------------- Icons (IG) -------------------------------- */
+export const IconHeart = (p) => (
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...p}>
+    <path fill="none" stroke="currentColor" strokeWidth="2" d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/>
   </svg>
 );
-export const IconThumb = (p) => (
-  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" {...p}>
-    <path d="M10.5 21H7a3 3 0 0 1-3-3v-6a3 3 0  0 1 3-3h3.5l2.7-4.9a2 2 0  0 1 3.6 1.8L16.5 9H19a3 3 0  0 1 3 3c0 .5-.1 1-.3 1.5l-2 5A3 3 0  0 1 17 21h-6.5z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+export const IconHeartFill = (p) => (
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...p}>
+    <path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5A4.5 4.5 0  0 1 6.5 4c1.74 0 3.41.81 4.5 2.09A6.01 6.01 0  0 1 21 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
   </svg>
 );
 export const IconComment = (p) => (
-  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style={{ display: "block", transform: "translateY(1px)" }} {...p}>
-    <path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0  0 0 2-2V4a2 2 0  0 0-2-2z"/>
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...p}>
+    <path d="M21 15a5 5 0 0 1-5 5H7l-4 3V7a5 5 0 0 1 5-5h8a5 5 0 0 1 5 5v8z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
   </svg>
 );
 export const IconShare = (p) => (
-  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" {...p}>
-    <circle cx="6" cy="12" r="2" fill="currentColor" />
-    <circle cx="18" cy="6" r="2" fill="currentColor" />
-    <circle cx="18" cy="18" r="2" fill="currentColor" />
-    <path d="M8 11l8-4M8 13l8 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...p}>
+    <path d="M22 2 11 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M22 2 15 22l-4-9-9-4Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+  </svg>
+);
+export const IconSave = (p) => (
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...p}>
+    <path d="M20 21l-8-5-8 5V3h16v18z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
   </svg>
 );
 export const IconDots = (p) => (
@@ -33,9 +58,10 @@ export const IconDots = (p) => (
   </svg>
 );
 export const IconLogo = (p) => (
-  <svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true" {...p}>
-    <rect width="32" height="32" rx="6" fill="#1877F2"/>
-    <path d="M20 9h-2.2c-2.2 0-3.8 1.7-3.8 3.9V16H12v3h2v6h3v-6h2.5l.5-3H17v-2c0-.6.4-1 1-1h2V9z" fill="#fff"/>
+  <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" {...p}>
+    <rect x="2" y="2" width="20" height="20" rx="5" fill="none" stroke="currentColor" strokeWidth="2"/>
+    <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" strokeWidth="2"/>
+    <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/>
   </svg>
 );
 export const IconInfo = (p) => (
@@ -53,7 +79,7 @@ export const IconUsers = (p) => (
 );
 export const IconBadge = (p) => (
   <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" {...p}>
-    <path fill="#1d9bf0" d="M12 2l2.2 2.2 3.1-.3 1.2 2.9 2.9 1.2-.3 3.1L24 12l-2.2 2.2.3 3.1-2.9 1.2-1.2 2.9-3.1-.3L12 24l-2.2-2.2-3.1.3-1.2-2.9-2.9-1.2.3-3.1L0 12l2.2-2.2-.3-3.1 2.9-1.2L6 2.2l3.1.3L12 2z"/>
+    <path fill="#ff2d55" d="M12 2l2.2 2.2 3.1-.3 1.2 2.9 2.9 1.2-.3 3.1L24 12l-2.2 2.2.3 3.1-2.9 1.2-1.2 2.9-3.1-.3L12 24l-2.2-2.2-3.1.3-1.2-2.9-2.9-1.2.3-3.1L0 12l2.2-2.2-.3-3.1 2.9-1.2L6 2.2l3.1.3L12 2z"/>
     <path fill="#fff" d="M10.7 15.3l-2.5-2.5 1.1-1.1 1.4 1.4 4-4 1.1 1.1-5.1 5.1z"/>
   </svg>
 );
@@ -62,36 +88,25 @@ export const IconGlobe = (p) => (
     <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20zm0 18c-1.7 0-3.3-.5-4.6-1.4.5-.8 1-1.8 1.3-2.9h6.6c.3 1.1.8 2.1 1.3 2.9-1.3.9-2.9 1.4-4.6 1.4zm-3.8-6c-.2-.9-.2-1.9-.2-3s.1-2.1.2-3h7.6c.1 .9 .2 1.9 .2 3s-.1 2.1-.2 3H8.2zm.5-7c.3-1.1.8-2.1 1.3-2.9C10.7 3.5 11.3 3.3 12 3.3s1.3.2 2 .8c.6.8 1.1 1.8 1.3 2.9H8.7z"/>
   </svg>
 );
-
 export const IconVolume = (p) => (
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" {...p}>
     <path d="M4 10v4h4l5 4V6l-5 4H4z" fill="currentColor"/>
-    <path d="M16 9.5a3.5 3.5 0 0 1 0 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    <path d="M18.5 7a7 7 0 0 1 0 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M16 9.5a3.5 3.5 0  0 1 0 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M18.5 7a7 7 0  0 1 0 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
-
 export const IconVolumeMute = (p) => (
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" {...p}>
-    {/* speaker body */}
     <path d="M4 10v4h4l5 4V6l-5 4H4z" fill="currentColor"/>
-    {/* cross (shifted down 1, left 2) */}
-    <path
-      d="M15 11l5 5M20 12l-5 5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-    />
+    <path d="M15 11l5 5M20 12l-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
   </svg>
 );
-
 export const IconSettings = (p) => (
   <svg viewBox="0 0 24 24" width="18" height="18" {...p}>
     <path
-      d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z
+      d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0  0 0 0 7z
          M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3
-         1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.3a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.3a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.3a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"
+         1.7 1.7 0  0 0-1 1.6v.3a2 2 0 0 1-4 0v-.1a1.7 1.7 0  0 0-1-1.6 1.7 1.7 0  0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0  0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0  0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0  0 0 1.9.3h.3a1.7 1.7 0  0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0  0 0 1 1.6h.3a1.7 1.7 0  0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0  0 0-.3 1.9v.3a1.7 1.7 0  0 0 1.6 1h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0  0 0-1.6 1z"
       fill="currentColor"
     />
   </svg>
@@ -114,92 +129,56 @@ export function ActionBtn({ label, onClick, Icon, active, disabled, ...rest }) {
   );
 }
 
+/* ------------------------- Instagram Skeleton Feed ------------------------ */
 export function SkeletonFeed() {
   return (
-    <div className="page">
-      <aside className="rail rail-left" aria-hidden="true" tabIndex={-1}>
-        <div className="ghost-card ghost-profile">
-          <div className="ghost-avatar xl" />
-          <div className="ghost-lines">
+    <div className="ig-page">
+      <div className="ig-stories">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="ig-story">
+            <div className="ghost-story-ring">
+              <div className="ghost-story-avatar" />
+            </div>
             <div className="ghost-line w-60" />
-            <div className="ghost-line w-35" />
           </div>
-        </div>
-        <div className="ghost-list">
-          {["Home","AI","Friends","Events","Memories","Saved","Groups","Marketplace","Feeds","Video"].map((t,i)=>(
-            <div key={i} className="ghost-item icon">
-              <div className="ghost-icon" />
-              <div className="ghost-line w-70" />
-            </div>
-          ))}
-        </div>
-        <div className="ghost-title" />
-        <div className="ghost-list">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="ghost-item">
-              <div className="ghost-avatar sm" />
-              <div className="ghost-line w-60" />
-            </div>
-          ))}
-        </div>
-      </aside>
+        ))}
+      </div>
 
-      <main className="container feed">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="card" style={{ padding: "1rem" }}>
-            <div style={{ display: "flex", gap: ".75rem", alignItems: "center" }}>
-              <div className="ghost-avatar" />
+      <main className="ig-feed">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <article key={i} className="ig-card">
+            <div className="ig-card-head">
+              <div className="ghost-avatar sm ring" />
               <div className="ghost-lines" style={{ flex: 1 }}>
-                <div className="ghost-line w-50" />
-                <div className="ghost-line w-30" />
+                <div className="ghost-line w-40" />
+                <div className="ghost-line w-25" />
               </div>
+              <div className="ghost-dot" />
             </div>
-            <div className="ghost-lines" style={{ marginTop: ".75rem" }}>
-              <div className="ghost-line w-90" />
-              <div className="ghost-line w-95" />
+            <div className="ghost-media" />
+            <div className="ig-actions">
+              <div className="ghost-icon" />
+              <div className="ghost-icon" />
+              <div className="ghost-icon" />
+              <div style={{ flex: 1 }} />
+              <div className="ghost-icon" />
+            </div>
+            <div className="ghost-lines" style={{ marginTop: 6 }}>
               <div className="ghost-line w-70" />
+              <div className="ghost-line w-55" />
             </div>
-            <div className="ghost-card banner" style={{ marginTop: ".75rem", height: 160 }} />
-            <div className="ghost-lines" style={{ marginTop: ".75rem" }}>
-              <div className="ghost-line w-40" />
-            </div>
-          </div>
+          </article>
         ))}
         <div className="submit-wrap">
           <button className="btn primary btn-wide" disabled>Submit</button>
         </div>
       </main>
-
-      <aside className="rail rail-right" aria-hidden="true" tabIndex={-1}>
-        <div className="ghost-card banner" />
-        <div className="ghost-card banner" />
-        <div className="ghost-card box">
-          <div className="ghost-line w-40" style={{marginBottom:8}} />
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="ghost-row">
-              <div className="ghost-avatar sm" />
-              <div className="ghost-lines">
-                <div className="ghost-line w-70" />
-                <div className="ghost-line w-45" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="ghost-card box">
-          <div className="ghost-line w-35" style={{marginBottom:8}} />
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="ghost-row">
-              <div className="ghost-avatar sm online" />
-              <div className="ghost-line w-60" />
-            </div>
-          ))}
-        </div>
-      </aside>
     </div>
   );
 }
 
-export function PostText({ text, expanded, onExpand, onClamp }) {
+/* --------------------------- Caption clamping ------------------------------ */
+export function PostText({ text, expanded, onExpand, onClamp, prefix }) {
   const pRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
   const sentClampRef = React.useRef(false);
@@ -207,7 +186,6 @@ export function PostText({ text, expanded, onExpand, onClamp }) {
   React.useEffect(() => {
     const el = pRef.current;
     if (!el) return;
-
     const check = () => {
       const clamped = el.scrollHeight > el.clientHeight + 1;
       setNeedsClamp(clamped);
@@ -216,34 +194,42 @@ export function PostText({ text, expanded, onExpand, onClamp }) {
         onClamp?.();
       }
     };
-
     requestAnimationFrame(check);
     const ro = new ResizeObserver(check);
     ro.observe(el);
-    window.addEventListener('resize', check);
+    window.addEventListener("resize", check);
     if (document.fonts?.ready) document.fonts.ready.then(check).catch(() => {});
-    return () => { ro.disconnect(); window.removeEventListener('resize', check); };
+    return () => { ro.disconnect(); window.removeEventListener("resize", check); };
   }, [text, expanded, onClamp]);
 
   return (
-    <div className="text-wrap">
-      <p ref={pRef} className={`text ${!expanded ? "clamp" : ""}`}>{text}</p>
-      {!expanded && needsClamp && (
-        <div className="fade-more">
-          <span className="dots" aria-hidden="true">…</span>
-          <button
-            type="button"
-            className="see-more"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onExpand(); }}
-          >
-            See more
-          </button>
-        </div>
-      )}
-    </div>
+    // Only change is the className: always "clamp" while !expanded,
+// and add "needs" only if we detected overflow.
+<span className="text-wrap">
+  <span
+    ref={pRef}
+    className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+  >
+    {text}
+  </span>
+
+  {!expanded && needsClamp && (
+    <span className="fade-more">
+      <span className="dots" aria-hidden="true">…</span>
+      <button
+        type="button"
+        className="see-more"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onExpand?.(); }}
+      >
+        more
+      </button>
+    </span>
+  )}
+</span>
   );
 }
 
+/* -------------------------------- Modal ----------------------------------- */
 export function Modal({ title, children, onClose, wide = false, footer = null }) {
   useEffect(() => {
     const onEsc = (e) => e.key === "Escape" && onClose();
@@ -268,8 +254,6 @@ export function Modal({ title, children, onClose, wide = false, footer = null })
 /* ------------------------- Hover peek for names ---------------------------- */
 export function NamesPeek({ post, count = 0, kind, label, hideInlineLabel = false }) {
   const [open, setOpen] = React.useState(false);
-
-  // Prefer the real util; fall back to a global shim only if someone injected it.
   const fn =
     utilsFakeNamesFor ||
     (typeof window !== "undefined" ? window.fakeNamesFor : null);
@@ -346,7 +330,28 @@ export function neutralAvatarDataUrl(size = 28) {
 /* ----------------- Overlays ------------- */
 export function ParticipantOverlay({ onSubmit }) {
   const [tempId, setTempId] = useState("");
-  const handleSubmit = (e) => { e.preventDefault(); if (tempId.trim()) onSubmit(tempId.trim()); };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const cleanId = tempId.trim();
+    if (!cleanId) return;
+
+    // On mobile, request fullscreen right on the same gesture
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches;
+    if (isMobile) {
+      // Try the root first
+      tryEnterFullscreen(document.documentElement);
+      // Retry shortly after the overlay begins closing (helps Safari timing)
+      setTimeout(() => {
+        tryEnterFullscreen(document.querySelector(".app") || document.body);
+        // Android soft-hide bar nudge (no-op elsewhere)
+        window.scrollTo(0, 1);
+      }, 120);
+    }
+
+    onSubmit(cleanId);
+  };
+
   return (
     <div className="modal-backdrop" style={{ background: "rgba(0,0,0,0.6)", zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 400, width: "100%" }}>
@@ -387,34 +392,110 @@ export function ThankYouOverlay() {
   );
 }
 
-/* ------------------------- Route-aware top bar ----------------------------- */
-export function TopRailPlaceholder() {
+/* ------------------------- Top rail placeholder (matches CSS) -------------- */
+function TopRailPlaceholder() {
   return (
-    <div className="top-rail-placeholder">
+    <div className="top-rail-placeholder" aria-hidden="true">
       <div className="trp-inner">
         <div className="trp-left">
-          <div className="trp-logo"></div>
-          <div className="trp-search"></div>
+          <div className="trp-logo" />
+          <div className="trp-search" />
         </div>
-
         <div className="trp-center">
-          <div className="trp-tab"></div>
-          <div className="trp-tab"></div>
-          <div className="trp-tab"></div>
+          <div className="trp-tab" />
+          <div className="trp-tab" />
+          <div className="trp-tab" />
         </div>
-
         <div className="trp-right">
-          <div className="trp-btn"></div>
-          <div className="trp-btn"></div>
-          <div className="trp-avatar"></div>
+          <div className="trp-btn" />
+          <div className="trp-btn" />
+          <div className="trp-avatar" />
         </div>
       </div>
     </div>
   );
 }
 
+/* ------------------------- Side rails (left + right) ----------------------- */
+function LeftRailPlaceholder() {
+  return (
+    <aside className="rail rail-left" aria-hidden="true">
+      <div className="ghost-card banner" />
+      <div className="ghost-card box">
+        <div className="ghost-profile">
+          <div className="ghost-avatar online" />
+          <div className="ghost-lines" style={{ width: "100%" }}>
+            <div className="ghost-line w-60" />
+            <div className="ghost-line w-35" />
+          </div>
+        </div>
+        <div className="ghost-profile">
+          <div className="ghost-avatar" />
+          <div className="ghost-lines" style={{ width: "100%" }}>
+            <div className="ghost-line w-70" />
+            <div className="ghost-line w-40" />
+          </div>
+        </div>
+        <div className="ghost-profile">
+          <div className="ghost-avatar" />
+          <div className="ghost-lines" style={{ width: "100%" }}>
+            <div className="ghost-line w-45" />
+            <div className="ghost-line w-35" />
+          </div>
+        </div>
+      </div>
+      <div className="ghost-list">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="ghost-item icon">
+            <div className="ghost-icon" />
+            <div className="ghost-lines" style={{ width: "100%" }}>
+              <div className="ghost-line w-70" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function RightRailPlaceholder() {
+  return (
+    <aside className="rail rail-right" aria-hidden="true">
+      <div className="ghost-card box">
+        <div className="ghost-profile">
+          <div className="ghost-avatar xl online" />
+          <div className="ghost-lines" style={{ width: "100%" }}>
+            <div className="ghost-line w-60" />
+            <div className="ghost-line w-40" />
+          </div>
+        </div>
+        <div className="ghost-row">
+          <div className="ghost-line w-45" />
+        </div>
+        <div className="ghost-row">
+          <div className="ghost-line w-35" />
+        </div>
+      </div>
+
+      <div className="ghost-list">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="ghost-item">
+            <div className="ghost-avatar sm" />
+            <div className="ghost-lines" style={{ width: "100%" }}>
+              <div className="ghost-line w-70" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+/* ------------------------- Route-aware top chrome toggle ------------------- */
 export function RouteAwareTopbar() {
   const location = useLocation();
+  const isMobile = useIsMobile(700);
+
   let onAdmin = location.pathname === "/admin";
   if (!onAdmin && typeof window !== "undefined") {
     onAdmin = window.location.hash.startsWith("#/admin");
@@ -425,16 +506,18 @@ export function RouteAwareTopbar() {
     else document.body.classList.remove("admin-mode");
   }, [onAdmin]);
 
+  if (onAdmin || isMobile) return null;
+  return <TopRailPlaceholder />;
+}
+
+/* ------------------------- Page scaffold (rails + center) ------------------ */
+export function PageScaffold({ children }) {
+  const isMobile = useIsMobile(700);
   return (
-    <>
-      <TopRailPlaceholder />
-      <div className="admin-fab-wrap">
-        {onAdmin ? (
-          <Link to="/" className="btn admin-fab" aria-label="Back to feed">↩</Link>
-        ) : (
-          <Link to="/admin" className="btn admin-fab" aria-label="Admin">⚙</Link>
-        )}
-      </div>
-    </>
+    <div className="page">
+      {!isMobile && <LeftRailPlaceholder />}
+      <div className="container feed">{children}</div>
+      {!isMobile && <RightRailPlaceholder />}
+    </div>
   );
 }

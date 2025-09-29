@@ -11,7 +11,6 @@ import {
   hasAdminSession, adminLogout,
 } from "./utils";
 
-// ⬇️ updated imports to use the split files
 import { Feed as FBFeed } from "./components-ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
@@ -21,19 +20,135 @@ import {
 import { AdminDashboard } from "./components-admin-core";
 import AdminLogin from "./components-admin-login";
 
-// ---- Mode flag (kept harmless; no IG component is loaded)
 const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
 
-/** Read ?feed=... from the hash (e.g., #/?feed=cond_a) */
 function getFeedFromHash() {
   try {
     const h = typeof window !== "undefined" ? window.location.hash : "";
     const m = h.match(/[?&]feed=([^&#]+)/);
     return m ? decodeURIComponent(m[1]) : null;
   } catch { return null; }
+}
+
+/* ---------- Rail placeholders (kept compact to avoid rail overflow) ---------- */
+function RailBox({ largeAvatar = false }) {
+  return (
+    <div className="ghost-card box" style={{ padding: ".8rem", borderRadius: 14 }}>
+      <div className="ghost-profile" style={{ padding: 0 }}>
+        <div className={`ghost-avatar ${largeAvatar ? "xl online" : ""}`} />
+        <div className="ghost-lines" style={{ flex: 1 }}>
+          <div className="ghost-line w-60" />
+          <div className="ghost-line w-35" />
+        </div>
+      </div>
+      <div className="ghost-row"><div className="ghost-line w-70" /></div>
+      <div className="ghost-row"><div className="ghost-line w-45" /></div>
+    </div>
+  );
+}
+function RailBanner({ tall = false }) {
+  return <div className="ghost-card banner" style={{ height: tall ? 220 : 170, borderRadius: 14 }} />;
+}
+function RailList({ rows = 4 }) {
+  return (
+    <div className="ghost-list" style={{ borderRadius: 14, padding: ".55rem" }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="ghost-item icon">
+          <div className="ghost-icon" />
+          <div className="ghost-title" />
+        </div>
+      ))}
+    </div>
+  );
+}
+/** Column wrapper: identical vertical spacing; never adds its own scroll */
+function RailStack({ children }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>
+      {children}
+    </div>
+  );
+}
+
+/** Centered feed with non-scrolling sticky rails.
+ *  IMPORTANT: we size the right rail’s item count to FIT the rail height,
+ *  so the rail itself never needs to scroll.
+ */
+function PageWithRails({ children }) {
+  const [rightCount, setRightCount] = useState(12);
+
+  useEffect(() => {
+    const compute = () => {
+      const railGap = 30; // matches --rail-gap default
+      const railH = (window.innerHeight || 900) - railGap;
+
+      // Rough per-block heights including the 14px gap:
+      const H_BANNER = 170 + 14;
+      const H_TBANNER = 220 + 14;
+      const H_BOX = 120 + 14;     // compact card
+      const H_LIST = 110 + 14;    // small list
+
+      // We place a tall banner first; fill remaining height with a repeating pattern.
+      const fixedTop = H_TBANNER;
+      let remaining = Math.max(railH - fixedTop - H_BANNER, 0); // reserve a normal banner near bottom
+
+      // Alternate box/list/box to keep it visually distinct and compact.
+      const patternHeights = [H_BOX, H_LIST, H_BOX];
+      let n = 0, acc = 0;
+      while (acc + patternHeights[n % patternHeights.length] <= remaining) {
+        acc += patternHeights[n % patternHeights.length];
+        n += 1;
+        if (n > 50) break; // safety
+      }
+      // Ensure minimum density, but never let it overflow:
+      const safeCount = Math.max(8, Math.min(n, 30));
+      setRightCount(safeCount);
+    };
+
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+
+  return (
+    <div
+      className="page"
+      style={{
+        // widen rails, keep center fixed width window from CSS vars
+        gridTemplateColumns:
+          "minmax(0,2fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,2.25fr)",
+        columnGap: "var(--gap)",
+      }}
+    >
+      {/* LEFT rail — NO overflow override (keeps CSS: sticky + overflow:hidden) */}
+      <aside className="rail rail-left" aria-hidden="true">
+        <RailStack>
+          <RailBanner tall />
+          <RailBox largeAvatar />
+          <RailList rows={5} />
+          <RailBox />
+          <RailBanner />
+        </RailStack>
+      </aside>
+
+      {/* CENTER feed — the only scrollable column */}
+      <div className="container feed">{children}</div>
+
+      {/* RIGHT rail — sized to FIT the rail height; no internal scrollbar */}
+      <aside className="rail rail-right" aria-hidden="true">
+        <RailStack>
+          <RailBanner tall />
+          {Array.from({ length: rightCount }).map((_, i) =>
+            i % 3 === 1 ? <RailList key={i} rows={4} /> : <RailBox key={i} largeAvatar={i % 5 === 0} />
+          )}
+          <RailBanner />
+        </RailStack>
+      </aside>
+    </div>
+  );
 }
 
 export default function App() {
@@ -50,33 +165,25 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
 
-  // Route context
   const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
-
-  // Participant feed context: URL ?feed=… wins; else backend default
   const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedFromHash() : null);
 
-  // Backend is the source of truth
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
 
-  // --- Resolve feed from backend default if none provided by URL
   useEffect(() => {
-    if (onAdmin) return;         // admin manages its own feeds
-    if (activeFeedId) return;    // already set by ?feed=...
+    if (onAdmin || activeFeedId) return;
     let alive = true;
     (async () => {
       const id = await getDefaultFeedFromBackend();
       if (!alive) return;
-      setActiveFeedId(id || "feed_1"); // final fallback
+      setActiveFeedId(id || "feed_1");
     })();
     return () => { alive = false; };
   }, [onAdmin, activeFeedId]);
 
-  // --- Load posts once feed is known
   useEffect(() => {
-    if (onAdmin) return;
-    if (!activeFeedId) return;
+    if (onAdmin || !activeFeedId) return;
     let alive = true;
     (async () => {
       setLoadingPosts(true);
@@ -91,7 +198,6 @@ export default function App() {
     return () => { alive = false; };
   }, [onAdmin, activeFeedId]);
 
-  // --- If user lands on /admin with a valid session, show dashboard immediately
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
@@ -106,7 +212,7 @@ export default function App() {
     return arr;
   }, [posts, randomize]);
 
-  // Lock scroll when overlays/skeletons are visible
+  // Lock page scroll only during overlays; otherwise allow page scroll so center column scrolls and rails stick.
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
@@ -142,7 +248,6 @@ export default function App() {
     if (action === "share") showToast("Post shared (recorded)");
   };
 
-  // session start/end
   useEffect(() => {
     log("session_start", {
       user_agent: navigator.userAgent,
@@ -154,7 +259,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // scroll logger
   useEffect(() => {
     let lastY = window.scrollY;
     const onScroll = () => {
@@ -168,7 +272,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // IntersectionObserver for per-post view dwell + pause on hidden/blur
   useEffect(() => {
     if (!hasEntered || loadingPosts || submitted || onAdmin) return;
 
@@ -240,7 +343,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
 
-  // ✅ Always use the FB feed (no IG component reference)
   const FeedComponent = FBFeed;
 
   return (
@@ -251,69 +353,70 @@ export default function App() {
         }`}
       >
         <RouteAwareTopbar />
+
         <Routes>
-          {/* Participant route */}
           <Route
             path="/"
             element={
-              (hasEntered && !loadingPosts) ? (
-                <FeedComponent
-                  posts={orderedPosts}
-                  registerViewRef={registerViewRef}
-                  disabled={disabled}
-                  log={log}
-                  showComposer={showComposer}
-                  loading={loadingPosts}
-                  onSubmit={async () => {
-                    if (submitted || disabled) return;
-                    setDisabled(true);
+              <PageWithRails>
+                {(hasEntered && !loadingPosts) ? (
+                  <FeedComponent
+                    posts={orderedPosts}
+                    registerViewRef={registerViewRef}
+                    disabled={disabled}
+                    log={log}
+                    showComposer={showComposer}
+                    loading={loadingPosts}
+                    onSubmit={async () => {
+                      if (submitted || disabled) return;
+                      setDisabled(true);
 
-                    const ts = now();
-                    submitTsRef.current = ts;
+                      const ts = now();
+                      submitTsRef.current = ts;
 
-                    const submitEvent = {
-                      session_id: sessionIdRef.current,
-                      participant_id: participantId || null,
-                      timestamp_iso: fmtTime(ts),
-                      elapsed_ms: ts - t0Ref.current,
-                      ts_ms: ts,
-                      action: "feed_submit",
-                      feed_id: activeFeedId || null,
-                    };
-                    const eventsWithSubmit = [...events, submitEvent];
+                      const submitEvent = {
+                        session_id: sessionIdRef.current,
+                        participant_id: participantId || null,
+                        timestamp_iso: fmtTime(ts),
+                        elapsed_ms: ts - t0Ref.current,
+                        ts_ms: ts,
+                        action: "feed_submit",
+                        feed_id: activeFeedId || null,
+                      };
+                      const eventsWithSubmit = [...events, submitEvent];
 
-                    const feed_id = activeFeedId || null;
-                    const feed_checksum = computeFeedId(posts);
+                      const feed_id = activeFeedId || null;
+                      const feed_checksum = computeFeedId(posts);
 
-                    const row = buildParticipantRow({
-                      session_id: sessionIdRef.current,
-                      participant_id: participantId,
-                      events: eventsWithSubmit,
-                      posts,
-                      feed_id,
-                      feed_checksum,
-                    });
+                      const row = buildParticipantRow({
+                        session_id: sessionIdRef.current,
+                        participant_id: participantId,
+                        events: eventsWithSubmit,
+                        posts,
+                        feed_id,
+                        feed_checksum,
+                      });
 
-                    const header = buildMinimalHeader(posts);
-                    const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+                      const header = buildMinimalHeader(posts);
+                      const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
 
-                    if (ok) {
-                      setSubmitted(true);
-                      showToast("Submitted ✔︎");
-                    } else {
-                      showToast("Sync failed. Please try again.");
-                    }
+                      if (ok) {
+                        setSubmitted(true);
+                        showToast("Submitted ✔︎");
+                      } else {
+                        showToast("Sync failed. Please try again.");
+                      }
 
-                    setDisabled(false);
-                  }}
-                />
-              ) : (
-                <SkeletonFeed />
-              )
+                      setDisabled(false);
+                    }}
+                  />
+                ) : (
+                  <SkeletonFeed />
+                )}
+              </PageWithRails>
             }
           />
 
-          {/* Admin route */}
           <Route
             path="/admin"
             element={
@@ -357,6 +460,7 @@ export default function App() {
             }
           />
         </Routes>
+
         {toast && <div className="toast">{toast}</div>}
       </div>
 

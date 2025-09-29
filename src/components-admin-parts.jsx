@@ -77,7 +77,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Reaction(s)</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Commented</th>
                     <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Comment</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Shared</th>
+                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Saved</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Reported</th>
                     <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
                   </tr>
@@ -97,17 +97,17 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expandable ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expanded ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem" }}>
-  {p.reaction_type && p.reaction_type.trim()
-    ? p.reaction_type
-    : Array.isArray(p.reaction_types) && p.reaction_types.length
-      ? p.reaction_types.join(", ")
-      : "—"}
-</td>
+                          {p.reaction_type && p.reaction_type.trim()
+                            ? p.reaction_type
+                            : Array.isArray(p.reaction_types) && p.reaction_types.length
+                              ? p.reaction_types.join(", ")
+                              : "—"}
+                        </td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.commented ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem" }}>
-  {p.comment_text && p.comment_text.trim() ? p.comment_text : "—"}
-</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.shared ? "✓" : "—"}</td>
+                          {p.comment_text && p.comment_text.trim() ? p.comment_text : "—"}
+                        </td>
+                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.saved ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reported ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{sShort(dwellSeconds)}</td>
                       </tr>
@@ -140,8 +140,8 @@ export function ParticipantsPanel({ feedId }) {
 
   const abortRef = useRef(null);
 
-  // bump cache version so the UI refreshes with new fields
-  const mkCacheKey = (id) => `fb_participants_cache_v7::${id || "noid"}`;
+  // bump cache version & rename for IG
+  const mkCacheKey = (id) => `ig_participants_cache_v1::${id || "noid"}`;
 
   const saveCache = React.useCallback((data) => {
     try { localStorage.setItem(mkCacheKey(feedId), JSON.stringify({ t: Date.now(), rows: data })); } catch {}
@@ -250,6 +250,7 @@ export function ParticipantsPanel({ feedId }) {
     return acc;
   }, [rows]);
 
+  // Build per-post aggregates; prefer "saved", fallback to "shared"
   const perPostList = useMemo(() => {
     if (!showPerPost || !summary?.perPost) return [];
     return Object.entries(summary.perPost).map(([id, agg]) => {
@@ -262,7 +263,7 @@ export function ParticipantsPanel({ feedId }) {
         expanded: agg.expanded ?? 0,
         expandRate: agg.expandRate,
         commented: agg.commented,
-        shared: agg.shared,
+        saved: (agg.saved ?? agg.shared) ?? 0,   // IG metric (fallback to shared)
         reported: agg.reported,
         avgDwellS,
       };
@@ -280,69 +281,70 @@ export function ParticipantsPanel({ feedId }) {
         <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
           <button className="btn" onClick={() => refresh(false)}>Refresh</button>
           <button
-  className="btn"
-  onClick={() => {
-    if (!rows?.length) return;
+            className="btn"
+            onClick={() => {
+              if (!rows?.length) return;
 
-    // 1) Transform dwell_ms → dwell_s
-    const transformed = rows.map((r) => {
-      const out = { ...r };
-      for (const k of Object.keys(r)) {
-        const m = k.match(/^(.*)_dwell_ms$/);
-        if (m) {
-          const base = m[1];
-          const sKey = `${base}_dwell_s`;
-          if (out[sKey] == null) {
-            const ms = Number(r[k] || 0);
-            out[sKey] = Math.round(ms / 1000);
-          }
-          delete out[k];
-        }
-      }
-      return out;
-    });
+              // 1) Transform dwell_ms → dwell_s
+              const transformed = rows.map((r) => {
+                const out = { ...r };
+                for (const k of Object.keys(r)) {
+                  const m = k.match(/^(.*)_dwell_ms$/);
+                  if (m) {
+                    const base = m[1];
+                    const sKey = `${base}_dwell_s`;
+                    if (out[sKey] == null) {
+                      const ms = Number(r[k] || 0);
+                      out[sKey] = Math.round(ms / 1000);
+                    }
+                    delete out[k];
+                  }
+                }
+                return out;
+              });
 
-    // 2) Normalize values
-    const BOOL_SUFFIX = /(reacted|expandable|expanded|commented|shared|reported_misinfo)$/;
+              // 2) Normalize values (booleans → 0/1)
+              // include IG "saved" and keep legacy "shared" for backward compat
+              const BOOL_SUFFIX = /(reacted|expandable|expanded|commented|saved|shared|reported_misinfo|reported)$/;
 
-    const rowsForCsv = transformed.map((r) => {
-      const out = { ...r };
-      for (const k of Object.keys(out)) {
-        if (/_dwell_s$/.test(k)) {
-          out[k] = Number(out[k] || 0);
-          continue;
-        }
-        if (BOOL_SUFFIX.test(k)) {
-          const v = Number(out[k]);
-          out[k] = Number.isFinite(v) ? (v ? 1 : 0) : 0;
-          continue;
-        }
-        if (/comment_count$/.test(k)) {
-          delete out[k]; // 🚫 drop comment_count column entirely
-          continue;
-        }
-      }
-      return out;
-    });
+              const rowsForCsv = transformed.map((r) => {
+                const out = { ...r };
+                for (const k of Object.keys(out)) {
+                  if (/_dwell_s$/.test(k)) {
+                    out[k] = Number(out[k] || 0);
+                    continue;
+                  }
+                  if (BOOL_SUFFIX.test(k)) {
+                    const v = Number(out[k]);
+                    out[k] = Number.isFinite(v) ? (v ? 1 : 0) : 0;
+                    continue;
+                  }
+                  if (/comment_count$/.test(k)) {
+                    delete out[k]; // 🚫 drop comment_count column entirely
+                    continue;
+                  }
+                }
+                return out;
+              });
 
-    // 3) Build header as union of keys
-    const headerSet = new Set();
-    rowsForCsv.forEach(r => Object.keys(r).forEach(k => headerSet.add(k)));
-    const header = Array.from(headerSet);
+              // 3) Build header as union of keys
+              const headerSet = new Set();
+              rowsForCsv.forEach(r => Object.keys(r).forEach(k => headerSet.add(k)));
+              const header = Array.from(headerSet);
 
-    // 4) Emit CSV
-    const csv = toCSV(rowsForCsv, header);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `fakebook_participants${feedId ? `_${feedId}` : ""}.csv`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  }}
-  disabled={!rows?.length}
->
-  Download CSV
-</button>
+              // 4) Emit CSV
+              const csv = toCSV(rowsForCsv, header);
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `instagram_participants${feedId ? `_${feedId}` : ""}.csv`;
+              document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            }}
+            disabled={!rows?.length}
+          >
+            Download CSV
+          </button>
         </div>
       </div>
 
@@ -374,7 +376,7 @@ export function ParticipantsPanel({ feedId }) {
                 <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Expanded</th>
                 <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Expand rate</th>
                 <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Commented</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Shared</th>
+                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Saved</th>
                 <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Reported</th>
                 <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Avg dwell (s)</th>
               </tr>
@@ -390,7 +392,7 @@ export function ParticipantsPanel({ feedId }) {
                     {p.expandRate == null ? "—" : `${Math.round(p.expandRate * 100)}%`}
                   </td>
                   <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
+                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.saved)}</td>
                   <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
                   <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{p.avgDwellS == null ? "—" : sShort(p.avgDwellS)}</td>
                 </tr>
@@ -435,52 +437,55 @@ export function ParticipantsPanel({ feedId }) {
                   </td>
                   <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>
                     <button
-  className="btn ghost"
-  onClick={() => {
-    try {
-      const perPostHash = extractPerPostFromRosterRow(r) || {};
-      const perPost = Object.entries(perPostHash).map(([post_id, agg]) => {
-        // seconds (fallback from ms)
-        const dwell_s = Number.isFinite(agg?.dwell_s)
-          ? Number(agg.dwell_s)
-          : Number.isFinite(agg?.dwell_ms)
-            ? Number(agg.dwell_ms) / 1000
-            : 0;
+                      className="btn ghost"
+                      onClick={() => {
+                        try {
+                          const perPostHash = extractPerPostFromRosterRow(r) || {};
+                          const perPost = Object.entries(perPostHash).map(([post_id, agg]) => {
+                            // seconds (fallback from ms)
+                            const dwell_s = Number.isFinite(agg?.dwell_s)
+                              ? Number(agg.dwell_s)
+                              : Number.isFinite(agg?.dwell_ms)
+                                ? Number(agg.dwell_ms) / 1000
+                                : 0;
 
-        // “real” comment = not empty, not dash
-        const rawComment = String(agg.comment_text || "").trim();
-        const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
+                            // “real” comment = not empty, not dash
+                            const rawComment = String(agg.comment_text || "").trim();
+                            const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
 
-        return {
-          post_id,
-          reacted: Number(agg.reacted) === 1,
-          expandable: Number(agg.expandable) === 1,
-          expanded: Number(agg.expanded) === 1,
-          reaction_types: agg.reactions || agg.reaction_types || [],
-          commented: Number(agg.commented) === 1 ? true : hasRealComment,
-          comment_text: rawComment,
-          shared: Number(agg.shared) === 1,
-          reported: Number(agg.reported) === 1,
-          dwell_s,
-        };
-      });
+                            return {
+                              post_id,
+                              reacted: Number(agg.reacted) === 1,
+                              expandable: Number(agg.expandable) === 1,
+                              expanded: Number(agg.expanded) === 1,
+                              reaction_types: agg.reactions || agg.reaction_types || [],
+                              commented: Number(agg.commented) === 1 ? true : hasRealComment,
+                              comment_text: rawComment,
+                              // IG metric, but keep legacy shared as fallback
+                              saved: Number(
+                                (agg.saved ?? agg.shared) ? 1 : 0
+                              ) === 1,
+                              reported: Number(agg.reported) === 1,
+                              dwell_s,
+                            };
+                          });
 
-      setDetailSubmission({
-        session_id: r.session_id,
-        participant_id: r.participant_id ?? null,
-        submitted_at_iso: r.submitted_at_iso ?? null,
-        ms_enter_to_submit: r.ms_enter_to_submit ?? null,
-        perPost,
-      });
-      setDetailOpen(true);
-    } catch (err) {
-      console.error("Participant Details build failed:", err, r);
-      alert("Failed to open details (see console for error).");
-    }
-  }}
->
-  Details
-</button>
+                          setDetailSubmission({
+                            session_id: r.session_id,
+                            participant_id: r.participant_id ?? null,
+                            submitted_at_iso: r.submitted_at_iso ?? null,
+                            ms_enter_to_submit: r.ms_enter_to_submit ?? null,
+                            perPost,
+                          });
+                          setDetailOpen(true);
+                        } catch (err) {
+                          console.error("Participant Details build failed:", err, r);
+                          alert("Failed to open details (see console for error).");
+                        }
+                      }}
+                    >
+                      Details
+                    </button>
                   </td>
                 </tr>
               ))}
