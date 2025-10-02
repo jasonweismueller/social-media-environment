@@ -461,10 +461,15 @@ export function AdminDashboard({
                   const isLoaded = f.feed_id === feedId;
                   const stats = feedStats[f.feed_id];
                   return (
-                    <tr key={f.feed_id} style={{ borderTop:"1px solid var(--line)" }}>
-                      <td style={{ padding: ".5rem .5rem" }} aria-label={isDefault ? "Default feed" : "Not default"}>
-                        {isDefault ? "⭐" : ""}
-                      </td>
+                    <tr
+  key={f.feed_id}
+  className={`feed-row ${isLoaded ? "is-loaded" : ""} ${isDefault ? "is-default" : ""}`}
+  style={{ borderTop: "1px solid var(--line)" }}
+  aria-current={isLoaded ? "true" : undefined}
+>
+  <td style={{ padding: ".5rem .5rem" }}>
+    <span className="feed-dot" aria-hidden="true" />{isDefault ? " ⭐" : ""}
+  </td>
                       <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                         {f.name || f.feed_id}
                       </td>
