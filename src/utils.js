@@ -1532,3 +1532,9 @@ export async function uploadFileToS3ViaSigner({
   if (typeof onProgress === "function") onProgress(100);
   return { key, cdnUrl };
 }
+
+export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups", filename, onProgress }) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const file = new File([blob], filename || "backup.json", { type: blob.type });
+  return uploadFileToS3ViaSigner({ file, feedId, prefix, onProgress });
+}

@@ -16,6 +16,7 @@ import {
   deleteFeedOnBackend,
   getWipePolicyFromBackend,
   setWipePolicyOnBackend,
+  uploadJsonToS3ViaSigner,
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
   getAdminRole,
@@ -49,6 +50,36 @@ function genNeutralAvatarDataUrl(size = 64) {
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : (elseRender ?? null);
+}
+
+
+// Keep a small rotating local backup history (last 5)
+function saveLocalBackup(feedId, app, posts) {
+  try {
+    const k = `backup::${app || "fb"}::${feedId}`;
+    const list = JSON.parse(localStorage.getItem(k) || "[]");
+    const entry = { t: new Date().toISOString(), posts };
+    const next = [entry, ...list].slice(0, 5);
+    localStorage.setItem(k, JSON.stringify(next));
+  } catch {}
+}
+
+async function snapshotToS3({ posts, feedId, app = "fb" }) {
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `${feedId}-${ts}.json`;
+    // lives under backups/<app>/<feedId>/<timestamp>.json
+    const { cdnUrl } = await uploadJsonToS3ViaSigner({
+      data: { app, feedId, ts: new Date().toISOString(), posts },
+      feedId,
+      prefix: `backups/${app}/${feedId}`,
+      filename
+    });
+    return cdnUrl;
+  } catch (e) {
+    console.warn("Backup to S3 failed (continuing):", e);
+    return null;
+  }
 }
 
 /* ------------------------ Tiny admin stats fetcher ------------------------- */
@@ -447,30 +478,40 @@ export function AdminDashboard({
                               Default
                             </button>
 
-                            <button
-                              className="btn"
-                              title="Save CURRENT editor posts into this feed"
-                              onClick={async () => {
-                                const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id, app: "fb" });
-                                if (ok) {
-                                  const list = await listFeedsFromBackend();
-                                  const nextFeeds = Array.isArray(list) ? list : [];
-                                  setFeeds(nextFeeds);
-                                  const row = nextFeeds.find(x => x.feed_id === f.feed_id);
-                                  if (row) {
-                                    const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
-                                    const arr = Array.isArray(fresh) ? fresh : [];
-                                    setPosts(arr);
-                                    setCachedPosts(f.feed_id, row.checksum, arr);
-                                  }
-                                  alert("Feed saved.");
-                                } else {
-                                  alert("Failed to save feed. Please re-login and try again.");
-                                }
-                              }}
-                            >
-                              Save
-                            </button>
+                            onClick={async () => {
+  // Guard: warn if saving to a feed different from the one currently loaded
+  if (f.feed_id !== feedId) {
+    const proceed = confirm(
+      `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
+    );
+    if (!proceed) return;
+  }
+
+  // 1) Local rotating backup
+  saveLocalBackup(feedId, "fb", posts);
+
+  // 2) S3 snapshot backup (non-blocking if it fails)
+  await snapshotToS3({ posts, feedId, app: "fb" });
+
+  // 3) Save to backend (original behavior)
+  const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id, app: "fb" });
+
+  if (ok) {
+    const list = await listFeedsFromBackend();
+    const nextFeeds = Array.isArray(list) ? list : [];
+    setFeeds(nextFeeds);
+    const row = nextFeeds.find(x => x.feed_id === f.feed_id);
+    if (row) {
+      const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
+      const arr = Array.isArray(fresh) ? fresh : [];
+      setPosts(arr);
+      setCachedPosts(f.feed_id, row.checksum, arr);
+    }
+    alert("Feed saved (snapshot created).");
+  } else {
+    alert("Failed to save feed. A local snapshot was still created.");
+  }
+}}
                           </RoleGate>
 
                           {!stats && (
@@ -571,6 +612,63 @@ export function AdminDashboard({
               }} title="Reload posts for this feed from backend">
                 Refresh Posts
               </button>
+
+              <button
+  className="btn ghost"
+  title="Export current posts as JSON"
+  onClick={() => {
+    const payload = {
+      app: "fb",
+      feedId,
+      ts: new Date().toISOString(),
+      posts
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }}
+>
+  Export JSON
+</button>
+
+<label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
+  Import JSON
+  <input
+    type="file"
+    accept="application/json"
+    style={{ display: "none" }}
+    onChange={async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      try {
+        const text = await f.text();
+        const parsed = JSON.parse(text);
+        // allow files that are {posts: [...] } or raw array
+        const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
+        if (!Array.isArray(imported)) {
+          alert("This file doesn't look like a posts backup.");
+          return;
+        }
+        if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) {
+          return;
+        }
+        setPosts(imported);
+        alert("Imported. Remember to Save to publish back to the backend.");
+      } catch (err) {
+        console.error(err);
+        alert("Failed to import JSON.");
+      } finally {
+        e.target.value = "";
+      }
+    }}
+  />
+</label>
 
               <RoleGate min="editor">
                 <ChipToggle label="Randomize feed order" checked={!!randomize} onChange={setRandomize} />
