@@ -285,10 +285,20 @@ export const GAS_PROXY_PATH =
   "/default/gas";
 
 // Final Apps Script endpoint (proxied through API Gateway -> Lambda)
+// Final Apps Script endpoint (proxied through API Gateway -> Lambda)
 function joinUrl(base, path) {
   return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
 }
-export const GS_ENDPOINT = joinUrl(GAS_PROXY_BASE, GAS_PROXY_PATH);
+
+
+// Prefer a single absolute API_BASE if provided; else fall back to base+path
+export const GS_ENDPOINT =
+  (window.CONFIG && window.CONFIG.API_BASE) ||
+  joinUrl(
+    (window.CONFIG && window.CONFIG.GAS_PROXY_BASE) ||
+      "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
+    (window.CONFIG && window.CONFIG.GAS_PROXY_PATH) || "/default/gas"
+  );
 
 // NOTE: This token is ONLY for participant logging. Admin actions use admin_token from login.
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
@@ -1416,10 +1426,6 @@ export const SIGNER_PATH =
   (window.CONFIG && window.CONFIG.SIGNER_PATH) ||
   "/default/presign-upload"; // this is your working route
 
-function joinUrl(base, path) {
-  return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
-}
-
 export function encodePathKeepSlashes(path) {
   return String(path).split("/").map(encodeURIComponent).join("/");
 }
@@ -1497,7 +1503,13 @@ export async function putToS3({ file, signedPutUrl, onProgress, contentType }) {
 }
 
 // High-level helper used by Admin editor
-export async function uploadFileToS3ViaSigner({ file, feedId, onProgress, prefix = "videos" }) {
+// High-level helper used by Admin editor
+export async function uploadFileToS3ViaSigner({
+  file,
+  feedId,
+  onProgress,
+  prefix = "images",   // <-- change default from "videos" to "images"
+}) {
   if (!file) throw new Error("No file selected");
   if (!feedId) throw new Error("Missing feedId");
 
@@ -1507,8 +1519,16 @@ export async function uploadFileToS3ViaSigner({ file, feedId, onProgress, prefix
   const key = `${prefix}/${feedId}/${ts}_${base}.${ext}`;
 
   const { uploadUrl, fileUrl } = await getPresignedPutUrl({ key, contentType });
+  if (typeof onProgress === "function") onProgress(0);
   await putToS3({ file, signedPutUrl: uploadUrl, onProgress, contentType });
 
-  const cdnUrl = fileUrl || `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
+  const cdnUrl =
+    fileUrl ||
+    `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
+
+  // helpful console breadcrumbs (doesn't affect UI)
+  try { console.log("[S3] uploaded", { key, cdnUrl }); } catch {}
+
+  if (typeof onProgress === "function") onProgress(100);
   return { key, cdnUrl };
 }
