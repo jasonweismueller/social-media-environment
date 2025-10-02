@@ -386,224 +386,235 @@ export function AdminDashboard({
       />
 
       <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
-        {/* Feeds */}
-        <Section
-          title={`Feeds (${feeds.length || 0})`}
-          subtitle="Browse all feeds in the registry. Set default, load into editor, save posts to a feed, or delete a feed."
-          right={
-            <>
-              <RoleGate min="editor">
-                <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
-              </RoleGate>
-              <button
-                className="btn"
-                onClick={async () => {
-                  setFeedsLoading(true);
-                  const [list, backendDefault] = await Promise.all([listFeedsFromBackend(), getDefaultFeedFromBackend()]);
-                  setFeeds(Array.isArray(list) ? list : []);
-                  setDefaultFeedId(backendDefault || null);
-                  // also refresh policy display
-                  try {
-                    const policy = await getWipePolicyFromBackend();
-                    if (policy !== null) setWipeOnChange(!!policy);
-                  } catch {}
-                  setFeedsLoading(false);
-                }}
-                title="Reload feed registry from backend"
-              >
-                Refresh Feeds
-              </button>
-              {/* NEW: wipe-on-change toggle (editors+) */}
-              <RoleGate min="owner">
-                <button
-                  className={`btn ghost ${wipeOnChange ? "active" : ""}`}
-                  disabled={updatingWipe || wipeOnChange === null}
-                  title="When ON, publishing posts that change the checksum wipes that feed’s participants."
-                  onClick={async () => {
-                    if (wipeOnChange === null) return;
-                    try {
-                      setUpdatingWipe(true);
-                      const next = !wipeOnChange;
-                      const res = await setWipePolicyOnBackend(next);
-                      if (res?.ok) {
-                        setWipeOnChange(!!res.wipe_on_change);
-                      } else {
-                        alert(res?.err || "Failed to update policy");
-                      }
-                    } finally {
-                      setUpdatingWipe(false);
-                    }
-                  }}
-                >
-                  {wipeOnChange ? "Wipe on change: ON" : "Wipe on change: OFF"}
-                </button>
-              </RoleGate>
-            </>
-          }
+       {/* Feeds */}
+<Section
+  title={`Feeds (${feeds.length || 0})`}
+  subtitle="Browse all feeds in the registry. Set default, load into editor, save posts to a feed, or delete a feed."
+  right={
+    <>
+      <RoleGate min="editor">
+        <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
+      </RoleGate>
+      <button
+        className="btn"
+        onClick={async () => {
+          setFeedsLoading(true);
+          const [list, backendDefault] = await Promise.all([
+            listFeedsFromBackend(),
+            getDefaultFeedFromBackend()
+          ]);
+          setFeeds(Array.isArray(list) ? list : []);
+          setDefaultFeedId(backendDefault || null);
+          try {
+            const policy = await getWipePolicyFromBackend();
+            if (policy !== null) setWipeOnChange(!!policy);
+          } catch {}
+          setFeedsLoading(false);
+        }}
+        title="Reload feed registry from backend"
+      >
+        Refresh Feeds
+      </button>
+      <RoleGate min="owner">
+        <button
+          className={`btn ghost ${wipeOnChange ? "active" : ""}`}
+          disabled={updatingWipe || wipeOnChange === null}
+          title="When ON, publishing posts that change the checksum wipes that feed’s participants."
+          onClick={async () => {
+            if (wipeOnChange === null) return;
+            try {
+              setUpdatingWipe(true);
+              const next = !wipeOnChange;
+              const res = await setWipePolicyOnBackend(next);
+              if (res?.ok) {
+                setWipeOnChange(!!res.wipe_on_change);
+              } else {
+                alert(res?.err || "Failed to update policy");
+              }
+            } finally {
+              setUpdatingWipe(false);
+            }
+          }}
         >
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr className="subtle" style={{ textAlign:"left" }}>
-                  <th style={{ padding: ".4rem .5rem", width: 36 }}>⭐</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>Name</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>ID</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 80 }}>Updated</th>
-                  <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Total</th>
-                  <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Submitted</th>
-                  <th style={{ padding: ".4rem .5rem", textAlign: "center"}}>Avg (m:ss)</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 420 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {feeds.map((f) => {
-                  const isDefault = f.feed_id === defaultFeedId;
-                  const isLoaded = f.feed_id === feedId;
-                  const stats = feedStats[f.feed_id];
-                  return (
-                    <tr
-  key={f.feed_id}
-  className={`feed-row ${isLoaded ? "is-loaded" : ""} ${isDefault ? "is-default" : ""}`}
-  style={{ borderTop: "1px solid var(--line)" }}
-  aria-current={isLoaded ? "true" : undefined}
+          {wipeOnChange ? "Wipe on change: ON" : "Wipe on change: OFF"}
+        </button>
+      </RoleGate>
+    </>
+  }
 >
-  <td style={{ padding: ".5rem .5rem" }}>
-    <span className="feed-dot" aria-hidden="true" />{isDefault ? " ⭐" : ""}
-  </td>
-                      <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                        {f.name || f.feed_id}
-                      </td>
-                      <td style={{ padding: ".5rem .5rem", fontFamily: "monospace" }}>{f.feed_id}</td>
-                      <td style={{ padding: ".5rem .5rem" }}>
-                        <span className="subtle">{f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}</span>
-                      </td>
+  <div style={{ overflowX: "auto" }}>
+    <table style={{ width:"100%", borderCollapse:"collapse" }}>
+      <thead>
+        <tr className="subtle" style={{ textAlign:"left" }}>
+          <th style={{ padding: ".4rem .5rem", width: 36 }}>⭐</th>
+          <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>Name</th>
+          <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>ID</th>
+          <th style={{ padding: ".4rem .5rem", minWidth: 80 }}>Updated</th>
+          <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Total</th>
+          <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Submitted</th>
+          <th style={{ padding: ".4rem .5rem", textAlign: "center"}}>Avg (m:ss)</th>
+          <th style={{ padding: ".4rem .5rem", minWidth: 420 }}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {feeds.map((f) => {
+          const isDefault = f.feed_id === defaultFeedId;
+          const isLoaded = f.feed_id === feedId;
+          const stats = feedStats[f.feed_id];
+          return (
+            <tr
+              key={f.feed_id}
+              className={`feed-row ${isLoaded ? "is-loaded" : ""} ${isDefault ? "is-default" : ""}`}
+              style={{ borderTop: "1px solid var(--line)" }}
+              aria-current={isLoaded ? "true" : undefined}
+            >
+              <td style={{ padding: ".5rem .5rem" }}>
+                {/* dot indicates status */}
+                <span className="feed-dot" aria-hidden="true" />
+                {isDefault ? " ⭐" : ""}
+              </td>
+              <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                {f.name || f.feed_id}
+              </td>
+              <td style={{ padding: ".5rem .5rem", fontFamily: "monospace" }}>{f.feed_id}</td>
+              <td style={{ padding: ".5rem .5rem" }}>
+                <span className="subtle">{f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}</span>
+              </td>
 
-                      <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.total : "—"}</td>
-                      <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.submitted : "—"}</td>
-                      <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
-                        {stats && stats.avg_ms_enter_to_submit != null
-                          ? msToMinSec(stats.avg_ms_enter_to_submit)
-                          : "—"}
-                      </td>
+              <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.total : "—"}</td>
+              <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.submitted : "—"}</td>
+              <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
+                {stats && stats.avg_ms_enter_to_submit != null
+                  ? msToMinSec(stats.avg_ms_enter_to_submit)
+                  : "—"}
+              </td>
 
-                      <td style={{ padding: ".5rem .5rem" }}>
-                        <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem", alignItems:"center" }}>
-                          <button className="btn" title="Load this feed into the editor" onClick={() => selectFeed(f.feed_id)} disabled={isLoaded}>Load</button>
+              <td style={{ padding: ".5rem .5rem" }}>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem", alignItems:"center" }}>
+                  <button
+                    className="btn"
+                    title="Load this feed into the editor"
+                    onClick={() => selectFeed(f.feed_id)}
+                    disabled={isLoaded}
+                  >
+                    Load
+                  </button>
 
-                          <RoleGate min="editor">
-                            <button
-                              className="btn"
-                              title="Make this the backend default feed"
-                              onClick={async () => {
-                                const ok = await setDefaultFeedOnBackend(f.feed_id);
-                                if (ok) setDefaultFeedId(f.feed_id);
-                              }}
-                              disabled={isDefault}
-                            >
-                              Default
-                            </button>
+                  <RoleGate min="editor">
+                    <button
+                      className="btn"
+                      title="Make this the backend default feed"
+                      onClick={async () => {
+                        const ok = await setDefaultFeedOnBackend(f.feed_id);
+                        if (ok) setDefaultFeedId(f.feed_id);
+                      }}
+                      disabled={isDefault}
+                    >
+                      Default
+                    </button>
 
-                            <button
-  className="btn"
-  disabled={isSaving}
-  title="Save CURRENT editor posts into this feed"
-  onClick={async () => {
-    if (f.feed_id !== feedId) {
-      const proceed = confirm(
-        `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
-      );
-      if (!proceed) return;
-    }
+                    <button
+                      className="btn"
+                      disabled={isSaving}
+                      title="Save CURRENT editor posts into this feed"
+                      onClick={async () => {
+                        if (f.feed_id !== feedId) {
+                          const proceed = confirm(
+                            `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
+                          );
+                          if (!proceed) return;
+                        }
 
-    setIsSaving(true); // show overlay
+                        setIsSaving(true);
+                        try {
+                          saveLocalBackup(feedId, "fb", posts);
+                          await snapshotToS3({ posts, feedId, app: "fb" });
+                          const ok = await savePostsToBackend(posts, {
+                            feedId: f.feed_id,
+                            name: f.name || f.feed_id,
+                            app: "fb",
+                          });
+                          if (ok) {
+                            const list = await listFeedsFromBackend();
+                            const nextFeeds = Array.isArray(list) ? list : [];
+                            setFeeds(nextFeeds);
+                            const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
+                            if (row) {
+                              const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
+                              const arr = Array.isArray(fresh) ? fresh : [];
+                              setPosts(arr);
+                              setCachedPosts(f.feed_id, row.checksum, arr);
+                            }
+                            alert("Feed saved (snapshot created).");
+                          } else {
+                            alert("Failed to save feed. A local snapshot was still created.");
+                          }
+                        } finally {
+                          setIsSaving(false);
+                        }
+                      }}
+                    >
+                      {isSaving ? "Saving…" : "Save"}
+                    </button>
+                  </RoleGate>
 
-    try {
-      // 1) Local rotating backup
-      saveLocalBackup(feedId, "fb", posts);
+                  {!stats && (
+                    <button
+                      className="btn ghost"
+                      title="Load participant stats for this feed"
+                      onClick={() => loadStatsFor(f.feed_id)}
+                    >
+                      Load stats
+                    </button>
+                  )}
 
-      // 2) S3 snapshot backup (non-blocking if it fails)
-      await snapshotToS3({ posts, feedId, app: "fb" });
-
-      // 3) Save to backend
-      const ok = await savePostsToBackend(posts, {
-        feedId: f.feed_id,
-        name: f.name || f.feed_id,
-        app: "fb",
-      });
-
-      if (ok) {
-        const list = await listFeedsFromBackend();
-        const nextFeeds = Array.isArray(list) ? list : [];
-        setFeeds(nextFeeds);
-        const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
-        if (row) {
-          const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
-          const arr = Array.isArray(fresh) ? fresh : [];
-          setPosts(arr);
-          setCachedPosts(f.feed_id, row.checksum, arr);
-        }
-        alert("Feed saved (snapshot created).");
-      } else {
-        alert("Failed to save feed. A local snapshot was still created.");
-      }
-    } finally {
-      setIsSaving(false); // hide overlay
-    }
-  }}
->
-  {isSaving ? "Saving…" : "Save"}
-</button>
-                          </RoleGate>
-
-                          {!stats && (
-                            <button className="btn ghost" title="Load participant stats for this feed" onClick={() => loadStatsFor(f.feed_id)}>
-                              Load stats
-                            </button>
-                          )}
-
-                          <RoleGate min="owner">
-                            <button
-                              className="btn ghost danger"
-                              title="Delete the entire feed (posts, participants, registry)"
-                              onClick={async () => {
-                                const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
-                                if (!okGo) return;
-                                const ok = await deleteFeedOnBackend(f.feed_id);
-                                if (ok) {
-                                  if (f.feed_id === feedId) {
-                                    const next = feeds.filter(x => x.feed_id !== f.feed_id);
-                                    const nextSel = next[0] || null;
-                                    setFeeds(next);
-                                    if (nextSel) { await selectFeed(nextSel.feed_id); } else { setFeedId(""); setFeedName(""); setPosts([]); }
-                                  } else {
-                                    setFeeds(prev => prev.filter(x => x.feed_id !== f.feed_id));
-                                  }
-                                  if (defaultFeedId === f.feed_id) setDefaultFeedId(null);
-                                  alert("Feed deleted.");
-                                } else {
-                                  alert("Failed to delete feed. Please re-login and try again.");
-                                }
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </RoleGate>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!feeds.length && (
-                  <tr>
-                    <td colSpan={8} className="subtle" style={{ padding: ".75rem" }}>
-                      No feeds yet. Click "+ New feed" to create one, then use "Save" in the table to publish posts into it.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Section>
+                  <RoleGate min="owner">
+                    <button
+                      className="btn ghost danger"
+                      title="Delete the entire feed (posts, participants, registry)"
+                      onClick={async () => {
+                        const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
+                        if (!okGo) return;
+                        const ok = await deleteFeedOnBackend(f.feed_id);
+                        if (ok) {
+                          if (f.feed_id === feedId) {
+                            const next = feeds.filter(x => x.feed_id !== f.feed_id);
+                            const nextSel = next[0] || null;
+                            setFeeds(next);
+                            if (nextSel) {
+                              await selectFeed(nextSel.feed_id);
+                            } else {
+                              setFeedId(""); setFeedName(""); setPosts([]);
+                            }
+                          } else {
+                            setFeeds(prev => prev.filter(x => x.feed_id !== f.feed_id));
+                          }
+                          if (defaultFeedId === f.feed_id) setDefaultFeedId(null);
+                          alert("Feed deleted.");
+                        } else {
+                          alert("Failed to delete feed. Please re-login and try again.");
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </RoleGate>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+        {!feeds.length && (
+          <tr>
+            <td colSpan={8} className="subtle" style={{ padding: ".75rem" }}>
+              No feeds yet. Click "+ New feed" to create one, then use "Save" in the table to publish posts into it.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</Section>
 
         {/* Participants */}
         <Section
