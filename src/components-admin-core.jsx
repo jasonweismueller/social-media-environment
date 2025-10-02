@@ -24,7 +24,7 @@ import {
 
 // ⬇️ updated imports after UI split
 import { PostCard } from "./components-ui-posts";
-import { Modal } from "./components-ui-core";
+import { Modal, LoadingOverlay } from "./components-ui-core";
 import { ParticipantsPanel } from "./components-admin-parts";
 import { randomAvatarByKind } from "./avatar-utils";
 import { MediaFieldset } from "./components-admin-media";
@@ -1089,25 +1089,10 @@ export function AdminDashboard({
       )}
 
       {isSaving && (
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      background: "rgba(255,255,255,0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-      fontSize: "1.5rem",
-      fontWeight: "600",
-      color: "#2563eb",
-    }}
-  >
-    Saving feed…
-  </div>
+  <LoadingOverlay
+    title="Saving feed…"
+    subtitle="Creating snapshot & publishing your changes"
+  />
 )}
     </div>
   );
