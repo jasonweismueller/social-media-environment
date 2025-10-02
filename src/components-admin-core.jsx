@@ -237,6 +237,22 @@ export function AdminDashboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!isSaving) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevCursor = document.body.style.cursor;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.cursor = "progress";
+    document.body.setAttribute("aria-busy", "true");
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.cursor = prevCursor;
+      document.body.removeAttribute("aria-busy");
+    };
+  }, [isSaving]);
+
   const selectFeed = async (id) => {
     const row = feeds.find(f => String(f.feed_id) === String(id));
     setFeedId(id);
