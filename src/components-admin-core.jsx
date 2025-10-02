@@ -448,43 +448,29 @@ export function AdminDashboard({
                             </button>
 
                             <button
-  className="btn"
-  title="Save CURRENT editor posts into this feed"
-  onClick={async () => {
-    // ⚠️ warn if saving into a feed that isn’t the one currently loaded
-    if (f.feed_id !== feedId) {
-      const proceed = confirm(
-        `You're about to SAVE to "${f.feed_id}", but the editor currently has "${feedId}" loaded.\n\n` +
-        `This may overwrite another feed. Continue?`
-      );
-      if (!proceed) return;
-    }
-
-    const ok = await savePostsToBackend(posts, {
-      feedId: f.feed_id,
-      name: f.name || f.feed_id,
-      app: "fb",   // use "ig" in Instagram admin-core
-    });
-
-    if (ok) {
-      const list = await listFeedsFromBackend();
-      const nextFeeds = Array.isArray(list) ? list : [];
-      setFeeds(nextFeeds);
-      const row = nextFeeds.find(x => x.feed_id === f.feed_id);
-      if (row) {
-        const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
-        const arr = Array.isArray(fresh) ? fresh : [];
-        setPosts(arr);
-        setCachedPosts(f.feed_id, row.checksum, arr);
-      }
-      alert("Feed saved.");
-    } else {
-      alert("Failed to save feed. Please re-login and try again.");
-    }
-  }}
->
-  Save
-</button>
+                              className="btn"
+                              title="Save CURRENT editor posts into this feed"
+                              onClick={async () => {
+                                const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id, app: "fb" });
+                                if (ok) {
+                                  const list = await listFeedsFromBackend();
+                                  const nextFeeds = Array.isArray(list) ? list : [];
+                                  setFeeds(nextFeeds);
+                                  const row = nextFeeds.find(x => x.feed_id === f.feed_id);
+                                  if (row) {
+                                    const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
+                                    const arr = Array.isArray(fresh) ? fresh : [];
+                                    setPosts(arr);
+                                    setCachedPosts(f.feed_id, row.checksum, arr);
+                                  }
+                                  alert("Feed saved.");
+                                } else {
+                                  alert("Failed to save feed. Please re-login and try again.");
+                                }
+                              }}
+                            >
+                              Save
+                            </button>
                           </RoleGate>
 
                           {!stats && (
