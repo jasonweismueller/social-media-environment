@@ -394,10 +394,13 @@ export function AdminDashboard({
     <>
       {/* Current selection chip */}
       {feedId && (
-        <span className="editing-chip" title="Currently loaded feed">
-          Editing: {feedName || feedId}
-        </span>
-      )}
+       <span
+        className="editing-chip"
+        title="Currently loaded feed"
+      >
+        Editing: {feedName || feedId}
+      </span>
+    )}
 
       <RoleGate min="editor">
         <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
