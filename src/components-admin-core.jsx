@@ -392,6 +392,13 @@ export function AdminDashboard({
   subtitle="Browse all feeds in the registry. Set default, load into editor, save posts to a feed, or delete a feed."
   right={
     <>
+      {/* Current selection chip */}
+      {feedId && (
+        <span className="editing-chip" title="Currently loaded feed">
+          Editing: {feedName || feedId}
+        </span>
+      )}
+
       <RoleGate min="editor">
         <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
       </RoleGate>
@@ -446,7 +453,8 @@ export function AdminDashboard({
     <table style={{ width:"100%", borderCollapse:"collapse" }}>
       <thead>
         <tr className="subtle" style={{ textAlign:"left" }}>
-          <th style={{ padding: ".4rem .5rem", width: 36 }}>⭐</th>
+          {/* status dot column (no star) */}
+          <th style={{ padding: ".4rem .5rem", width: 36 }} />
           <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>Name</th>
           <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>ID</th>
           <th style={{ padding: ".4rem .5rem", minWidth: 80 }}>Updated</th>
@@ -469,9 +477,8 @@ export function AdminDashboard({
               aria-current={isLoaded ? "true" : undefined}
             >
               <td style={{ padding: ".5rem .5rem" }}>
-                {/* dot indicates status */}
+                {/* dot indicates status (blue when loaded, green when default) */}
                 <span className="feed-dot" aria-hidden="true" />
-                {isDefault ? " ⭐" : ""}
               </td>
               <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
                 {f.name || f.feed_id}
@@ -527,8 +534,11 @@ export function AdminDashboard({
 
                         setIsSaving(true);
                         try {
+                          // 1) local rotating backup
                           saveLocalBackup(feedId, "fb", posts);
+                          // 2) S3 snapshot (best effort)
                           await snapshotToS3({ posts, feedId, app: "fb" });
+                          // 3) save to backend
                           const ok = await savePostsToBackend(posts, {
                             feedId: f.feed_id,
                             name: f.name || f.feed_id,
