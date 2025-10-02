@@ -90,23 +90,42 @@ export function MediaFieldset({
               </label>
             )}
             {editing.imageMode === "upload" && (
-              <label>Upload image
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    // Keep image uploads local (data URL) as before to avoid CORS complexity
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      setEditing((ed) => ({ ...ed, imageMode: "upload", image: { alt: "Image", url: reader.result } }));
-                    };
-                    reader.readAsDataURL(f);
-                  }}
-                />
-              </label>
-            )}
+   <label>Upload image
+     <input
+       type="file"
+       accept="image/*"
+       onChange={async (e) => {
+         const f = e.target.files?.[0]; if (!f) return;
+         try {
+           // optional inline progress UI (safe if selector not found)
+           const setPct = (pct) => {
+             const el = document.querySelector(".modal h3, .section-title");
+             if (el && typeof pct === "number") el.textContent = `Uploading… ${pct}%`;
+           };
+           const { cdnUrl } = await uploadFileToS3ViaSigner({
+             file: f,
+             feedId,
+             onProgress: setPct,
+             prefix: "images",
+           });
+           const el = document.querySelector(".modal h3, .section-title");
+           if (el) el.textContent = isNew ? "Add Post" : "Edit Post";
+           setEditing((ed) => ({
+             ...ed,
+             imageMode: "url",
+             image: { alt: f.name || "Image", url: cdnUrl },
+           }));
+           alert("Image uploaded ✔");
+         } catch (err) {
+           console.error(err);
+           alert(String(err?.message || "Image upload failed."));
+         } finally {
+           e.target.value = ""; // allow re-pick
+         }
+       }}
+     />
+   </label>
+ )}
 
             {(editing.imageMode === "upload" || editing.imageMode === "url") && editing.image?.url && (
               <div className="img-preview" style={{ maxWidth:"100%", maxHeight:"min(40vh, 360px)", minHeight:120, overflow:"hidden", borderRadius:8, background:"#f9fafb", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
