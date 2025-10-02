@@ -478,40 +478,50 @@ export function AdminDashboard({
                               Default
                             </button>
 
-                            onClick={async () => {
-  // Guard: warn if saving to a feed different from the one currently loaded
-  if (f.feed_id !== feedId) {
-    const proceed = confirm(
-      `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
-    );
-    if (!proceed) return;
-  }
-
-  // 1) Local rotating backup
-  saveLocalBackup(feedId, "fb", posts);
-
-  // 2) S3 snapshot backup (non-blocking if it fails)
-  await snapshotToS3({ posts, feedId, app: "fb" });
-
-  // 3) Save to backend (original behavior)
-  const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id, app: "fb" });
-
-  if (ok) {
-    const list = await listFeedsFromBackend();
-    const nextFeeds = Array.isArray(list) ? list : [];
-    setFeeds(nextFeeds);
-    const row = nextFeeds.find(x => x.feed_id === f.feed_id);
-    if (row) {
-      const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
-      const arr = Array.isArray(fresh) ? fresh : [];
-      setPosts(arr);
-      setCachedPosts(f.feed_id, row.checksum, arr);
+                            <button
+  className="btn"
+  title="Save CURRENT editor posts into this feed"
+  onClick={async () => {
+    // Guard: warn if saving to a feed different from the one currently loaded
+    if (f.feed_id !== feedId) {
+      const proceed = confirm(
+        `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
+      );
+      if (!proceed) return;
     }
-    alert("Feed saved (snapshot created).");
-  } else {
-    alert("Failed to save feed. A local snapshot was still created.");
-  }
-}}
+
+    // 1) Local rotating backup
+    saveLocalBackup(feedId, "fb", posts);
+
+    // 2) S3 snapshot backup (non-blocking if it fails)
+    await snapshotToS3({ posts, feedId, app: "fb" });
+
+    // 3) Save to backend (original behavior)
+    const ok = await savePostsToBackend(posts, {
+      feedId: f.feed_id,
+      name: f.name || f.feed_id,
+      app: "fb",
+    });
+
+    if (ok) {
+      const list = await listFeedsFromBackend();
+      const nextFeeds = Array.isArray(list) ? list : [];
+      setFeeds(nextFeeds);
+      const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
+      if (row) {
+        const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
+        const arr = Array.isArray(fresh) ? fresh : [];
+        setPosts(arr);
+        setCachedPosts(f.feed_id, row.checksum, arr);
+      }
+      alert("Feed saved (snapshot created).");
+    } else {
+      alert("Failed to save feed. A local snapshot was still created.");
+    }
+  }}
+>
+  Save
+</button>
                           </RoleGate>
 
                           {!stats && (
