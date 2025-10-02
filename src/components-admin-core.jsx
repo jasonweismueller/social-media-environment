@@ -379,6 +379,13 @@ export function AdminDashboard({
 
   return (
     <div className="admin-shell" style={{ display: "grid", gap: "1rem" }}>
+      {feedsLoading && (
+        <LoadingOverlay
+          title="Loading dashboard…"
+          subtitle="Fetching feeds and posts from backend"
+        />
+      )}
+
       <Section
         title="Admin Dashboard"
         subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
