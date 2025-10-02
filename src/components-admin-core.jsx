@@ -157,7 +157,7 @@ function ChipToggle({ label, checked, onChange }) {
 }
 
 /* ----------------------------- Admin Dashboard ---------------------------- */
-const [isSaving, setIsSaving] = useState(false);
+
 
 
 export function AdminDashboard({
@@ -173,6 +173,7 @@ export function AdminDashboard({
   const [participantsRefreshKey, setParticipantsRefreshKey] = useState(0);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // --- NEW: wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);     // null = unknown yet
@@ -914,6 +915,7 @@ export function AdminDashboard({
     />
   </label>
 )}
+
               </fieldset>
 
               {/* ----------------------- MEDIA (moved to its own file) ----------------------- */}
@@ -1085,6 +1087,28 @@ export function AdminDashboard({
           </div>
         </Modal>
       )}
+
+      {isSaving && (
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      background: "rgba(255,255,255,0.7)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+      fontSize: "1.5rem",
+      fontWeight: "600",
+      color: "#2563eb",
+    }}
+  >
+    Saving feed…
+  </div>
+)}
     </div>
   );
 }
@@ -1171,24 +1195,3 @@ function makeRandomPost() {
   };
 }
 
-{isSaving && (
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      background: "rgba(255,255,255,0.7)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-      fontSize: "1.5rem",
-      fontWeight: "600",
-      color: "#2563eb",
-    }}
-  >
-    Saving feed…
-  </div>
-)}
