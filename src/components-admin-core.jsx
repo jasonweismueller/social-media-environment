@@ -451,7 +451,7 @@ export function AdminDashboard({
                               className="btn"
                               title="Save CURRENT editor posts into this feed"
                               onClick={async () => {
-                                const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id });
+                                const ok = await savePostsToBackend(posts, { feedId: f.feed_id, name: f.name || f.feed_id, app: "fb" });
                                 if (ok) {
                                   const list = await listFeedsFromBackend();
                                   const nextFeeds = Array.isArray(list) ? list : [];
