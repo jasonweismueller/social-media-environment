@@ -6,7 +6,7 @@ import {
   pravatar,
   randomAvatarUrl,
   randomSVG,
-  fileToDataURL,
+  uploadFileToS3ViaSigner,
   listFeedsFromBackend,
   getDefaultFeedFromBackend,
   setDefaultFeedOnBackend,
@@ -749,18 +749,54 @@ export function AdminDashboard({
                   </label>
                 )}
                 {editing.avatarMode === "upload" && (
-                  <label>Upload avatar
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const f = e.target.files?.[0]; if (!f) return;
-                        const data = await fileToDataURL(f);
-                        setEditing((ed) => ({ ...ed, avatarMode: "upload", avatarUrl: data }));
-                      }}
-                    />
-                  </label>
-                )}
+  <label>Upload avatar
+    <input
+      type="file"
+      accept="image/*"
+      onChange={async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+
+        const headerEl = document.querySelector(".modal h3, .section-title");
+        const restoreTitle = () => {
+          if (headerEl) headerEl.textContent = isNew ? "Add Post" : "Edit Post";
+        };
+        const setPct = (pct) => {
+          if (headerEl && typeof pct === "number") {
+            headerEl.textContent = `Uploading… ${pct}%`;
+          }
+        };
+
+        try {
+          if (headerEl) headerEl.textContent = "Uploading… 0%";
+
+          const { cdnUrl } = await uploadFileToS3ViaSigner({
+            file: f,
+            feedId: feedId || "global",
+            prefix: "avatars",
+            onProgress: setPct,
+          });
+
+          restoreTitle();
+
+          setEditing((ed) => ({
+            ...ed,
+            avatarMode: "url",
+            avatarUrl: cdnUrl,
+          }));
+
+          alert("Avatar uploaded ✔");
+        } catch (err) {
+          console.error("Avatar upload failed", err);
+          alert(String(err?.message || "Avatar upload failed."));
+          restoreTitle();
+        } finally {
+          e.target.value = ""; // allow re-pick
+        }
+      }}
+    />
+  </label>
+)}
               </fieldset>
 
               {/* ----------------------- MEDIA (moved to its own file) ----------------------- */}
