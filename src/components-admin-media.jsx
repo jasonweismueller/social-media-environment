@@ -90,42 +90,57 @@ export function MediaFieldset({
               </label>
             )}
             {editing.imageMode === "upload" && (
-   <label>Upload image
-     <input
-       type="file"
-       accept="image/*"
-       onChange={async (e) => {
-         const f = e.target.files?.[0]; if (!f) return;
-         try {
-           // optional inline progress UI (safe if selector not found)
-           const setPct = (pct) => {
-             const el = document.querySelector(".modal h3, .section-title");
-             if (el && typeof pct === "number") el.textContent = `Uploading… ${pct}%`;
-           };
-           const { cdnUrl } = await uploadFileToS3ViaSigner({
-             file: f,
-             feedId,
-             onProgress: setPct,
-             prefix: "images",
-           });
-           const el = document.querySelector(".modal h3, .section-title");
-           if (el) el.textContent = isNew ? "Add Post" : "Edit Post";
-           setEditing((ed) => ({
-             ...ed,
-             imageMode: "url",
-             image: { alt: f.name || "Image", url: cdnUrl },
-           }));
-           alert("Image uploaded ✔");
-         } catch (err) {
-           console.error(err);
-           alert(String(err?.message || "Image upload failed."));
-         } finally {
-           e.target.value = ""; // allow re-pick
-         }
-       }}
-     />
-   </label>
- )}
+  <label>Upload image
+    <input
+      type="file"
+      accept="image/*"
+      onChange={async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+
+        const headerEl = document.querySelector(".modal h3, .section-title");
+
+        try {
+          // show initial state
+          if (headerEl) headerEl.textContent = "Uploading… 0%";
+
+          // progress callback
+          const setPct = (pct) => {
+            if (headerEl && typeof pct === "number") {
+              headerEl.textContent = `Uploading… ${pct}%`;
+            }
+          };
+
+          // do upload via signer
+          const { cdnUrl } = await uploadFileToS3ViaSigner({
+            file: f,
+            feedId,
+            prefix: "images",
+            onProgress: setPct, // this only works if utils uses XHR
+          });
+
+          // restore UI text
+          if (headerEl) headerEl.textContent = isNew ? "Add Post" : "Edit Post";
+
+          // update state
+          setEditing((ed) => ({
+            ...ed,
+            imageMode: "url",
+            image: { alt: f.name || "Image", url: cdnUrl },
+          }));
+
+          alert("Image uploaded ✔");
+        } catch (err) {
+          console.error("Image upload failed", err);
+          alert(String(err?.message || "Image upload failed."));
+          if (headerEl) headerEl.textContent = isNew ? "Add Post" : "Edit Post";
+        } finally {
+          e.target.value = ""; // allow re-pick
+        }
+      }}
+    />
+  </label>
+)}
 
             {(editing.imageMode === "upload" || editing.imageMode === "url") && editing.image?.url && (
               <div className="img-preview" style={{ maxWidth:"100%", maxHeight:"min(40vh, 360px)", minHeight:120, overflow:"hidden", borderRadius:8, background:"#f9fafb", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>

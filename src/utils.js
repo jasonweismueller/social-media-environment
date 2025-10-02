@@ -1506,13 +1506,9 @@ export async function uploadFileToS3ViaSigner({ file, feedId, onProgress, prefix
   const base = sanitizeName(nameNoExt) || `file_${ts}`;
   const key = `${prefix}/${feedId}/${ts}_${base}.${ext}`;
 
-  // presign via GET (no preflight)
   const { uploadUrl, fileUrl } = await getPresignedPutUrl({ key, contentType });
-
-  // upload
   await putToS3({ file, signedPutUrl: uploadUrl, onProgress, contentType });
 
-  // return CloudFront URL (fallback to CF_BASE if signer didn't return one)
   const cdnUrl = fileUrl || `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
   return { key, cdnUrl };
 }
