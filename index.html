@@ -6,12 +6,21 @@
     <title>Social Media Environment</title>
     
     <script>
-      window.CONFIG = {
-        SIGNER_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
-        SIGNER_PATH: "/default/presign-upload",
-        CF_BASE: "https://d2bihrgvtn9bga.cloudfront.net"
-      };
-    </script>
+  window.CONFIG = {
+    /// GAS proxy (Lambda/API Gateway)
+    GAS_PROXY_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
+    GAS_PROXY_PATH: "/default/gas",
+
+    // Convenience: some helpers use API_BASE directly
+    API_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com/default/gas",
+
+    // S3 presigner/CDN
+    SIGNER_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
+    SIGNER_PATH: "/default/presign-upload",
+    CF_BASE: "https://d2bihrgvtn9bga.cloudfront.net"
+  };
+</script>
+
   </head>
   <body>
     <div id="root"></div>

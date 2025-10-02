@@ -265,17 +265,40 @@ export function neutralAvatarDataUrl(seed = "") {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+export const getApp = () => {
+  const q = new URLSearchParams(window.location.search);
+  const fromUrl = (q.get("app") || "").toLowerCase();
+  const fromWin = (window.APP || "").toLowerCase();
+  return fromUrl === "fb" || fromWin === "fb" ? "fb" : "fb"; // hard default FB
+};
+export const APP = getApp();
+
 /* --------------------- Backend config ------------------------------------- */
-export const GS_ENDPOINT =
-  "https://script.google.com/macros/s/AKfycbyMfkPHIax4dbL1TePsdRYRUXoaEIPrh9lW-9HmrvCROYzpNNx9xSOlzqWgKs29ab1OyQ/exec";
+/* --------------------- Backend config (via API Gateway proxy) ------------- */
+// If you set these in window.CONFIG they will override the defaults:
+export const GAS_PROXY_BASE =
+  (window.CONFIG && window.CONFIG.GAS_PROXY_BASE) ||
+  "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com";
+
+export const GAS_PROXY_PATH =
+  (window.CONFIG && window.CONFIG.GAS_PROXY_PATH) ||
+  "/default/gas";
+
+// Final Apps Script endpoint (proxied through API Gateway -> Lambda)
+function joinUrl(base, path) {
+  return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
+}
+export const GS_ENDPOINT = joinUrl(GAS_PROXY_BASE, GAS_PROXY_PATH);
 
 // NOTE: This token is ONLY for participant logging. Admin actions use admin_token from login.
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
-const FEEDS_GET_URL         = GS_ENDPOINT + "?path=feeds";
-const DEFAULT_FEED_GET_URL  = GS_ENDPOINT + "?path=default_feed";
-const POSTS_GET_URL         = GS_ENDPOINT + "?path=posts";
-const PARTICIPANTS_GET_URL  = GS_ENDPOINT + "?path=participants";
+/* IG-scoped GET URLs (same query strings, just against the proxy) */
+const FEEDS_GET_URL         = `${GS_ENDPOINT}?path=feeds&app=${APP}`;
+const DEFAULT_FEED_GET_URL  = `${GS_ENDPOINT}?path=default_feed&app=${APP}`;
+const POSTS_GET_URL         = `${GS_ENDPOINT}?path=posts&app=${APP}`;
+const PARTICIPANTS_GET_URL  = `${GS_ENDPOINT}?path=participants&app=${APP}`;
+const WIPE_POLICY_GET_URL   = `${GS_ENDPOINT}?path=wipe_policy`; // global
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -306,10 +329,10 @@ async function getJsonWithRetry(url, opts = {}, { retries = 1, timeoutMs = 8000 
 
 /* --------------------- Admin auth (session token) ------------------------- */
 /* --------------------- Admin auth (session token + role/email) ------------- */
-const ADMIN_TOKEN_KEY     = "fb_admin_token_v1";
-const ADMIN_TOKEN_EXP_KEY = "fb_admin_token_exp_v1";
-const ADMIN_ROLE_KEY      = "fb_admin_role_v1";
-const ADMIN_EMAIL_KEY     = "fb_admin_email_v1";
+const ADMIN_TOKEN_KEY     = `${APP}_admin_token_v1`;
+const ADMIN_TOKEN_EXP_KEY = `${APP}_admin_token_exp_v1`;
+const ADMIN_ROLE_KEY      = `${APP}_admin_role_v1`;
+const ADMIN_EMAIL_KEY     = `${APP}_admin_email_v1`;
 
 // role rank helper
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
@@ -438,15 +461,20 @@ export async function adminLogout() {
 /* --------------------- Logging participants & events ---------------------- */
 export async function sendToSheet(header, row, events, feed_id) {
   if (!feed_id) { console.warn("sendToSheet: feed_id required"); return false; }
-  const payload = { token: GS_TOKEN, action: "log_participant", feed_id, header, row, events };
-  const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" });
+  const payload = { token: GS_TOKEN, action: "log_participant", app: APP, feed_id, header, row, events };
 
   if (navigator.sendBeacon) {
+    const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" });
     return navigator.sendBeacon(GS_ENDPOINT, blob);
   }
   try {
-    await fetch(GS_ENDPOINT, { method: "POST", mode: "no-cors", body: blob, keepalive: true });
-    return true;
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+    return res.ok;
   } catch (err) {
     console.warn("sendToSheet failed:", err);
     return false;
@@ -487,18 +515,17 @@ export async function setDefaultFeedOnBackend(feedId) {
   const admin_token = getAdminToken();
   if (!admin_token) { console.warn("setDefaultFeedOnBackend: missing admin_token"); return false; }
   try {
-    await fetch(GS_ENDPOINT, {
+    const res = await fetch(GS_ENDPOINT, {
       method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "set_default_feed",
+        app: APP,
         feed_id: feedId || "",
         admin_token,
       }),
-      keepalive: true,
     });
-    return true;
+    return res.ok;
   } catch (e) {
     console.warn("setDefaultFeedOnBackend failed:", e);
     return false;
@@ -514,10 +541,11 @@ export async function deleteFeedOnBackend(feedId) {
       mode: "cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: "delete_feed",
-        admin_token,
-        feed_id: feedId,
-      }),
+  action: "delete_feed",
+  app: APP,
+  admin_token,
+  feed_id: feedId,
+}),
     });
     return res.ok;
   } catch (e) {
@@ -567,22 +595,21 @@ export function primeVideoCache(url) {
 }
 
 /* ------------------------- POSTS API (multi-feed + cache) ----------------- */
-const __postsCache = new Map(); // key: feedId|null -> { at, data }
+const __postsCache = new Map(); // key: `${APP}::${feedId||''}` -> { at, data }
 const POSTS_STALE_MS = 60_000;
 
+function __cacheKey(feedId) { return `${APP}::${feedId || ""}`; }
 function __getCachedPosts(feedId) {
-  const rec = __postsCache.get(feedId || null);
+  const rec = __postsCache.get(__cacheKey(feedId));
   if (!rec) return null;
   if (Date.now() - rec.at > POSTS_STALE_MS) return null;
   return rec.data;
 }
 function __setCachedPosts(feedId, data) {
-  __postsCache.set(feedId || null, { at: Date.now(), data });
+  __postsCache.set(__cacheKey(feedId), { at: Date.now(), data });
 }
-
 export function invalidatePostsCache(feedId = null) {
-  if (feedId === undefined) feedId = null;
-  __postsCache.delete(feedId);
+  __postsCache.delete(__cacheKey(feedId));
 }
 
 /**
@@ -646,28 +673,62 @@ export async function loadPostsFromBackend(arg1, arg2) {
 /**
  * savePostsToBackend(posts, { feedId, name } = {})
  */
-export async function savePostsToBackend(posts, ctx = {}) {
+export async function savePostsToBackend(rawPosts, ctx = {}) {
   const { feedId = null, name = null } = ctx || {};
   const admin_token = getAdminToken();
   if (!admin_token) { console.warn("savePostsToBackend: missing admin_token"); return false; }
+
+  // Optional but recommended: block data: URLs to avoid huge payloads & CORS issues
+  const offenders = [];
+  (rawPosts || []).forEach((p) => {
+    const id = p?.id || "(no id)";
+    if (p?.image?.url?.startsWith?.("data:")) offenders.push({ id, field: "image.url" });
+    if (p?.video?.url?.startsWith?.("data:")) offenders.push({ id, field: "video.url" });
+    if (p?.videoPosterUrl?.startsWith?.("data:")) offenders.push({ id, field: "videoPosterUrl" });
+  });
+  if (offenders.length) {
+    const lines = offenders.map(o => `• Post ${o.id}: ${o.field}`).join("\n");
+    alert(
+      "One or more posts still contain local data URLs.\n\n" +
+      "Please upload images/videos so they use https URLs, then try saving again.\n\n" +
+      lines
+    );
+    return false;
+  }
+
+  const posts = (rawPosts || []).map((p) => {
+    const q = { ...p };
+    delete q._localMyCommentText;
+    delete q._tempUpload;
+    if (q.image && q.image.svg && q.image.url) delete q.image.svg;
+    return q;
+  });
+
   try {
-    await fetch(GS_ENDPOINT, {
+    const res = await fetch(GS_ENDPOINT, {
       method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "publish_posts",
+        app: APP,
         posts,
         feed_id: feedId,
         name,
         admin_token,
       }),
-      keepalive: true,
     });
+    if (!res.ok) {
+      const text = await res.text().catch(()=> "");
+      console.warn("savePostsToBackend: HTTP error", res.status, text);
+      alert(`Save failed: HTTP ${res.status}${text ? ` — ${text}` : ""}`);
+      return false;
+    }
+    await res.json().catch(()=>null); // Apps Script often returns JSON
     invalidatePostsCache(feedId);
     return true;
   } catch (err) {
     console.warn("Publish failed:", err);
+    alert(`Save failed: ${String(err?.message || err)}`);
     return false;
   }
 }
@@ -1217,7 +1278,7 @@ export async function wipeParticipantsOnBackend(feedId) {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ action: "wipe_participants", feed_id: feedId, admin_token }),
+      body: JSON.stringify({ action: "wipe_participants", app: APP, feed_id: feedId, admin_token }),
       keepalive: true,
     });
 
@@ -1228,7 +1289,6 @@ export async function wipeParticipantsOnBackend(feedId) {
   }
 }
 
-const WIPE_POLICY_GET_URL = GS_ENDPOINT + "?path=wipe_policy";
 
 export async function getWipePolicyFromBackend() {
   const admin_token = getAdminToken();
