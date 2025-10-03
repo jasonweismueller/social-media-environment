@@ -1,6 +1,6 @@
 /// App.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { HashRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles.css";
 
 import {
@@ -71,7 +71,7 @@ export default function App() {
   const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
   // Participant feed context: URL ?feed=… wins; else backend default
-  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedFromHash() : null);
+  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? (new URLSearchParams(window.location.search).get("feed") || null) : null);
 
   // Backend is the source of truth
   const [posts, setPosts] = useState([]);

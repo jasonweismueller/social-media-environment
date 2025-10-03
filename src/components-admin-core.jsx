@@ -600,9 +600,10 @@ useEffect(() => {
                   <button
   className="btn ghost"
   title="Copy participant link for this feed"
-  onClick={() => {
-    const url = buildFeedShareUrl(f);
-    copyText(url);
+  onClick={async () => {
+    const url = `${window.location.origin}${window.location.pathname}?feed=${encodeURIComponent(f.feed_id)}`;
+    await navigator.clipboard.writeText(url).catch(()=>{});
+    alert("Link copied:\n" + url);
   }}
 >
   Copy link
