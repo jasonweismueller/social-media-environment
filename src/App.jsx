@@ -1,6 +1,6 @@
 /// App.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { BrowserRouterRouter as Router, Routes, Route } from "react-router-dom";
+import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles.css";
 
 import {
@@ -45,7 +45,13 @@ function setCachedPosts(feedId, checksum, posts) {
 }
 
 /** Read ?feed=... from the hash (e.g., #/?feed=cond_a) */
-
+function getFeedFromHash() {
+  try {
+    const h = typeof window !== "undefined" ? window.location.hash : "";
+    const m = h.match(/[?&]feed=([^&#]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch { return null; }
+}
 
 export default function App() {
   const sessionIdRef = useRef(uid());
@@ -62,11 +68,10 @@ export default function App() {
   const [adminAuthed, setAdminAuthed] = useState(false);
 
   // Route context
-const onAdmin = typeof window !== "undefined" && window.location.pathname === "/admin";
+  const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
   // Participant feed context: URL ?feed=… wins; else backend default
-  
-  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedIdFromUrl() : null);
+  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedFromHash() : null);
 
   // Backend is the source of truth
   const [posts, setPosts] = useState([]);
