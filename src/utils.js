@@ -1539,20 +1539,26 @@ export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups"
   return uploadFileToS3ViaSigner({ file, feedId, prefix, onProgress });
 }
 
-function getFeedIdFromUrl() {
+export function getFeedIdFromUrl() {
   try {
     const u = new URL(window.location.href);
-    const qp = u.searchParams.get("feed");
-    if (qp) return qp;
-    // also accept #/feed/<id> for backwards compat if you want
-    const m = (u.hash || "").match(/^#\/feed\/([^/?#]+)/);
-    return m ? decodeURIComponent(m[1]) : null;
-  } catch {
+    // 1) normal query (?feed=)
+    let id = u.searchParams.get("feed");
+    if (id) return id;
+
+    // 2) hash query (#/path?feed=)
+    const hash = u.hash || "";
+    const qIndex = hash.indexOf("?");
+    if (qIndex >= 0) {
+      const qp = new URLSearchParams(hash.slice(qIndex + 1));
+      id = qp.get("feed");
+      if (id) return id;
+    }
     return null;
-  }
+  } catch { return null; }
 }
 
-function setFeedIdInUrl(id, { replace = false } = {}) {
+export function setFeedIdInUrl(id, { replace = false } = {}) {
   try {
     const u = new URL(window.location.href);
     u.searchParams.set("feed", id);

@@ -21,7 +21,8 @@ import {
   getAdminEmail,
   getAdminRole,
   getFeedIdFromUrl,
-  setFeedIdInUrl
+  setFeedIdInUrl,
+  useFeedUrlParam
 } from "./utils";
 
 // ⬇️ updated imports after UI split
@@ -194,6 +195,20 @@ export function AdminDashboard({
     setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
   };
 
+
+const { feedIdFromUrl } = useFeedUrlParam();
+
+useEffect(() => {
+  if (!feeds.length) return;          // wait for feeds
+  if (!feedIdFromUrl) return;
+  if (feedIdFromUrl === feedId) return;
+
+  // if URL points to a known feed, load it
+  if (feeds.some(f => f.feed_id === feedIdFromUrl)) {
+    selectFeed(feedIdFromUrl);
+  }
+}, [feedIdFromUrl, feeds]); // intentionally omit selectFeed from deps
+
 useEffect(() => {
   let alive = true;
   (async () => {
@@ -262,6 +277,8 @@ useEffect(() => {
     const row = feeds.find(f => String(f.feed_id) === String(id));
     setFeedId(id);
     setFeedName(row?.name || id);
+
+    setFeedIdInUrl(id)
 
     const cached = row ? getCachedPosts(id, row.checksum) : null;
     if (cached) {
