@@ -19,10 +19,7 @@ import {
   uploadJsonToS3ViaSigner,
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
-  getAdminRole,
-  getFeedIdFromUrl,
-  setFeedIdInUrl,
-  useFeedUrlParam
+  getAdminRole
 } from "./utils";
 
 // ⬇️ updated imports after UI split
@@ -195,20 +192,6 @@ export function AdminDashboard({
     setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
   };
 
-
-const { feedIdFromUrl } = useFeedUrlParam();
-
-useEffect(() => {
-  if (!feeds.length) return;          // wait for feeds
-  if (!feedIdFromUrl) return;
-  if (feedIdFromUrl === feedId) return;
-
-  // if URL points to a known feed, load it
-  if (feeds.some(f => f.feed_id === feedIdFromUrl)) {
-    selectFeed(feedIdFromUrl);
-  }
-}, [feedIdFromUrl, feeds]); // intentionally omit selectFeed from deps
-
 useEffect(() => {
   let alive = true;
   (async () => {
@@ -223,10 +206,8 @@ useEffect(() => {
     setFeeds(feedsList);
     setDefaultFeedId(backendDefault || null);
 
-    // Check if a feed was specified in the URL
-    const urlFeedId = getFeedIdFromUrl();
+    // Admin ignores URL; prefer backend default, else first feed
     const chosen =
-      feedsList.find(f => f.feed_id === urlFeedId) ||
       feedsList.find(f => f.feed_id === backendDefault) ||
       feedsList[0] ||
       null;
@@ -234,19 +215,15 @@ useEffect(() => {
     if (chosen) {
       setFeedId(chosen.feed_id);
       setFeedName(chosen.name || chosen.feed_id);
-
-      // NEW: make sure URL is synced (replace so no double history entry)
-      setFeedIdInUrl(chosen.feed_id, { replace: true });
-
       const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
-      if (cached) {
-        setPosts(cached);
-      } else {
-        const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
-        const arr = Array.isArray(fresh) ? fresh : [];
-        setPosts(arr);
-        setCachedPosts(chosen.feed_id, chosen.checksum, arr);
-      }
+     if (cached) {
+       setPosts(cached);
+     } else {
+       const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
+       const arr = Array.isArray(fresh) ? fresh : [];
+       setPosts(arr);
+       setCachedPosts(chosen.feed_id, chosen.checksum, arr);
+     }
     } else {
       setFeedId("feed_1");
       setFeedName("Feed 1");
@@ -256,6 +233,7 @@ useEffect(() => {
   })();
   return () => { alive = false; };
 }, []);
+
 
   useEffect(() => {
     if (!isSaving) return;
@@ -277,8 +255,6 @@ useEffect(() => {
     const row = feeds.find(f => String(f.feed_id) === String(id));
     setFeedId(id);
     setFeedName(row?.name || id);
-
-    setFeedIdInUrl(id)
 
     const cached = row ? getCachedPosts(id, row.checksum) : null;
     if (cached) {

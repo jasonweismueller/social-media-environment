@@ -1540,64 +1540,24 @@ export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups"
   const file = new File([blob], filename || "backup.json", { type: blob.type });
   return uploadFileToS3ViaSigner({ file, feedId, prefix, onProgress });
 }
+
 export function getFeedIdFromUrl() {
   try {
-    const u = new URL(window.location.href);
-    // support both ?feed=... and #/admin?feed=...
-    const searchParams = u.searchParams;
-    const hash = u.hash || "";
-    const hashQs = hash.includes("?") ? new URLSearchParams(hash.split("?")[1]) : null;
-    return (
-      searchParams.get("feed") ||
-      (hashQs && hashQs.get("feed")) ||
-      null
-    );
+    return new URLSearchParams(window.location.search).get("feed") || null;
   } catch {
     return null;
   }
 }
 
+// If you keep it for public UI buttons, keep it search-only:
 export function setFeedIdInUrl(feedId, { replace = false } = {}) {
   try {
-    const u = new URL(window.location.href);
-    // keep hash route (e.g. #/admin) intact, just sync the query part in both places
-    const search = new URLSearchParams(u.search);
-    const hash = u.hash || "";
-    const [hashPath, hashQuery] = hash.split("?");
-    const hsp = new URLSearchParams(hashQuery || "");
-
-    if (feedId == null) {
-      search.delete("feed");
-      hsp.delete("feed");
-    } else {
-      search.set("feed", String(feedId));
-      hsp.set("feed", String(feedId));
-    }
-
-    const nextHash =
-      hashPath ? `${hashPath}?${hsp.toString()}` : (hsp.toString() ? `#?${hsp.toString()}` : "");
-
-    const nextUrl = `${u.origin}${u.pathname}?${search.toString()}${nextHash}`;
-    if (replace) window.history.replaceState({}, "", nextUrl);
-    else window.history.pushState({}, "", nextUrl);
+    const url = new URL(window.location.href);
+    const sp = url.searchParams;
+    if (!feedId) sp.delete("feed");
+    else sp.set("feed", String(feedId));
+    url.search = sp.toString();
+    const next = url.toString();
+    replace ? history.replaceState({}, "", next) : history.pushState({}, "", next);
   } catch {}
-}
-
-export function useFeedUrlParam() {
-  const read = () => getFeedIdFromUrl();
-
-  const [feedIdFromUrl, setFeedIdFromUrl] = useState(() => read());
-
-  useEffect(() => {
-    const onChange = () => setFeedIdFromUrl(read());
-    window.addEventListener("hashchange", onChange);
-    window.addEventListener("popstate", onChange);
-    return () => {
-      window.removeEventListener("hashchange", onChange);
-      window.removeEventListener("popstate", onChange);
-    };
-  }, []);
-
-  const set = useMemo(() => (id, opts={}) => setFeedIdInUrl(id, opts), []);
-  return { feedIdFromUrl, setFeedIdInUrl: set };
 }
