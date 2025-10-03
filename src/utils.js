@@ -1560,3 +1560,16 @@ function setFeedIdInUrl(id, { replace = false } = {}) {
     window.history[method](null, "", u.toString());
   } catch {}
 }
+
+
+export function useFeedUrlParam() {
+  const [feedIdFromUrl, setFeedIdFromUrl] = React.useState(getFeedIdFromUrl());
+
+  React.useEffect(() => {
+    const onPop = () => setFeedIdFromUrl(getFeedIdFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  return { feedIdFromUrl, setFeedIdInUrl };
+}

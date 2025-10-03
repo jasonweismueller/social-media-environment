@@ -21,7 +21,7 @@ import {
   getAdminEmail,
   getAdminRole,
   getFeedIdFromUrl,
-  setFeedIdFromUrl
+  setFeedIdInUrl
 } from "./utils";
 
 // ⬇️ updated imports after UI split
@@ -208,16 +208,10 @@ useEffect(() => {
     setFeeds(feedsList);
     setDefaultFeedId(backendDefault || null);
 
-    // wipe policy …
-    try {
-      const policy = await getWipePolicyFromBackend();
-      if (alive && policy !== null) setWipeOnChange(!!policy);
-    } catch {}
-
-    // NEW: read from URL first
-    const urlFeed = getFeedIdFromUrl();
+    // Check if a feed was specified in the URL
+    const urlFeedId = getFeedIdFromUrl();
     const chosen =
-      (urlFeed && feedsList.find(f => f.feed_id === urlFeed)) ||
+      feedsList.find(f => f.feed_id === urlFeedId) ||
       feedsList.find(f => f.feed_id === backendDefault) ||
       feedsList[0] ||
       null;
@@ -226,7 +220,7 @@ useEffect(() => {
       setFeedId(chosen.feed_id);
       setFeedName(chosen.name || chosen.feed_id);
 
-      // keep URL in sync (replace so initial visit doesn’t create an extra history entry)
+      // NEW: make sure URL is synced (replace so no double history entry)
       setFeedIdInUrl(chosen.feed_id, { replace: true });
 
       const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
@@ -246,7 +240,6 @@ useEffect(() => {
     setFeedsLoading(false);
   })();
   return () => { alive = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
   useEffect(() => {
