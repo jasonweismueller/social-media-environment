@@ -27,7 +27,6 @@ if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
 
-
 function getCachedPosts(feedId, checksum) {
   try {
     const k = `posts::${feedId}`;
