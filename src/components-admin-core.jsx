@@ -19,7 +19,8 @@ import {
   uploadJsonToS3ViaSigner,
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
-  getAdminRole
+  getAdminRole,
+  buildParticipantUrl
 } from "./utils";
 
 // ⬇️ updated imports after UI split
@@ -585,6 +586,17 @@ useEffect(() => {
                       Load stats
                     </button>
                   )}
+
+                  <button
+  className="btn ghost"
+  onClick={async () => {
+    const url = buildParticipantUrl(f.slug || f.name || f.feed_id);
+    await navigator.clipboard.writeText(url).catch(() => {});
+    alert(`Link copied:\n\n${url}`);
+  }}
+>
+  Copy link
+</button>
 
                   <RoleGate min="owner">
                     <button

@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 
 /* ------------------------------ Basics ------------------------------------ */
 export const uid = () =>
@@ -49,6 +48,14 @@ export const toggleInSet = (setObj, id) => {
  *
  * All require admin_token (owner level for create/update/delete).
  */
+
+
+export function buildParticipantUrl(feedSlugOrId = '') {
+  const origin = window.location.origin;                       // https://studyfeed.org
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+  const slug = String(feedSlugOrId || '').trim();
+  return `${origin}${base}/#/?feed=${encodeURIComponent(slug)}`;
+}
 
 export async function adminListUsers() {
   const admin_token = getAdminToken();
@@ -1560,4 +1567,14 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
     const next = url.toString();
     replace ? history.replaceState({}, "", next) : history.pushState({}, "", next);
   } catch {}
+}
+
+export function slugify(s = "") {
+  return String(s)
+    .toLowerCase().trim()
+    .replace(/['"]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
 }
