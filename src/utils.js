@@ -1538,3 +1538,25 @@ export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups"
   const file = new File([blob], filename || "backup.json", { type: blob.type });
   return uploadFileToS3ViaSigner({ file, feedId, prefix, onProgress });
 }
+
+function getFeedIdFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    const qp = u.searchParams.get("feed");
+    if (qp) return qp;
+    // also accept #/feed/<id> for backwards compat if you want
+    const m = (u.hash || "").match(/^#\/feed\/([^/?#]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setFeedIdInUrl(id, { replace = false } = {}) {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("feed", id);
+    const method = replace ? "replaceState" : "pushState";
+    window.history[method](null, "", u.toString());
+  } catch {}
+}

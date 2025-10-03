@@ -20,6 +20,8 @@ import {
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
   getAdminRole,
+  getFeedIdFromUrl,
+  setFeedIdFromUrl
 } from "./utils";
 
 // ⬇️ updated imports after UI split
@@ -192,50 +194,60 @@ export function AdminDashboard({
     setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      setFeedsLoading(true);
-      const [list, backendDefault] = await Promise.all([
-        listFeedsFromBackend(),
-        getDefaultFeedFromBackend(),
-      ]);
-      if (!alive) return;
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    setFeedsLoading(true);
+    const [list, backendDefault] = await Promise.all([
+      listFeedsFromBackend(),
+      getDefaultFeedFromBackend(),
+    ]);
+    if (!alive) return;
 
-      const feedsList = Array.isArray(list) ? list : [];
-      setFeeds(feedsList);
-      setDefaultFeedId(backendDefault || null);
+    const feedsList = Array.isArray(list) ? list : [];
+    setFeeds(feedsList);
+    setDefaultFeedId(backendDefault || null);
 
-      // NEW: load wipe policy on mount
-      try {
-        const policy = await getWipePolicyFromBackend();
-        if (alive && policy !== null) setWipeOnChange(!!policy);
-      } catch {}
+    // wipe policy …
+    try {
+      const policy = await getWipePolicyFromBackend();
+      if (alive && policy !== null) setWipeOnChange(!!policy);
+    } catch {}
 
-      const chosen = feedsList.find(f => f.feed_id === backendDefault) || feedsList[0] || null;
-      if (chosen) {
-        setFeedId(chosen.feed_id);
-        setFeedName(chosen.name || chosen.feed_id);
+    // NEW: read from URL first
+    const urlFeed = getFeedIdFromUrl();
+    const chosen =
+      (urlFeed && feedsList.find(f => f.feed_id === urlFeed)) ||
+      feedsList.find(f => f.feed_id === backendDefault) ||
+      feedsList[0] ||
+      null;
 
-        const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
-        if (cached) {
-          setPosts(cached);
-        } else {
-          const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
-          const arr = Array.isArray(fresh) ? fresh : [];
-          setPosts(arr);
-          setCachedPosts(chosen.feed_id, chosen.checksum, arr);
-        }
+    if (chosen) {
+      setFeedId(chosen.feed_id);
+      setFeedName(chosen.name || chosen.feed_id);
+
+      // keep URL in sync (replace so initial visit doesn’t create an extra history entry)
+      setFeedIdInUrl(chosen.feed_id, { replace: true });
+
+      const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
+      if (cached) {
+        setPosts(cached);
       } else {
-        setFeedId("feed_1");
-        setFeedName("Feed 1");
-        setPosts([]);
+        const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
+        const arr = Array.isArray(fresh) ? fresh : [];
+        setPosts(arr);
+        setCachedPosts(chosen.feed_id, chosen.checksum, arr);
       }
-      setFeedsLoading(false);
-    })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    } else {
+      setFeedId("feed_1");
+      setFeedName("Feed 1");
+      setPosts([]);
+    }
+    setFeedsLoading(false);
+  })();
+  return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   useEffect(() => {
     if (!isSaving) return;
