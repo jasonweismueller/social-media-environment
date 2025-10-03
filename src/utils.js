@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useState } from "react";
+
 /* ------------------------------ Basics ------------------------------------ */
 export const uid = () =>
   Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -1538,44 +1540,64 @@ export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups"
   const file = new File([blob], filename || "backup.json", { type: blob.type });
   return uploadFileToS3ViaSigner({ file, feedId, prefix, onProgress });
 }
-
 export function getFeedIdFromUrl() {
   try {
     const u = new URL(window.location.href);
-    // 1) normal query (?feed=)
-    let id = u.searchParams.get("feed");
-    if (id) return id;
-
-    // 2) hash query (#/path?feed=)
+    // support both ?feed=... and #/admin?feed=...
+    const searchParams = u.searchParams;
     const hash = u.hash || "";
-    const qIndex = hash.indexOf("?");
-    if (qIndex >= 0) {
-      const qp = new URLSearchParams(hash.slice(qIndex + 1));
-      id = qp.get("feed");
-      if (id) return id;
-    }
+    const hashQs = hash.includes("?") ? new URLSearchParams(hash.split("?")[1]) : null;
+    return (
+      searchParams.get("feed") ||
+      (hashQs && hashQs.get("feed")) ||
+      null
+    );
+  } catch {
     return null;
-  } catch { return null; }
+  }
 }
 
-export function setFeedIdInUrl(id, { replace = false } = {}) {
+export function setFeedIdInUrl(feedId, { replace = false } = {}) {
   try {
     const u = new URL(window.location.href);
-    u.searchParams.set("feed", id);
-    const method = replace ? "replaceState" : "pushState";
-    window.history[method](null, "", u.toString());
+    // keep hash route (e.g. #/admin) intact, just sync the query part in both places
+    const search = new URLSearchParams(u.search);
+    const hash = u.hash || "";
+    const [hashPath, hashQuery] = hash.split("?");
+    const hsp = new URLSearchParams(hashQuery || "");
+
+    if (feedId == null) {
+      search.delete("feed");
+      hsp.delete("feed");
+    } else {
+      search.set("feed", String(feedId));
+      hsp.set("feed", String(feedId));
+    }
+
+    const nextHash =
+      hashPath ? `${hashPath}?${hsp.toString()}` : (hsp.toString() ? `#?${hsp.toString()}` : "");
+
+    const nextUrl = `${u.origin}${u.pathname}?${search.toString()}${nextHash}`;
+    if (replace) window.history.replaceState({}, "", nextUrl);
+    else window.history.pushState({}, "", nextUrl);
   } catch {}
 }
 
-
 export function useFeedUrlParam() {
-  const [feedIdFromUrl, setFeedIdFromUrl] = React.useState(getFeedIdFromUrl());
+  const read = () => getFeedIdFromUrl();
 
-  React.useEffect(() => {
-    const onPop = () => setFeedIdFromUrl(getFeedIdFromUrl());
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
+  const [feedIdFromUrl, setFeedIdFromUrl] = useState(() => read());
+
+  useEffect(() => {
+    const onChange = () => setFeedIdFromUrl(read());
+    window.addEventListener("hashchange", onChange);
+    window.addEventListener("popstate", onChange);
+    return () => {
+      window.removeEventListener("hashchange", onChange);
+      window.removeEventListener("popstate", onChange);
+    };
   }, []);
 
-  return { feedIdFromUrl, setFeedIdInUrl };
+  const set = useMemo(() => (id, opts={}) => setFeedIdInUrl(id, opts), []);
+  return { feedIdFromUrl, setFeedIdInUrl: set };
 }
