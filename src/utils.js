@@ -50,12 +50,6 @@ export const toggleInSet = (setObj, id) => {
  */
 
 
-export function buildParticipantUrl(feedSlugOrId = '') {
-  const origin = window.location.origin;                       // https://studyfeed.org
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
-  const slug = String(feedSlugOrId || '').trim();
-  return `${origin}${base}/#/?feed=${encodeURIComponent(slug)}`;
-}
 
 export async function adminListUsers() {
   const admin_token = getAdminToken();
@@ -1569,12 +1563,9 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
   } catch {}
 }
 
-export function slugify(s = "") {
-  return String(s)
-    .toLowerCase().trim()
-    .replace(/['"]/g, "")
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
+export function buildFeedShareUrl(feedRow) {
+  const origin = "https://studyfeed.org";   // fixed base
+  // if you still deploy under a subpath, append it here, e.g. `${origin}/social-media-environment`
+  return `${origin}/#/?feed=${feedRow.feed_id}`;
 }
+

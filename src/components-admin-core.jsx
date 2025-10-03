@@ -20,7 +20,7 @@ import {
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
   getAdminRole,
-  buildParticipantUrl
+  buildFeedShareUrl
 } from "./utils";
 
 // ⬇️ updated imports after UI split
@@ -80,6 +80,16 @@ async function snapshotToS3({ posts, feedId, app = "fb" }) {
   } catch (e) {
     console.warn("Backup to S3 failed (continuing):", e);
     return null;
+  }
+}
+
+async function copyText(str) {
+  try {
+    await navigator.clipboard.writeText(str);
+    alert("Link copied:\n\n" + str);
+  } catch {
+    // fallback if clipboard API fails
+    prompt("Copy this URL:", str);
   }
 }
 
@@ -589,10 +599,10 @@ useEffect(() => {
 
                   <button
   className="btn ghost"
-  onClick={async () => {
-    const url = buildParticipantUrl(f.slug || f.name || f.feed_id);
-    await navigator.clipboard.writeText(url).catch(() => {});
-    alert(`Link copied:\n\n${url}`);
+  title="Copy participant link for this feed"
+  onClick={() => {
+    const url = buildFeedShareUrl(f);
+    copyText(url);
   }}
 >
   Copy link
