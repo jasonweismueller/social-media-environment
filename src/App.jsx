@@ -8,7 +8,7 @@ import {
   loadPostsFromBackend, savePostsToBackend,
   sendToSheet, buildMinimalHeader, buildParticipantRow,
   computeFeedId, getDefaultFeedFromBackend,
-  hasAdminSession, adminLogout,
+  hasAdminSession, adminLogout, listFeedsFromBackend, getFeedIdFromUrl
 } from "./utils";
 
 // ⬇️ updated imports to use the split files
@@ -25,6 +25,24 @@ import AdminLogin from "./components-admin-login";
 const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
+}
+
+
+function getCachedPosts(feedId, checksum) {
+  try {
+    const k = `posts::${feedId}`;
+    const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
+    if (!meta || meta.checksum !== checksum) return null;
+    const data = JSON.parse(localStorage.getItem(k) || "null");
+    return Array.isArray(data) ? data : null;
+  } catch { return null; }
+}
+function setCachedPosts(feedId, checksum, posts) {
+  try {
+    const k = `posts::${feedId}`;
+    localStorage.setItem(k, JSON.stringify(posts || []));
+    localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum, t: Date.now() }));
+  } catch {}
 }
 
 /** Read ?feed=... from the hash (e.g., #/?feed=cond_a) */
@@ -61,35 +79,68 @@ export default function App() {
   const [loadingPosts, setLoadingPosts] = useState(true);
 
   // --- Resolve feed from backend default if none provided by URL
-  useEffect(() => {
-    if (onAdmin) return;         // admin manages its own feeds
-    if (activeFeedId) return;    // already set by ?feed=...
-    let alive = true;
-    (async () => {
-      const id = await getDefaultFeedFromBackend();
-      if (!alive) return;
-      setActiveFeedId(id || "feed_1"); // final fallback
-    })();
-    return () => { alive = false; };
-  }, [onAdmin, activeFeedId]);
+useEffect(() => {
+  if (onAdmin) return; // admin handles its own feeds
+  let alive = true;
 
-  // --- Load posts once feed is known
-  useEffect(() => {
-    if (onAdmin) return;
-    if (!activeFeedId) return;
-    let alive = true;
-    (async () => {
-      setLoadingPosts(true);
-      try {
-        const remote = await loadPostsFromBackend(activeFeedId);
-        if (!alive) return;
-        setPosts(Array.isArray(remote) ? remote : []);
-      } finally {
-        if (alive) setLoadingPosts(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [onAdmin, activeFeedId]);
+  (async () => {
+    setLoadingPosts(true);
+
+    // 1) Pull feeds registry + backend default
+    const [feedsList, backendDefault] = await Promise.all([
+      listFeedsFromBackend(),
+      getDefaultFeedFromBackend(),
+    ]);
+
+    if (!alive) return;
+
+    // 2) Decide which feed to show: hash ?feed= wins, else backend default, else first
+    const urlFeedId = getFeedIdFromUrl() /* or getFeedFromHash() if you prefer */;
+    const chosen =
+      (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === urlFeedId) ||
+      (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === backendDefault) ||
+      (Array.isArray(feedsList) ? feedsList : [])[0] ||
+      null;
+
+    if (!chosen) {
+      setActiveFeedId("feed_1");
+      setPosts([]);
+      setLoadingPosts(false);
+      return;
+    }
+
+    setActiveFeedId(chosen.feed_id);
+
+    // 3) Try local cache keyed by checksum, else fetch fresh
+    const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
+    if (cached) {
+      setPosts(cached);
+      setLoadingPosts(false);
+      return;
+    }
+
+    const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
+    if (!alive) return;
+
+    const arr = Array.isArray(fresh) ? fresh : [];
+    setPosts(arr);
+    setCachedPosts(chosen.feed_id, chosen.checksum, arr);
+    setLoadingPosts(false);
+  })();
+
+  return () => { alive = false; };
+}, [onAdmin]);
+
+useEffect(() => {
+  if (onAdmin) return;
+  const onHash = () => {
+    const next = getFeedIdFromUrl(); // or getFeedFromHash()
+    // forcing the effect above to rerun by clearing activeFeedId
+    setActiveFeedId(next || null);
+  };
+  window.addEventListener("hashchange", onHash);
+  return () => window.removeEventListener("hashchange", onHash);
+}, [onAdmin]);
 
   // --- If user lands on /admin with a valid session, show dashboard immediately
   useEffect(() => {
