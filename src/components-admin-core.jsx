@@ -437,30 +437,15 @@ useEffect(() => {
 
 
       {sessExpiringSec != null && !sessExpired && (
-  <div
-    role="status"
-    className="card"
-    style={{
-      border: "1px solid var(--line)",
-      background: "#fff7ed",
-      color: "#7c2d12",
-      padding: ".6rem .8rem",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: ".75rem",
-    }}
-  >
-    <div>
-      <strong>Admin session is expiring</strong>
-      <span className="subtle" style={{ marginLeft: 8 }}>
-        (~{Math.max(0, Math.floor(sessExpiringSec / 60))}m {sessExpiringSec % 60}s left)
+  <div role="status" className="admin-banner">
+    <div className="title">
+      <span>Admin session is expiring</span>
+      <span className="subtle">
+        (~{Math.max(0, Math.floor(sessExpiringSec / 60))}m {String(sessExpiringSec % 60).padStart(2,"0")}s left)
       </span>
     </div>
-    <div style={{ display: "flex", gap: ".5rem" }}>
-      <button className="btn ghost" onClick={() => setSessExpiringSec(null)}>
-        Dismiss
-      </button>
+    <div className="actions">
+      <button className="btn ghost" onClick={() => setSessExpiringSec(null)}>Dismiss</button>
       <button className="btn" onClick={keepAlive} disabled={touching}>
         {touching ? "Refreshing…" : "Stay signed in"}
       </button>
@@ -1249,33 +1234,15 @@ useEffect(() => {
 )}
 
 {sessExpired && (
-  <div
-    aria-live="assertive"
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(17,24,39,.7)",
-      display: "grid",
-      placeItems: "center",
-      zIndex: 9999,
-    }}
-  >
-    <div className="card" style={{ maxWidth: 520, padding: "1.2rem" }}>
-      <h3 style={{ marginTop: 0, marginBottom: ".5rem" }}>Session expired</h3>
-      <p className="subtle" style={{ marginTop: 0 }}>
-        Your admin token has expired. Please re-authenticate to continue.
-      </p>
-      <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
+  <div aria-live="assertive" className="admin-expired-backdrop">
+    <div className="admin-expired-dialog">
+      <h3>Session expired</h3>
+      <p className="subtle">Your admin token has expired. Please re-authenticate to continue.</p>
+      <div className="admin-expired-actions">
         <button className="btn ghost" onClick={keepAlive} disabled={touching}>
           {touching ? "Trying…" : "Try to refresh"}
         </button>
-        <button
-          className="btn primary"
-          onClick={() => {
-            setSessExpired(false);
-            onLogout?.(); // will route you back to login
-          }}
-        >
+        <button className="btn primary" onClick={() => { setSessExpired(false); onLogout?.(); }}>
           Go to login
         </button>
       </div>

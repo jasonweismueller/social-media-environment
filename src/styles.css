@@ -972,4 +972,64 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
   line-height: 1.2;
 }
 
+/* === Admin session warning banner === */
+.admin-banner {
+  /* base “card” look, but slim */
+  border: 1px solid var(--line);
+  background: #fff7ed;           /* warm amber-ish */
+  color: #7c2d12;
+  border-radius: .75rem;
+  box-shadow: var(--shadow);
+
+  /* the padding you asked about */
+  padding: .6rem .8rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: 1rem;            /* space below the bar */
+}
+.admin-banner .title {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  font-weight: 700;
+}
+.admin-banner .title .subtle {
+  font-size: .9rem;
+  color: #92400e;                 /* slightly darker than body text */
+}
+.admin-banner .actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+/* === Admin expired-session overlay === */
+.admin-expired-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,.7);
+  display: grid;
+  place-items: center;
+  z-index: 9999;                 /* above menus/tooltips */
+  padding: 16px;                 /* small gutter on mobile */
+}
+.admin-expired-dialog {
+  width: min(520px, 92vw);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+}
+.admin-expired-dialog h3 { margin: 0 0 .5rem 0; }
+.admin-expired-dialog .subtle { margin: 0 0 .75rem 0; }
+.admin-expired-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+
 
