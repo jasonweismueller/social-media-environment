@@ -20,6 +20,9 @@ import {
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
   getAdminRole,
+  startSessionWatch,
+  getAdminSecondsLeft,
+  touchAdminSession,
   buildFeedShareUrl
 } from "./utils";
 
@@ -92,6 +95,9 @@ async function copyText(str) {
     prompt("Copy this URL:", str);
   }
 }
+
+
+
 
 /* ------------------------ Tiny admin stats fetcher ------------------------- */
 async function fetchParticipantsStats(feedId) {
@@ -179,6 +185,10 @@ export function AdminDashboard({
   onPublishPosts, // optional override
   onLogout,
 }) {
+
+  const [sessExpiringSec, setSessExpiringSec] = useState(null); // number | null
+const [sessExpired, setSessExpired] = useState(false);
+const [touching, setTouching] = useState(false);
   const [editing, setEditing] = useState(null);
   const [isNew, setIsNew] = useState(false);
   const [participantsRefreshKey, setParticipantsRefreshKey] = useState(0);
@@ -202,6 +212,42 @@ export function AdminDashboard({
     const s = await fetchParticipantsStats(id);
     setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
   };
+
+  const keepAlive = async () => {
+    try {
+      setTouching(true);
+      const res = await touchAdminSession();
+      if (res?.ok) {
+        const left = getAdminSecondsLeft();
+        if (left != null && left > 120) setSessExpiringSec(null);
+        setSessExpired(false);
+        return;
+      }
+      setSessExpired(true);
+    } catch {
+      setSessExpired(true);
+    } finally {
+      setTouching(false);
+    }
+  };
+
+useEffect(() => {
+  // warn 2 minutes before expiry; tick every second
+  const stop = startSessionWatch({
+    warnAtSec: 120,
+    tickMs: 1000,
+    onExpiring: (leftSec) => setSessExpiringSec(leftSec),
+    onExpired: () => { setSessExpired(true); setSessExpiringSec(0); },
+  });
+  return stop;
+}, []);
+
+useEffect(() => {
+  if (isSaving) return;
+  // when you finish saving, recompute seconds left (just for snappier UI)
+  const left = getAdminSecondsLeft();
+  if (left != null && left > 120) setSessExpiringSec(null);
+}, [isSaving]);
 
 useEffect(() => {
   let alive = true;
@@ -388,6 +434,40 @@ useEffect(() => {
 
   return (
     <div className="admin-shell" style={{ display: "grid", gap: "1rem" }}>
+
+
+      {sessExpiringSec != null && !sessExpired && (
+  <div
+    role="status"
+    className="card"
+    style={{
+      border: "1px solid var(--line)",
+      background: "#fff7ed",
+      color: "#7c2d12",
+      padding: ".6rem .8rem",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: ".75rem",
+    }}
+  >
+    <div>
+      <strong>Admin session is expiring</strong>
+      <span className="subtle" style={{ marginLeft: 8 }}>
+        (~{Math.max(0, Math.floor(sessExpiringSec / 60))}m {sessExpiringSec % 60}s left)
+      </span>
+    </div>
+    <div style={{ display: "flex", gap: ".5rem" }}>
+      <button className="btn ghost" onClick={() => setSessExpiringSec(null)}>
+        Dismiss
+      </button>
+      <button className="btn" onClick={keepAlive} disabled={touching}>
+        {touching ? "Refreshing…" : "Stay signed in"}
+      </button>
+    </div>
+  </div>
+)}
+
       {feedsLoading && (
         <LoadingOverlay
           title="Loading dashboard…"
@@ -1167,6 +1247,42 @@ useEffect(() => {
     subtitle="Creating snapshot & publishing your changes"
   />
 )}
+
+{sessExpired && (
+  <div
+    aria-live="assertive"
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(17,24,39,.7)",
+      display: "grid",
+      placeItems: "center",
+      zIndex: 9999,
+    }}
+  >
+    <div className="card" style={{ maxWidth: 520, padding: "1.2rem" }}>
+      <h3 style={{ marginTop: 0, marginBottom: ".5rem" }}>Session expired</h3>
+      <p className="subtle" style={{ marginTop: 0 }}>
+        Your admin token has expired. Please re-authenticate to continue.
+      </p>
+      <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end" }}>
+        <button className="btn ghost" onClick={keepAlive} disabled={touching}>
+          {touching ? "Trying…" : "Try to refresh"}
+        </button>
+        <button
+          className="btn primary"
+          onClick={() => {
+            setSessExpired(false);
+            onLogout?.(); // will route you back to login
+          }}
+        >
+          Go to login
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 }

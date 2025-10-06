@@ -51,6 +51,7 @@ export const toggleInSet = (setObj, id) => {
 
 
 
+
 export async function adminListUsers() {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
@@ -353,6 +354,80 @@ const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
 export function hasAdminRole(minRole = "viewer") {
   const r = (getAdminRole() || "viewer").toLowerCase();
   return (ROLE_RANK[r] || 0) >= (ROLE_RANK[minRole] || 0);
+}
+
+/** Ping backend to refresh the admin session TTL. */
+export async function touchAdminSession() {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok:false, err:"admin auth required" };
+
+  try {
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ action: "admin_touch", admin_token }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) return { ok:false, err: data?.err || `HTTP ${res.status}` };
+
+    // refresh local expiry using the new ttl (if provided)
+    if (data.ttl_s && data.ttl_s > 0) {
+      setAdminSession({
+        token: admin_token,
+        ttlSec: Number(data.ttl_s),
+        role: data.role || getAdminRole(),
+        email: data.email || getAdminEmail(),
+      });
+    }
+    return { ok:true, ttl_s: Number(data.ttl_s || 0), role: data.role, email: data.email };
+  } catch (e) {
+    return { ok:false, err: String(e?.message || e) };
+  }
+}
+
+/** Returns ms timestamp when the admin token expires, or null if unknown. */
+export function getAdminExpiryMs() {
+  try {
+    const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
+    if (!exp) return null;
+    if (Date.now() > exp) { clearAdminSession(); return null; }
+    return exp;
+  } catch { return null; }
+}
+
+/** Seconds left until expiry (floored), or null if no session. */
+export function getAdminSecondsLeft() {
+  const exp = getAdminExpiryMs();
+  if (!exp) return null;
+  return Math.max(0, Math.floor((exp - Date.now()) / 1000));
+}
+
+/**
+ * Start a lightweight interval that notifies when the session is near expiry or expired.
+ * - onExpiring(leftSec) fires whenever leftSec <= warnAtSec (repeats every tick).
+ * - onExpired() fires once when time hits 0.
+ * Returns a cleanup() function to stop the watcher.
+ */
+export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, onExpired } = {}) {
+  let firedExpired = false;
+
+  const tick = () => {
+    const left = getAdminSecondsLeft();
+    if (left == null) { // no session
+      if (!firedExpired) { firedExpired = true; onExpired?.(); }
+      return;
+    }
+    if (left <= 0) {
+      if (!firedExpired) { firedExpired = true; onExpired?.(); }
+    } else if (left <= warnAtSec) {
+      onExpiring?.(left);
+    }
+  };
+
+  const id = setInterval(tick, tickMs);
+  tick(); // run immediately
+  return () => clearInterval(id);
 }
 
 /** Save admin session returned by backend. Shape: { token, ttlSec, role, email } */
