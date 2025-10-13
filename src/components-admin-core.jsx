@@ -196,6 +196,7 @@ const [touching, setTouching] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showAllFeeds, setShowAllFeeds] = useState(false);
+  const [compactPosts, setCompactPosts] = useState(true);
 
   // --- NEW: wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);     // null = unknown yet
@@ -806,139 +807,218 @@ useEffect(() => {
           </Section>
         </RoleGate>
 
-        {/* Posts */}
-        <Section
-          title={`Posts (${posts.length})`}
-          subtitle="Curate and publish the canonical feed shown to participants."
-          right={
-            <>
-              <button className="btn" onClick={async () => {
-                const fresh = await loadPostsFromBackend(feedId, { force: true });
-                const arr = Array.isArray(fresh) ? fresh : [];
-                setPosts(arr);
-                const row = feeds.find(f => f.feed_id === feedId);
-                if (row) setCachedPosts(feedId, row.checksum, arr);
-              }} title="Reload posts for this feed from backend">
-                Refresh Posts
-              </button>
+{/* Posts */}
+<Section
+  title={`Posts (${posts.length})`}
+  subtitle={compactPosts
+    ? "Compact list of posts. Click a row to edit."
+    : "Curate and publish the canonical feed shown to participants."
+  }
+  right={
+    <>
+      <button
+        className="btn"
+        onClick={async () => {
+          const fresh = await loadPostsFromBackend(feedId, { force: true });
+          const arr = Array.isArray(fresh) ? fresh : [];
+          setPosts(arr);
+          const row = feeds.find(f => f.feed_id === feedId);
+          if (row) setCachedPosts(feedId, row.checksum, arr);
+        }}
+        title="Reload posts for this feed from backend"
+      >
+        Refresh Posts
+      </button>
 
-              <button
-  className="btn ghost"
-  title="Export current posts as JSON"
-  onClick={() => {
-    const payload = {
-      app: "fb",
-      feedId,
-      ts: new Date().toISOString(),
-      posts
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }}
->
-  Export JSON
-</button>
+      <button
+        className="btn ghost"
+        title="Export current posts as JSON"
+        onClick={() => {
+          const payload = { app:"fb", feedId, ts:new Date().toISOString(), posts };
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }}
+      >
+        Export JSON
+      </button>
 
-<label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
-  Import JSON
-  <input
-    type="file"
-    accept="application/json"
-    style={{ display: "none" }}
-    onChange={async (e) => {
-      const f = e.target.files?.[0];
-      if (!f) return;
-      try {
-        const text = await f.text();
-        const parsed = JSON.parse(text);
-        // allow files that are {posts: [...] } or raw array
-        const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
-        if (!Array.isArray(imported)) {
-          alert("This file doesn't look like a posts backup.");
-          return;
-        }
-        if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) {
-          return;
-        }
-        setPosts(imported);
-        alert("Imported. Remember to Save to publish back to the backend.");
-      } catch (err) {
-        console.error(err);
-        alert("Failed to import JSON.");
-      } finally {
-        e.target.value = "";
-      }
-    }}
-  />
-</label>
+      <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
+        Import JSON
+        <input
+          type="file"
+          accept="application/json"
+          style={{ display: "none" }}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            try {
+              const text = await f.text();
+              const parsed = JSON.parse(text);
+              const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
+              if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
+              if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
+              setPosts(imported);
+              alert("Imported. Remember to Save to publish back to the backend.");
+            } catch (err) {
+              console.error(err);
+              alert("Failed to import JSON.");
+            } finally {
+              e.target.value = "";
+            }
+          }}
+        />
+      </label>
 
-              <RoleGate min="editor">
-                <ChipToggle label="Randomize feed order" checked={!!randomize} onChange={setRandomize} />
-                <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
-                  + Random Post
-                </button>
-                <button className="btn ghost" onClick={openNew}>+ Add Post</button>
-                <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
-                  Clear Feed
-                </button>
-              </RoleGate>
-            </>
-          }
+      {/* NEW: Compact view toggle */}
+      <ChipToggle label="Compact view" checked={!!compactPosts} onChange={setCompactPosts} />
+
+      <RoleGate min="editor">
+        <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
+        <button
+          className="btn"
+          onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }}
+          title="Generate a synthetic post"
         >
-          <div style={{ display:"grid", gap: ".75rem" }}>
-            {posts.map((p) => (
-              <div key={p.id} className="card" style={{ padding: ".85rem" }}>
-                <div style={{ display:"flex", alignItems:"center", gap: ".75rem" }}>
-                  <div className="avatar"><img className="avatar-img" alt="" src={p.avatarUrl || pravatar(7)} /></div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap: ".35rem" }}>
-                      <div style={{ fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.author}</div>
-                      {p.badge && <span className="badge" aria-label="verified" />}
-                      {p.showTime !== false && p.time ? (
-                        <span className="subtle">· {p.time}</span>
-                      ) : null}
-                    </div>
-
-                    <div className="subtle" style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                      {p.adType === "ad" ? "Sponsored" : "Organic"} ·
-                      {p.interventionType === "label" ? " False info label" : p.interventionType === "note" ? " Context note" : " No intervention"} ·
-                      <span style={{ fontFamily:"monospace" }}>{p.id}</span>
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", gap: ".5rem" }}>
-                    <RoleGate min="editor">
-                      <button
-                        className="btn ghost"
-                        onClick={() => setEditing({
-                          ...p,
-                          showTime: p.showTime !== false,
-                          avatarUrl:
-                            p.avatarMode === "random" && p.avatarRandomKind === "company"
-                              ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
-                              : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
-                        })}
-                      >
-                        Edit
-                      </button>
-                      <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
-                    </RoleGate>
-                  </div>
+          + Random Post
+        </button>
+        <button className="btn ghost" onClick={openNew}>+ Add Post</button>
+        <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
+          Clear Feed
+        </button>
+      </RoleGate>
+    </>
+  }
+>
+  {/* NEW: Compact table view */}
+  {compactPosts ? (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr className="subtle">
+            <th style={{ textAlign:"left", padding: ".4rem .5rem", width: 36 }} />
+            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 140 }}>Author</th>
+            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 80 }}>Time</th>
+            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 240 }}>Text</th>
+            <th style={{ textAlign:"center", padding: ".4rem .5rem", minWidth: 120 }}>Meta</th>
+            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 220 }}>ID</th>
+            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 220 }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {posts.map((p) => (
+            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
+              <td style={{ padding: ".4rem .5rem", verticalAlign: "middle" }}>
+                <div className="avatar" style={{ width: 28, height: 28 }}>
+                  <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(7)} style={{ width: 28, height: 28 }} />
                 </div>
-
-                <div style={{ marginTop: ".5rem", color: "#374151" }}>
-                  {p.text.slice(0, 180)}{p.text.length > 180 ? "…" : ""}
+              </td>
+              <td style={{ padding: ".4rem .5rem", whiteSpace:"nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontWeight: 600 }}>{p.author || "—"}</span>
+                {p.badge && <span className="badge" aria-label="verified" style={{ marginLeft: 6 }} />}
+              </td>
+              <td style={{ padding: ".4rem .5rem", whiteSpace:"nowrap" }}>
+                {p.showTime !== false && p.time ? p.time : "—"}
+              </td>
+              <td style={{ padding: ".4rem .5rem", color: "#374151", maxWidth: 420, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {p.text || "—"}
+              </td>
+              <td style={{ padding: ".4rem .5rem", textAlign: "center", whiteSpace:"nowrap" }}>
+                {p.adType === "ad" ? "Sponsored" : "Organic"} ·{" "}
+                {p.interventionType === "label" ? "Label" : p.interventionType === "note" ? "Note" : "None"}
+              </td>
+              <td style={{ padding: ".4rem .5rem", fontFamily: "monospace", maxWidth: 260, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                {p.id}
+              </td>
+              <td style={{ padding: ".4rem .5rem" }}>
+                <div style={{ display:"flex", gap: ".35rem", flexWrap:"wrap" }}>
+                  <RoleGate min="editor">
+                    <button
+                      className="btn ghost"
+                      title="Edit post"
+                      onClick={() => setEditing({
+                        ...p,
+                        showTime: p.showTime !== false,
+                        avatarUrl:
+                          p.avatarMode === "random" && p.avatarRandomKind === "company"
+                            ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
+                            : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
+                      })}
+                    >
+                      Edit
+                    </button>
+                    <button className="btn ghost danger" title="Delete post" onClick={() => removePost(p.id)}>
+                      Delete
+                    </button>
+                  </RoleGate>
                 </div>
+              </td>
+            </tr>
+          ))}
+          {!posts.length && (
+            <tr>
+              <td colSpan={7} className="subtle" style={{ padding: ".6rem" }}>
+                No posts yet.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  ) : (
+    // OLD: Card view (unchanged)
+    <div style={{ display:"grid", gap: ".75rem" }}>
+      {posts.map((p) => (
+        <div key={p.id} className="card" style={{ padding: ".75rem" }}>
+          <div style={{ display:"flex", alignItems:"center", gap: ".6rem" }}>
+            <div className="avatar" style={{ width: 36, height: 36 }}>
+              <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(7)} style={{ width: 36, height: 36 }} />
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap: ".35rem" }}>
+                <div style={{ fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.author}</div>
+                {p.badge && <span className="badge" aria-label="verified" />}
+                {p.showTime !== false && p.time ? <span className="subtle">· {p.time}</span> : null}
               </div>
-            ))}
+              <div className="subtle" style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                {p.adType === "ad" ? "Sponsored" : "Organic"} ·
+                {p.interventionType === "label" ? " False info label" : p.interventionType === "note" ? " Context note" : " No intervention"} ·
+                <span style={{ fontFamily:"monospace" }}>{p.id}</span>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap: ".4rem" }}>
+              <RoleGate min="editor">
+                <button
+                  className="btn ghost"
+                  onClick={() => setEditing({
+                    ...p,
+                    showTime: p.showTime !== false,
+                    avatarUrl:
+                      p.avatarMode === "random" && p.avatarRandomKind === "company"
+                        ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
+                        : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
+                  })}
+                >
+                  Edit
+                </button>
+                <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
+              </RoleGate>
+            </div>
           </div>
-        </Section>
+          <div style={{ marginTop: ".5rem", color: "#374151" }}>
+            {p.text.slice(0, 180)}{p.text.length > 180 ? "…" : ""}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</Section>
       </div>
 
       {editing && (
