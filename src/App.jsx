@@ -4,7 +4,7 @@ import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles.css";
 
 import {
-  uid, now, fmtTime, clamp,
+  uid, now, fmtTime, clamp, // (clamp left imported; harmless if unused)
   loadPostsFromBackend, savePostsToBackend,
   sendToSheet, buildMinimalHeader, buildParticipantRow,
   computeFeedId, getDefaultFeedFromBackend,
@@ -78,68 +78,68 @@ export default function App() {
   const [loadingPosts, setLoadingPosts] = useState(true);
 
   // --- Resolve feed from backend default if none provided by URL
-useEffect(() => {
-  if (onAdmin) return; // admin handles its own feeds
-  let alive = true;
+  useEffect(() => {
+    if (onAdmin) return; // admin handles its own feeds
+    let alive = true;
 
-  (async () => {
-    setLoadingPosts(true);
+    (async () => {
+      setLoadingPosts(true);
 
-    // 1) Pull feeds registry + backend default
-    const [feedsList, backendDefault] = await Promise.all([
-      listFeedsFromBackend(),
-      getDefaultFeedFromBackend(),
-    ]);
+      // 1) Pull feeds registry + backend default
+      const [feedsList, backendDefault] = await Promise.all([
+        listFeedsFromBackend(),
+        getDefaultFeedFromBackend(),
+      ]);
 
-    if (!alive) return;
+      if (!alive) return;
 
-    // 2) Decide which feed to show: hash ?feed= wins, else backend default, else first
-    const urlFeedId = getFeedIdFromUrl() /* or getFeedFromHash() if you prefer */;
-    const chosen =
-      (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === urlFeedId) ||
-      (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === backendDefault) ||
-      (Array.isArray(feedsList) ? feedsList : [])[0] ||
-      null;
+      // 2) Decide which feed to show: hash ?feed= wins, else backend default, else first
+      const urlFeedId = getFeedIdFromUrl() /* or getFeedFromHash() if you prefer */;
+      const chosen =
+        (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === urlFeedId) ||
+        (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === backendDefault) ||
+        (Array.isArray(feedsList) ? feedsList : [])[0] ||
+        null;
 
-    if (!chosen) {
-      setActiveFeedId("feed_1");
-      setPosts([]);
+      if (!chosen) {
+        setActiveFeedId("feed_1");
+        setPosts([]);
+        setLoadingPosts(false);
+        return;
+      }
+
+      setActiveFeedId(chosen.feed_id);
+
+      // 3) Try local cache keyed by checksum, else fetch fresh
+      const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
+      if (cached) {
+        setPosts(cached);
+        setLoadingPosts(false);
+        return;
+      }
+
+      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
+      if (!alive) return;
+
+      const arr = Array.isArray(fresh) ? fresh : [];
+      setPosts(arr);
+      setCachedPosts(chosen.feed_id, chosen.checksum, arr);
       setLoadingPosts(false);
-      return;
-    }
+    })();
 
-    setActiveFeedId(chosen.feed_id);
+    return () => { alive = false; };
+  }, [onAdmin]);
 
-    // 3) Try local cache keyed by checksum, else fetch fresh
-    const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
-    if (cached) {
-      setPosts(cached);
-      setLoadingPosts(false);
-      return;
-    }
-
-    const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
-    if (!alive) return;
-
-    const arr = Array.isArray(fresh) ? fresh : [];
-    setPosts(arr);
-    setCachedPosts(chosen.feed_id, chosen.checksum, arr);
-    setLoadingPosts(false);
-  })();
-
-  return () => { alive = false; };
-}, [onAdmin]);
-
-useEffect(() => {
-  if (onAdmin) return;
-  const onHash = () => {
-    const next = getFeedIdFromUrl(); // or getFeedFromHash()
-    // forcing the effect above to rerun by clearing activeFeedId
-    setActiveFeedId(next || null);
-  };
-  window.addEventListener("hashchange", onHash);
-  return () => window.removeEventListener("hashchange", onHash);
-}, [onAdmin]);
+  useEffect(() => {
+    if (onAdmin) return;
+    const onHash = () => {
+      const next = getFeedIdFromUrl(); // or getFeedFromHash()
+      // forcing the effect above to rerun by clearing activeFeedId
+      setActiveFeedId(next || null);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [onAdmin]);
 
   // --- If user lands on /admin with a valid session, show dashboard immediately
   useEffect(() => {
@@ -165,7 +165,7 @@ useEffect(() => {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, loadingPosts, submitted, onAdmin]);
 
-  const dwell = useRef(new Map());
+  // Map of postId -> element, and element -> postId
   const viewRefs = useRef(new Map());
   const elToId = useRef(new WeakMap());
   const registerViewRef = (postId) => (el) => {
@@ -218,77 +218,74 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // IntersectionObserver for per-post view dwell + pause on hidden/blur
+  // ===================== NEW: viewport enter/exit tracking =====================
+  // Emits `vp_enter` when >=50% visible; `vp_exit` when it leaves/hidden/unload.
   useEffect(() => {
     if (!hasEntered || loadingPosts || submitted || onAdmin) return;
 
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        const postId = elToId.current.get(e.target);
-        if (!postId) continue;
-        const prev = dwell.current.get(postId) || { visible: false, tStart: 0, total: 0 };
-        if (e.isIntersecting && e.intersectionRatio > 0) {
-          if (!prev.visible) {
-            const next = { ...prev, visible: true, tStart: now() };
-            dwell.current.set(postId, next);
-            log("view_start", { post_id: postId, ratio: e.intersectionRatio });
+    // Track which posts are currently "entered" (>= 50% visible)
+    const enteredSet = new Set();
+
+    const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const postId = elToId.current.get(e.target);
+          if (!postId) continue;
+
+          const rect = e.target.getBoundingClientRect();
+          const post_h_px = Math.max(0, Math.round(rect.height || 0));
+          const viewport_h_px = window.innerHeight || document.documentElement.clientHeight || 0;
+          const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
+
+          const isEntered = enteredSet.has(postId);
+
+          // Enter when crossing >= 0.5 and intersecting
+          if (e.isIntersecting && vis_frac >= 0.5 && !isEntered) {
+            enteredSet.add(postId);
+            log("vp_enter", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
           }
-        } else if (prev.visible) {
-          const dur = clamp(now() - prev.tStart, 0, 1000 * 60 * 60);
-          const next = { visible: false, tStart: 0, total: prev.total + dur };
-          dwell.current.set(postId, next);
-          log("view_end", { post_id: postId, duration_ms: dur, total_ms: next.total });
+
+          // Exit when it is no longer intersecting OR drops below threshold
+          if ((!e.isIntersecting || vis_frac < 0.5) && isEntered) {
+            enteredSet.delete(postId);
+            log("vp_exit", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
+          }
         }
-      }
-    }, { root: null, rootMargin: "0px", threshold: [0, 0.2, 0.5, 0.8, 1] });
+      },
+      { root: null, rootMargin: "0px", threshold: thresholds }
+    );
 
-    for (const [, el] of viewRefs.current) io.observe(el);
+    for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
-    const inViewport = (el) => {
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      return r.bottom > 0 && r.right > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
-    };
-
-    const pauseVisible = () => {
-      const ts = now();
-      for (const [postId, rec] of dwell.current) {
-        if (rec.visible) {
-          const dur = clamp(ts - rec.tStart, 0, 1000 * 60 * 60);
-          dwell.current.set(postId, { visible: false, tStart: 0, total: rec.total + dur });
-          log("view_end", { post_id: postId, duration_ms: dur, total_ms: rec.total + dur, reason: "page_hidden" });
-        }
-      }
-    };
-
-    const resumeIfVisible = () => {
-      const ts = now();
-      for (const [postId, el] of viewRefs.current) {
+    // Emit exits for all currently entered posts on hide/unload
+    const emitExitForAllEntered = (reason) => {
+      if (!enteredSet.size) return;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      for (const postId of Array.from(enteredSet)) {
+        const el = viewRefs.current.get(postId);
         if (!el) continue;
-        const rec = dwell.current.get(postId) || { visible: false, tStart: 0, total: 0 };
-        if (!rec.visible && inViewport(el)) {
-          dwell.current.set(postId, { visible: true, tStart: ts, total: rec.total });
-          log("view_start", { post_id: postId, ratio: 1, reason: "page_visible" });
-        }
+        const r = el.getBoundingClientRect();
+        const post_h_px = Math.max(0, Math.round(r.height || 0));
+        log("vp_exit", { post_id: postId, vis_frac: 0, post_h_px, viewport_h_px: vh, reason });
+        enteredSet.delete(postId);
       }
     };
 
-    const onVis = () => (document.hidden ? pauseVisible() : resumeIfVisible());
-    const onBlur = pauseVisible;
-    const onFocus = resumeIfVisible;
-
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("focus", onFocus);
+    const onHide = () => emitExitForAllEntered("page_hidden");
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
 
     return () => {
-      io.disconnect();
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("blur", onBlur);
-      window.removeEventListener("focus", onFocus);
+      try { io.disconnect(); } catch {}
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
+  // ===========================================================================
 
   // ✅ Always use the FB feed (no IG component reference)
   const FeedComponent = FBFeed;
@@ -317,6 +314,22 @@ useEffect(() => {
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
+
+                    // Flush exits for any posts still >=50% visible right before submit
+                    try {
+                      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                      for (const [post_id, el] of viewRefs.current) {
+                        if (!el) continue;
+                        const r = el.getBoundingClientRect();
+                        const post_h_px = Math.max(0, Math.round(r.height || 0));
+                        const visH =
+                          Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+                        const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
+                        if (vis_frac >= 0.5) {
+                          log("vp_exit", { post_id, vis_frac, post_h_px, viewport_h_px: vh, reason: "submit" });
+                        }
+                      }
+                    } catch {}
 
                     const ts = now();
                     submitTsRef.current = ts;
@@ -377,7 +390,6 @@ useEffect(() => {
                   setShowComposer={setShowComposer}
                   resetLog={() => {
                     setEvents([]);
-                    dwell.current = new Map();
                     showToast("Event log cleared");
                   }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {

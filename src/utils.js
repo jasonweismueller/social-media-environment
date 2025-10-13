@@ -1,4 +1,3 @@
-
 /* ------------------------------ Basics ------------------------------------ */
 export const uid = () =>
   Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -48,9 +47,6 @@ export const toggleInSet = (setObj, id) => {
  *
  * All require admin_token (owner level for create/update/delete).
  */
-
-
-
 
 export async function adminListUsers() {
   const admin_token = getAdminToken();
@@ -920,6 +916,102 @@ export function computeFeedId(posts = []) {
   return 'feed_' + (h >>> 0).toString(36);
 }
 
+/* --------- Viewport tracker (DICE-style enter/exit with threshold) --------- */
+/**
+ * startViewportTracker({
+ *   root: element or null (defaults to viewport),
+ *   postSelector: CSS selector for post roots (must have data-post-id),
+ *   threshold: fraction (0..1), e.g. 0.5,
+ *   getPostId: (el)=>string,
+ *   onEvent: (evt)=>void,
+ * })
+ *
+ * Emits:
+ *  { action:"vp_enter"|"vp_exit", post_id, ts_ms, timestamp_iso, vis_frac, post_h_px, viewport_h_px, scroll_y }
+ */
+export function startViewportTracker({
+  root = null,
+  postSelector = "[data-post-id]",
+  threshold = 0.5,
+  getPostId = (el) => el?.dataset?.postId || null,
+  onEvent,
+} = {}) {
+  if (typeof IntersectionObserver !== "function") {
+    console.warn("IntersectionObserver not supported; dwell tracking disabled.");
+    return () => {};
+  }
+  const TH = clamp(Number(threshold) || 0.5, 0, 1);
+  const live = new Map(); // post_id -> { entered: true }
+
+  const emit = (action, post_id, entry) => {
+    if (!post_id) return;
+    const el = entry?.target || document.querySelector(`${postSelector}[data-post-id="${post_id}"]`);
+    const rect = el ? el.getBoundingClientRect() : null;
+    const post_h_px = Math.max(0, Math.round(rect?.height || 0));
+    const viewport_h_px = window.innerHeight || (document.documentElement?.clientHeight || 0);
+    const vis_frac = entry ? entry.intersectionRatio : 0;
+    const ts_ms = Date.now();
+
+    onEvent?.({
+      action,
+      post_id,
+      ts_ms,
+      timestamp_iso: new Date(ts_ms).toISOString(),
+      vis_frac: Number(vis_frac.toFixed(4)),
+      post_h_px,
+      viewport_h_px,
+      scroll_y: window.scrollY || window.pageYOffset || 0,
+    });
+  };
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const id = getPostId(e.target);
+        if (!id) continue;
+        const wasIn = !!live.get(id)?.entered;
+        const nowIn = e.intersectionRatio >= TH;
+
+        if (!wasIn && nowIn) {
+          live.set(id, { entered: true });
+          emit("vp_enter", id, e);
+        } else if (wasIn && !nowIn) {
+          live.delete(id);
+          emit("vp_exit", id, e);
+        }
+      }
+    },
+    {
+      root,
+      rootMargin: "0px",
+      threshold: Array.from({ length: 101 }, (_, i) => i / 100),
+    }
+  );
+
+  const observeAll = () => {
+    document.querySelectorAll(postSelector).forEach((el) => io.observe(el));
+  };
+  observeAll();
+
+  const onHide = () => {
+    for (const [post_id] of live) emit("vp_exit", post_id, null);
+    live.clear();
+  };
+  document.addEventListener("visibilitychange", onHide, { passive: true });
+  window.addEventListener("beforeunload", onHide, { passive: true });
+  window.addEventListener("pagehide", onHide, { passive: true });
+
+  const cleanup = () => {
+    try { io.disconnect(); } catch {}
+    onHide();
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("beforeunload", onHide);
+    window.removeEventListener("pagehide", onHide);
+  };
+
+  return Object.assign(cleanup, { observeNew: observeAll });
+}
+
 /* -------- participant row/header builders (client) ------------------------ */
 export function buildMinimalHeader(posts) {
   const base = [
@@ -945,48 +1037,75 @@ export function buildMinimalHeader(posts) {
       `${id}_comment_texts`,    // em dash if none
       `${id}_shared`,
       `${id}_reported_misinfo`,
-      `${id}_dwell_s`
+      `${id}_dwell_s`,          // compat (rounded seconds)
+      `${id}_height_px`,        // NEW: post height (px, max observed)
+      `${id}_dwell_ms_per_px`   // NEW: normalized dwell (ms per px)
     );
   });
 
   return [...base, ...perPost];
 }
 
-// Sum total visible time per post based on view_start/view_end events
-/** Collapse view_start/view_end pairs into total SECONDS per post (rounded). */
-export function computePostDwellSecondsFromEvents(events) {
-  const open = new Map();   // post_id -> tStart (ms)
-  const totalMs = new Map(); // post_id -> total milliseconds
+/* ---- DICE-style dwell aggregation (multi-visit + height-normalized) ------ */
+/**
+ * Returns Map(post_id -> {
+ *   dwell_ms,             // total ms visible across all visits
+ *   dwell_s,              // rounded seconds (compat)
+ *   post_h_px_max,        // max height observed for the post (px)
+ *   dwell_ms_per_px,      // normalized by height (ms per pixel); null if height 0
+ * })
+ *
+ * Accepts both legacy and new events:
+ *  - Legacy:  action="view_start"/"view_end"
+ *  - New:     action="vp_enter"/"vp_exit"  (+ optional post_h_px)
+ */
+export function computePostDwellFromEvents(events = []) {
+  const open = new Map();   // post_id -> { t0 }
+  const total = new Map();  // post_id -> dwell_ms
+  const maxH = new Map();   // post_id -> max observed height
+
+  const isEnter = (a) => a === "vp_enter" || a === "view_start";
+  const isExit  = (a) => a === "vp_exit"  || a === "view_end";
+
+  const flush = (post_id, t1) => {
+    const rec = open.get(post_id);
+    if (!rec) return;
+    const dur = Math.max(0, (t1 ?? Date.now()) - rec.t0);
+    total.set(post_id, (total.get(post_id) || 0) + dur);
+    open.delete(post_id);
+  };
 
   for (const e of events) {
     if (!e || !e.action || !e.post_id) continue;
-    const { action, post_id, ts_ms } = e;
+    const { action, post_id } = e;
+    const ts = Number(e.ts_ms ?? Date.now());
+    const h  = Number(e.post_h_px ?? 0);
+    if (Number.isFinite(h) && h > 0) {
+      maxH.set(post_id, Math.max(h, maxH.get(post_id) || 0));
+    }
 
-    if (action === "view_start") {
-      if (!open.has(post_id)) open.set(post_id, ts_ms);
-    } else if (action === "view_end") {
-      const t0 = open.get(post_id);
-      if (t0 != null) {
-        const dur = Math.max(0, (ts_ms ?? 0) - t0);
-        totalMs.set(post_id, (totalMs.get(post_id) || 0) + dur);
-        open.delete(post_id);
-      }
+    if (isEnter(action)) {
+      if (!open.has(post_id)) open.set(post_id, { t0: ts });
+    } else if (isExit(action)) {
+      flush(post_id, ts);
     }
   }
 
-  // flush any still-open intervals to the last timestamp we saw
-  const lastTs = events.length ? events[events.length - 1].ts_ms : 0;
-  for (const [post_id, t0] of open) {
-    const dur = Math.max(0, lastTs - t0);
-    totalMs.set(post_id, (totalMs.get(post_id) || 0) + dur);
-  }
+  const lastTs = events.length ? Number(events[events.length - 1].ts_ms) || Date.now() : Date.now();
+  for (const [post_id] of open) flush(post_id, lastTs);
 
-  // convert to whole seconds (rounded)
-  const totalSec = new Map();
-  for (const [post_id, ms] of totalMs) {
-    totalSec.set(post_id, Math.round(ms / 1000));
+  const out = new Map();
+  for (const [post_id, ms] of total) {
+    const h_px = Math.max(0, Number(maxH.get(post_id) || 0));
+    const dwell_ms = Math.max(0, Math.round(ms));
+    out.set(post_id, {
+      dwell_ms,
+      dwell_s: Math.round(dwell_ms / 1000),
+      post_h_px_max: h_px,
+      dwell_ms_per_px: h_px > 0 ? dwell_ms / h_px : null,
+    });
   }
-  return totalSec; // Map(post_id -> seconds)
+  return out;
 }
 
 function isoToMs(iso) { try { return new Date(iso).getTime(); } catch { return null; } }
@@ -1020,7 +1139,8 @@ export function buildParticipantRow({
       ? Math.max(0, lastInteractionAfterEnter.ts_ms - entered.ts_ms)
       : null;
 
-  const dwellSecMap = computePostDwellSecondsFromEvents(events);
+  // NEW: DICE-style dwell aggregator (supports vp_* and legacy view_* events)
+  const dwellAgg = computePostDwellFromEvents(events);
 
   // per-post aggregation (single reaction + single comment allowed)
   const per = new Map();
@@ -1116,8 +1236,11 @@ export function buildParticipantRow({
     row[`${id}_shared`]            = agg.shared ? 1 : "";
     row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
 
-    // DWELL
-    row[`${id}_dwell_s`] = dwellSecMap.get(id) ?? 0;
+    // DWELL + HEIGHT (new)
+    const aggD = dwellAgg.get(id);
+    row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;                                            // compat seconds
+    row[`${id}_height_px`]       = aggD && Number.isFinite(aggD.post_h_px_max) ? aggD.post_h_px_max : "";
+    row[`${id}_dwell_ms_per_px`] = aggD && Number.isFinite(aggD.dwell_ms_per_px) ? Math.round(aggD.dwell_ms_per_px) : "";
   }
 
   return row;
@@ -1643,4 +1766,3 @@ export function buildFeedShareUrl(feedRow) {
   // if you still deploy under a subpath, append it here, e.g. `${origin}/social-media-environment`
   return `${origin}/#/?feed=${feedRow.feed_id}`;
 }
-
