@@ -751,6 +751,54 @@ useEffect(() => {
   </div>
 </Section>
 
+{/* Participants */}
+<Section
+  title="Participants"
+  subtitle={
+    <>
+      <span>Live snapshot & interaction aggregates for </span>
+      <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
+      {defaultFeedId === feedId && <span className="subtle"> · default</span>}
+    </>
+  }
+  right={
+    <RoleGate min="owner">
+      <button
+        className="btn ghost danger"
+        title="Delete the participants sheet for this feed (cannot be undone)"
+        onClick={async () => {
+          if (!feedId) return;
+          const okGo = confirm(
+            `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
+          );
+          if (!okGo) return;
+          const ok = await wipeParticipantsOnBackend(feedId);
+          if (ok) {
+            setParticipantsRefreshKey(k => k + 1);
+            alert("Participants wiped.");
+          } else {
+            alert("Failed to wipe participants. Please re-login and try again.");
+            onLogout?.();
+          }
+        }}
+      >
+        Wipe Participants
+      </button>
+    </RoleGate>
+  }
+>
+  {feedId ? (
+    <ParticipantsPanel
+      key={`pp::${feedId}::${participantsRefreshKey}`}
+      feedId={feedId}
+    />
+  ) : (
+    <div className="subtle" style={{ padding: ".5rem 0" }}>
+      No feed selected.
+    </div>
+  )}
+</Section>
+
         {/* Users (owners only) */}
         <RoleGate min="owner">
           <Section title="Users" subtitle="Manage admin users & roles.">
