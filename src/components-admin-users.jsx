@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   adminListUsers, adminCreateUser, adminUpdateUser, adminDeleteUser,
-  hasAdminRole,
+  hasAdminRole, getAdminEmail,            // ⬅️ add this
 } from "./utils";
 
 export function AdminUsersPanel() {
@@ -10,25 +10,80 @@ export function AdminUsersPanel() {
   const [err, setErr] = useState("");
   const [form, setForm] = useState({ email: "", role: "viewer", password: "" });
 
+  // NEW: filtering state
+  const me = getAdminEmail?.() || "";
+  const [showAll, setShowAll] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState(me || "");
+
   const load = async () => {
     setErr("");
     try {
       const res = await adminListUsers();
       if (res?.ok) setUsers(res.users || []);
       else setErr(res?.err || "Failed to load users");
-    } catch (e) { setErr(String(e.message || e)); }
+    } catch (e) {
+      setErr(String(e.message || e));
+    }
   };
 
   useEffect(() => { if (hasAdminRole("owner")) load(); }, []);
+  // If signed-in email changes (unlikely), keep selector in sync
+  useEffect(() => { if (!selectedEmail && me) setSelectedEmail(me); }, [me, selectedEmail]);
 
   if (!hasAdminRole("owner")) return null;
 
+  // Computed filtered list
+  const visibleUsers = useMemo(() => {
+    if (showAll) return users;
+    // When not showing all, show either the selected user or (if not found) fallback to me
+    const pick = selectedEmail || me;
+    return (users || []).filter(u => u.email === pick);
+  }, [showAll, users, selectedEmail, me]);
+
   return (
     <section className="card" style={{ padding: "1rem" }}>
-      <div style={{ display:"flex", justifyContent:"space-between" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap" }}>
         <h3 style={{ margin:0 }}>Users & Roles</h3>
-        <button className="btn" onClick={load} disabled={busy}>Refresh</button>
+        <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          {/* NEW: single-user dropdown (disabled when Show all) */}
+          <label className="subtle" style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <span>View:</span>
+            <select
+              className="select"
+              disabled={showAll || users.length === 0}
+              value={selectedEmail || ""}
+              onChange={(e) => setSelectedEmail(e.target.value)}
+              title="Choose a single user to display"
+              style={{ minWidth: 220 }}
+            >
+              {/* 'Me' (current admin) first, then others */}
+              {me && !users.some(u => u.email === me) ? (
+                <option value={me}>Me ({me})</option>
+              ) : null}
+              {users
+                .slice()
+                .sort((a,b)=>a.email.localeCompare(b.email))
+                .map(u => (
+                  <option key={u.email} value={u.email}>
+                    {u.email === me ? `Me (${u.email})` : u.email}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          {/* NEW: Show all toggle */}
+          <button
+            className={`btn ghost ${showAll ? "active" : ""}`}
+            onClick={() => setShowAll(s => !s)}
+            title={showAll ? "Show only the selected user" : "Show all users"}
+          >
+            {showAll ? "Hide full list" : "Show all"}
+          </button>
+
+          <button className="btn" onClick={load} disabled={busy}>Refresh</button>
+        </div>
       </div>
+
       {err && <div style={{ color:"crimson", marginTop:8 }}>{err}</div>}
 
       <div className="fieldset" style={{ marginTop:12 }}>
@@ -67,19 +122,29 @@ export function AdminUsersPanel() {
       </div>
 
       <div className="fieldset" style={{ marginTop:12 }}>
-        <div className="section-title">Existing</div>
-        {users.length === 0 ? <div className="subtle">No users</div> : (
+        <div className="section-title">
+          {showAll ? "Existing (all users)" : "Existing (single user)"}
+        </div>
+        {(visibleUsers.length === 0) ? (
+          <div className="subtle">No users</div>
+        ) : (
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
-              <tr className="subtle"><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+              <tr className="subtle">
+                <th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
+              </tr>
             </thead>
             <tbody>
-              {users.map(u=>(
+              {visibleUsers.map(u=>(
                 <tr key={u.email} style={{ borderTop:"1px solid var(--line)" }}>
-                  <td style={{ padding:8 }}>{u.email}</td>
+                  <td style={{ padding:8 }}>
+                    {u.email === me ? <strong>Me</strong> : null}
+                    {u.email === me ? " " : null}
+                    {u.email}
+                  </td>
                   <td style={{ padding:8 }}>{u.role}</td>
                   <td style={{ padding:8 }}>{u.disabled ? "disabled" : "active"}</td>
-                  <td style={{ padding:8, display:"flex", gap:6 }}>
+                  <td style={{ padding:8, display:"flex", gap:6, flexWrap:"wrap" }}>
                     <button className="btn" onClick={async ()=>{
                       const role = prompt("Role (viewer/editor/owner):", u.role) || u.role;
                       const res = await adminUpdateUser({ email:u.email, role });
