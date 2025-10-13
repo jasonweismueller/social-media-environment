@@ -800,13 +800,7 @@ useEffect(() => {
   )}
 </Section>
 
-        {/* Users (owners only) */}
-        <RoleGate min="owner">
-          <Section title="Users" subtitle="Manage admin users & roles.">
-            <AdminUsersPanel />
-          </Section>
-        </RoleGate>
-
+       
 {/* Posts (compact-only) */}
 <Section
   title={`Posts (${posts.length})`}
@@ -1010,6 +1004,14 @@ useEffect(() => {
   </div>
 </Section>
       </div>
+
+       {/* Users (owners only) */}
+        <RoleGate min="owner">
+          <Section title="Users" subtitle="Manage admin users & roles.">
+            <AdminUsersPanel />
+          </Section>
+        </RoleGate>
+
 
       {editing && (
         <Modal
