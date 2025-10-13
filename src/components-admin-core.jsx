@@ -196,7 +196,7 @@ const [touching, setTouching] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showAllFeeds, setShowAllFeeds] = useState(false);
-  const [compactPosts, setCompactPosts] = useState(true);
+  const [showAllPosts, setShowAllPosts] = useState(false);
 
   // --- NEW: wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);     // null = unknown yet
@@ -807,12 +807,13 @@ useEffect(() => {
           </Section>
         </RoleGate>
 
-{/* Posts */}
+{/* Posts (compact-only) */}
 <Section
   title={`Posts (${posts.length})`}
-  subtitle={compactPosts
-    ? "Compact list of posts. Click a row to edit."
-    : "Curate and publish the canonical feed shown to participants."
+  subtitle={
+    showAllPosts
+      ? "Compact list of all posts."
+      : `Compact list · showing first ${Math.min(5, posts.length)}`
   }
   right={
     <>
@@ -834,7 +835,7 @@ useEffect(() => {
         className="btn ghost"
         title="Export current posts as JSON"
         onClick={() => {
-          const payload = { app:"fb", feedId, ts:new Date().toISOString(), posts };
+          const payload = { app: "fb", feedId, ts: new Date().toISOString(), posts };
           const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -876,16 +877,18 @@ useEffect(() => {
         />
       </label>
 
-      {/* NEW: Compact view toggle */}
-      <ChipToggle label="Compact view" checked={!!compactPosts} onChange={setCompactPosts} />
+      {/* NEW: show first 5 vs all */}
+      <button
+        className="btn ghost"
+        onClick={() => setShowAllPosts(s => !s)}
+        title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
+      >
+        {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
+      </button>
 
       <RoleGate min="editor">
         <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
-        <button
-          className="btn"
-          onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }}
-          title="Generate a synthetic post"
-        >
+        <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
           + Random Post
         </button>
         <button className="btn ghost" onClick={openNew}>+ Add Post</button>
@@ -896,128 +899,115 @@ useEffect(() => {
     </>
   }
 >
-  {/* NEW: Compact table view */}
-  {compactPosts ? (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr className="subtle">
-            <th style={{ textAlign:"left", padding: ".4rem .5rem", width: 36 }} />
-            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 140 }}>Author</th>
-            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 80 }}>Time</th>
-            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 240 }}>Text</th>
-            <th style={{ textAlign:"center", padding: ".4rem .5rem", minWidth: 120 }}>Meta</th>
-            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 220 }}>ID</th>
-            <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 220 }}>Actions</th>
+  <div style={{ overflowX: "auto" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr className="subtle">
+          <th style={{ textAlign:"left", padding: ".4rem .5rem", width: 36 }} />
+          <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 140 }}>Author</th>
+          <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 80 }}>Time</th>
+          <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 280 }}>Text</th>
+          <th style={{ textAlign:"center", padding: ".4rem .5rem", minWidth: 120 }}>Meta</th>
+          <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 220 }}>ID</th>
+          <th style={{ textAlign:"left", padding: ".4rem .5rem", minWidth: 200 }}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
+          <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
+            <td style={{ padding: ".4rem .5rem", verticalAlign: "middle" }}>
+              <div className="avatar" style={{ width: 28, height: 28 }}>
+                <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(7)} style={{ width: 28, height: 28 }} />
+              </div>
+            </td>
+            <td
+              style={{
+                padding: ".4rem .5rem",
+                whiteSpace:"nowrap",
+                maxWidth: 200,
+                overflow: "hidden",
+                textOverflow: "ellipsis"
+              }}
+              onClick={() => setEditing({
+                ...p,
+                showTime: p.showTime !== false,
+                avatarUrl:
+                  p.avatarMode === "random" && p.avatarRandomKind === "company"
+                    ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
+                    : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
+              })}
+              title="Click to edit"
+            >
+              <span style={{ fontWeight: 600, cursor:"pointer" }}>{p.author || "—"}</span>
+              {p.badge && <span className="badge" aria-label="verified" style={{ marginLeft: 6 }} />}
+            </td>
+            <td style={{ padding: ".4rem .5rem", whiteSpace:"nowrap" }}>
+              {p.showTime !== false && p.time ? p.time : "—"}
+            </td>
+            <td
+              style={{
+                padding: ".4rem .5rem",
+                color: "#374151",
+                maxWidth: 420,
+                overflow:"hidden",
+                textOverflow:"ellipsis",
+                whiteSpace:"nowrap",
+                cursor:"pointer"
+              }}
+              onClick={() => setEditing({
+                ...p,
+                showTime: p.showTime !== false,
+                avatarUrl:
+                  p.avatarMode === "random" && p.avatarRandomKind === "company"
+                    ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
+                    : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
+              })}
+              title="Click to edit"
+            >
+              {p.text || "—"}
+            </td>
+            <td style={{ padding: ".4rem .5rem", textAlign: "center", whiteSpace:"nowrap" }}>
+              {p.adType === "ad" ? "Sponsored" : "Organic"} ·{" "}
+              {p.interventionType === "label" ? "Label" : p.interventionType === "note" ? "Note" : "None"}
+            </td>
+            <td style={{ padding: ".4rem .5rem", fontFamily: "monospace", maxWidth: 260, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              {p.id}
+            </td>
+            <td style={{ padding: ".4rem .5rem" }}>
+              <div style={{ display:"flex", gap: ".35rem", flexWrap:"wrap" }}>
+                <RoleGate min="editor">
+                  <button
+                    className="btn ghost"
+                    title="Edit post"
+                    onClick={() => setEditing({
+                      ...p,
+                      showTime: p.showTime !== false,
+                      avatarUrl:
+                        p.avatarMode === "random" && p.avatarRandomKind === "company"
+                          ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
+                          : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
+                    })}
+                  >
+                    Edit
+                  </button>
+                  <button className="btn ghost danger" title="Delete post" onClick={() => removePost(p.id)}>
+                    Delete
+                  </button>
+                </RoleGate>
+              </div>
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {posts.map((p) => (
-            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
-              <td style={{ padding: ".4rem .5rem", verticalAlign: "middle" }}>
-                <div className="avatar" style={{ width: 28, height: 28 }}>
-                  <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(7)} style={{ width: 28, height: 28 }} />
-                </div>
-              </td>
-              <td style={{ padding: ".4rem .5rem", whiteSpace:"nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
-                <span style={{ fontWeight: 600 }}>{p.author || "—"}</span>
-                {p.badge && <span className="badge" aria-label="verified" style={{ marginLeft: 6 }} />}
-              </td>
-              <td style={{ padding: ".4rem .5rem", whiteSpace:"nowrap" }}>
-                {p.showTime !== false && p.time ? p.time : "—"}
-              </td>
-              <td style={{ padding: ".4rem .5rem", color: "#374151", maxWidth: 420, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                {p.text || "—"}
-              </td>
-              <td style={{ padding: ".4rem .5rem", textAlign: "center", whiteSpace:"nowrap" }}>
-                {p.adType === "ad" ? "Sponsored" : "Organic"} ·{" "}
-                {p.interventionType === "label" ? "Label" : p.interventionType === "note" ? "Note" : "None"}
-              </td>
-              <td style={{ padding: ".4rem .5rem", fontFamily: "monospace", maxWidth: 260, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                {p.id}
-              </td>
-              <td style={{ padding: ".4rem .5rem" }}>
-                <div style={{ display:"flex", gap: ".35rem", flexWrap:"wrap" }}>
-                  <RoleGate min="editor">
-                    <button
-                      className="btn ghost"
-                      title="Edit post"
-                      onClick={() => setEditing({
-                        ...p,
-                        showTime: p.showTime !== false,
-                        avatarUrl:
-                          p.avatarMode === "random" && p.avatarRandomKind === "company"
-                            ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
-                            : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
-                      })}
-                    >
-                      Edit
-                    </button>
-                    <button className="btn ghost danger" title="Delete post" onClick={() => removePost(p.id)}>
-                      Delete
-                    </button>
-                  </RoleGate>
-                </div>
-              </td>
-            </tr>
-          ))}
-          {!posts.length && (
-            <tr>
-              <td colSpan={7} className="subtle" style={{ padding: ".6rem" }}>
-                No posts yet.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  ) : (
-    // OLD: Card view (unchanged)
-    <div style={{ display:"grid", gap: ".75rem" }}>
-      {posts.map((p) => (
-        <div key={p.id} className="card" style={{ padding: ".75rem" }}>
-          <div style={{ display:"flex", alignItems:"center", gap: ".6rem" }}>
-            <div className="avatar" style={{ width: 36, height: 36 }}>
-              <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(7)} style={{ width: 36, height: 36 }} />
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ display:"flex", alignItems:"center", gap: ".35rem" }}>
-                <div style={{ fontWeight:600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.author}</div>
-                {p.badge && <span className="badge" aria-label="verified" />}
-                {p.showTime !== false && p.time ? <span className="subtle">· {p.time}</span> : null}
-              </div>
-              <div className="subtle" style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                {p.adType === "ad" ? "Sponsored" : "Organic"} ·
-                {p.interventionType === "label" ? " False info label" : p.interventionType === "note" ? " Context note" : " No intervention"} ·
-                <span style={{ fontFamily:"monospace" }}>{p.id}</span>
-              </div>
-            </div>
-            <div style={{ display:"flex", gap: ".4rem" }}>
-              <RoleGate min="editor">
-                <button
-                  className="btn ghost"
-                  onClick={() => setEditing({
-                    ...p,
-                    showTime: p.showTime !== false,
-                    avatarUrl:
-                      p.avatarMode === "random" && p.avatarRandomKind === "company"
-                        ? randomAvatarByKind("company", p.id || p.author || "seed", p.author || "")
-                        : (p.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : p.avatarUrl)
-                  })}
-                >
-                  Edit
-                </button>
-                <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
-              </RoleGate>
-            </div>
-          </div>
-          <div style={{ marginTop: ".5rem", color: "#374151" }}>
-            {p.text.slice(0, 180)}{p.text.length > 180 ? "…" : ""}
-          </div>
-        </div>
-      ))}
-    </div>
-  )}
+        ))}
+        {!posts.length && (
+          <tr>
+            <td colSpan={7} className="subtle" style={{ padding: ".6rem" }}>
+              No posts yet.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
 </Section>
       </div>
 
