@@ -199,15 +199,15 @@ export function AdminUsersPanel() {
             ) : null}
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr className="subtle">
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+  <thead>
+    <tr className="subtle">
+      <th style={{ textAlign:"left", padding:8 }}>Email</th>
+      <th style={{ textAlign:"left", padding:8 }}>Role</th>
+      <th style={{ textAlign:"left", padding:8 }}>Status</th>
+      <th style={{ textAlign:"left", padding:8 }}>Actions</th>
+    </tr>
+  </thead>
             <tbody>
               {visibleUsers.map((u) => (
                 <tr key={u.email} style={{ borderTop: "1px solid var(--line)" }}>
