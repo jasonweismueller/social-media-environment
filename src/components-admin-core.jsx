@@ -198,7 +198,28 @@ const [touching, setTouching] = useState(false);
   const [showAllFeeds, setShowAllFeeds] = useState(false);
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
+// collapse + participants paging toggle
+const [participantsCollapsed, setParticipantsCollapsed] = useState(false);
+const [usersCollapsed, setUsersCollapsed] = useState(false);
 const [showAllParticipants, setShowAllParticipants] = useState(false);
+
+function IconChevron({ open }) {
+  // ▾ (open) / ▸ (closed)
+  return <span aria-hidden="true" style={{ fontSize: 16 }}>{open ? "▾" : "▸"}</span>;
+}
+function IconBtn({ title, onClick }) {
+  return (
+    <button
+      className="btn ghost"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      style={{ padding: ".15rem .35rem", minWidth: 0 }}
+    >
+      {title.includes("collapse") || title.includes("expand") ? null : null}
+    </button>
+  );
+}
 
   // --- NEW: wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);     // null = unknown yet
@@ -755,46 +776,25 @@ useEffect(() => {
 </Section>
 
 <Section
-  title={
-    <button
-      className="btn ghost"
-      onClick={() => setPpOpen(o => !o)}
-      aria-expanded={ppOpen ? "true" : "false"}
-      title={ppOpen ? "Collapse" : "Expand"}
-      style={{ display:"flex", alignItems:"center", gap:8, padding:".25rem .5rem" }}
-    >
-      <span aria-hidden="true" style={{
-        display:"inline-block", transition:"transform .15s ease",
-        transform: ppOpen ? "rotate(90deg)" : "rotate(0deg)"
-      }}>▸</span>
-      <span style={{ fontWeight:600 }}>Participants</span>
-    </button>
-  }
+  title="Participants"
   subtitle={
     <>
-      <span>Live snapshot &amp; interaction aggregates for </span>
+      <span>Live snapshot & interaction aggregates for </span>
       <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
       {defaultFeedId === feedId && <span className="subtle"> · default</span>}
     </>
   }
   right={
-    <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-      <button
-        className="btn"
-        title="Reload participants for this feed"
-        onClick={() => setParticipantsRefreshKey(k => k + 1)}
-        style={{ padding: ".25rem .6rem" }}
-      >
-        Refresh
-      </button>
+    <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
+      {/* Show first 5 / all toggle */}
       <button
         className="btn ghost"
         onClick={() => setShowAllParticipants(s => !s)}
-        title={showAllParticipants ? "Show only the first 5" : "Show all participants"}
-        style={{ padding: ".25rem .6rem" }}
+        title={showAllParticipants ? "Show only the first 5 participants" : "Show all participants"}
       >
         {showAllParticipants ? "Show first 5" : "Show all"}
       </button>
+
       <RoleGate min="owner">
         <button
           className="btn ghost danger"
@@ -814,15 +814,26 @@ useEffect(() => {
               onLogout?.();
             }
           }}
-          style={{ padding: ".25rem .6rem" }}
         >
-          Wipe Participants
+          Wipe
         </button>
       </RoleGate>
+
+      {/* Chevron — icon-only, top-right; does not replace heading */}
+      <button
+        className="btn ghost"
+        onClick={() => setParticipantsCollapsed(v => !v)}
+        aria-label={participantsCollapsed ? "Expand participants" : "Collapse participants"}
+        title={participantsCollapsed ? "Expand" : "Collapse"}
+        style={{ padding: ".15rem .35rem", minWidth: 0 }}
+      >
+        <IconChevron open={!participantsCollapsed} />
+      </button>
     </div>
   }
 >
-  {ppOpen ? (
+  {/* Body collapses, header stays */}
+  {!participantsCollapsed ? (
     feedId ? (
       <ParticipantsPanel
         key={`pp::${feedId}::${participantsRefreshKey}`}
