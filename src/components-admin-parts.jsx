@@ -29,12 +29,16 @@ function sShort(n) {
   return `${Math.round(n)}s`;
 }
 
-export function StatCard({ title, value, sub }) {
+export function StatCard({ title, value, sub, compact = false }) {
   return (
-    <div className="card" style={{ padding: ".75rem 1rem" }}>
-      <div style={{ fontSize: ".8rem", color: "#6b7280" }}>{title}</div>
-      <div style={{ fontSize: "1.25rem", fontWeight: 700 }}>{value}</div>
-      {sub && <div style={{ fontSize: ".8rem", color: "#6b7280", marginTop: 4 }}>{sub}</div>}
+    <div className="card" style={{ padding: compact ? ".5rem .75rem" : ".75rem 1rem" }}>
+      <div style={{ fontSize: compact ? ".75rem" : ".8rem", color: "#6b7280" }}>{title}</div>
+      <div style={{ fontSize: compact ? "1.1rem" : "1.25rem", fontWeight: 700 }}>{value}</div>
+      {sub && (
+        <div style={{ fontSize: compact ? ".75rem" : ".8rem", color: "#6b7280", marginTop: 4 }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -127,7 +131,13 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
 }
 
 /* ----------------------------- Participants ------------------------------ */
-export function ParticipantsPanel({ feedId }) {
+/** 
+ * Props:
+ * - feedId: string (required)
+ * - compact?: boolean (optional) — tighter spacing/typography
+ * - limit?: number (optional) — if provided, show only the first N submissions and hide "Show more"
+ */
+export function ParticipantsPanel({ feedId, compact = false, limit }) {
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -218,7 +228,9 @@ export function ParticipantsPanel({ feedId }) {
     return a;
   }, [rows]);
 
-  const visible = useMemo(() => sorted.slice(0, pageSize), [sorted, pageSize]);
+  // If limit is provided, ignore pagination and cap to the first N.
+  const effectivePageSize = typeof limit === "number" && limit >= 0 ? Math.min(limit, sorted.length) : pageSize;
+  const visible = useMemo(() => sorted.slice(0, effectivePageSize), [sorted, effectivePageSize]);
 
   // Compute avg dwell seconds per post by scanning the roster rows (handles both _dwell_s and legacy _dwell_ms)
   const avgDwellSByPost = useMemo(() => {
@@ -269,16 +281,25 @@ export function ParticipantsPanel({ feedId }) {
     });
   }, [showPerPost, summary, avgDwellSByPost]);
 
+  // ----- compact toggles (spacing/typography) -----
+  const padCell = compact ? ".3rem .25rem" : ".4rem .25rem";
+  const fsTable = compact ? ".85rem" : ".9rem";
+  const wrapperPad = compact ? ".75rem 1rem" : "1rem";
+  const headerGap = compact ? ".35rem" : ".5rem";
+  const statsGap = compact ? ".4rem" : ".5rem";
+
   return (
-    <div className="card" style={{ padding: "1rem" }}>
+    <div className="card" style={{ padding: wrapperPad }}>
       {/* header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".5rem", flexWrap: "wrap" }}>
-        <h4 style={{ margin: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
+        <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
           Participants ({nfCompact.format(totalRows)})
           {feedId ? <span className="subtle"> · {feedId}</span> : null}
         </h4>
-        <div style={{ display: "flex", gap: ".5rem", flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => refresh(false)}>Refresh</button>
+        <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap" }}>
+          <button className="btn" onClick={() => refresh(false)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
+            Refresh
+          </button>
           <button
             className="btn"
             onClick={() => {
@@ -340,6 +361,7 @@ export function ParticipantsPanel({ feedId }) {
               document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
             }}
             disabled={!rows?.length}
+            style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Download CSV
           </button>
@@ -347,52 +369,57 @@ export function ParticipantsPanel({ feedId }) {
       </div>
 
       {/* stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: ".5rem", marginTop: ".75rem" }}>
-        <StatCard title="Total" value={nfCompact.format(summary?.counts?.total ?? totalRows)} />
-        <StatCard title="Completed" value={nfCompact.format(summary?.counts?.completed ?? 0)} sub={`${(((summary?.counts?.completionRate ?? 0) * 100).toFixed(1))}% completion`} />
-        <StatCard title="Avg time to submit" value={ms(summary?.timing?.avgEnterToSubmit)} />
-        <StatCard title="Median time to submit" value={ms(summary?.timing?.medEnterToSubmit)} />
-        <StatCard title="Avg last interaction" value={ms(summary?.timing?.avgEnterToLastInteraction)} />
-        <StatCard title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+        gap: statsGap,
+        marginTop: compact ? ".5rem" : ".75rem"
+      }}>
+        <StatCard compact={compact} title="Total" value={nfCompact.format(summary?.counts?.total ?? totalRows)} />
+        <StatCard compact={compact} title="Completed" value={nfCompact.format(summary?.counts?.completed ?? 0)} sub={`${(((summary?.counts?.completionRate ?? 0) * 100).toFixed(1))}% completion`} />
+        <StatCard compact={compact} title="Avg time to submit" value={ms(summary?.timing?.avgEnterToSubmit)} />
+        <StatCard compact={compact} title="Median time to submit" value={ms(summary?.timing?.medEnterToSubmit)} />
+        <StatCard compact={compact} title="Avg last interaction" value={ms(summary?.timing?.avgEnterToLastInteraction)} />
+        <StatCard compact={compact} title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
       </div>
 
       {/* per-post aggregate toggle */}
-      <div style={{ marginTop: "1rem" }}>
-        <button className="btn ghost" onClick={() => setShowPerPost(v => !v)}>
+      <div style={{ marginTop: compact ? ".6rem" : "1rem" }}>
+        <button className="btn ghost" onClick={() => setShowPerPost(v => !v)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
           {showPerPost ? "Hide per-post interactions" : "Show per-post interactions"}
         </button>
       </div>
 
       {showPerPost && perPostList.length > 0 && (
         <div style={{ marginTop: ".5rem", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".9rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: fsTable }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Post ID</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Reacted</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Expandable</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Expanded</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Expand rate</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Commented</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Shared</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Reported</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Avg dwell (s)</th>
+                <th style={{ textAlign: "left",  padding: padCell }}>Post ID</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Reacted</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Expand rate</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Commented</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Shared</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Avg dwell (s)</th>
               </tr>
             </thead>
             <tbody>
               {perPostList.map((p) => (
                 <tr key={p.id} style={{ borderBottom: "1px solid var(--line)" }}>
-                  <td style={{ padding: ".35rem .25rem", fontFamily: "monospace" }}>{p.id}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.reacted)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>
+                  <td style={{ padding: padCell, fontFamily: "monospace" }}>{p.id}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reacted)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>
                     {p.expandRate == null ? "—" : `${Math.round(p.expandRate * 100)}%`}
                   </td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{p.avgDwellS == null ? "—" : sShort(p.avgDwellS)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
+                  <td style={{ padding: padCell, textAlign: "right" }}>{p.avgDwellS == null ? "—" : sShort(p.avgDwellS)}</td>
                 </tr>
               ))}
             </tbody>
@@ -401,12 +428,14 @@ export function ParticipantsPanel({ feedId }) {
       )}
 
       {/* latest submissions */}
-      <h5 style={{ margin: "1rem 0 .5rem" }}>Latest submissions</h5>
+      <h5 style={{ margin: compact ? ".75rem 0 .4rem" : "1rem 0 .5rem", fontSize: compact ? ".95rem" : "1rem" }}>
+        Latest submissions
+      </h5>
       {visible.length === 0 ? (
-        <div className="subtle" style={{ padding: ".5rem 0" }}>No submissions yet.</div>
+        <div className="subtle" style={{ padding: ".5rem 0", fontSize: compact ? ".85rem" : ".9rem" }}>No submissions yet.</div>
       ) : (
         <>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: ".9rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: fsTable }}>
             <colgroup>
               <col style={{ width: "36%" }} />
               <col style={{ width: "34%" }} />
@@ -415,27 +444,28 @@ export function ParticipantsPanel({ feedId }) {
             </colgroup>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Participant</th>
-                <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Submitted At</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Time to Submit</th>
-                <th style={{ textAlign: "right", padding: ".4rem .25rem" }} />
+                <th style={{ textAlign: "left",  padding: padCell }}>Participant</th>
+                <th style={{ textAlign: "left",  padding: padCell }}>Submitted At</th>
+                <th style={{ textAlign: "right", padding: padCell }}>Time to Submit</th>
+                <th style={{ textAlign: "right", padding: padCell }} />
               </tr>
             </thead>
             <tbody>
               {visible.map((r) => (
                 <tr key={r.session_id} style={{ borderBottom: "1px solid var(--line)" }}>
-                  <td style={{ padding: ".35rem .25rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <td style={{ padding: padCell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.participant_id || "—"}
                   </td>
-                  <td style={{ padding: ".35rem .25rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <td style={{ padding: padCell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.submitted_at_iso || "—"}
                   </td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>
+                  <td style={{ padding: padCell, textAlign: "right" }}>
                     {Number.isFinite(Number(r.ms_enter_to_submit)) ? ms(Number(r.ms_enter_to_submit)) : "—"}
                   </td>
-                  <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>
+                  <td style={{ padding: padCell, textAlign: "right" }}>
                     <button
                       className="btn ghost"
+                      style={{ padding: compact ? ".25rem .6rem" : undefined }}
                       onClick={() => {
                         try {
                           const perPostHash = extractPerPostFromRosterRow(r) || {};
@@ -487,9 +517,10 @@ export function ParticipantsPanel({ feedId }) {
             </tbody>
           </table>
 
-          {visible.length < sorted.length && (
+          {/* "Show more" is hidden when an explicit `limit` prop is provided */}
+          {typeof limit !== "number" && visible.length < sorted.length && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: ".5rem" }}>
-              <button className="btn" onClick={() => setPageSize(s => Math.min(s + 25, sorted.length))}>
+              <button className="btn" onClick={() => setPageSize(s => Math.min(s + 25, sorted.length))} style={{ padding: compact ? ".3rem .75rem" : undefined }}>
                 Show more
               </button>
             </div>
