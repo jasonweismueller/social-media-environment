@@ -8,7 +8,8 @@ import {
   sendToSheet, buildMinimalHeader, buildParticipantRow,
   computeFeedId, getDefaultFeedFromBackend,
   hasAdminSession, adminLogout, listFeedsFromBackend,
-  getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION
+  getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION,
+  VIEWPORT_ENTER_FRACTION_IMAGE,                 // ⬅️ NEW: per-image threshold
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -34,6 +35,16 @@ function getUrlFlag(key) {
     const hashVal = new URLSearchParams(hashQuery).get(key);
     return searchVal ?? hashVal;
   } catch { return null; }
+}
+
+// Helper: does a post element contain an inline image/media?
+function elementHasImage(el) {
+  if (!el) return false;
+  if (el.dataset?.hasImage === "1") return true; // allow explicit opt-in from markup
+  return !!el.querySelector?.(
+    // broadened selectors; tweak to your DOM
+    "img, picture, video, [data-kind='image'], .media img, .media picture, .image, [data-has-image='1']"
+  );
 }
 
 export default function App() {
@@ -280,6 +291,9 @@ export default function App() {
     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
       : 0.5;
+    const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+      ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+      : ENTER_FRAC;
 
     const enteredSet = new Set();
     const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
@@ -297,12 +311,18 @@ export default function App() {
           // Recompute vis_frac with the same math as measureVis (matches IO)
           const m = measureVis(postId);
           const vis_frac = m ? m.vis_frac : Number((e.intersectionRatio || 0).toFixed(4));
-          const nowIn = e.isIntersecting && vis_frac >= ENTER_FRAC;
+
+          // Per-post threshold (image vs non-image)
+          const isImg = elementHasImage(el);
+          const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+
+          const nowIn = e.isIntersecting && vis_frac >= TH;
           const wasIn = enteredSet.has(postId);
 
           if (DEBUG_VP) {
             el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
             el.dataset.state = nowIn ? "IN" : "OUT";
+            el.dataset.th = `${Math.round(TH * 100)}%`; // optional, for debugging which threshold applied
             el.classList.toggle("__vp-in", nowIn);
             el.classList.toggle("__vp-out", !nowIn);
           }
@@ -369,19 +389,30 @@ export default function App() {
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
+
                     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
                       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
                       : 0.5;
+                    const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                      ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                      : ENTER_FRAC;
+
                     const DEBUG_VP = getUrlFlag("debugvp") === "1";
 
-                    for (const [post_id] of viewRefs.current) {
+                    for (const [post_id, elNode] of viewRefs.current) {
                       const m = measureVis(post_id);
                       if (!m) continue;
                       const { vis_frac, el } = m;
-                      if (vis_frac >= ENTER_FRAC) {
+
+                      // use the same per-post threshold
+                      const isImg = elementHasImage(elNode || el);
+                      const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+
+                      if (vis_frac >= TH) {
                         if (DEBUG_VP && el) {
                           el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
                           el.dataset.state = "OUT";
+                          el.dataset.th = `${Math.round(TH * 100)}%`;
                           el.classList.remove("__vp-in");
                           el.classList.add("__vp-out");
                         }
