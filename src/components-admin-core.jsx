@@ -1053,7 +1053,7 @@ useEffect(() => {
 </Section>
       </div>
 
-       {/* Users (owners only) */}
+{/* Users (owners only) */}
 <RoleGate min="owner">
   <Section
     title="Users"
@@ -1070,7 +1070,7 @@ useEffect(() => {
       </button>
     }
   >
-    {!usersCollapsed ? <AdminUsersPanel /> : null}
+    {!usersCollapsed ? <AdminUsersPanel embed /> : null}
   </Section>
 </RoleGate>
 
