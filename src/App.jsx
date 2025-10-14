@@ -229,96 +229,97 @@ export default function App() {
     return () => window.removeEventListener("scroll", onScroll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+// ===================== NEW: viewport enter/exit tracking =====================
+useEffect(() => {
+  if (!hasEntered || loadingPosts || submitted || onAdmin) return;
 
-  // ===================== NEW: viewport enter/exit tracking =====================
-  // Emits `vp_enter` when >=50% visible; `vp_exit` when it leaves/hidden/unload.
-  useEffect(() => {
-    if (!hasEntered || loadingPosts || submitted || onAdmin) return;
+  // Debug flag: add ?debugvp=1 to URL to see outlines/badges
+  const DEBUG_VP =
+    new URLSearchParams(window.location.search).get("debugvp") === "1";
+  if (DEBUG_VP) document.body.classList.add("debug-vp");
+  else document.body.classList.remove("debug-vp");
 
-    // Track which posts are currently "entered" (>= 50% visible)
-    const enteredSet = new Set();
+  const ENTER_FRAC = 0.5; // same threshold as your logic
+  const enteredSet = new Set();
 
-    const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const postId = elToId.current.get(e.target);
-          if (!postId) continue;
+  const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const postId = elToId.current.get(e.target);
+        if (!postId) continue;
 
-          const rect = e.target.getBoundingClientRect();
-          const post_h_px = Math.max(0, Math.round(rect.height || 0));
-          const viewport_h_px = window.innerHeight || document.documentElement.clientHeight || 0;
-          const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
+        const el = e.target;
+        const rect = el.getBoundingClientRect();
+        const post_h_px = Math.max(0, Math.round(rect.height || 0));
+        const viewport_h_px = window.innerHeight || document.documentElement.clientHeight || 0;
 
-          const isEntered = enteredSet.has(postId);
+        // visibility fraction (0..1)
+        const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
+        const nowIn = e.isIntersecting && vis_frac >= ENTER_FRAC;
+        const wasIn = enteredSet.has(postId);
 
-          // Enter when crossing >= 0.5 and intersecting
-          if (e.isIntersecting && vis_frac >= VIEWPORT_ENTER_FRACTION && !isEntered) {
-            enteredSet.add(postId);
-            log("vp_enter", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
-          }
+        // --- DEBUG cosmetics (always safe; only visible if ?debugvp=1) ---
+        // Show % and state on the post node
+        el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+        el.dataset.state = nowIn ? "IN" : "OUT";
+        el.classList.toggle("__vp-in", nowIn);
+        el.classList.toggle("__vp-out", !nowIn);
+        // ---------------------------------------------------------------
 
-          // Exit when it is no longer intersecting OR drops below threshold
-          if ((!e.isIntersecting || vis_frac < VIEWPORT_ENTER_FRACTION) && isEntered) {
-            enteredSet.delete(postId);
-            log("vp_exit", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
-          }
+        // Enter event
+        if (nowIn && !wasIn) {
+          enteredSet.add(postId);
+          log("vp_enter", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
         }
-      },
-      { root: null, rootMargin: "0px", threshold: thresholds }
-    );
 
-    for (const [, el] of viewRefs.current) if (el) io.observe(el);
-
-    // ---------- Robust seeding of initial enters ----------
-    const seedNow = (reason = "seed") => {
-      try {
-        for (const [post_id] of viewRefs.current) {
-          if (enteredSet.has(post_id)) continue;
-          const m = measureVis(post_id);
-          if (m && m.vis_frac >= 0.5) {
-            enteredSet.add(post_id);
-            log("vp_enter", { post_id, ...m, reason });
-          }
+        // Exit event
+        if (!nowIn && wasIn) {
+          enteredSet.delete(postId);
+          log("vp_exit", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
         }
-      } catch {}
-    };
-    // seed immediately (after observe), then after layout settles
-    seedNow("seed_immediate");
-    requestAnimationFrame(() => seedNow("seed_raf"));
-    setTimeout(() => seedNow("seed_timeout"), 0);
-
-    // re-seed when page becomes visible or gains focus
-    const onVisible = () => { if (!document.hidden) seedNow("seed_visible"); };
-    document.addEventListener("visibilitychange", onVisible, { passive: true });
-    window.addEventListener("focus", onVisible, { passive: true });
-
-    // Emit exits for all currently entered posts on hide/unload
-    const emitExitForAllEntered = (reason) => {
-      if (!enteredSet.size) return;
-      for (const postId of Array.from(enteredSet)) {
-        const m = measureVis(postId) || { vis_frac: 0, post_h_px: 0, viewport_h_px: (window.innerHeight || 0) };
-        log("vp_exit", { post_id: postId, ...m, reason });
-        enteredSet.delete(postId);
       }
-    };
+    },
+    { root: null, rootMargin: "0px", threshold: thresholds }
+  );
 
-    const onHide = () => emitExitForAllEntered("page_hidden");
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", onHide);
-    window.addEventListener("beforeunload", onHide);
+  for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
-    return () => {
-      try { io.disconnect(); } catch {}
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onVisible);
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", onHide);
-      window.removeEventListener("beforeunload", onHide);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
-  // ===========================================================================
+  // Emit exits (and flip debug classes) for all currently entered posts on hide/unload
+  const emitExitForAllEntered = (reason) => {
+    if (!enteredSet.size) return;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    for (const postId of Array.from(enteredSet)) {
+      const el = viewRefs.current.get(postId);
+      if (!el) continue;
+
+      const r = el.getBoundingClientRect();
+      const post_h_px = Math.max(0, Math.round(r.height || 0));
+      // debug cosmetics
+      el.dataset.vis = `0%`;
+      el.dataset.state = "OUT";
+      el.classList.remove("__vp-in");
+      el.classList.add("__vp-out");
+
+      log("vp_exit", { post_id: postId, vis_frac: 0, post_h_px, viewport_h_px: vh, reason });
+      enteredSet.delete(postId);
+    }
+  };
+
+  const onHide = () => emitExitForAllEntered("page_hidden");
+  document.addEventListener("visibilitychange", onHide);
+  window.addEventListener("pagehide", onHide);
+  window.addEventListener("beforeunload", onHide);
+
+  return () => {
+    try { io.disconnect(); } catch {}
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("pagehide", onHide);
+    window.removeEventListener("beforeunload", onHide);
+  };
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
+// ===========================================================================
 
   // ✅ Always use the FB feed (no IG component reference)
   const FeedComponent = FBFeed;
@@ -348,6 +349,8 @@ export default function App() {
                     if (submitted || disabled) return;
                     setDisabled(true);
 
+                    
+
                     // Flush exits for any posts still >=50% visible right before submit
                     try {
                       for (const [post_id] of viewRefs.current) {
@@ -357,6 +360,17 @@ export default function App() {
                         }
                       }
                     } catch {}
+
+                    // inside your onSubmit flush loop, after computing vis_frac…
+if (vis_frac >= 0.5) {
+  // debug cosmetics
+  el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+  el.dataset.state = "OUT";
+  el.classList.remove("__vp-in");
+  el.classList.add("__vp-out");
+
+  log("vp_exit", { post_id, vis_frac, post_h_px, viewport_h_px: vh, reason: "submit" });
+}
 
                     const ts = now();
                     submitTsRef.current = ts;
