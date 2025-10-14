@@ -1062,7 +1062,7 @@ body.debug-vp::before {
 }
 
 .debug-vp [data-post-id]::after {
-  content: attr(data-vis) " · " attr(data-state);
+  content: attr(data-vis) " · " attr(data-state) " · th=" attr(data-th);
   position: absolute;
   top: 6px;
   right: 6px;
