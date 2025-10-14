@@ -921,28 +921,51 @@ export function computeFeedId(posts = []) {
  * startViewportTracker({
  *   root: element or null (defaults to viewport),
  *   postSelector: CSS selector for post roots (must have data-post-id),
- *   threshold: fraction (0..1), e.g. 0.5,
+ *   threshold: fraction (0..1) for non-image posts,
+ *   thresholdImage: fraction (0..1) for image posts,
  *   getPostId: (el)=>string,
+ *   hasImage: (el)=>boolean   // optional: custom detector for "image posts"
+ *   thresholdFor: (el, postId)=>number // optional: per-post override
  *   onEvent: (evt)=>void,
  * })
  *
  * Emits:
  *  { action:"vp_enter"|"vp_exit", post_id, ts_ms, timestamp_iso, vis_frac, post_h_px, viewport_h_px, scroll_y }
  */
-export const VIEWPORT_ENTER_FRACTION = 0.8; // one place to change the threshold
+export const VIEWPORT_ENTER_FRACTION = 0.8;          // default for non-image posts
+export const VIEWPORT_ENTER_FRACTION_IMAGE = 0.6;    // default for image posts (tune as needed)
 
 export function startViewportTracker({
   root = null,
   postSelector = "[data-post-id]",
   threshold = VIEWPORT_ENTER_FRACTION,
+  thresholdImage = VIEWPORT_ENTER_FRACTION_IMAGE,
   getPostId = (el) => el?.dataset?.postId || null,
+  hasImage,            // optional override
+  thresholdFor,        // optional override per element/post
   onEvent,
 } = {}) {
   if (typeof IntersectionObserver !== "function") {
     console.warn("IntersectionObserver not supported; dwell tracking disabled.");
     return () => {};
   }
-  const TH = clamp(Number(threshold) || VIEWPORT_ENTER_FRACTION, 0, 1);
+
+  const TH_BASE = clamp(Number(threshold) || VIEWPORT_ENTER_FRACTION, 0, 1);
+  const TH_IMG  = clamp(Number(thresholdImage) || VIEWPORT_ENTER_FRACTION_IMAGE, 0, 1);
+
+  // Default image detector (DOM-based). You can override with hasImage option.
+  const defaultHasImage = (el) => {
+    if (!el) return false;
+    if (el.dataset && el.dataset.hasImage === "1") return true;
+    // common hooks in your UI:
+    return !!el.querySelector?.(
+      ".image-btn img, .image-btn svg, [data-kind='image'], .media img, .media svg"
+    );
+  };
+  const isImagePost = (el) => (typeof hasImage === "function" ? !!hasImage(el) : defaultHasImage(el));
+
+  // We use a dense threshold list so per-element thresholds still trigger.
+  const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
   const live = new Map(); // post_id -> { entered: true }
 
   const emit = (action, post_id, entry) => {
@@ -959,7 +982,7 @@ export function startViewportTracker({
       post_id,
       ts_ms,
       timestamp_iso: new Date(ts_ms).toISOString(),
-      vis_frac: Number(vis_frac.toFixed(4)),
+      vis_frac: Number((vis_frac || 0).toFixed(4)),
       post_h_px,
       viewport_h_px,
       scroll_y: window.scrollY || window.pageYOffset || 0,
@@ -969,10 +992,18 @@ export function startViewportTracker({
   const io = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
-        const id = getPostId(e.target);
+        const el = e.target;
+        const id = getPostId(el);
         if (!id) continue;
+
+        // Decide threshold for THIS element
+        const th =
+          typeof thresholdFor === "function"
+            ? clamp(Number(thresholdFor(el, id)) || TH_BASE, 0, 1)
+            : (isImagePost(el) ? TH_IMG : TH_BASE);
+
         const wasIn = !!live.get(id)?.entered;
-        const nowIn = e.intersectionRatio >= TH;
+        const nowIn = (e.intersectionRatio || 0) >= th;
 
         if (!wasIn && nowIn) {
           live.set(id, { entered: true });
@@ -983,11 +1014,7 @@ export function startViewportTracker({
         }
       }
     },
-    {
-      root,
-      rootMargin: "0px",
-      threshold: Array.from({ length: 101 }, (_, i) => i / 100),
-    }
+    { root, rootMargin: "0px", threshold: thresholds }
   );
 
   const observeAll = () => {
