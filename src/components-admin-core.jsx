@@ -197,6 +197,8 @@ const [touching, setTouching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showAllFeeds, setShowAllFeeds] = useState(false);
   const [showAllPosts, setShowAllPosts] = useState(false);
+  const [ppOpen, setPpOpen] = useState(true);
+const [showAllParticipants, setShowAllParticipants] = useState(false);
 
   // --- NEW: wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);     // null = unknown yet
@@ -752,54 +754,89 @@ useEffect(() => {
   </div>
 </Section>
 
-{/* Participants */}
 <Section
-  title="Participants"
+  title={
+    <button
+      className="btn ghost"
+      onClick={() => setPpOpen(o => !o)}
+      aria-expanded={ppOpen ? "true" : "false"}
+      title={ppOpen ? "Collapse" : "Expand"}
+      style={{ display:"flex", alignItems:"center", gap:8, padding:".25rem .5rem" }}
+    >
+      <span aria-hidden="true" style={{
+        display:"inline-block", transition:"transform .15s ease",
+        transform: ppOpen ? "rotate(90deg)" : "rotate(0deg)"
+      }}>▸</span>
+      <span style={{ fontWeight:600 }}>Participants</span>
+    </button>
+  }
   subtitle={
     <>
-      <span>Live snapshot & interaction aggregates for </span>
+      <span>Live snapshot &amp; interaction aggregates for </span>
       <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
       {defaultFeedId === feedId && <span className="subtle"> · default</span>}
     </>
   }
   right={
-    <RoleGate min="owner">
+    <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
       <button
-        className="btn ghost danger"
-        title="Delete the participants sheet for this feed (cannot be undone)"
-        onClick={async () => {
-          if (!feedId) return;
-          const okGo = confirm(
-            `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
-          );
-          if (!okGo) return;
-          const ok = await wipeParticipantsOnBackend(feedId);
-          if (ok) {
-            setParticipantsRefreshKey(k => k + 1);
-            alert("Participants wiped.");
-          } else {
-            alert("Failed to wipe participants. Please re-login and try again.");
-            onLogout?.();
-          }
-        }}
+        className="btn"
+        title="Reload participants for this feed"
+        onClick={() => setParticipantsRefreshKey(k => k + 1)}
+        style={{ padding: ".25rem .6rem" }}
       >
-        Wipe Participants
+        Refresh
       </button>
-    </RoleGate>
+      <button
+        className="btn ghost"
+        onClick={() => setShowAllParticipants(s => !s)}
+        title={showAllParticipants ? "Show only the first 5" : "Show all participants"}
+        style={{ padding: ".25rem .6rem" }}
+      >
+        {showAllParticipants ? "Show first 5" : "Show all"}
+      </button>
+      <RoleGate min="owner">
+        <button
+          className="btn ghost danger"
+          title="Delete the participants sheet for this feed (cannot be undone)"
+          onClick={async () => {
+            if (!feedId) return;
+            const okGo = confirm(
+              `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
+            );
+            if (!okGo) return;
+            const ok = await wipeParticipantsOnBackend(feedId);
+            if (ok) {
+              setParticipantsRefreshKey(k => k + 1);
+              alert("Participants wiped.");
+            } else {
+              alert("Failed to wipe participants. Please re-login and try again.");
+              onLogout?.();
+            }
+          }}
+          style={{ padding: ".25rem .6rem" }}
+        >
+          Wipe Participants
+        </button>
+      </RoleGate>
+    </div>
   }
 >
-  {feedId ? (
-    <ParticipantsPanel
-      key={`pp::${feedId}::${participantsRefreshKey}`}
-      feedId={feedId}
-    />
-  ) : (
-    <div className="subtle" style={{ padding: ".5rem 0" }}>
-      No feed selected.
-    </div>
-  )}
+  {ppOpen ? (
+    feedId ? (
+      <ParticipantsPanel
+        key={`pp::${feedId}::${participantsRefreshKey}`}
+        feedId={feedId}
+        compact
+        limit={showAllParticipants ? undefined : 5}
+      />
+    ) : (
+      <div className="subtle" style={{ padding: ".5rem 0" }}>
+        No feed selected.
+      </div>
+    )
+  ) : null}
 </Section>
-
        
 {/* Posts (compact-only) */}
 <Section
