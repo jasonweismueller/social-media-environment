@@ -8,7 +8,7 @@ import {
   loadPostsFromBackend, savePostsToBackend,
   sendToSheet, buildMinimalHeader, buildParticipantRow,
   computeFeedId, getDefaultFeedFromBackend,
-  hasAdminSession, adminLogout, listFeedsFromBackend, getFeedIdFromUrl
+  hasAdminSession, adminLogout, listFeedsFromBackend, getFeedIdFromUrl,VIEWPORT_ENTER_FRACTION
 } from "./utils";
 
 // ⬇️ updated imports to use the split files
@@ -174,6 +174,18 @@ export default function App() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
 
+  // Small helper to measure current visibility/height for a given post
+  const measureVis = (post_id) => {
+    const el = viewRefs.current.get(post_id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const post_h_px = Math.max(0, Math.round(r.height || 0));
+    const visH = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
+    return { vis_frac, post_h_px, viewport_h_px: vh };
+  };
+
   const log = (action, meta = {}) => {
     const ts = now();
     const rec = {
@@ -241,13 +253,13 @@ export default function App() {
           const isEntered = enteredSet.has(postId);
 
           // Enter when crossing >= 0.5 and intersecting
-          if (e.isIntersecting && vis_frac >= 0.5 && !isEntered) {
+          if (e.isIntersecting && vis_frac >= VIEWPORT_ENTER_FRACTION && !isEntered) {
             enteredSet.add(postId);
             log("vp_enter", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
           }
 
           // Exit when it is no longer intersecting OR drops below threshold
-          if ((!e.isIntersecting || vis_frac < 0.5) && isEntered) {
+          if ((!e.isIntersecting || vis_frac < VIEWPORT_ENTER_FRACTION) && isEntered) {
             enteredSet.delete(postId);
             log("vp_exit", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
           }
@@ -258,16 +270,35 @@ export default function App() {
 
     for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
+    // ---------- Robust seeding of initial enters ----------
+    const seedNow = (reason = "seed") => {
+      try {
+        for (const [post_id] of viewRefs.current) {
+          if (enteredSet.has(post_id)) continue;
+          const m = measureVis(post_id);
+          if (m && m.vis_frac >= 0.5) {
+            enteredSet.add(post_id);
+            log("vp_enter", { post_id, ...m, reason });
+          }
+        }
+      } catch {}
+    };
+    // seed immediately (after observe), then after layout settles
+    seedNow("seed_immediate");
+    requestAnimationFrame(() => seedNow("seed_raf"));
+    setTimeout(() => seedNow("seed_timeout"), 0);
+
+    // re-seed when page becomes visible or gains focus
+    const onVisible = () => { if (!document.hidden) seedNow("seed_visible"); };
+    document.addEventListener("visibilitychange", onVisible, { passive: true });
+    window.addEventListener("focus", onVisible, { passive: true });
+
     // Emit exits for all currently entered posts on hide/unload
     const emitExitForAllEntered = (reason) => {
       if (!enteredSet.size) return;
-      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
       for (const postId of Array.from(enteredSet)) {
-        const el = viewRefs.current.get(postId);
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        const post_h_px = Math.max(0, Math.round(r.height || 0));
-        log("vp_exit", { post_id: postId, vis_frac: 0, post_h_px, viewport_h_px: vh, reason });
+        const m = measureVis(postId) || { vis_frac: 0, post_h_px: 0, viewport_h_px: (window.innerHeight || 0) };
+        log("vp_exit", { post_id: postId, ...m, reason });
         enteredSet.delete(postId);
       }
     };
@@ -279,6 +310,8 @@ export default function App() {
 
     return () => {
       try { io.disconnect(); } catch {}
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("beforeunload", onHide);
@@ -317,16 +350,10 @@ export default function App() {
 
                     // Flush exits for any posts still >=50% visible right before submit
                     try {
-                      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-                      for (const [post_id, el] of viewRefs.current) {
-                        if (!el) continue;
-                        const r = el.getBoundingClientRect();
-                        const post_h_px = Math.max(0, Math.round(r.height || 0));
-                        const visH =
-                          Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
-                        const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
-                        if (vis_frac >= 0.5) {
-                          log("vp_exit", { post_id, vis_frac, post_h_px, viewport_h_px: vh, reason: "submit" });
+                      for (const [post_id] of viewRefs.current) {
+                        const m = measureVis(post_id);
+                        if (m && m.vis_frac >= VIEWPORT_ENTER_FRACTION) {
+                          log("vp_exit", { post_id, ...m, reason: "submit" });
                         }
                       }
                     } catch {}

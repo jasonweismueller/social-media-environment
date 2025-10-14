@@ -929,10 +929,12 @@ export function computeFeedId(posts = []) {
  * Emits:
  *  { action:"vp_enter"|"vp_exit", post_id, ts_ms, timestamp_iso, vis_frac, post_h_px, viewport_h_px, scroll_y }
  */
+export const VIEWPORT_ENTER_FRACTION = 0.5; // one place to change the threshold
+
 export function startViewportTracker({
   root = null,
   postSelector = "[data-post-id]",
-  threshold = 0.5,
+  threshold = VIEWPORT_ENTER_FRACTION,
   getPostId = (el) => el?.dataset?.postId || null,
   onEvent,
 } = {}) {
@@ -940,7 +942,7 @@ export function startViewportTracker({
     console.warn("IntersectionObserver not supported; dwell tracking disabled.");
     return () => {};
   }
-  const TH = clamp(Number(threshold) || 0.5, 0, 1);
+  const TH = clamp(Number(threshold) || VIEWPORT_ENTER_FRACTION, 0, 1);
   const live = new Map(); // post_id -> { entered: true }
 
   const emit = (action, post_id, entry) => {
@@ -1266,17 +1268,17 @@ export function extractPerPostFromRosterRow(row) {
 
         // comment text (string); prefer explicit text, else join array
         const cTextRaw = (() => {
-  const t = agg?.comment_text ?? agg?.comment ?? null;
-  const arr = agg?.comment_texts;
-  if (typeof t === "string") return t;
-  if (Array.isArray(arr)) return arr.map(String).join(" | ");
-  if (typeof arr === "string") return arr;
-  return "";
-})();
-const cText = (() => {
-  const s = String(cTextRaw || "").trim();
-  return (!s || s === "—" || s === "-" || /^[-—\s]+$/.test(s)) ? "" : s;
-})();
+          const t = agg?.comment_text ?? agg?.comment ?? null;
+          const arr = agg?.comment_texts;
+          if (typeof t === "string") return t;
+          if (Array.isArray(arr)) return arr.map(String).join(" | ");
+          if (typeof arr === "string") return arr;
+          return "";
+        })();
+        const cText = (() => {
+          const s = String(cTextRaw || "").trim();
+          return (!s || s === "—" || s === "-" || /^[-—\s]+$/.test(s)) ? "" : s;
+        })();
 
         // dwell seconds preferred; else convert ms → s
         const dwell_s = Number.isFinite(agg?.dwell_s)
@@ -1413,25 +1415,22 @@ const cText = (() => {
     }
 
     // comment TEXT (preferred for participant detail UI)
-{
-  // comment TEXT (preferred for participant detail UI)
-{
-  const ct = /^(.+?)_comment_texts$/.exec(key);
-  if (ct) {
-    const [, postId] = ct;
-    const obj = ensure(postId);
+    {
+      const ct = /^(.+?)_comment_texts$/.exec(key);
+      if (ct) {
+        const [, postId] = ct;
+        const obj = ensure(postId);
 
-    // treat em dashes, hyphens, and whitespace as "no comment"
-    const raw = String(val || "").trim();
-    const text = (!raw || raw === "—" || raw === "-" || /^[-—\s]+$/.test(raw)) ? "" : raw;
+        // treat em dashes, hyphens, and whitespace as "no comment"
+        const raw = String(val || "").trim();
+        const text = (!raw || raw === "—" || raw === "-" || /^[-—\s]+$/.test(raw)) ? "" : raw;
 
-    obj.comment_text = text;
-    obj.commented = obj.commented || (text ? 1 : 0);
-    obj.comment_count = obj.comment_count || (text ? 1 : 0);
-    continue;
-  }
-}
-}
+        obj.comment_text = text;
+        obj.commented = obj.commented || (text ? 1 : 0);
+        obj.comment_count = obj.comment_count || (text ? 1 : 0);
+        continue;
+      }
+    }
 
     // dwell (s then ms→s)
     {
