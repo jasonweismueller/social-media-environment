@@ -929,7 +929,7 @@ export function computeFeedId(posts = []) {
  * Emits:
  *  { action:"vp_enter"|"vp_exit", post_id, ts_ms, timestamp_iso, vis_frac, post_h_px, viewport_h_px, scroll_y }
  */
-export const VIEWPORT_ENTER_FRACTION = 0.5; // one place to change the threshold
+export const VIEWPORT_ENTER_FRACTION = 0.8; // one place to change the threshold
 
 export function startViewportTracker({
   root = null,
