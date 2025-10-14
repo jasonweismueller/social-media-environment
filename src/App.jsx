@@ -37,13 +37,31 @@ function getUrlFlag(key) {
   } catch { return null; }
 }
 
-// Helper: does a post element contain an inline image/media?
+/* Helper: does a post element contain an inline image? (ignore avatar/video)
+   - Prefer an explicit data flag from the post card (data-has-image="1")
+   - Otherwise, scope within the post and look for inline media, excluding avatars
+*/
 function elementHasImage(el) {
   if (!el) return false;
-  if (el.dataset?.hasImage === "1") return true; // allow explicit opt-in from markup
-  return !!el.querySelector?.(
-    // broadened selectors; tweak to your DOM
-    "img, picture, video, [data-kind='image'], .media img, .media picture, .image, [data-has-image='1']"
+  // Fast-path: PostCard can set this when it renders an image block
+  if (el.dataset?.hasImage === "1") return true;
+
+  // Scope to the post root to avoid matching outside elements
+  const root = el.matches?.("[data-post-id]") ? el : el.closest?.("[data-post-id]") || el;
+
+  // Look for inline image media inside the card body/media regions
+  // - exclude avatar images via .avatar-img
+  // - exclude video; this helper is for image posts only
+  return !!root.querySelector?.(
+    [
+      ":scope .image-btn img:not(.avatar-img)",
+      ":scope .image-btn svg",
+      ":scope [data-kind='image']",
+      ":scope .media img:not(.avatar-img)",
+      ":scope .media picture",
+      ":scope .card-body img:not(.avatar-img)",
+      ":scope [data-has-image='1']"
+    ].join(", ")
   );
 }
 
