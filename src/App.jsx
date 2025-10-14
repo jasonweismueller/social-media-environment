@@ -1,17 +1,16 @@
-/// App.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles.css";
 
 import {
-  uid, now, fmtTime, clamp, // (clamp left imported; harmless if unused)
+  uid, now, fmtTime, clamp,
   loadPostsFromBackend, savePostsToBackend,
   sendToSheet, buildMinimalHeader, buildParticipantRow,
   computeFeedId, getDefaultFeedFromBackend,
-  hasAdminSession, adminLogout, listFeedsFromBackend, getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION
+  hasAdminSession, adminLogout, listFeedsFromBackend,
+  getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION
 } from "./utils";
 
-// ⬇️ updated imports to use the split files
 import { Feed as FBFeed } from "./components-ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
@@ -21,45 +20,10 @@ import {
 import { AdminDashboard } from "./components-admin-core";
 import AdminLogin from "./components-admin-login";
 
-// ---- Mode flag (kept harmless; no IG component is loaded)
+// ---- Mode flag ----
 const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
-}
-
-/** Read a param (e.g. debugvp) from the hash query, e.g. "#/?feed=...&debugvp=1" */
-function getParamFromHash(key) {
-  try {
-    const h = typeof window !== "undefined" ? window.location.hash : "";
-    const q = h.split("?")[1] || "";
-    return new URLSearchParams(q).get(String(key));
-  } catch { return null; }
-}
-
-function getCachedPosts(feedId, checksum) {
-  try {
-    const k = `posts::${feedId}`;
-    const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
-    if (!meta || meta.checksum !== checksum) return null;
-    const data = JSON.parse(localStorage.getItem(k) || "null");
-    return Array.isArray(data) ? data : null;
-  } catch { return null; }
-}
-function setCachedPosts(feedId, checksum, posts) {
-  try {
-    const k = `posts::${feedId}`;
-    localStorage.setItem(k, JSON.stringify(posts || []));
-    localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum, t: Date.now() }));
-  } catch {}
-}
-
-/** Read ?feed=... from the hash (e.g., #/?feed=cond_a) */
-function getFeedFromHash() {
-  try {
-    const h = typeof window !== "undefined" ? window.location.hash : "";
-    const m = h.match(/[?&]feed=([^&#]+)/);
-    return m ? decodeURIComponent(m[1]) : null;
-  } catch { return null; }
 }
 
 export default function App() {
@@ -79,22 +43,30 @@ export default function App() {
   // Route context
   const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
-  // Participant feed context: URL ?feed=… wins; else backend default
-  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedFromHash() : null);
-
-  // Backend is the source of truth
+  // Feed
+  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedIdFromUrl() : null);
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
 
-  // --- Resolve feed from backend default if none provided by URL
+  // --- Debug viewport flag (works with ?debugvp=1)
   useEffect(() => {
-    if (onAdmin) return; // admin handles its own feeds
+    const apply = () => {
+      const params = new URLSearchParams(window.location.search);
+      const on = params.get("debugvp") === "1";
+      document.body.classList.toggle("debug-vp", on);
+    };
+    apply();
+    window.addEventListener("popstate", apply);
+    return () => window.removeEventListener("popstate", apply);
+  }, []);
+
+  // --- Resolve feed from backend default if none provided
+  useEffect(() => {
+    if (onAdmin) return;
     let alive = true;
 
     (async () => {
       setLoadingPosts(true);
-
-      // 1) Pull feeds registry + backend default
       const [feedsList, backendDefault] = await Promise.all([
         listFeedsFromBackend(),
         getDefaultFeedFromBackend(),
@@ -102,13 +74,11 @@ export default function App() {
 
       if (!alive) return;
 
-      // 2) Decide which feed to show: hash ?feed= wins, else backend default, else first
-      const urlFeedId = getFeedIdFromUrl() /* or getFeedFromHash() if you prefer */;
+      const urlFeedId = getFeedIdFromUrl();
       const chosen =
-        (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === urlFeedId) ||
-        (Array.isArray(feedsList) ? feedsList : []).find(f => f.feed_id === backendDefault) ||
-        (Array.isArray(feedsList) ? feedsList : [])[0] ||
-        null;
+        (feedsList || []).find(f => f.feed_id === urlFeedId) ||
+        (feedsList || []).find(f => f.feed_id === backendDefault) ||
+        (feedsList || [])[0] || null;
 
       if (!chosen) {
         setActiveFeedId("feed_1");
@@ -119,8 +89,16 @@ export default function App() {
 
       setActiveFeedId(chosen.feed_id);
 
-      // 3) Try local cache keyed by checksum, else fetch fresh
-      const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
+      const cached = (() => {
+        try {
+          const k = `posts::${chosen.feed_id}`;
+          const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
+          if (!meta || meta.checksum !== chosen.checksum) return null;
+          const data = JSON.parse(localStorage.getItem(k) || "null");
+          return Array.isArray(data) ? data : null;
+        } catch { return null; }
+      })();
+
       if (cached) {
         setPosts(cached);
         setLoadingPosts(false);
@@ -129,28 +107,20 @@ export default function App() {
 
       const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
       if (!alive) return;
-
       const arr = Array.isArray(fresh) ? fresh : [];
       setPosts(arr);
-      setCachedPosts(chosen.feed_id, chosen.checksum, arr);
+      try {
+        const k = `posts::${chosen.feed_id}`;
+        localStorage.setItem(k, JSON.stringify(arr));
+        localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum: chosen.checksum, t: Date.now() }));
+      } catch {}
       setLoadingPosts(false);
     })();
 
     return () => { alive = false; };
   }, [onAdmin]);
 
-  useEffect(() => {
-    if (onAdmin) return;
-    const onHash = () => {
-      const next = getFeedIdFromUrl(); // or getFeedFromHash()
-      // forcing the effect above to rerun by clearing activeFeedId
-      setActiveFeedId(next || null);
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, [onAdmin]);
-
-  // --- If user lands on /admin with a valid session, show dashboard immediately
+  // --- Auto-login for admin
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
@@ -165,7 +135,7 @@ export default function App() {
     return arr;
   }, [posts, randomize]);
 
-  // Lock scroll when overlays/skeletons are visible
+  // Lock scroll during overlays
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
@@ -174,7 +144,7 @@ export default function App() {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, loadingPosts, submitted, onAdmin]);
 
-  // Map of postId -> element, and element -> postId
+  // refs for posts
   const viewRefs = useRef(new Map());
   const elToId = useRef(new WeakMap());
   const registerViewRef = (postId) => (el) => {
@@ -183,7 +153,6 @@ export default function App() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
 
-  // Small helper to measure current visibility/height for a given post
   const measureVis = (post_id) => {
     const el = viewRefs.current.get(post_id);
     if (!el) return null;
@@ -197,35 +166,28 @@ export default function App() {
 
   const log = (action, meta = {}) => {
     const ts = now();
-    const rec = {
-      session_id: sessionIdRef.current,
-      participant_id: participantId || null,
-      timestamp_iso: fmtTime(ts),
-      elapsed_ms: ts - t0Ref.current,
-      ts_ms: ts,
-      action,
-      ...meta,
-    };
-    setEvents((prev) => [...prev, rec]);
-    if (hasEntered && action !== "scroll" && action !== "feed_submit") {
-      lastNonScrollTsRef.current = ts;
-    }
-    if (action === "share") showToast("Post shared (recorded)");
+    setEvents((prev) => [
+      ...prev,
+      {
+        session_id: sessionIdRef.current,
+        participant_id: participantId || null,
+        timestamp_iso: fmtTime(ts),
+        elapsed_ms: ts - t0Ref.current,
+        ts_ms: ts,
+        action,
+        ...meta,
+      },
+    ]);
   };
 
-  // session start/end
+  // scroll + session tracking
   useEffect(() => {
-    log("session_start", {
-      user_agent: navigator.userAgent,
-      feed_id: activeFeedId || null,
-    });
+    log("session_start", { user_agent: navigator.userAgent, feed_id: activeFeedId || null });
     const onEnd = () => log("session_end", { total_events: events.length });
     window.addEventListener("beforeunload", onEnd);
     return () => window.removeEventListener("beforeunload", onEnd);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // scroll logger
   useEffect(() => {
     let lastY = window.scrollY;
     const onScroll = () => {
@@ -236,18 +198,14 @@ export default function App() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===================== NEW: viewport enter/exit tracking =====================
+  // ===================== VIEWPORT TRACKING =====================
   useEffect(() => {
     if (!hasEntered || loadingPosts || submitted || onAdmin) return;
 
-    // Debug flag from hash query (since we use HashRouter)
-    const DEBUG_VP = getParamFromHash("debugvp") === "1";
-    if (DEBUG_VP) document.body.classList.add("debug-vp");
-    else document.body.classList.remove("debug-vp");
-
+    const params = new URLSearchParams(window.location.search);
+    const DEBUG_VP = params.get("debugvp") === "1";
     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
       : 0.5;
@@ -260,17 +218,11 @@ export default function App() {
         for (const e of entries) {
           const postId = elToId.current.get(e.target);
           if (!postId) continue;
-
           const el = e.target;
-          const rect = el.getBoundingClientRect();
-          const post_h_px = Math.max(0, Math.round(rect.height || 0));
-          const viewport_h_px = window.innerHeight || document.documentElement.clientHeight || 0;
-
           const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
           const nowIn = e.isIntersecting && vis_frac >= ENTER_FRAC;
           const wasIn = enteredSet.has(postId);
 
-          // DEBUG cosmetics (only visible if .debug-vp is on the body via CSS you add)
           if (DEBUG_VP) {
             el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
             el.dataset.state = nowIn ? "IN" : "OUT";
@@ -280,57 +232,31 @@ export default function App() {
 
           if (nowIn && !wasIn) {
             enteredSet.add(postId);
-            log("vp_enter", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
-          }
-
-          if (!nowIn && wasIn) {
+            log("vp_enter", { post_id: postId, vis_frac });
+          } else if (!nowIn && wasIn) {
             enteredSet.delete(postId);
-            log("vp_exit", { post_id: postId, vis_frac, post_h_px, viewport_h_px });
+            log("vp_exit", { post_id: postId, vis_frac });
           }
         }
       },
-      { root: null, rootMargin: "0px", threshold: thresholds }
+      { threshold: thresholds }
     );
 
     for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
-    const emitExitForAllEntered = (reason) => {
-      if (!enteredSet.size) return;
-      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-      for (const postId of Array.from(enteredSet)) {
-        const el = viewRefs.current.get(postId);
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        const post_h_px = Math.max(0, Math.round(r.height || 0));
-
-        if (DEBUG_VP) {
-          el.dataset.vis = `0%`;
-          el.dataset.state = "OUT";
-          el.classList.remove("__vp-in");
-          el.classList.add("__vp-out");
-        }
-
-        log("vp_exit", { post_id: postId, vis_frac: 0, post_h_px, viewport_h_px: vh, reason });
-        enteredSet.delete(postId);
-      }
+    const cleanup = () => {
+      enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "cleanup" }));
+      io.disconnect();
     };
 
-    const onHide = () => emitExitForAllEntered("page_hidden");
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", onHide);
-    window.addEventListener("beforeunload", onHide);
-
+    window.addEventListener("beforeunload", cleanup);
     return () => {
-      try { io.disconnect(); } catch {}
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("pagehide", onHide);
-      window.removeEventListener("beforeunload", onHide);
+      window.removeEventListener("beforeunload", cleanup);
+      cleanup();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
-  // ===========================================================================
+  // ===================================================================
 
-  // ✅ Always use the FB feed (no IG component reference)
   const FeedComponent = FBFeed;
 
   return (
@@ -342,11 +268,10 @@ export default function App() {
       >
         <RouteAwareTopbar />
         <Routes>
-          {/* Participant route */}
           <Route
             path="/"
             element={
-              (hasEntered && !loadingPosts) ? (
+              hasEntered && !loadingPosts ? (
                 <FeedComponent
                   posts={orderedPosts}
                   registerViewRef={registerViewRef}
@@ -357,34 +282,29 @@ export default function App() {
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
-
-                    // Threshold (same as IO)
                     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
                       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
                       : 0.5;
+                    const params = new URLSearchParams(window.location.search);
+                    const DEBUG_VP = params.get("debugvp") === "1";
 
-                    // Flush exits for any posts still >= threshold right before submit
-                    try {
-                      const DEBUG_VP = getParamFromHash("debugvp") === "1";
-                      for (const [post_id] of viewRefs.current) {
-                        const m = measureVis(post_id);
-                        if (!m) continue;
-                        const { vis_frac, post_h_px, viewport_h_px, el } = m;
-                        if (vis_frac >= ENTER_FRAC) {
-                          if (DEBUG_VP && el) {
-                            el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
-                            el.dataset.state = "OUT";
-                            el.classList.remove("__vp-in");
-                            el.classList.add("__vp-out");
-                          }
-                          log("vp_exit", { post_id, vis_frac, post_h_px, viewport_h_px, reason: "submit" });
+                    for (const [post_id] of viewRefs.current) {
+                      const m = measureVis(post_id);
+                      if (!m) continue;
+                      const { vis_frac, el } = m;
+                      if (vis_frac >= ENTER_FRAC) {
+                        if (DEBUG_VP && el) {
+                          el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+                          el.dataset.state = "OUT";
+                          el.classList.remove("__vp-in");
+                          el.classList.add("__vp-out");
                         }
+                        log("vp_exit", { post_id, vis_frac, reason: "submit" });
                       }
-                    } catch {}
+                    }
 
                     const ts = now();
                     submitTsRef.current = ts;
-
                     const submitEvent = {
                       session_id: sessionIdRef.current,
                       participant_id: participantId || null,
@@ -395,10 +315,8 @@ export default function App() {
                       feed_id: activeFeedId || null,
                     };
                     const eventsWithSubmit = [...events, submitEvent];
-
                     const feed_id = activeFeedId || null;
                     const feed_checksum = computeFeedId(posts);
-
                     const row = buildParticipantRow({
                       session_id: sessionIdRef.current,
                       participant_id: participantId,
@@ -407,17 +325,10 @@ export default function App() {
                       feed_id,
                       feed_checksum,
                     });
-
                     const header = buildMinimalHeader(posts);
                     const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
-
-                    if (ok) {
-                      setSubmitted(true);
-                      showToast("Submitted ✔︎");
-                    } else {
-                      showToast("Sync failed. Please try again.");
-                    }
-
+                    if (ok) setSubmitted(true);
+                    showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
                     setDisabled(false);
                   }}
                 />
@@ -426,8 +337,6 @@ export default function App() {
               )
             }
           />
-
-          {/* Admin route */}
           <Route
             path="/admin"
             element={
@@ -439,10 +348,7 @@ export default function App() {
                   setRandomize={setRandomize}
                   showComposer={showComposer}
                   setShowComposer={setShowComposer}
-                  resetLog={() => {
-                    setEvents([]);
-                    showToast("Event log cleared");
-                  }}
+                  resetLog={() => { setEvents([]); showToast("Event log cleared"); }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {
                     try {
                       const ok = await savePostsToBackend(nextPosts, ctx);
@@ -450,11 +356,8 @@ export default function App() {
                         const fresh = await loadPostsFromBackend(ctx?.feedId);
                         setPosts(fresh || []);
                         showToast("Feed saved to backend");
-                      } else {
-                        showToast("Publish failed");
-                      }
-                    } catch (err) {
-                      console.error("Publish error:", err);
+                      } else showToast("Publish failed");
+                    } catch {
                       showToast("Publish failed");
                     }
                   }}
@@ -473,7 +376,6 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {/* Overlays */}
       {!onAdmin && !hasEntered && (
         <ParticipantOverlay
           onSubmit={(id) => {
