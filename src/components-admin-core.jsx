@@ -1054,11 +1054,25 @@ useEffect(() => {
       </div>
 
        {/* Users (owners only) */}
-        <RoleGate min="owner">
-          <Section title="Users" subtitle="Manage admin users & roles.">
-            <AdminUsersPanel />
-          </Section>
-        </RoleGate>
+<RoleGate min="owner">
+  <Section
+    title="Users"
+    subtitle="Manage admin users & roles."
+    right={
+      <button
+        className="btn ghost"
+        onClick={() => setUsersCollapsed(v => !v)}
+        aria-label={usersCollapsed ? "Expand users" : "Collapse users"}
+        title={usersCollapsed ? "Expand" : "Collapse"}
+        style={{ padding: ".15rem .35rem", minWidth: 0 }}
+      >
+        <IconChevron open={!usersCollapsed} />
+      </button>
+    }
+  >
+    {!usersCollapsed ? <AdminUsersPanel /> : null}
+  </Section>
+</RoleGate>
 
 
       {editing && (
