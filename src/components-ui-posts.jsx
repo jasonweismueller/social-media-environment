@@ -508,7 +508,11 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   };
 
   return (
-    <article ref={registerViewRef(post.id)} className="card">
+    <article
+    ref={registerViewRef(post.id)}
+    data-post-id={post.id} 
+    className="card post-card"
+  >
       <header className="card-head">
         <div className="avatar">
           {post.avatarUrl ? (
