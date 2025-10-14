@@ -1058,7 +1058,6 @@ export function buildMinimalHeader(posts) {
     const id = p.id || "unknown";
     perPost.push(
       `${id}_reacted`,
-      `${id}_reactions`,        // compat: numeric (blank if 0)
       `${id}_reaction_type`,    // spelled-out ("like", "care", …)
       `${id}_expandable`,
       `${id}_expanded`,
@@ -1247,7 +1246,6 @@ export function buildParticipantRow({
     // REACTIONS
     const reactedFlag = agg.reaction_type ? 1 : 0;
     row[`${id}_reacted`]       = reactedFlag ? 1 : "";   // blank → UI shows "—"
-    row[`${id}_reactions`]     = reactedFlag ? 1 : "";   // compat numeric (blank when 0)
     row[`${id}_reaction_type`] = agg.reaction_type;      // spelled-out or ""
 
     // EXPAND/COMMENTS/SHARE/REPORT
@@ -1256,7 +1254,7 @@ export function buildParticipantRow({
     row[`${id}_commented`] = agg.commented ? 1 : "";     // ✓/— in UI
     row[`${id}_comment_texts`] = agg.comment_texts.length
       ? agg.comment_texts.join(" | ")
-      : "—";                                             // em dash for “no text”
+      : "";                                             // em dash for “no text”
 
     row[`${id}_shared`]            = agg.shared ? 1 : "";
     row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
