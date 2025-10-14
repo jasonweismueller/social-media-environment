@@ -60,6 +60,40 @@ export default function App() {
     return () => window.removeEventListener("popstate", apply);
   }, []);
 
+  // ===== Effective viewport offsets (sticky rails) =====
+  const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
+
+  useEffect(() => {
+    const readOffsets = () => {
+      const topEl =
+        document.querySelector(".top-rail-placeholder") ||
+        document.querySelector(".topbar") || null;
+      const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
+
+      // If you later add a sticky bottom rail, detect it here:
+      const bottomEl = null; // e.g. document.querySelector(".bottom-rail-placeholder")
+      const bottom = bottomEl ? Math.ceil(bottomEl.getBoundingClientRect().height || bottomEl.offsetHeight || 0) : 0;
+
+      setVpOff({ top, bottom });
+
+      // expose to CSS so the red debug frame matches effective viewport
+      document.documentElement.style.setProperty("--vp-top", `${top}px`);
+      document.documentElement.style.setProperty("--vp-bottom", `${bottom}px`);
+    };
+
+    readOffsets();
+    window.addEventListener("resize", readOffsets);
+    window.addEventListener("orientationchange", readOffsets);
+    window.addEventListener("load", readOffsets);
+    const id = setInterval(readOffsets, 300); // guard against late layout shifts
+    return () => {
+      window.removeEventListener("resize", readOffsets);
+      window.removeEventListener("orientationchange", readOffsets);
+      window.removeEventListener("load", readOffsets);
+      clearInterval(id);
+    };
+  }, []);
+
   // --- Resolve feed from backend default if none provided
   useEffect(() => {
     if (onAdmin) return;
@@ -145,7 +179,7 @@ export default function App() {
   }, [hasEntered, loadingPosts, submitted, onAdmin]);
 
   // ===== IO infrastructure (observe new posts immediately) =====
-  const ioRef = useRef(null); // <— store active IntersectionObserver
+  const ioRef = useRef(null); // active IntersectionObserver
   const viewRefs = useRef(new Map()); // post_id -> element
   const elToId = useRef(new WeakMap()); // element -> post_id
 
@@ -171,15 +205,21 @@ export default function App() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
 
+  // Respect sticky rails in the visibility math so it matches IO
   const measureVis = (post_id) => {
     const el = viewRefs.current.get(post_id);
     if (!el) return null;
     const r = el.getBoundingClientRect();
     const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    const topBound = vpOff.top;
+    const bottomBound = vh - vpOff.bottom;
+    const effectiveVH = Math.max(0, bottomBound - topBound);
+
     const post_h_px = Math.max(0, Math.round(r.height || 0));
-    const visH = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    const visH = Math.max(0, Math.min(r.bottom, bottomBound) - Math.max(r.top, topBound));
     const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
-    return { vis_frac, post_h_px, viewport_h_px: vh, el };
+    return { vis_frac, post_h_px, viewport_h_px: effectiveVH, el };
   };
 
   const log = (action, meta = {}) => {
@@ -233,13 +273,19 @@ export default function App() {
     const enteredSet = new Set();
     const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
 
+    // Shift the effective viewport by sticky rails
+    const rootMargin = `${-vpOff.top}px 0px ${-vpOff.bottom}px 0px`;
+
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           const postId = elToId.current.get(e.target);
           if (!postId) continue;
           const el = e.target;
-          const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
+
+          // Recompute vis_frac with the same math as measureVis (matches IO)
+          const m = measureVis(postId);
+          const vis_frac = m ? m.vis_frac : Number((e.intersectionRatio || 0).toFixed(4));
           const nowIn = e.isIntersecting && vis_frac >= ENTER_FRAC;
           const wasIn = enteredSet.has(postId);
 
@@ -259,7 +305,7 @@ export default function App() {
           }
         }
       },
-      { root: null, rootMargin: "0px", threshold: thresholds }
+      { root: null, rootMargin, threshold: thresholds }
     );
 
     // expose the live IO so registerViewRef can observe future nodes
@@ -269,7 +315,6 @@ export default function App() {
     for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
     const onHide = () => {
-      // emit exit for any active posts
       enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "page_hide" }));
       enteredSet.clear();
     };
@@ -280,12 +325,12 @@ export default function App() {
 
     return () => {
       try { io.disconnect(); } catch {}
-      ioRef.current = null; // <- important so we don't observe on a dead IO
+      ioRef.current = null; // avoid observing on a dead IO
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("beforeunload", onHide);
     };
-  }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
+  }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin, vpOff.top, vpOff.bottom]);
   // ===================================================================
 
   const FeedComponent = FBFeed;
