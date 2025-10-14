@@ -1032,9 +1032,8 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
   justify-content: flex-end;
 }
 
-/* ===== DEBUG: show viewport outline ===== */
-/* Existing outline — change top/bottom to use vars */
-body::before {
+/* ===== DEBUG: show viewport outline (only when debugvp=1) ===== */
+body.debug-vp::before {
   content: "Viewport boundary";
   position: fixed;
   top: var(--vp-top, 0px);
@@ -1049,17 +1048,16 @@ body::before {
   background: rgba(255,0,0,0.05);
 }
 
-
 /* ===== DEBUG: per-post visibility ===== */
 .debug-vp [data-post-id] { position: relative; }
 
 .debug-vp [data-post-id].__vp-in {
-  outline: 3px solid rgba(34,197,94,.9);          /* green */
+  outline: 3px solid rgba(34,197,94,.9);
   background: rgba(34,197,94,.06);
 }
 
 .debug-vp [data-post-id].__vp-out {
-  outline: 3px solid rgba(239,68,68,.7);          /* red */
+  outline: 3px solid rgba(239,68,68,.7);
   background: rgba(239,68,68,.04);
 }
 
@@ -1077,5 +1075,3 @@ body::before {
   pointer-events: none;
   z-index: 2;
 }
-
-

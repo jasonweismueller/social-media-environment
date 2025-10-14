@@ -26,6 +26,16 @@ if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
 
+/* ===== unified URL flag reader (search + hash query) ===== */
+function getUrlFlag(key) {
+  try {
+    const searchVal = new URLSearchParams(window.location.search).get(key);
+    const hashQuery = (window.location.hash.split("?")[1] || "");
+    const hashVal = new URLSearchParams(hashQuery).get(key);
+    return searchVal ?? hashVal;
+  } catch { return null; }
+}
+
 export default function App() {
   const sessionIdRef = useRef(uid());
   const t0Ref = useRef(now());
@@ -48,16 +58,19 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
 
-  // --- Debug viewport flag (works with ?debugvp=1)
+  // --- Debug viewport flag: exactly like per-post debug (search + hash)
   useEffect(() => {
     const apply = () => {
-      const params = new URLSearchParams(window.location.search);
-      const on = params.get("debugvp") === "1";
+      const on = getUrlFlag("debugvp") === "1";
       document.body.classList.toggle("debug-vp", on);
     };
     apply();
     window.addEventListener("popstate", apply);
-    return () => window.removeEventListener("popstate", apply);
+    window.addEventListener("hashchange", apply);
+    return () => {
+      window.removeEventListener("popstate", apply);
+      window.removeEventListener("hashchange", apply);
+    };
   }, []);
 
   // ===== Effective viewport offsets (sticky rails) =====
@@ -70,8 +83,7 @@ export default function App() {
         document.querySelector(".topbar") || null;
       const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
 
-      // If you later add a sticky bottom rail, detect it here:
-      const bottomEl = null; // e.g. document.querySelector(".bottom-rail-placeholder")
+      const bottomEl = null; // placeholder for sticky bottom rail if you add one
       const bottom = bottomEl ? Math.ceil(bottomEl.getBoundingClientRect().height || bottomEl.offsetHeight || 0) : 0;
 
       setVpOff({ top, bottom });
@@ -264,8 +276,7 @@ export default function App() {
   useEffect(() => {
     if (!hasEntered || loadingPosts || submitted || onAdmin) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const DEBUG_VP = params.get("debugvp") === "1";
+    const DEBUG_VP = getUrlFlag("debugvp") === "1";
     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
       : 0.5;
@@ -361,8 +372,7 @@ export default function App() {
                     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
                       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
                       : 0.5;
-                    const params = new URLSearchParams(window.location.search);
-                    const DEBUG_VP = params.get("debugvp") === "1";
+                    const DEBUG_VP = getUrlFlag("debugvp") === "1";
 
                     for (const [post_id] of viewRefs.current) {
                       const m = measureVis(post_id);
