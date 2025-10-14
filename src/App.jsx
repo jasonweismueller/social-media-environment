@@ -144,11 +144,29 @@ export default function App() {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, loadingPosts, submitted, onAdmin]);
 
-  // refs for posts
-  const viewRefs = useRef(new Map());
-  const elToId = useRef(new WeakMap());
+  // ===== IO infrastructure (observe new posts immediately) =====
+  const ioRef = useRef(null); // <— store active IntersectionObserver
+  const viewRefs = useRef(new Map()); // post_id -> element
+  const elToId = useRef(new WeakMap()); // element -> post_id
+
   const registerViewRef = (postId) => (el) => {
-    if (el) { viewRefs.current.set(postId, el); elToId.current.set(el, postId); }
+    // unobserve previous element for this id
+    const prev = viewRefs.current.get(postId);
+    if (prev && ioRef.current) {
+      try { ioRef.current.unobserve(prev); } catch {}
+    }
+
+    if (el) {
+      viewRefs.current.set(postId, el);
+      elToId.current.set(el, postId);
+      // observe immediately if IO exists (covers newly mounted posts later)
+      if (ioRef.current) {
+        try { ioRef.current.observe(el); } catch {}
+      }
+    } else {
+      // element unmounted
+      viewRefs.current.delete(postId);
+    }
   };
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
@@ -186,6 +204,7 @@ export default function App() {
     const onEnd = () => log("session_end", { total_events: events.length });
     window.addEventListener("beforeunload", onEnd);
     return () => window.removeEventListener("beforeunload", onEnd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -198,6 +217,7 @@ export default function App() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ===================== VIEWPORT TRACKING =====================
@@ -239,20 +259,31 @@ export default function App() {
           }
         }
       },
-      { threshold: thresholds }
+      { root: null, rootMargin: "0px", threshold: thresholds }
     );
 
+    // expose the live IO so registerViewRef can observe future nodes
+    ioRef.current = io;
+
+    // observe anything already mounted
     for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
-    const cleanup = () => {
-      enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "cleanup" }));
-      io.disconnect();
+    const onHide = () => {
+      // emit exit for any active posts
+      enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "page_hide" }));
+      enteredSet.clear();
     };
 
-    window.addEventListener("beforeunload", cleanup);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+
     return () => {
-      window.removeEventListener("beforeunload", cleanup);
-      cleanup();
+      try { io.disconnect(); } catch {}
+      ioRef.current = null; // <- important so we don't observe on a dead IO
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
     };
   }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin]);
   // ===================================================================
