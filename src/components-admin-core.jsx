@@ -696,19 +696,19 @@ useEffect(() => {
                     )}
 
                     <button
-                      className="btn ghost"
-                      title="Copy participant link for this feed"
-                      onClick={async () => {
-                        // Prefer centralized helper if available
-                        const url = (typeof buildFeedShareUrl === "function")
-                          ? buildFeedShareUrl(f.feed_id)
-                          : `${window.location.origin}${window.location.pathname}?feed=${encodeURIComponent(f.feed_id)}`;
-                        await navigator.clipboard.writeText(url).catch(()=>{});
-                        alert("Link copied:\n" + url);
-                      }}
-                    >
-                      Copy link
-                    </button>
+  className="btn ghost"
+  title="Copy participant link for this feed"
+  onClick={async () => {
+    if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
+    const url = (typeof buildFeedShareUrl === "function")
+      ? buildFeedShareUrl(f) // ← pass the whole feed row, not f.feed_id
+      : `${window.location.origin}/#/?feed=${encodeURIComponent(f.feed_id)}`;
+    await navigator.clipboard.writeText(url).catch(()=>{});
+    alert("Link copied:\n" + url);
+  }}
+>
+  Copy link
+</button>
 
                     <RoleGate min="owner">
                       <button
