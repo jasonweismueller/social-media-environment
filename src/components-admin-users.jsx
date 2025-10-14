@@ -18,7 +18,8 @@ export function AdminUsersPanel({ embed = false }) {
 
   // Filtering state
   const me = getAdminEmail?.() || "";
-  const [showAll, setShowAll] = useState(false);
+  // ⬅️ if embedded, default to showing all so you don't get stuck on single-user view
+  const [showAll, setShowAll] = useState(embed ? true : false);
   const [selectedEmail, setSelectedEmail] = useState(me || "");
 
   const load = async () => {
@@ -69,7 +70,7 @@ export function AdminUsersPanel({ embed = false }) {
 
   return (
     <Outer {...outerProps}>
-      {/* header bar is hidden in embed mode */}
+      {/* header bar hidden when embedded */}
       {!embed && (
         <div
           style={{
@@ -119,6 +120,57 @@ export function AdminUsersPanel({ embed = false }) {
               {busy ? "Refreshing…" : "Refresh"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ⬇️ compact controls when embedded (keeps the section minimal but usable) */}
+      {embed && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            marginBottom: ".5rem",
+          }}
+        >
+          <label className="subtle" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span>View:</span>
+            <select
+              className="select"
+              disabled={showAll}
+              value={selectedEmail || ""}
+              onChange={(e) => setSelectedEmail(e.target.value)}
+              title="Choose a single user to display"
+              style={{ minWidth: 200 }}
+            >
+              {me && !users.some((u) => u.email === me) ? (
+                <option value={me}>Me ({me})</option>
+              ) : null}
+              {users
+                .slice()
+                .sort((a, b) => a.email.localeCompare(b.email))
+                .map((u) => (
+                  <option key={u.email} value={u.email}>
+                    {u.email === me ? `Me (${u.email})` : u.email}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <button
+            className={`btn ghost ${showAll ? "active" : ""}`}
+            onClick={() => setShowAll((s) => !s)}
+            title={showAll ? "Show only the selected user" : "Show all users"}
+            style={{ padding: ".3rem .6rem" }}
+          >
+            {showAll ? "Hide full list" : "Show all"}
+          </button>
+
+          <button className="btn" onClick={load} disabled={busy} style={{ padding: ".3rem .6rem" }}>
+            {busy ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
       )}
 
