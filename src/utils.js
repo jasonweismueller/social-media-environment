@@ -1779,8 +1779,8 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
   } catch {}
 }
 
-export function buildFeedShareUrl(feedRow) {
-  const origin = "https://studyfeed.org";   // fixed base
-  // if you still deploy under a subpath, append it here, e.g. `${origin}/social-media-environment`
-  return `${origin}/#/?feed=${feedRow.feed_id}`;
+export function buildFeedShareUrl(feedOrId) {
+  const origin = "https://studyfeed.org"; // fixed base
+  const fid = typeof feedOrId === "string" ? feedOrId : feedOrId?.feed_id || "";
+  return `${origin}/#/?feed=${encodeURIComponent(fid)}`;
 }
