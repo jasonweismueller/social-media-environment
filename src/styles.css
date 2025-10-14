@@ -1033,13 +1033,14 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
 }
 
 /* ===== DEBUG: show viewport outline ===== */
+/* Existing outline — change top/bottom to use vars */
 body::before {
   content: "Viewport boundary";
   position: fixed;
-  top: 0;
+  top: var(--vp-top, 0px);
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--vp-bottom, 0px);
   pointer-events: none;
   border: 3px dashed rgba(255, 0, 0, 0.5);
   z-index: 9999;
