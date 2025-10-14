@@ -1067,8 +1067,6 @@ export function buildMinimalHeader(posts) {
       `${id}_shared`,
       `${id}_reported_misinfo`,
       `${id}_dwell_s`,          // compat (rounded seconds)
-      `${id}_height_px`,        // NEW: post height (px, max observed)
-      `${id}_dwell_ms_per_px`   // NEW: normalized dwell (ms per px)
     );
   });
 
@@ -1255,9 +1253,7 @@ export function buildParticipantRow({
     // EXPAND/COMMENTS/SHARE/REPORT
     row[`${id}_expandable`] = agg.expandable ? 1 : "";
     row[`${id}_expanded`]   = agg.expanded ? 1 : "";
-
     row[`${id}_commented`] = agg.commented ? 1 : "";     // ✓/— in UI
-
     row[`${id}_comment_texts`] = agg.comment_texts.length
       ? agg.comment_texts.join(" | ")
       : "—";                                             // em dash for “no text”
@@ -1268,8 +1264,6 @@ export function buildParticipantRow({
     // DWELL + HEIGHT (new)
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;                                            // compat seconds
-    row[`${id}_height_px`]       = aggD && Number.isFinite(aggD.post_h_px_max) ? aggD.post_h_px_max : "";
-    row[`${id}_dwell_ms_per_px`] = aggD && Number.isFinite(aggD.dwell_ms_per_px) ? Math.round(aggD.dwell_ms_per_px) : "";
   }
 
   return row;
