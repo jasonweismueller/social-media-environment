@@ -1540,6 +1540,11 @@ export function extractPerPostFromRosterRow(row) {
 
 /**
  * Load participants roster…
+/**
+ * loadParticipantsRoster(feedIdOrOpts?, opts?)
+ * - If called with string → treat as feedId.
+ * - If called with object → { feedId?, projectId?, signal? }.
+ * Always includes admin_token, project_id, and app in the request.
  */
 export async function loadParticipantsRoster(arg1, arg2) {
   let feedId = null;
@@ -1548,6 +1553,8 @@ export async function loadParticipantsRoster(arg1, arg2) {
     feedId = arg1 || null;
     opts = arg2 || {};
   } else if (arg1 && typeof arg1 === "object") {
+    // support { feedId, projectId, signal }
+    feedId = arg1.feedId || null;
     opts = arg1;
   }
 
@@ -1557,15 +1564,29 @@ export async function loadParticipantsRoster(arg1, arg2) {
     return [];
   }
 
+  // Project scoping (fallback to utils’ current project)
+  const projectId = opts.projectId || getProjectId(); // <- your utils getter
+  const app = typeof APP !== "undefined" ? APP : "";  // optional, if you route by app
+
   try {
-    const qFeed = feedId ? `&feed_id=${encodeURIComponent(feedId)}` : "";
-    const qAdmin = `&admin_token=${encodeURIComponent(admin_token)}`;
-    const url = PARTICIPANTS_GET_URL() + qFeed + qAdmin + "&_ts=" + Date.now();
+    const params = new URLSearchParams();
+    params.set("path", "participants");            // if your proxy expects it; otherwise remove
+    if (app)        params.set("app", app);
+    if (projectId)  params.set("project_id", projectId);
+    if (feedId)     params.set("feed_id", feedId);
+    params.set("admin_token", admin_token);
+    params.set("_ts", String(Date.now()));         // bust caches
+
+    // If PARTICIPANTS_GET_URL() already returns a URL with some params, this will append safely.
+    const base = PARTICIPANTS_GET_URL();
+    const url = base.includes("?") ? `${base}&${params}` : `${base}?${params}`;
+
     const data = await getJsonWithRetry(
       url,
       { method: "GET", mode: "cors", cache: "no-store", signal: opts.signal },
       { retries: 1, timeoutMs: 8000 }
     );
+
     return Array.isArray(data) ? data : [];
   } catch (e) {
     console.warn("loadParticipantsRoster failed:", e);

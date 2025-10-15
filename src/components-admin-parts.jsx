@@ -133,7 +133,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
 }
 
 /* ----------------------------- Participants ------------------------------ */
-export function ParticipantsPanel({ feedId, compact = false, limit, onCountChange }) {
+export function ParticipantsPanel({ feedId, projectId, compact = false, limit, onCountChange }) {
   const [projectId, setProjectId] = useState(() => getProjectIdUtil() || "global"); // for cache + labels
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -173,7 +173,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
   }, [projectId]);
 
   // cache key now includes APP + projectId + feedId
-  const mkCacheKey = (id) => `participants_cache_v1::${APP}::${projectId || "global"}::${id || "noid"}`;
+ const mkCacheKey = (id) =>  `fb_participants_cache_v7::${projectId || "no-project"}::${id || "noid"}`;
 
   const saveCache = React.useCallback((data) => {
     try { localStorage.setItem(mkCacheKey(feedId), JSON.stringify({ t: Date.now(), rows: data })); } catch {}
@@ -222,7 +222,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
     try {
       let data;
       try {
-        data = await loadParticipantsRoster(feedId, { signal: ctrl.signal });
+        data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId });
       } catch {
         if (ctrl.signal.aborted) return;
         data = await loadParticipantsRoster(feedId);
