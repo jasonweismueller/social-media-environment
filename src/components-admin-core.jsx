@@ -206,6 +206,7 @@ export function AdminDashboard({
   const [showAllFeeds, setShowAllFeeds] = useState(false);
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
+  const [feedStats, setFeedStats] = useState({});
 
   const [participantsCount, setParticipantsCount] = useState(null);
   // One-time "app boot" latch. We hide it only after the first full load finishes.
@@ -274,6 +275,22 @@ const showBlur = showOverlay;
      [k]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null }
    }));
  };
+
+ useEffect(() => {
+  const syncFromUrl = () => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const pid = sp.get("project") || sp.get("project_id");
+      if (pid && pid !== projectId) setProjectId(pid);
+    } catch {}
+  };
+  window.addEventListener("popstate", syncFromUrl);
+  window.addEventListener("hashchange", syncFromUrl);
+  return () => {
+    window.removeEventListener("popstate", syncFromUrl);
+    window.removeEventListener("hashchange", syncFromUrl);
+  };
+}, [projectId]);
 
   useEffect(() => {
    if (!projectId) return;
