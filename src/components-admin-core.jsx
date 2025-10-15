@@ -28,7 +28,8 @@ listProjectsFromBackend,
    getDefaultProjectFromBackend,
    setDefaultProjectOnBackend,
    createProjectOnBackend,
-   deleteProjectOnBackend
+   deleteProjectOnBackend,
+   setProjectId as persistProjectId
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -305,7 +306,8 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
  const def = backendDefault || projList[0]?.project_id || "global";
      // Keep current if still present, else choose default/first
      const chosen = projList.find(p => p.project_id === (projectId || def)) || projList[0];
-     setProjectId(chosen?.project_id || "global");
+     setProjectId(chosen?.project_id || "global");           // React state
+     persistProjectId(chosen?.project_id || "global", { persist: true, updateUrl: false });
      setProjectName(chosen?.name || chosen?.project_id || "Global");
    } catch (e) {
      const isAbort = e?.name === "AbortError";
@@ -616,6 +618,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
              const row = projects.find(p => p.project_id === pid);
              setProjectId(pid);
              setProjectName(row?.name || pid);
+             persistProjectId(pid, { persist: true, updateUrl: true });
              // reset feed context so we don’t display stale data
              setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
            }}
@@ -657,6 +660,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
              const fallback = next[0] || { project_id: "global", name: "Global" };
              setProjectId(fallback.project_id);
              setProjectName(fallback.name || fallback.project_id);
+             persistProjectId(fallback.project_id, { persist: true, updateUrl: true });
            }}
          >
            Delete
@@ -720,7 +724,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
                     try {
                       setUpdatingWipe(true);
                       const next = !wipeOnChange;
-                      const res = await setWipePolicyOnBackend(projectId, next);
+                      const res = await setWipePolicyOnBackend(next);
                       if (res?.ok) {
                         setWipeOnChange(!!res.wipe_on_change);
                       } else {
@@ -814,7 +818,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
                                 className="btn"
                                 title="Make this the backend default feed"
                                 onClick={async () => {
-                                  const ok = await setDefaultFeedOnBackend(projectId, f.feed_id);
+                                  const ok = await setDefaultFeedOnBackend(f.feed_id);
                                   if (ok) setDefaultFeedId(f.feed_id);
                                 }}
                                 disabled={isDefault}
@@ -900,7 +904,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
                                 onClick={async () => {
                                   const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
                                   if (!okGo) return;
-                                  const ok = await deleteFeedOnBackend(projectId, f.feed_id);
+                                  const ok = await deleteFeedOnBackend(f.feed_id);
                                   if (ok) {
                                     if (f.feed_id === feedId) {
                                       const next = feeds.filter(x => x.feed_id !== f.feed_id);
@@ -969,7 +973,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
                           `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
                         );
                         if (!okGo) return;
-                        const ok = await wipeParticipantsOnBackend(projectId, feedId);
+                        const ok = await wipeParticipantsOnBackend(feedId);
                         if (ok) {
                           setParticipantsRefreshKey(k => k + 1);
                           alert("Participants wiped.");
