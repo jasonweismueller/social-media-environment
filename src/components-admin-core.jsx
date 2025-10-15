@@ -948,7 +948,58 @@ const curStats = feedStats[feedId];
   >
     <div className="section-collapse-inner">
       <div style={{ overflowX: "auto" }}>
-        {/* your posts table */}
+        <div style={{ overflowX: "auto" }}>
+  {posts.length === 0 ? (
+    <div className="subtle" style={{ padding: ".5rem 0" }}>
+      No posts yet.
+    </div>
+  ) : (
+    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead>
+        <tr className="subtle">
+          <th style={{ textAlign: "left", padding: 8, width: 36 }} />
+          <th style={{ textAlign: "left", padding: 8, minWidth: 160 }}>Author</th>
+          <th style={{ textAlign: "left", padding: 8, minWidth: 260 }}>Text</th>
+          <th style={{ textAlign: "left", padding: 8, minWidth: 80 }}>Time</th>
+          <th style={{ textAlign: "left", padding: 8, minWidth: 120 }}>Media</th>
+          <th style={{ textAlign: "left", padding: 8, minWidth: 220 }}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
+          <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
+            <td style={{ padding: 8 }}>
+              <div className="avatar">
+                <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
+              </div>
+            </td>
+            <td style={{ padding: 8, fontWeight: 600 }}>
+              {p.author || <span className="subtle">—</span>}
+              {p.badge ? " ✔" : ""}
+            </td>
+            <td style={{ padding: 8, maxWidth: 520, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {p.text || <span className="subtle">—</span>}
+            </td>
+            <td style={{ padding: 8 }}>
+              <span className="subtle">{p.showTime === false ? "—" : (p.time || "—")}</span>
+            </td>
+            <td style={{ padding: 8 }}>
+              {p.videoMode !== "none"
+                ? "🎬 video"
+                : p.imageMode !== "none"
+                ? "🖼️ image"
+                : <span className="subtle">none</span>}
+            </td>
+            <td style={{ padding: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button className="btn" onClick={() => openEdit(p)}>Edit</button>
+              <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+</div>
       </div>
     </div>
   </div>
