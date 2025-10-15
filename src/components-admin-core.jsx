@@ -182,6 +182,7 @@ export function AdminDashboard({
   onLogout,
 }) {
 
+  const pidForBackend = (pid) => (pid && pid !== "global" ? pid : undefined);
   const [sessExpiringSec, setSessExpiringSec] = useState(null);
   const [sessExpired, setSessExpired] = useState(false);
   const [touching, setTouching] = useState(false);
@@ -349,11 +350,11 @@ const showBlur = showOverlay;
 
     try {
       // Try parallel fetch
-      const [list, backendDefault] = await Promise.all([
-        // If your utils accept { signal }, pass it; otherwise it will be ignored safely.
-        listFeedsFromBackend({projectId, signal: ctrl.signal }),
-        getDefaultFeedFromBackend({projectId, signal: ctrl.signal }),
-      ]);
+      const effPid = pidForBackend(projectId);
+ const [list, backendDefault] = await Promise.all([
+   listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
+   getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
+ ]);
 
       if (ctrl.signal.aborted) return;
 
@@ -389,7 +390,7 @@ const showBlur = showOverlay;
 
       // Best-effort policy fetch
       try {
-        const policy = await getWipePolicyFromBackend({ projectId, signal: ctrl.signal });
+        const policy = await getWipePolicyFromBackend({ signal: ctrl.signal });
         if (!ctrl.signal.aborted && policy !== null) setWipeOnChange(!!policy);
       } catch {}
     } catch (e) {
@@ -863,18 +864,18 @@ const showBlur = showOverlay;
                                     saveLocalBackup(projectId, feedId, "fb", posts);
                                     await snapshotToS3({ posts, projectId, feedId, app: "fb" });
                                     const ok = await savePostsToBackend(posts, {
-                                      projectId,
+                                      projectId: pidForBackend(projectId),                                      
                                       feedId: f.feed_id,
                                       name: f.name || f.feed_id,
                                       app: "fb",
                                     });
                                     if (ok) {
-                                      const list = await listFeedsFromBackend({ projectId });
+                                      const list = await listFeedsFromBackend({ projectId: pidForBackend(projectId) });
                                       const nextFeeds = Array.isArray(list) ? list : [];
                                       setFeeds(nextFeeds);
                                       const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
                                       if (row) {
-                                        const fresh = await loadPostsFromBackend(f.feed_id, {projectId, force: true });
+                                        const fresh = await loadPostsFromBackend(f.feed_id, { projectId: pidForBackend(projectId), force: true });
                                         const arr = Array.isArray(fresh) ? fresh : [];
                                         setPosts(arr);
                                         setCachedPosts(projectId, f.feed_id, row.checksum, arr);
@@ -907,9 +908,13 @@ const showBlur = showOverlay;
                               title="Copy participant link for this feed"
                               onClick={async () => {
                                 if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
-                                 const url = (typeof buildFeedShareUrl === "function")
-   ? buildFeedShareUrl({ ...f, project_id: projectId })
-   : `${window.location.origin}/#/?project=${encodeURIComponent(projectId || "global")}&feed=${encodeURIComponent(f.feed_id)}`;
+                                    const effPid = projectId && projectId !== "global" ? projectId : null;
+   const url =
+     `${base}?path=participants_stats` +
+     (effPid ? `&project_id=${encodeURIComponent(effPid)}` : "") +
+     `&feed_id=${encodeURIComponent(feedId)}` +
+     `&admin_token=${encodeURIComponent(admin)}`;
+    const res = await fetch(url);
                                 await navigator.clipboard.writeText(url).catch(()=>{});
                                 alert("Link copied:\n" + url);
                               }}
@@ -1056,7 +1061,7 @@ const showBlur = showOverlay;
                   <button
                     className="btn"
                     onClick={async () => {
-                      const fresh = await loadPostsFromBackend(feedId, {projectId, force: true });
+                      const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
                       const arr = Array.isArray(fresh) ? fresh : [];
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
