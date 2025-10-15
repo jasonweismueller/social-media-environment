@@ -514,13 +514,7 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
         </div>
       )}
 
-      <Section
-        title="Admin Dashboard"
-        subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
-        right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
-      />
-
-      <div
+<div
   style={{
     filter: showBlur ? "blur(6px)" : "none",
     transition: "filter .2s ease",
@@ -528,6 +522,14 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
     userSelect: showBlur ? "none" : "auto",
   }}
 >
+
+      <Section
+        title="Admin Dashboard"
+        subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
+        right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
+      />
+
+      
 
       <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
         {/* Feeds (no collapse by design) */}
