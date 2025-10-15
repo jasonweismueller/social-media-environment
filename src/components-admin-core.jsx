@@ -200,7 +200,7 @@ export function AdminDashboard({
   // --- wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);
   const [updatingWipe, setUpdatingWipe] = useState(false);
-
+  const showBlur = (feedsLoading && !feedsError) || isSaving;
   const [feeds, setFeeds] = useState([]);
   const [feedId, setFeedId] = useState("");
   const [feedName, setFeedName] = useState("");
@@ -511,6 +511,15 @@ export function AdminDashboard({
         subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
         right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
       />
+
+      <div
+  style={{
+    filter: showBlur ? "blur(6px)" : "none",
+    transition: "filter .2s ease",
+    pointerEvents: showBlur ? "none" : "auto",
+    userSelect: showBlur ? "none" : "auto",
+  }}
+>
 
       <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
         {/* Feeds (no collapse by design) */}
@@ -1030,36 +1039,54 @@ export function AdminDashboard({
       </div>
 
       {/* Users (owners only) */}
-      <RoleGate min="owner">
-        <Section
-          title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
-          subtitle="Manage admin users & roles."
-          right={
-            <button
-              type="button"
-              className="btn ghost section-chev"
-              onClick={() => setUsersCollapsed(v => !v)}
-              aria-expanded={!usersCollapsed}
-              aria-controls="users-body"
-              title={usersCollapsed ? "Expand" : "Collapse"}
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-              </svg>
-            </button>
-          }
-        >
-          <div
-            id="users-body"
-            className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
-            aria-hidden={usersCollapsed}
-          >
-            <div className="section-collapse-inner">
-              {!usersCollapsed ? <AdminUsersPanel embed onCountChange={setUsersCount} /> : null}
-            </div>
-          </div>
-        </Section>
-      </RoleGate>
+     <RoleGate min="owner">
+  <Section
+    title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
+    subtitle="Manage admin users & roles."
+    right={
+      <button
+        type="button"
+        className="btn ghost section-chev"
+        onClick={() => setUsersCollapsed(v => !v)}
+        aria-expanded={!usersCollapsed}
+        aria-controls="users-body"
+        title={usersCollapsed ? "Expand" : "Collapse"}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+        </svg>
+      </button>
+    }
+  >
+    <div
+      id="users-body"
+      className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
+      aria-hidden={usersCollapsed}
+    >
+      <div className="section-collapse-inner">
+        {/* Visible content only when expanded */}
+        {!usersCollapsed ? <AdminUsersPanel embed onCountChange={setUsersCount} /> : null}
+      </div>
+    </div>
+
+    {/* Hidden preloader so the count refreshes immediately */}
+    {usersCollapsed && (
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          width: 0,
+          height: 0,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <AdminUsersPanel embed onCountChange={setUsersCount} />
+      </div>
+    )}
+  </Section>
+</RoleGate>
 
       {editing && (
         <Modal
@@ -1418,7 +1445,7 @@ export function AdminDashboard({
           </div>
         </div>
       )}
-
+    </div>
     </div>
   );
 }
