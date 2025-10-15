@@ -1283,7 +1283,13 @@ useEffect(() => {
                       <tbody>
                         {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
                           <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
-                           +       <td style={{ padding: 8, fontFamily: "monospace" }}>
+                               <td style={{ padding: 8 }}>
+         <div className="avatar">
+           <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
+         </div>
+       </td>
+
+                                  <td style={{ padding: 8, fontFamily: "monospace" }}>
          {postNames[p.id] || <span className="subtle">—</span>}
        </td>
                             <td style={{ padding: 8, fontWeight: 600 }}>
