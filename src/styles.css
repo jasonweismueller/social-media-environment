@@ -1323,3 +1323,31 @@ body.modal-open .dots:hover {
 .modal-backdrop * {
   pointer-events: auto !important;
 }
+
+/* Portaled modal: make sure it's above rails/menus/top bars */
+.modal-backdrop { position: fixed; inset: 0; z-index: 999999; }
+.modal          { position: relative; z-index: 999999; }
+
+/* When a modal is open, kill hover paints and clicks underneath */
+body.modal-open .page,
+body.modal-open .nav,
+body.modal-open .top-rail-placeholder {
+  pointer-events: none !important;
+}
+
+body.modal-open .feed-row:hover,
+body.modal-open .card:hover,
+body.modal-open .ghost-card:hover,
+body.modal-open .image-btn:hover,
+body.modal-open .action:hover,
+body.modal-open .btn:hover,
+body.modal-open .dots:hover {
+  background: inherit !important;
+  box-shadow: var(--shadow) !important;
+}
+
+/* Modal itself must stay interactive */
+.modal-backdrop,
+.modal-backdrop * {
+  pointer-events: auto !important;
+}
