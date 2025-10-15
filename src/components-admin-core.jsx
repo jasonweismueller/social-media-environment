@@ -188,6 +188,8 @@ export function AdminDashboard({
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
 
+  const [participantsCount, setParticipantsCount] = useState(null);
+
 
   // collapse + participants paging toggle
   const [feedsCollapsed, setFeedsCollapsed] = useState(true); // (unused by design)
@@ -750,7 +752,7 @@ const curStats = feedStats[feedId];
 
         {/* Participants */}
         <Section
-  title={`Participants${curStats ? ` (${curStats.total ?? 0})` : ""}`}
+  title={`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
   subtitle={
     <>
       <span>Live snapshot & interaction aggregates for </span>
@@ -819,18 +821,13 @@ const curStats = feedStats[feedId];
     aria-hidden={participantsCollapsed}
   >
     <div className="section-collapse-inner">
-      {feedId ? (
-        <ParticipantsPanel
-          key={`pp::${feedId}::${participantsRefreshKey}`}
-          feedId={feedId}
-          compact
-          limit={showAllParticipants ? undefined : 5}
-        />
-      ) : (
-        <div className="subtle" style={{ padding: ".5rem 0" }}>
-          No feed selected.
-        </div>
-      )}
+      <ParticipantsPanel
+  key={`pp::${feedId}::${participantsRefreshKey}`}
+  feedId={feedId}
+  compact
+  limit={showAllParticipants ? undefined : 5}
+  onCountChange={setParticipantsCount}
+/>
     </div>
   </div>
 </Section>

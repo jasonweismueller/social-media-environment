@@ -136,8 +136,9 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
  * - feedId: string (required)
  * - compact?: boolean (optional) — tighter spacing/typography
  * - limit?: number (optional) — if provided, show only the first N submissions and hide "Show more"
+ * - onCountChange?: (n: number) => void (optional) — report total submissions to parent
  */
-export function ParticipantsPanel({ feedId, compact = false, limit }) {
+export function ParticipantsPanel({ feedId, compact = false, limit, onCountChange }) {
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -221,6 +222,11 @@ export function ParticipantsPanel({ feedId, compact = false, limit }) {
 
   const totalRows = rows?.length || 0;
 
+  // report live count to parent
+  useEffect(() => {
+    if (typeof onCountChange === "function") onCountChange(totalRows);
+  }, [totalRows, onCountChange]);
+
   const sorted = useMemo(() => {
     if (!rows?.length) return [];
     const a = [...rows];
@@ -293,8 +299,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit }) {
       {/* header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
-          Participants ({nfCompact.format(totalRows)})
-          {feedId ? <span className="subtle"> · {feedId}</span> : null}
+          Participants{feedId ? <span className="subtle"> · {feedId}</span> : null}
         </h4>
         <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap" }}>
           <button className="btn" onClick={() => refresh(false)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
