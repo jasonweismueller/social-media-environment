@@ -6,10 +6,12 @@ import {
   summarizeRoster,
   nfCompact,
   extractPerPostFromRosterRow,
-  // ⬇️ new: to scope cache/labels by app+project
+  // ⬇️ scope cache/labels by app+project
   APP,
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
+  // ⬇️ new: read stored post-name labels for this project/feed
+  readPostNames,
 } from "./utils";
 
 /* --------------------------- tiny helper + stat --------------------------- */
@@ -366,7 +368,7 @@ export function ParticipantsPanel({
               // 2) Normalize values
               const BOOL_SUFFIX = /(reacted|expandable|expanded|commented|shared|reported_misinfo)$/;
 
-              const rowsForCsv = transformed.map((r) => {
+              const normalized = transformed.map((r) => {
                 const out = { ...r };
                 for (const k of Object.keys(out)) {
                   if (/_dwell_s$/.test(k)) {
@@ -386,13 +388,53 @@ export function ParticipantsPanel({
                 return out;
               });
 
-              // 3) Build header as union of keys
+              // 3) Remap per-post keys from "<post_id>_<suffix>" → "<post_name>_<suffix>"
+              //    Names come from local storage (set in Admin editor). If collisions,
+              //    disambiguate by appending short id in brackets.
+              const nameStore = readPostNames(projectId, feedId) || {};
+              const SUFFIX_RE = /^(.+?)_(reacted|reaction_type|expandable|expanded|commented|comment_texts|shared|reported_misinfo|dwell_s)$/;
+
+              // collect all bases present in rows
+              const bases = new Set();
+              normalized.forEach((r) => {
+                Object.keys(r).forEach((k) => {
+                  const m = SUFFIX_RE.exec(k);
+                  if (m) bases.add(m[1]);
+                });
+              });
+
+              // build id -> label map (with collision handling)
+              const used = new Set();
+              const idToLabel = {};
+              for (const base of bases) {
+                let label = (nameStore && nameStore[base]) || base;
+                if (used.has(label)) label = `${label} [${base}]`;
+                used.add(label);
+                idToLabel[base] = label;
+              }
+
+              const renamed = normalized.map((r) => {
+                const out = {};
+                for (const [k, v] of Object.entries(r)) {
+                  const m = SUFFIX_RE.exec(k);
+                  if (m) {
+                    const [, base, suf] = m;
+                    const label = idToLabel[base] || base;
+                    out[`${label}_${suf}`] = v;
+                  } else {
+                    out[k] = v;
+                  }
+                }
+                return out;
+              });
+
+              // 4) Build header as union of keys (after rename)
               const headerSet = new Set();
-              rowsForCsv.forEach(r => Object.keys(r).forEach(k => headerSet.add(k)));
+              renamed.forEach(r => Object.keys(r).forEach(k => headerSet.add(k)));
               const header = Array.from(headerSet);
 
-              // 4) Emit CSV (filename includes app + project)
-              const csv = toCSV(rowsForCsv, header);
+              // 5) Emit CSV (filename includes app + project)
+              const csv = toCSV(renamed, header);
               const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
