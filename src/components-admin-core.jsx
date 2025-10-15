@@ -185,7 +185,7 @@ function ChipToggle({ label, checked, onChange }) {
   );
 }
 
-/* ----------------------------- Admin Dashboard ---------------------------- */
+/* ----------------------------- Admin Dashboard ------------------------------ */
 export function AdminDashboard({
   posts, setPosts,
   randomize, setRandomize,

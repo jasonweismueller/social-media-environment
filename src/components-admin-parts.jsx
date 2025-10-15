@@ -14,7 +14,7 @@ import {
   readPostNames,
 } from "./utils";
 
-/* --------------------------- tiny helper + stat --------------------------- */
+/* --------------------------- tiny helper + stat ----------------------------- */
 function ms(n) {
   if (n == null) return "—";
   const s = Math.round(n / 1000);

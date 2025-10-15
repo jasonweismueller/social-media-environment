@@ -22,7 +22,7 @@ export function MediaFieldset({
   const uploadsDisabled = !feedId; // uploader requires a feedId
   const postId = editing?.id || null;
 
-  // ---- Post name (friendly label used in UI/CSV) --------------------------
+  // ---- Post name (friendly label used in UI/CSV) ----------------------------
   const [postName, setPostName] = React.useState(() => {
     if (!postId) return editing?.name || "";
     const saved = readPostNames(resolvedProjectId, feedId)[postId] || "";
