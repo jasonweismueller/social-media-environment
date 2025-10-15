@@ -1,15 +1,18 @@
 // components-admin-media.jsx
 import React from "react";
-import { randomSVG, uploadFileToS3ViaSigner } from "./utils";
+import { randomSVG, uploadFileToS3ViaSigner,  getProjectId as getProjectIdUtil } from "./utils";
+
 
 export function MediaFieldset({
   editing,
   setEditing,
   feedId,
+  projectId, 
   isNew,
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const projectId = getProjectIdUtil();
   return (
     <>
       <h4 className="section-title">Post Media</h4>
@@ -115,6 +118,7 @@ export function MediaFieldset({
           const { cdnUrl } = await uploadFileToS3ViaSigner({
             file: f,
             feedId,
+            projectId, 
             prefix: "images",
             onProgress: setPct, // this only works if utils uses XHR
           });
@@ -216,6 +220,7 @@ export function MediaFieldset({
                       const { cdnUrl } = await uploadFileToS3ViaSigner({
                         file: f,
                         feedId,
+                        projectId, 
                         onProgress: setPct,
                         prefix: "videos",
                       });
@@ -258,7 +263,7 @@ export function MediaFieldset({
                     const f = e.target.files?.[0]; if (!f) return;
                     try {
                       setUploadingPoster?.(true);
-                      const { cdnUrl } = await uploadFileToS3ViaSigner({ file: f, feedId, prefix: "posters" });
+                      const { cdnUrl } = await uploadFileToS3ViaSigner({ file: f, feedId, projectId, prefix: "posters" });
                       setEditing(ed => ({ ...ed, videoPosterUrl: cdnUrl }));
                       alert("Poster uploaded ✔");
                     } catch (err) {
