@@ -86,20 +86,6 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
     };
   }, []);
 
-  // NEW — only flag overlay when the 3-dots menu is open
-// keep the menu-specific overlay (so only menu items gray)
-useEffect(() => {
-  document.body.classList.toggle("has-overlay", !!menuOpen);
-  return () => document.body.classList.remove("has-overlay");
-}, [menuOpen]);
-
-// NEW — when comment modal or ack is visible, freeze the rest of the page
-useEffect(() => {
-  const modalUp = !!(showComment || reportAck);
-  document.body.classList.toggle("modal-open", modalUp);
-  return () => document.body.classList.remove("modal-open");
-}, [showComment, reportAck]);
-
   // in-view detector for media
   const { wrapRef, inView } = useInViewAutoplay(0.6);
 
@@ -525,8 +511,8 @@ useEffect(() => {
     <article
   ref={registerViewRef(post.id)}
   data-post-id={post.id}
-  data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined}
-  className={`card post-card ${menuOpen ? "has-open-menu" : ""}`}
+  data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined} // ⬅️ add this
+  className="card post-card"
 >
       <header className="card-head">
         <div className="avatar">
