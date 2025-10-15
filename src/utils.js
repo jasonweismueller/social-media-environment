@@ -1806,6 +1806,7 @@ export async function putToS3({ file, signedPutUrl, onProgress, contentType }) {
 export async function uploadFileToS3ViaSigner({
   file,
   feedId,
+  projectId, 
   onProgress,
   prefix = "images",
 }) {
@@ -1815,7 +1816,8 @@ export async function uploadFileToS3ViaSigner({
   const { contentType, ext, nameNoExt } = sniffFileMeta(file);
   const ts = Date.now();
   const base = sanitizeName(nameNoExt) || `file_${ts}`;
-  const key = `${prefix}/${feedId}/${ts}_${base}.${ext}`;
+  const proj = sanitizeName(projectId || "global");
+  const key = `${prefix}/${proj}/${feedId}/${ts}_${base}.${ext}`;
 
   const { uploadUrl, fileUrl } = await getPresignedPutUrl({ key, contentType });
   if (typeof onProgress === "function") onProgress(0);
