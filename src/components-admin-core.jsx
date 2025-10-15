@@ -196,6 +196,8 @@ export function AdminDashboard({
   const [ppOpen, setPpOpen] = useState(true);
 
   const [participantsCount, setParticipantsCount] = useState(null);
+  // One-time "app boot" latch. We hide it only after the first full load finishes.
+const [booting, setBooting] = useState(true);
 
    // --- projects
  const [projects, setProjects] = useState([]);
@@ -224,6 +226,8 @@ const [feedName, setFeedName] = useState("");
 const [feedsLoading, setFeedsLoading] = useState(false);
 const [feedsError, setFeedsError] = useState("");
 
+
+
 // ✅ needed for “(default)” labels & actions
 const [defaultFeedId, setDefaultFeedId] = useState(null);
 
@@ -232,9 +236,9 @@ const feedsAbortRef = useRef(null);
 
 // One source of truth for the blocking overlay
 const showOverlay =
-  ((projectsLoading && !projectsError) ||
-   (feedsLoading && !feedsError) ||
-   isSaving);
+  isSaving ||
+  (booting && !projectsError && !feedsError) ||
+  (!booting && feedsLoading && !feedsError);
 
 // If you still want to blur the app behind the overlay, tie it to the same flag.
 // (Or make this just `isSaving` if you only want blur while saving.)
@@ -251,6 +255,13 @@ const showBlur = showOverlay;
 
   // counts
   const [usersCount, setUsersCount] = useState(null);
+
+  useEffect(() => {
+  // Hide the initial, one-and-done boot overlay once BOTH loaders are idle
+  if (!projectsLoading && !feedsLoading) {
+    setBooting(false);
+  }
+}, [projectsLoading, feedsLoading]);
 
   // always fetch stats for the currently selected feed (so the title has a number)
   useEffect(() => {
@@ -624,6 +635,7 @@ const showBlur = showOverlay;
            onChange={async (e) => {
              const pid = e.target.value;
              const row = projects.find(p => p.project_id === pid);
+             setBooting(true); // optional: treat project switches like a fresh boot
              setProjectId(pid);
              setProjectName(row?.name || pid);
              persistProjectId(pid, { persist: true, updateUrl: true });
