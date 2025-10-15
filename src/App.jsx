@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles.css";
 
@@ -85,7 +85,11 @@ export default function App() {
   // Feed
   const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedIdFromUrl() : null);
   const [posts, setPosts] = useState([]);
-  const [loadingPosts, setLoadingPosts] = useState(true);
+
+  // Unified loading/error phase for participant view
+  const [feedPhase, setFeedPhase] = useState("idle"); // "idle" | "loading" | "ready" | "error"
+  const [feedError, setFeedError] = useState("");
+  const feedAbortRef = useRef(null);
 
   // --- Debug viewport flag: exactly like per-post debug (search + hash)
   useEffect(() => {
@@ -135,19 +139,24 @@ export default function App() {
     };
   }, []);
 
-  // --- Resolve feed from backend default if none provided
-  useEffect(() => {
+  // ---------- Centralized, abortable feed loader with retry ----------
+  const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
-    let alive = true;
 
-    (async () => {
-      setLoadingPosts(true);
+    // cancel any in-flight attempt
+    feedAbortRef.current?.abort?.();
+    const ctrl = new AbortController();
+    feedAbortRef.current = ctrl;
+
+    setFeedPhase("loading");
+    setFeedError("");
+
+    try {
       const [feedsList, backendDefault] = await Promise.all([
-        listFeedsFromBackend(),
-        getDefaultFeedFromBackend(),
+        listFeedsFromBackend({ signal: ctrl.signal }),
+        getDefaultFeedFromBackend({ signal: ctrl.signal }),
       ]);
-
-      if (!alive) return;
+      if (ctrl.signal.aborted) return;
 
       const urlFeedId = getFeedIdFromUrl();
       const chosen =
@@ -156,44 +165,57 @@ export default function App() {
         (feedsList || [])[0] || null;
 
       if (!chosen) {
-        setActiveFeedId("feed_1");
-        setPosts([]);
-        setLoadingPosts(false);
-        return;
+        throw new Error("No feeds are available.");
       }
 
       setActiveFeedId(chosen.feed_id);
 
-      const cached = (() => {
-        try {
-          const k = `posts::${chosen.feed_id}`;
-          const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
-          if (!meta || meta.checksum !== chosen.checksum) return null;
+      // cache check
+      let cached = null;
+      try {
+        const k = `posts::${chosen.feed_id}`;
+        const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
+        if (meta?.checksum === chosen.checksum) {
           const data = JSON.parse(localStorage.getItem(k) || "null");
-          return Array.isArray(data) ? data : null;
-        } catch { return null; }
-      })();
+          if (Array.isArray(data)) cached = data;
+        }
+      } catch {}
 
       if (cached) {
         setPosts(cached);
-        setLoadingPosts(false);
+        setFeedPhase("ready");
         return;
       }
 
-      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true });
-      if (!alive) return;
+      // fetch fresh
+      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal });
+      if (ctrl.signal.aborted) return;
+
       const arr = Array.isArray(fresh) ? fresh : [];
       setPosts(arr);
+
       try {
         const k = `posts::${chosen.feed_id}`;
         localStorage.setItem(k, JSON.stringify(arr));
         localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum: chosen.checksum, t: Date.now() }));
       } catch {}
-      setLoadingPosts(false);
-    })();
 
-    return () => { alive = false; };
+      setFeedPhase("ready");
+    } catch (e) {
+      if (e?.name === "AbortError") return; // ignore user/nav aborts
+      console.warn("Feed load failed:", e);
+      setFeedError(e?.message || "Failed to load the feed. Please try again.");
+      setFeedPhase("error");
+    } finally {
+      if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
+    }
   }, [onAdmin]);
+
+  // Initial load + cleanup
+  useEffect(() => {
+    if (!onAdmin) startLoadFeed();
+    return () => feedAbortRef.current?.abort?.();
+  }, [onAdmin, startLoadFeed]);
 
   // --- Auto-login for admin
   useEffect(() => {
@@ -214,10 +236,10 @@ export default function App() {
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
-    const shouldLock = !onAdmin && (!hasEntered || loadingPosts || submitted);
+    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted);
     el.style.overflow = shouldLock ? "hidden" : "";
     return () => { el.style.overflow = prev; };
-  }, [hasEntered, loadingPosts, submitted, onAdmin]);
+  }, [hasEntered, feedPhase, submitted, onAdmin]);
 
   // ===== IO infrastructure (observe new posts immediately) =====
   const ioRef = useRef(null); // active IntersectionObserver
@@ -303,7 +325,7 @@ export default function App() {
 
   // ===================== VIEWPORT TRACKING =====================
   useEffect(() => {
-    if (!hasEntered || loadingPosts || submitted || onAdmin) return;
+    if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
 
     const DEBUG_VP = getUrlFlag("debugvp") === "1";
     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
@@ -379,7 +401,7 @@ export default function App() {
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("beforeunload", onHide);
     };
-  }, [orderedPosts, hasEntered, loadingPosts, submitted, onAdmin, vpOff.top, vpOff.bottom]);
+  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom]);
   // ===================================================================
 
   const FeedComponent = FBFeed;
@@ -388,7 +410,7 @@ export default function App() {
     <Router>
       <div
         className={`app-shell ${
-          (!onAdmin && (!hasEntered || loadingPosts || submitted)) ? "blurred" : ""
+          (!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted)) ? "blurred" : ""
         }`}
       >
         <RouteAwareTopbar />
@@ -396,14 +418,14 @@ export default function App() {
           <Route
             path="/"
             element={
-              hasEntered && !loadingPosts ? (
+              hasEntered && feedPhase === "ready" ? (
                 <FeedComponent
                   posts={orderedPosts}
                   registerViewRef={registerViewRef}
                   disabled={disabled}
                   log={log}
                   showComposer={showComposer}
-                  loading={loadingPosts}
+                  loading={false}
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
@@ -524,11 +546,28 @@ export default function App() {
         />
       )}
 
-      {!onAdmin && hasEntered && !submitted && loadingPosts && (
+      {/* Loading overlay */}
+      {!onAdmin && hasEntered && !submitted && feedPhase === "loading" && (
         <LoadingOverlay
           title="Preparing your feed…"
           subtitle="Fetching posts and setting things up."
         />
+      )}
+
+      {/* Error overlay with retry (mirrors admin style) */}
+      {!onAdmin && hasEntered && !submitted && feedPhase === "error" && (
+        <div className="modal-backdrop modal-backdrop-dim" role="dialog" aria-modal="true" aria-live="assertive">
+          <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
+            <div className="spinner-ring" aria-hidden="true" style={{ display: "none" }} />
+            <h3 style={{ margin: "0 0 6px" }}>Couldn’t load your feed</h3>
+            <div style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 12 }}>
+              {feedError || "Network error or service unavailable."}
+            </div>
+            <div>
+              <button className="btn" onClick={startLoadFeed}>Try again</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {submitted && <ThankYouOverlay />}

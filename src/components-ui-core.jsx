@@ -362,13 +362,36 @@ export function ParticipantOverlay({ onSubmit }) {
   );
 }
 
-export function LoadingOverlay({ title = "Loading your feed…", subtitle = "This will only take a moment." }) {
+export function LoadingOverlay({
+  status = "loading",                          // "loading" | "error"
+  title = "Loading your feed…",
+  subtitle = "This will only take a moment.",
+  errorTitle = "Couldn’t load your feed",
+  errorSubtitle = "We hit a network error. Please try again.",
+  onRetry,                                     // only shown when status="error"
+}) {
+  const isError = status === "error";
+
   return (
     <div className="modal-backdrop modal-backdrop-dim">
       <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
-        <div className="spinner-ring" aria-hidden="true" />
-        <h3 style={{ margin: "0 0 6px" }}>{title}</h3>
-        <div style={{ color: "var(--muted)", fontSize: ".95rem" }}>{subtitle}</div>
+        {!isError ? (
+          <>
+            <div className="spinner-ring" aria-hidden="true" />
+            <h3 style={{ margin: "0 0 6px" }}>{title}</h3>
+            <div style={{ color: "var(--muted)", fontSize: ".95rem" }}>{subtitle}</div>
+          </>
+        ) : (
+          <>
+            <h3 style={{ margin: "0 0 6px" }}>{errorTitle}</h3>
+            <div style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 12 }}>
+              {errorSubtitle}
+            </div>
+            <div className="modal-footer" style={{ justifyContent: "center" }}>
+              <button className="btn primary" onClick={onRetry}>Retry</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
