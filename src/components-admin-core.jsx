@@ -823,14 +823,17 @@ useEffect(() => {
 
       {/* Chevron — icon-only, top-right; does not replace heading */}
       <button
-        className="btn ghost"
-        onClick={() => setParticipantsCollapsed(v => !v)}
-        aria-label={participantsCollapsed ? "Expand participants" : "Collapse participants"}
-        title={participantsCollapsed ? "Expand" : "Collapse"}
-        style={{ padding: ".15rem .35rem", minWidth: 0 }}
-      >
-        <IconChevron open={!participantsCollapsed} />
-      </button>
+  type="button"
+  className="btn ghost section-chev"
+  onClick={() => setParticipantsCollapsed(v => !v)}
+  aria-expanded={!participantsCollapsed}
+  aria-controls="participants-body"
+  title={participantsCollapsed ? "Expand" : "Collapse"}
+>
+  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+  </svg>
+</button>
     </div>
   }
 >
