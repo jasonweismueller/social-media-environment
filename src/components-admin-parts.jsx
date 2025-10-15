@@ -133,8 +133,15 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
 }
 
 /* ----------------------------- Participants ------------------------------ */
-export function ParticipantsPanel({ feedId, projectId, compact = false, limit, onCountChange }) {
-  const [projectId, setProjectId] = useState(() => getProjectIdUtil() || "global"); // for cache + labels
+export function ParticipantsPanel({
+  feedId,
+  projectId: projectIdProp,
+  compact = false,
+  limit,
+  onCountChange
+}) {
+  // Effective project id: prefer prop, else util, else "global"
+  const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -159,8 +166,12 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
         const sp = new URLSearchParams(window.location.search);
         const fromUrl = sp.get("project") || sp.get("project_id");
         if (fromUrl && fromUrl !== projectId) {
-          setProjectId(fromUrl);
+          // keep utils in sync and refresh using the URL project
           setProjectIdUtil(fromUrl, { persist: true, updateUrl: false });
+          // clear any stale view immediately; then refetch for the new project
+          setRows(null);
+          setSummary(null);
+          refresh(false, fromUrl);
         }
       } catch {}
     };
@@ -170,18 +181,19 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
       window.removeEventListener("popstate", syncFromUrl);
       window.removeEventListener("hashchange", syncFromUrl);
     };
-  }, [projectId]);
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // cache key now includes APP + projectId + feedId
- const mkCacheKey = (id) =>  `fb_participants_cache_v7::${projectId || "no-project"}::${id || "noid"}`;
+  const mkCacheKey = (id, pid = projectId) =>
+    `participants_cache_v7::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
-  const saveCache = React.useCallback((data) => {
-    try { localStorage.setItem(mkCacheKey(feedId), JSON.stringify({ t: Date.now(), rows: data })); } catch {}
+  const saveCache = React.useCallback((data, pid = projectId) => {
+    try { localStorage.setItem(mkCacheKey(feedId, pid), JSON.stringify({ t: Date.now(), rows: data })); } catch {}
   }, [feedId, projectId]);
 
-  const readCache = React.useCallback(() => {
+  const readCache = React.useCallback((pid = projectId) => {
     try {
-      const raw = localStorage.getItem(mkCacheKey(feedId));
+      const raw = localStorage.getItem(mkCacheKey(feedId, pid));
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed?.rows) ? parsed : null;
@@ -198,7 +210,7 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
   }, []);
 
   useEffect(() => {
-    const cached = readCache();
+    const cached = readCache(projectId);
     if (cached?.rows?.length) {
       setRows(cached.rows);
       setLoading(false);
@@ -211,7 +223,8 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
   // abort on unmount
   useEffect(() => () => abortRef.current?.abort?.(), []);
 
-  const refresh = React.useCallback(async (silent = false) => {
+  // optional pid override lets URL-change effect force-load new project immediately
+  const refresh = React.useCallback(async (silent = false, pidOverride) => {
     setError("");
     if (!silent) setLoading(true);
 
@@ -220,9 +233,10 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
     abortRef.current = ctrl;
 
     try {
+      const pid = pidOverride ?? projectId;
       let data;
       try {
-        data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId });
+        data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
       } catch {
         if (ctrl.signal.aborted) return;
         data = await loadParticipantsRoster(feedId);
@@ -232,7 +246,7 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
       if (Array.isArray(data)) {
         setRows(data);
         computeSummaryIdle(data);
-        saveCache(data);
+        saveCache(data, pid);
       } else {
         setError("Unexpected response.");
       }
@@ -242,7 +256,7 @@ export function ParticipantsPanel({ feedId, projectId, compact = false, limit, o
       setLoading(false);
       if (abortRef.current === ctrl) abortRef.current = null;
     }
-  }, [feedId, computeSummaryIdle, saveCache]);
+  }, [feedId, projectId, computeSummaryIdle, saveCache]);
 
   const totalRows = rows?.length || 0;
 
