@@ -31,7 +31,9 @@ listProjectsFromBackend,
    deleteProjectOnBackend,
    setProjectId as persistProjectId,
   getProjectId,
-  GS_ENDPOINT, APP, getAdminToken 
+  GS_ENDPOINT, APP, getAdminToken ,
+  readPostNames,
+  writePostNames,
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -207,6 +209,7 @@ export function AdminDashboard({
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
+  const [postNames, setPostNames] = useState({});
 
   const [participantsCount, setParticipantsCount] = useState(null);
   // One-time "app boot" latch. We hide it only after the first full load finishes.
@@ -443,13 +446,15 @@ const showBlur = showOverlay;
           setPosts(arr);
           setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
         }
+      setPostNames(readPostNames(projectId, chosen.feed_id) || {});
       } else {
-        // empty registry — keep editor empty
         setFeedId("");
         setFeedName("");
         setPosts([]);
+        setPostNames({});
       }
 
+      
       // Best-effort policy fetch
       try {
         const policy = await getWipePolicyFromBackend({ signal: ctrl.signal });
@@ -502,15 +507,19 @@ useEffect(() => {
     setFeedId(id);
     setFeedName(row?.name || id);
 
+    // Load posts
     const cached = row ? getCachedPosts(projectId, id, row.checksum) : null;
     if (cached) {
       setPosts(cached);
-      return;
+    } else {
+      const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
+      const arr = Array.isArray(fresh) ? fresh : [];
+      setPosts(arr);
+      if (row) setCachedPosts(projectId, id, row.checksum, arr);
     }
-    const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
-    const arr = Array.isArray(fresh) ? fresh : [];
-    setPosts(arr);
-    if (row) setCachedPosts(projectId, id, row.checksum, arr);
+
+    // Load names
+    setPostNames(readPostNames(projectId, id) || {});
   };
 
   const createNewProject = async () => {
@@ -545,6 +554,7 @@ useEffect(() => {
     const avatarRandomKind = "any";
     setEditing({
       id: uid(),
+      postName: "",
       author: "",
       time: "Just now",
       showTime: true,
@@ -585,6 +595,13 @@ useEffect(() => {
   const removePost = (id) => {
     if (!confirm("Delete this post?")) return;
     setPosts((arr) => arr.filter((p) => p.id !== id));
+    // Remove its name from the mapping
+    const next = { ...(postNames || {}) };
+    if (next[id]) {
+      delete next[id];
+      setPostNames(next);
+      writePostNames(projectId, feedId, next);
+    }
   };
 
   const saveEditing = () => {
@@ -595,6 +612,7 @@ useEffect(() => {
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
 
+      // apply avatar rules
       if (clean.avatarMode === "random" && !clean.avatarUrl) {
         clean.avatarUrl = randomAvatarByKind(clean.avatarRandomKind || "any", clean.id || clean.author || "seed", clean.author || "", randomAvatarUrl);
       }
@@ -605,6 +623,7 @@ useEffect(() => {
         clean.avatarUrl = genNeutralAvatarDataUrl(64);
       }
 
+      // media exclusivity
       if (clean.videoMode !== "none") {
         clean.imageMode = "none";
         clean.image = null;
@@ -613,13 +632,23 @@ useEffect(() => {
         clean.video = null;
         clean.videoPosterUrl = "";
       }
-
       if (clean.imageMode === "none") clean.image = null;
       if (clean.imageMode === "random" && !clean.image) clean.image = randomSVG("Image");
 
       if (typeof clean.showTime === "undefined") clean.showTime = true;
 
-      return idx === -1 ? [...arr, clean] : arr.map((p, i) => (i === idx ? clean : p));
+      // update list
+      const nextPosts = idx === -1 ? [...arr, clean] : arr.map((p, i) => (i === idx ? clean : p));
+
+      // ⬇️ persist post name (for CSV header mapping)
+      const name = (clean.postName || "").trim();
+      const nextNames = { ...(postNames || {}) };
+      if (name) nextNames[clean.id] = name;
+      else delete nextNames[clean.id];
+      setPostNames(nextNames);
+      writePostNames(projectId, feedId, nextNames);
+
+      return nextPosts;
     });
     setEditing(null);
   };
@@ -628,6 +657,8 @@ useEffect(() => {
     if (!posts.length) return;
     if (!confirm("Delete ALL posts from this feed? This cannot be undone.")) return;
     setPosts([]);
+    setPostNames({});
+    writePostNames(projectId, feedId, {}); // clear name map too
   };
 
   return (
@@ -1335,6 +1366,20 @@ useEffect(() => {
           <div className="editor-grid">
             <div className="editor-form">
               <h4 className="section-title">Basics</h4>
+
+              {/* NEW: Post name for CSV mapping */}
+              <label>Post name (for CSV)
+                <input
+                  className="input"
+                  placeholder="e.g. Vaccine Story A"
+                  value={editing.postName || ""}
+                  onChange={(e) => setEditing(ed => ({ ...ed, postName: e.target.value }))}
+                />
+                <div className="subtle" style={{ marginTop: 4 }}>
+                  This label replaces the post ID in CSV headers (e.g., <code>{(editing.postName || "Name")}_reacted</code>).
+                </div>
+              </label>
+
               <label>Author
                 <input
                   className="input"
@@ -1735,6 +1780,7 @@ function makeRandomPost() {
 
   return {
     id: uid(),
+    postName: "",
     author, time, showTime: true, text, links: [],
     badge: chance(0.15),
     avatarMode: "random",
