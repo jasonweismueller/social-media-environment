@@ -4,6 +4,9 @@ import {
   randomSVG,
   uploadFileToS3ViaSigner,
   getProjectId as getProjectIdUtil, // fallback if prop not provided
+  // ⬇️ post name helpers (see utils.js additions)
+  readPostNames,
+  writePostNames,
 } from "./utils";
 
 export function MediaFieldset({
@@ -17,6 +20,36 @@ export function MediaFieldset({
 }) {
   const resolvedProjectId = projectId ?? getProjectIdUtil?.();
   const uploadsDisabled = !feedId; // uploader requires a feedId
+  const postId = editing?.id || null;
+
+  // ---- Post name (friendly label used in UI/CSV) --------------------------
+  const [postName, setPostName] = React.useState(() => {
+    if (!postId) return editing?.name || "";
+    const saved = readPostNames(resolvedProjectId, feedId)[postId] || "";
+    return editing?.name || saved || "";
+  });
+
+  // When switching which post is being edited, seed from editing/name or storage
+  React.useEffect(() => {
+    if (!postId) { setPostName(editing?.name || ""); return; }
+    const saved = readPostNames(resolvedProjectId, feedId)[postId] || "";
+    setPostName(editing?.name || saved || "");
+  }, [postId, resolvedProjectId, feedId, editing?.name]);
+
+  // Persist to storage on blur; also mirror into editing.name
+  const persistPostName = React.useCallback((name) => {
+    const trimmed = (name || "").trim();
+    setEditing(ed => ({ ...ed, name: trimmed || undefined }));
+    if (!postId) return;
+    const map = readPostNames(resolvedProjectId, feedId);
+    if (trimmed) {
+      map[postId] = trimmed;
+    } else {
+      // empty name → remove mapping so we fall back to ID
+      if (postId in map) delete map[postId];
+    }
+    writePostNames(resolvedProjectId, feedId, map);
+  }, [postId, resolvedProjectId, feedId, setEditing]);
 
   const headerEl = () => document.querySelector(".modal h3, .section-title");
   const setHeaderText = (txt) => { const el = headerEl(); if (el) el.textContent = txt; };
@@ -25,7 +58,26 @@ export function MediaFieldset({
   return (
     <>
       <h4 className="section-title">Post Media</h4>
-      <fieldset className="fieldset">
+
+      {/* NEW: Friendly Post Name */}
+      <fieldset className="fieldset" style={{ marginBottom: 0 }}>
+        <label>Post name (for CSV/UI)
+          <input
+            className="input"
+            placeholder="e.g., 'Nurse strikes article'"
+            value={postName}
+            onChange={(e) => setPostName(e.target.value)}
+            onBlur={(e) => persistPostName(e.target.value)}
+          />
+        </label>
+        {!!postId && (
+          <div className="subtle" style={{ fontSize: ".85rem", marginTop: 4 }}>
+            ID: <span style={{ fontFamily: "monospace" }}>{postId}</span>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset className="fieldset" style={{ marginTop: "0.75rem" }}>
         <label>Media type
           <select
             className="select"
