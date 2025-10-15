@@ -34,8 +34,7 @@ listProjectsFromBackend,
   GS_ENDPOINT, APP, getAdminToken ,
   readPostNames,
   writePostNames,
-  postDisplayName,
-  toCSV, buildMinimalHeader, headerLabelsForKeys,
+  postDisplayName
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -1290,9 +1289,7 @@ useEffect(() => {
                       <thead>
                         <tr className="subtle">
                           <th style={{ textAlign: "left", padding: 8, width: 36 }} />
-                          <td style={{ padding: 8, fontFamily: "monospace" }}>
-  {postDisplayName(p, postNames) || <span className="subtle">—</span>}
-</td>
+                          <th style={{ padding: 8, fontFamily: "monospace" }}>Post</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 160 }}>Author</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 260 }}>Text</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 80 }}>Time</th>
