@@ -100,7 +100,7 @@ async function copyText(str) {
   }
 }
 
-/* ------------------------ Tiny admin stats fetcher ------------------------- */
+/* ------------------------ Tiny admin stats fetcher --------------------------- */
 async function fetchParticipantsStats(projectId, feedId) {
   try {
     const admin = getAdminToken?.();
