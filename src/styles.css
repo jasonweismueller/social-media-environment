@@ -1401,3 +1401,47 @@ body.modal-open .dots:hover {
 .post-card.has-open-menu .menu * {
   pointer-events: auto;
 }
+
+
+/* ---- Composer buttons must keep their hover ---- */
+.comment-box .btn:hover,
+.comment-box .action:hover,
+.composer .btn:hover,
+.composer .action:hover,
+.comment .btn:hover,
+.comment .action:hover,
+textarea:focus-within ~ .footer .btn:hover,
+textarea:focus-within ~ .footer .action:hover {
+  background: #f9fafb !important;
+}
+
+/* primary in composer should darken, not go white */
+.comment-box .btn.primary:hover,
+.composer .btn.primary:hover,
+.comment .btn.primary:hover {
+  background: var(--blue-ink) !important;
+}
+
+/* if you freeze hovers while a menu is open, EXEMPT the composer area */
+.post-card.has-open-menu .comment-box .btn:hover,
+.post-card.has-open-menu .comment-box .action:hover,
+.post-card.has-open-menu .composer .btn:hover,
+.post-card.has-open-menu .composer .action:hover {
+  background: #f9fafb !important;
+}
+.post-card.has-open-menu .comment-box .btn.primary:hover,
+.post-card.has-open-menu .composer .btn.primary:hover {
+  background: var(--blue-ink) !important;
+}
+
+/* also make sure your freeze rules don't treat composer as an overlay */
+body.modal-open .comment-box .btn:hover,
+body.modal-open .composer .btn:hover,
+body.modal-open .comment-box .action:hover,
+body.modal-open .composer .action:hover {
+  background: #f9fafb !important;
+}
+body.modal-open .comment-box .btn.primary:hover,
+body.modal-open .composer .btn.primary:hover {
+  background: var(--blue-ink) !important;
+}
