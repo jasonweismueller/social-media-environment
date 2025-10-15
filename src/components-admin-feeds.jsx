@@ -6,9 +6,12 @@ import { APP, getProjectId as getProjectIdUtil, setProjectId as setProjectIdUtil
  * Props:
  *  - apiBase: string   e.g. your proxied Apps Script URL (GS_ENDPOINT)
  *  - adminToken: string (required for admin-only endpoints)
+ *  - initialProjectId?: string (optional seed; otherwise taken from utils/url)
  */
-export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
-  const [projectId, setProjectId] = useState(() => getProjectIdUtil() || "");
+export default function AdminFeedsPanel({ apiBase = "", adminToken, initialProjectId }) {
+  // Single source of truth for project
+  const [projectId, setProjectId] = useState(() => initialProjectId || getProjectIdUtil() || "");
+
   const [feeds, setFeeds] = useState([]);
   const [defaultFeedId, setDefaultFeedId] = useState("");
   const [selectedFeedId, setSelectedFeedId] = useState("");
@@ -75,7 +78,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
     const res = await fetch(apiBase, {
       method: "POST",
       mode: "cors",
-      // text/plain avoids a CORS preflight on most hosts (matches your utils)
+      // text/plain avoids a CORS preflight on many hosts (matches your utils)
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body,
     });
@@ -89,11 +92,12 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
       apiGet("feeds"),
       apiGet("default_feed"),
     ]);
-    setFeeds(Array.isArray(list) ? list : []);
+    const safeList = Array.isArray(list) ? list : [];
+    setFeeds(safeList);
     setDefaultFeedId(def?.feed_id || "");
     setSelectedFeedId(prev => {
-      if (prev && (list || []).some(f => String(f.feed_id) === String(prev))) return prev;
-      return (list && list[0]?.feed_id) ? String(list[0].feed_id) : "";
+      if (prev && safeList.some(f => String(f.feed_id) === String(prev))) return prev;
+      return safeList[0]?.feed_id ? String(safeList[0].feed_id) : "";
     });
   };
 
@@ -104,16 +108,17 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
     setStats(s ? { ...s, _rows: data || [] } : null);
   };
 
+  // load feeds on mount and whenever project changes
   useEffect(() => {
     (async () => {
       try { await refreshFeeds(); } catch (e) { setErr(String(e.message || e)); }
     })();
-    // re-fetch when project changes
-  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId]); // re-run when project changes
 
+  // load stats when selected feed (or admin token) changes
   useEffect(() => {
     (async () => { try { await refreshStats(selectedFeedId); } catch {} })();
-  }, [selectedFeedId, adminToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedFeedId, adminToken]);
 
   const onAddFeed = async () => {
     const fid = newFeedId.trim();
@@ -167,7 +172,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
 
   const onWipeParticipants = async (fid) => {
     if (!fid) return;
-    if (!window.confirm(`Wipe participants for "${fid}" in project "${projectId}"?`)) return;
+    if (!window.confirm(`Wipe participants for "${fid}" in project "${projectId || "global"}"?`)) return;
     setBusy(true); setErr("");
     try {
       await apiPost({ action: "wipe_participants", feed_id: fid });
@@ -240,9 +245,11 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
                   const isDefault = String(defaultFeedId) === String(f.feed_id);
                   const isSelected = String(selectedFeedId) === String(f.feed_id);
                   return (
-                    <tr key={`${f.feed_id}`}
-                        style={{ background: isSelected ? "rgba(37,99,235,.06)" : "transparent", cursor: "pointer" }}
-                        onClick={() => setSelectedFeedId(String(f.feed_id))}>
+                    <tr
+                      key={f.feed_id}
+                      style={{ background: isSelected ? "rgba(37,99,235,.06)" : "transparent", cursor: "pointer" }}
+                      onClick={() => setSelectedFeedId(String(f.feed_id))}
+                    >
                       <td style={{ padding: "6px 8px" }}>
                         <input
                           type="radio"
@@ -254,7 +261,14 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
                       </td>
                       <td style={{ padding: "6px 8px", fontWeight: 700 }}>{f.feed_id}</td>
                       <td style={{ padding: "6px 8px" }}>{f.name || "—"}</td>
-                      <td style={{ padding: "6px 8px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: ".85rem", color: "#6b7280" }}>
+                      <td
+                        style={{
+                          padding: "6px 8px",
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          fontSize: ".85rem",
+                          color: "#6b7280",
+                        }}
+                      >
                         {f.checksum || "—"}
                       </td>
                       <td style={{ padding: "6px 8px", color: "#6b7280" }}>{f.updated_at || "—"}</td>
