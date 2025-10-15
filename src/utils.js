@@ -4,8 +4,8 @@ export const uid = () =>
 export const now = () => Date.now();
 export const fmtTime = (ms) => new Date(ms).toISOString();
 export const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
-export const getUrlParam = (key) =>
-  new URLSearchParams(window.location.search).get(key || "");
+export const getUrlParam = (key = "") =>
+  getCombinedSearchParams().get(key);
 
 export const abbr =
   (n) =>
@@ -43,7 +43,7 @@ const PROJECT_KEY = "current_project_id";
 /** Get current project_id from URL (?project / ?project_id) or localStorage. */
 export function getProjectId() {
   try {
-    const sp = new URLSearchParams(window.location.search);
+    const sp = getCombinedSearchParams();
     const fromUrl = sp.get("project") || sp.get("project_id");
     if (fromUrl) {
       localStorage.setItem(PROJECT_KEY, fromUrl);
@@ -77,6 +77,24 @@ const qProject = () => {
   const pid = getProjectId();
   return pid ? `&project_id=${encodeURIComponent(pid)}` : "";
 };
+
+function getCombinedSearchParams() {
+  try {
+    const real = new URLSearchParams(window.location.search);
+    const hash = window.location.hash || "";
+    const q = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const fromHash = new URLSearchParams(q);
+
+    const merged = new URLSearchParams();
+    // search first…
+    for (const [k, v] of real) merged.set(k, v);
+    // …hash overrides if same key exists
+    for (const [k, v] of fromHash) merged.set(k, v);
+    return merged;
+  } catch {
+    return new URLSearchParams();
+  }
+}
 
 /* ======================= Admin User Management APIs ======================= */
 /**
@@ -1809,7 +1827,8 @@ export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups"
 
 export function getFeedIdFromUrl() {
   try {
-    return new URLSearchParams(window.location.search).get("feed") || null;
+    const sp = getCombinedSearchParams();
+    return sp.get("feed") || sp.get("feed_id") || null;
   } catch {
     return null;
   }
