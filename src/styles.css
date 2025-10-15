@@ -1181,3 +1181,89 @@ body.has-overlay .ghost-card:hover {
 .admin-shell .feed-row:hover {
   background: var(--row-hover, #f8fafc);
 }
+
+
+
+/* ======================= STABILIZER (load last) ======================= */
+
+/* 1) Fix: the clamp "…" used inside fade-more was redefining .dots globally.
+      Scope it so it doesn't wreck the header 3-dots button. */
+.fade-more .dots{
+  font: inherit;
+  line-height: inherit;
+  display: inline;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+/* Ensure header/menu dots keep their button look */
+.card-head .dots{
+  border: none;
+  background: transparent;
+  padding: .25rem .4rem;
+  border-radius: 999px;
+  color: #6b7280;
+}
+.card-head .dots:hover{ background:#f3f4f6; }
+
+/* 2) There are two .video-wrap/.video-el sections in the CSS.
+      Scope the second one to posts so it stops clobbering anything else. */
+.post-card .video-wrap{
+  position: relative;
+  width: 100%;
+  background: #000;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  max-height: min(60vh, 520px);
+}
+.post-card .video-el{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.post-card .video-wrap.drive-embed iframe{
+  position:absolute; inset:0; width:100%; height:100%; border:0; display:block; background:#000;
+}
+
+/* Optional: keep square corners only on post media, not globally */
+.post-card .video-wrap,
+.post-card .video-el{
+  border-radius: 0 !important;
+}
+
+/* 3) Menu stacking: lift only the active post and keep the menu on top locally. */
+.post-card{ position: relative; z-index: 0; }
+.post-card.has-open-menu{ z-index: 200; }
+.post-card .menu-wrap{ position: relative; z-index: 10; }
+.post-card .menu{ z-index: 1000; }
+/* Keep the card interactive while menu is open (previous CSS set pointer-events:none) */
+.post-card.has-open-menu{ pointer-events: auto; }
+
+/* 4) FB-like controls: move the volume custom props off :root so
+      they don't bleed everywhere. These values now live under the widget. */
+.fb-vol{
+  --vol-len: 100px;
+  --vol-track: 4px;
+  --vol-thumb: 6px;
+  --vol-pad: 6px;
+  --vol-base: rgba(255,255,255,.25);
+  --vol-fill: #fff;
+  --vol-val: 100;
+}
+
+/* 5) Page spacing was declared twice; lock it once so the feed doesn’t jump. */
+.page{ padding-top: var(--feed-gap) !important; }
+
+/* 6) Hover policy: only menus gray out, not action buttons inside an open post */
+.post-card.has-open-menu .action:hover,
+.post-card.has-open-menu .btn:hover,
+.post-card.has-open-menu .dots:hover,
+.post-card.has-open-menu .image-btn:hover{
+  background: inherit !important;
+}
+.post-card.has-open-menu .menu .menu-item:hover{
+  background:#f3f4f6 !important;
+}
