@@ -823,6 +823,7 @@ export async function loadPostsFromBackend(arg1, arg2) {
       { retries: 1, timeoutMs: 8000 }
     );
     const arr = Array.isArray(data) ? data : [];
+    seedNamesFromPosts(arr, { feedId });
 
     // Preload streamable video URLs (skip Drive/iframe)
     arr
@@ -1867,6 +1868,46 @@ export function getFeedIdFromUrl() {
   } catch {
     return null;
   }
+}
+
+// ----- Post name storage (scoped by app + project + feed) -------------------
+const POST_NAMES_KEY = (projectId, feedId) =>
+  `${APP}::${projectId || "global"}::${feedId || ""}::post_names_v1`;
+
+export function readPostNames(projectId = getProjectId(), feedId = getFeedIdFromUrl()) {
+  try {
+    const raw = localStorage.getItem(POST_NAMES_KEY(projectId, feedId));
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+export function writePostNames(projectId = getProjectId(), feedId = getFeedIdFromUrl(), map = {}) {
+  try {
+    localStorage.setItem(POST_NAMES_KEY(projectId, feedId), JSON.stringify(map || {}));
+  } catch {}
+}
+
+/** Helper to display either a saved friendly name or fall back to the id */
+export function labelForPostId(
+  postId,
+  { projectId = getProjectId(), feedId = getFeedIdFromUrl(), fallback = postId } = {}
+) {
+  if (!postId) return fallback;
+  const m = readPostNames(projectId, feedId);
+  return (m && m[postId]) || fallback;
+}
+
+/** Seed storage from loaded posts that already carry a .name field */
+export function seedNamesFromPosts(posts, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
+  if (!Array.isArray(posts)) return;
+  const map = readPostNames(projectId, feedId);
+  let changed = false;
+  for (const p of posts) {
+    const id = p?.id;
+    const nm = (p?.name || "").trim();
+    if (id && nm && !map[id]) { map[id] = nm; changed = true; }
+  }
+  if (changed) writePostNames(projectId, feedId, map);
 }
 
 // If you keep it for public UI buttons, keep it search-only:
