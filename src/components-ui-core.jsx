@@ -1,6 +1,5 @@
 // components-ui-core.jsx
 import React, { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { fakeNamesFor as utilsFakeNamesFor } from "./utils";
 
@@ -68,7 +67,7 @@ export const IconVolume = (p) => (
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" {...p}>
     <path d="M4 10v4h4l5 4V6l-5 4H4z" fill="currentColor"/>
     <path d="M16 9.5a3.5 3.5 0 0 1 0 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    <path d="M18.5 7a7 7 0 0 1 0 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M18.5 7a7 7 0  0 1 0 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
 
@@ -90,9 +89,9 @@ export const IconVolumeMute = (p) => (
 export const IconSettings = (p) => (
   <svg viewBox="0 0 24 24" width="18" height="18" {...p}>
     <path
-      d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0  0 0 0 7z
+      d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z
          M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3
-         1.7 1.7 0  0 0-1 1.6v.3a2 2 0  0 1-4 0v-.1a1.7 1.7 0  0 0-1-1.6 1.7 1.7 0  0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0  0 0 .3-1.9 1.7 1.7 0  0 0-1.6-1h-.3a2 2 0  0 1 0-4h.1a1.7 1.7 0  0 0 1.6-1 1.7 1.7 0  0 0-.3-1.9l-.1-.1a2 2 0  0 1 2.8-2.8l.1.1a1.7 1.7 0  0 0 1.9.3h.3a1.7 1.7 0  0 0 1-1.6V3a2 2 0  0 1 4 0v.1a1.7 1.7 0  0 0 1 1.6h.3a1.7 1.7 0  0 0 1.9-.3l.1-.1a2 2 0  1 1 2.8 2.8l-.1.1a1.7 1.7 0  0 0-.3 1.9v.3a1.7 1.7 0  0 0 1.6 1h.1a2 2 0  0 1 0 4h-.1a1.7 1.7 0  0 0-1.6 1z"
+         1.7 1.7 0 0 0-1 1.6v.3a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.3a2 2 0 0 1 0-4h.1a1.7 1.7 0  0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.3a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6h.3a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.3a1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"
       fill="currentColor"
     />
   </svg>
@@ -108,6 +107,7 @@ export function ActionBtn({ label, onClick, Icon, active, disabled, ...rest }) {
       className={`action ${active ? "active" : ""}`}
       aria-pressed={!!active}
       style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+      type="button"
     >
       <Icon />
       <span style={{ fontSize: ".9rem", fontWeight: 600, lineHeight: 1 }}>{label}</span>
@@ -245,38 +245,39 @@ export function PostText({ text, expanded, onExpand, onClamp }) {
   );
 }
 
-/* ------------------------------ Modal (portaled) --------------------------- */
+/* --------- SHARED: lock background while any modal/overlay is open --------- */
+function useLockBodyWhileOpen() {
+  useEffect(() => {
+    document.body.classList.add("modal-open", "has-overlay");
+    return () => {
+      document.body.classList.remove("modal-open", "has-overlay");
+    };
+  }, []);
+}
+
+/* ------------------------------- Modal ------------------------------------- */
 export function Modal({ title, children, onClose, wide = false, footer = null }) {
   useEffect(() => {
-    const onEsc = (e) => e.key === "Escape" && onClose?.();
+    const onEsc = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onEsc);
-
-    // lock page + add a body class for CSS policies while open
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.body.classList.add("modal-open");
-
-    return () => {
-      window.removeEventListener("keydown", onEsc);
-      document.body.style.overflow = prevOverflow;
-      document.body.classList.remove("modal-open");
-    };
+    return () => window.removeEventListener("keydown", onEsc);
   }, [onClose]);
 
-  const node = (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className={`modal ${wide ? "modal-wide" : ""}`}>
+  // NEW: add/remove body flags while the modal is mounted
+  useLockBodyWhileOpen();
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(e)=>{ if(e.target === e.currentTarget) onClose?.(); }}>
+      <div className={`modal ${wide ? "modal-wide" : ""}`} role="document">
         <div className="modal-head">
           <h3 style={{ margin: 0, fontWeight: 600 }}>{title}</h3>
-          <button className="dots" aria-label="Close" onClick={onClose}>×</button>
+          <button className="dots" aria-label="Close" onClick={onClose} type="button">×</button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
     </div>
   );
-
-  return createPortal(node, document.body);
 }
 
 /* ------------------------- Hover peek for names ---------------------------- */
@@ -357,12 +358,13 @@ export function neutralAvatarDataUrl(size = 28) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-/* ----------------- Overlays (portaled) ------------- */
+/* ----------------- Overlays ------------- */
 export function ParticipantOverlay({ onSubmit }) {
   const [tempId, setTempId] = useState("");
-  const handleSubmit = (e) => { e.preventDefault(); if (tempId.trim()) onSubmit(tempId.trim()); };
+  useLockBodyWhileOpen(); // lock background while this overlay is up
 
-  const node = (
+  const handleSubmit = (e) => { e.preventDefault(); if (tempId.trim()) onSubmit(tempId.trim()); };
+  return (
     <div className="modal-backdrop" style={{ background: "rgba(0,0,0,0.6)", zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 400, width: "100%" }}>
         <div className="modal-head"><h3 style={{ margin: 0 }}>Enter Participant ID</h3></div>
@@ -375,12 +377,11 @@ export function ParticipantOverlay({ onSubmit }) {
       </div>
     </div>
   );
-
-  return createPortal(node, document.body);
 }
 
 export function LoadingOverlay({ title = "Loading your feed…", subtitle = "This will only take a moment." }) {
-  const node = (
+  useLockBodyWhileOpen(); // lock background
+  return (
     <div className="modal-backdrop modal-backdrop-dim">
       <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
         <div className="spinner-ring" aria-hidden="true" />
@@ -389,11 +390,11 @@ export function LoadingOverlay({ title = "Loading your feed…", subtitle = "Thi
       </div>
     </div>
   );
-  return createPortal(node, document.body);
 }
 
 export function ThankYouOverlay() {
-  const node = (
+  useLockBodyWhileOpen(); // lock background
+  return (
     <div className="modal-backdrop" style={{ zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>
         <div className="modal-body">
@@ -403,7 +404,6 @@ export function ThankYouOverlay() {
       </div>
     </div>
   );
-  return createPortal(node, document.body);
 }
 
 /* ------------------------- Route-aware top bar ----------------------------- */
