@@ -10,7 +10,7 @@ import {
   getAdminRole,
 } from "./utils";
 
-export function AdminUsersPanel({ embed = false }) {
+export function AdminUsersPanel({ embed = false, onCountChange }) {
   const [users, setUsers] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -43,6 +43,11 @@ export function AdminUsersPanel({ embed = false }) {
   useEffect(() => {
     if (!selectedEmail && me) setSelectedEmail(me);
   }, [me, selectedEmail]);
+
+  // NEW: bubble user count up to the parent for the "Users (N)" title
+ useEffect(() => {
+    onCountChange?.(Array.isArray(users) ? users.length : 0);
+  }, [users, onCountChange]);
 
   if (!hasAdminRole("owner")) return null;
 

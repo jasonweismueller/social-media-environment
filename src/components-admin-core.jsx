@@ -188,6 +188,7 @@ export function AdminDashboard({
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
 
+
   // collapse + participants paging toggle
   const [feedsCollapsed, setFeedsCollapsed] = useState(true); // (unused by design)
   const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
@@ -211,6 +212,17 @@ export function AdminDashboard({
     const s = await fetchParticipantsStats(id);
     setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
   };
+
+  // counts
+const [usersCount, setUsersCount] = useState(null);
+
+// always fetch stats for the currently selected feed (so the title has a number)
+useEffect(() => {
+  if (feedId) loadStatsFor(feedId);
+}, [feedId]);
+
+// handy local for the current feed's stats
+const curStats = feedStats[feedId];
 
   const keepAlive = async () => {
     try {
@@ -738,237 +750,242 @@ export function AdminDashboard({
 
         {/* Participants */}
         <Section
-          title="Participants"
-          subtitle={
-            <>
-              <span>Live snapshot & interaction aggregates for </span>
-              <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
-              {defaultFeedId === feedId && <span className="subtle"> · default</span>}
-            </>
-          }
-          right={
-            <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
-              <button
-                className="btn ghost"
-                onClick={() => setShowAllParticipants(s => !s)}
-                title={showAllParticipants ? "Show only the first 5 participants" : "Show all participants"}
-              >
-                {showAllParticipants ? "Show first 5" : "Show all"}
-              </button>
-
-              <RoleGate min="owner">
-                <button
-                  className="btn ghost danger"
-                  title="Delete the participants sheet for this feed (cannot be undone)"
-                  onClick={async () => {
-                    if (!feedId) return;
-                    const okGo = confirm(
-                      `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
-                    );
-                    if (!okGo) return;
-                    const ok = await wipeParticipantsOnBackend(feedId);
-                    if (ok) {
-                      setParticipantsRefreshKey(k => k + 1);
-                      alert("Participants wiped.");
-                    } else {
-                      alert("Failed to wipe participants. Please re-login and try again.");
-                      onLogout?.();
-                    }
-                  }}
-                >
-                  Wipe
-                </button>
-              </RoleGate>
-
-              {/* Chevron — icon-only, consistent behavior */}
-              <button
-                type="button"
-                className="btn ghost section-chev"
-                onClick={() => setParticipantsCollapsed(v => !v)}
-                aria-expanded={!participantsCollapsed}
-                aria-controls="participants-body"
-                title={participantsCollapsed ? "Expand" : "Collapse"}
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-                </svg>
-              </button>
-            </div>
-          }
-        >
-          {/* Collapsible body */}
-          <div
-            id="participants-body"
-            className={`section-collapse ${participantsCollapsed ? "is-collapsed" : ""}`}
-            aria-hidden={participantsCollapsed}
+  title={`Participants${curStats ? ` (${curStats.total ?? 0})` : ""}`}
+  subtitle={
+    <>
+      <span>Live snapshot & interaction aggregates for </span>
+      <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
+      {defaultFeedId === feedId && <span className="subtle"> · default</span>}
+    </>
+  }
+  right={
+    <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
+      {/* Only show these when expanded */}
+      {!participantsCollapsed && (
+        <>
+          <button
+            className="btn ghost"
+            onClick={() => setShowAllParticipants(s => !s)}
+            title={showAllParticipants ? "Show only the first 5 participants" : "Show all participants"}
           >
-            <div className="section-collapse-inner">
-              {feedId ? (
-                <ParticipantsPanel
-                  key={`pp::${feedId}::${participantsRefreshKey}`}
-                  feedId={feedId}
-                  compact
-                  limit={showAllParticipants ? undefined : 5}
-                />
-              ) : (
-                <div className="subtle" style={{ padding: ".5rem 0" }}>
-                  No feed selected.
-                </div>
-              )}
-            </div>
-          </div>
-        </Section>
+            {showAllParticipants ? "Show first 5" : "Show all"}
+          </button>
 
-        {/* Posts (compact-only) */}
+          <RoleGate min="owner">
+            <button
+              className="btn ghost danger"
+              title="Delete the participants sheet for this feed (cannot be undone)"
+              onClick={async () => {
+                if (!feedId) return;
+                const okGo = confirm(
+                  `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
+                );
+                if (!okGo) return;
+                const ok = await wipeParticipantsOnBackend(feedId);
+                if (ok) {
+                  setParticipantsRefreshKey(k => k + 1);
+                  alert("Participants wiped.");
+                } else {
+                  alert("Failed to wipe participants. Please re-login and try again.");
+                  onLogout?.();
+                }
+              }}
+            >
+              Wipe
+            </button>
+          </RoleGate>
+        </>
+      )}
+
+      {/* Chevron is always visible */}
+      <button
+        type="button"
+        className="btn ghost section-chev"
+        onClick={() => setParticipantsCollapsed(v => !v)}
+        aria-expanded={!participantsCollapsed}
+        aria-controls="participants-body"
+        title={participantsCollapsed ? "Expand" : "Collapse"}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+        </svg>
+      </button>
+    </div>
+  }
+>
+  <div
+    id="participants-body"
+    className={`section-collapse ${participantsCollapsed ? "is-collapsed" : ""}`}
+    aria-hidden={participantsCollapsed}
+  >
+    <div className="section-collapse-inner">
+      {feedId ? (
+        <ParticipantsPanel
+          key={`pp::${feedId}::${participantsRefreshKey}`}
+          feedId={feedId}
+          compact
+          limit={showAllParticipants ? undefined : 5}
+        />
+      ) : (
+        <div className="subtle" style={{ padding: ".5rem 0" }}>
+          No feed selected.
+        </div>
+      )}
+    </div>
+  </div>
+</Section>
+
         <Section
-          title={`Posts (${posts.length})`}
-          subtitle={
-            showAllPosts
-              ? "Compact list of all posts."
-              : `Compact list · showing first ${Math.min(5, posts.length)}`
-          }
-          right={
-            <>
-              <button
-                className="btn"
-                onClick={async () => {
-                  const fresh = await loadPostsFromBackend(feedId, { force: true });
-                  const arr = Array.isArray(fresh) ? fresh : [];
-                  setPosts(arr);
-                  const row = feeds.find(f => f.feed_id === feedId);
-                  if (row) setCachedPosts(feedId, row.checksum, arr);
-                }}
-                title="Reload posts for this feed from backend"
-              >
-                Refresh Posts
-              </button>
-
-              <button
-                className="btn ghost"
-                title="Export current posts as JSON"
-                onClick={() => {
-                  const payload = { app: "fb", feedId, ts: new Date().toISOString(), posts };
-                  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-                  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-                }}
-              >
-                Export JSON
-              </button>
-
-              <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
-                Import JSON
-                <input
-                  type="file"
-                  accept="application/json"
-                  style={{ display: "none" }}
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    try {
-                      const text = await f.text();
-                      const parsed = JSON.parse(text);
-                      const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
-                      if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
-                      if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
-                      setPosts(imported);
-                      alert("Imported. Remember to Save to publish back to the backend.");
-                    } catch (err) {
-                      console.error(err);
-                      alert("Failed to import JSON.");
-                    } finally {
-                      e.target.value = "";
-                    }
-                  }}
-                />
-              </label>
-
-              <button
-                className="btn ghost"
-                onClick={() => setShowAllPosts(s => !s)}
-                title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
-              >
-                {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
-              </button>
-
-              <RoleGate min="editor">
-                <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
-                <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
-                  + Random Post
-                </button>
-                <button className="btn ghost" onClick={openNew}>+ Add Post</button>
-                <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
-                  Clear Feed
-                </button>
-              </RoleGate>
-
-              {/* Chevron — icon-only, consistent */}
-              <button
-                type="button"
-                className="btn ghost section-chev"
-                onClick={() => setPostsCollapsed(v => !v)}
-                aria-expanded={!postsCollapsed}
-                aria-controls="posts-body"
-                title={postsCollapsed ? "Expand" : "Collapse"}
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-                </svg>
-              </button>
-            </>
-          }
-        >
-          {/* Collapsible body */}
-          <div
-            id="posts-body"
-            className={`section-collapse ${postsCollapsed ? "is-collapsed" : ""}`}
-            aria-hidden={postsCollapsed}
+  title={`Posts (${posts.length})`}
+  subtitle={
+    showAllPosts
+      ? "Compact list of all posts."
+      : `Compact list · showing first ${Math.min(5, posts.length)}`
+  }
+  right={
+    <>
+      {/* Only show action buttons when expanded */}
+      {!postsCollapsed && (
+        <>
+          <button
+            className="btn"
+            onClick={async () => {
+              const fresh = await loadPostsFromBackend(feedId, { force: true });
+              const arr = Array.isArray(fresh) ? fresh : [];
+              setPosts(arr);
+              const row = feeds.find(f => f.feed_id === feedId);
+              if (row) setCachedPosts(feedId, row.checksum, arr);
+            }}
+            title="Reload posts for this feed from backend"
           >
-            <div className="section-collapse-inner">
-              <div style={{ overflowX: "auto" }}>
-                {/* keep your existing posts table exactly as it was */}
-                {/* … paste your current <table>...</table> block here … */}
-              </div>
-            </div>
-          </div>
-        </Section>
+            Refresh Posts
+          </button>
+
+          <button
+            className="btn ghost"
+            title="Export current posts as JSON"
+            onClick={() => {
+              const payload = { app: "fb", feedId, ts: new Date().toISOString(), posts };
+              const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+              document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            }}
+          >
+            Export JSON
+          </button>
+
+          <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
+            Import JSON
+            <input
+              type="file"
+              accept="application/json"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                try {
+                  const text = await f.text();
+                  const parsed = JSON.parse(text);
+                  const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
+                  if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
+                  if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
+                  setPosts(imported);
+                  alert("Imported. Remember to Save to publish back to the backend.");
+                } catch (err) {
+                  console.error(err);
+                  alert("Failed to import JSON.");
+                } finally {
+                  e.target.value = "";
+                }
+              }}
+            />
+          </label>
+
+          <button
+            className="btn ghost"
+            onClick={() => setShowAllPosts(s => !s)}
+            title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
+          >
+            {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
+          </button>
+
+          <RoleGate min="editor">
+            <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
+            <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
+              + Random Post
+            </button>
+            <button className="btn ghost" onClick={openNew}>+ Add Post</button>
+            <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
+              Clear Feed
+            </button>
+          </RoleGate>
+        </>
+      )}
+
+      {/* Chevron is always visible */}
+      <button
+        type="button"
+        className="btn ghost section-chev"
+        onClick={() => setPostsCollapsed(v => !v)}
+        aria-expanded={!postsCollapsed}
+        aria-controls="posts-body"
+        title={postsCollapsed ? "Expand" : "Collapse"}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+        </svg>
+      </button>
+    </>
+  }
+>
+  <div
+    id="posts-body"
+    className={`section-collapse ${postsCollapsed ? "is-collapsed" : ""}`}
+    aria-hidden={postsCollapsed}
+  >
+    <div className="section-collapse-inner">
+      <div style={{ overflowX: "auto" }}>
+        {/* your posts table */}
+      </div>
+    </div>
+  </div>
+</Section>
       </div>
 
       {/* Users (owners only) */}
       <RoleGate min="owner">
-        <Section
-          title="Users"
-          subtitle="Manage admin users & roles."
-          right={
-            <button
-              type="button"
-              className="btn ghost section-chev"
-              onClick={() => setUsersCollapsed(v => !v)}
-              aria-expanded={!usersCollapsed}
-              aria-controls="users-body"
-              title={usersCollapsed ? "Expand" : "Collapse"}
-            >
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-              </svg>
-            </button>
-          }
-        >
-          {/* Collapsible body */}
-          <div
-            id="users-body"
-            className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
-            aria-hidden={usersCollapsed}
-          >
-            <div className="section-collapse-inner">
-              <AdminUsersPanel embed />
-            </div>
-          </div>
-        </Section>
-      </RoleGate>
+  <Section
+    title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
+    subtitle="Manage admin users & roles."
+    right={
+      <button
+        type="button"
+        className="btn ghost section-chev"
+        onClick={() => setUsersCollapsed(v => !v)}
+        aria-expanded={!usersCollapsed}
+        aria-controls="users-body"
+        title={usersCollapsed ? "Expand" : "Collapse"}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+        </svg>
+      </button>
+    }
+  >
+    <div
+      id="users-body"
+      className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
+      aria-hidden={usersCollapsed}
+    >
+      <div className="section-collapse-inner">
+        {!usersCollapsed ? <AdminUsersPanel embed onCountChange={setUsersCount} /> : null}
+      </div>
+    </div>
+  </Section>
+</RoleGate>
 
       {editing && (
         <Modal
