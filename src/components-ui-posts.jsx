@@ -79,6 +79,13 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   const closeTimer = useRef(null);
   const suppressHoverUntil = useRef(0);
 
+  // NEW: touch + scroll lock helpers
+  const isTouchDevice =
+    typeof window !== "undefined" &&
+    ((window.matchMedia?.("(hover: none) and (pointer: coarse)")?.matches) || navigator.maxTouchPoints > 0);
+  const touchActiveRef = useRef(false);
+  const lockStateRef = useRef({ y: 0 });
+
   useEffect(() => {
     return () => {
       clearTimeout(openTimer.current);
@@ -89,7 +96,9 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   // in-view detector for media
   const { wrapRef, inView } = useInViewAutoplay(0.6);
 
+  // Touch-aware schedule open/close (ignore hover logic during a touch flow)
   const scheduleOpen = () => {
+    if (touchActiveRef.current) return;
     if (Date.now() < suppressHoverUntil.current) return; // suppress hover reopen
     clearTimeout(openTimer.current);
     clearTimeout(closeTimer.current);
@@ -99,6 +108,7 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
     }, OPEN_DELAY);
   };
   const scheduleClose = () => {
+    if (touchActiveRef.current) return;
     clearTimeout(openTimer.current);
     clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => setFlyoutOpen(false), CLOSE_DELAY);
@@ -111,6 +121,63 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
     setFlyoutOpen(false);
     suppressHoverUntil.current = Date.now() + SUPPRESS_MS;
   };
+
+  // Lock/unlock scroll when flyout is open on touch devices
+  useEffect(() => {
+    if (!isTouchDevice) return;
+
+    if (flyoutOpen) {
+      lockStateRef.current.y = window.scrollY || 0;
+      const b = document.body;
+      b.style.position = "fixed";
+      b.style.top = `-${lockStateRef.current.y}px`;
+      b.style.left = "0";
+      b.style.right = "0";
+      b.style.width = "100%";
+      b.style.overscrollBehavior = "contain";
+      b.style.touchAction = "none";
+    } else {
+      const b = document.body;
+      const y = lockStateRef.current.y || 0;
+      b.style.position = "";
+      b.style.top = "";
+      b.style.left = "";
+      b.style.right = "";
+      b.style.width = "";
+      b.style.overscrollBehavior = "";
+      b.style.touchAction = "";
+      window.scrollTo(0, y);
+    }
+
+    return () => {
+      if (document.body.style.position === "fixed") {
+        const y = lockStateRef.current.y || 0;
+        const b = document.body;
+        b.style.position = "";
+        b.style.top = "";
+        b.style.left = "";
+        b.style.right = "";
+        b.style.width = "";
+        b.style.overscrollBehavior = "";
+        b.style.touchAction = "";
+        window.scrollTo(0, y);
+      }
+    };
+  }, [flyoutOpen, isTouchDevice]);
+
+  // Close flyout on outside tap (touch only)
+  useEffect(() => {
+    if (!isTouchDevice || !flyoutOpen) return;
+
+    const onDocPointerDown = (e) => {
+      const inFlyout = e.target.closest?.(".react-flyout");
+      const inLikeWrap = e.target.closest?.(".like-wrap");
+      if (!inFlyout && !inLikeWrap) setFlyoutOpen(false);
+    };
+
+    document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
+    return () => document.removeEventListener("pointerdown", onDocPointerDown, { capture: true });
+  }, [flyoutOpen, isTouchDevice]);
 
   const showReactions = post.showReactions ?? false;
   const ALL_RX_KEYS = useMemo(() => Object.keys(REACTION_META), []);
@@ -509,11 +576,11 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
   return (
     <article
-  ref={registerViewRef(post.id)}
-  data-post-id={post.id}
-  data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined} // ⬅️ add this
-  className="card post-card"
->
+      ref={registerViewRef(post.id)}
+      data-post-id={post.id}
+      data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined}
+      className="card post-card"
+    >
       <header className="card-head">
         <div className="avatar">
           {post.avatarUrl ? (
@@ -1099,54 +1166,70 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
       <footer className="footer">
         <div className="actions">
           <div
-  className="like-wrap"
-  onMouseEnter={scheduleOpen}
-  onMouseLeave={() => {
-    scheduleClose();
-    suppressHoverUntil.current = 0;
-  }}
->
-  <ActionBtn
-    label={likeLabel}
-    active={!!myReaction}
-    onClick={onLike}
-    Icon={LikeIcon}
-    disabled={disabled}
-    /* 👇 touch-only: open flyout immediately, prevent text selection */
-    onPointerDown={(e) => {
-      if (e.pointerType === "touch") {
-        e.preventDefault();
-        e.stopPropagation();
-        clearTimeout(openTimer.current);
-        clearTimeout(closeTimer.current);
-        setFlyoutOpen(true);
-      }
-    }}
-    aria-haspopup="menu"
-    aria-expanded={flyoutOpen}
-  />
+            className="like-wrap"
+            onMouseEnter={scheduleOpen}
+            onMouseLeave={() => {
+              scheduleClose();
+              suppressHoverUntil.current = 0;
+            }}
+            // Touch-first behavior: open immediately and mark touch flow
+            onPointerDown={(e) => {
+              if (e.pointerType === "touch") {
+                touchActiveRef.current = true;
+                e.preventDefault();
+                e.stopPropagation();
+                clearTimeout(openTimer.current);
+                clearTimeout(closeTimer.current);
+                setFlyoutOpen(true);
+              }
+            }}
+            onPointerUp={(e) => {
+              if (e.pointerType === "touch") {
+                // keep open; allow outside tap to close
+                touchActiveRef.current = false;
+              }
+            }}
+            onPointerCancel={(e) => {
+              if (e.pointerType === "touch") {
+                touchActiveRef.current = false;
+              }
+            }}
+          >
+            <ActionBtn
+              label={likeLabel}
+              active={!!myReaction}
+              onClick={onLike}
+              Icon={LikeIcon}
+              disabled={disabled}
+              aria-haspopup="menu"
+              aria-expanded={flyoutOpen}
+            />
 
-  {flyoutOpen && (
-    <div
-      className="react-flyout"
-      role="menu"
-      aria-label="Pick a reaction"
-      onMouseEnter={scheduleOpen}
-      onMouseLeave={scheduleClose}
-    >
-      {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
-        <button
-          key={key}
-          aria-label={key}
-          onClick={() => onPickReaction(key)}
-          title={key}
-        >
-          {emoji}
-        </button>
-      ))}
-    </div>
-  )}
-</div>
+            {flyoutOpen && (
+              <div
+                className="react-flyout"
+                role="menu"
+                aria-label="Pick a reaction"
+                onMouseEnter={scheduleOpen}
+                onMouseLeave={scheduleClose}
+                onPointerDown={(e) => {
+                  // keep taps inside the flyout from bubbling up to the outside-closer
+                  e.stopPropagation();
+                }}
+              >
+                {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
+                  <button
+                    key={key}
+                    aria-label={key}
+                    onClick={() => onPickReaction(key)}
+                    title={key}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <ActionBtn label="Comment" onClick={onOpenComment} Icon={IconComment} disabled={disabled} />
           <ActionBtn label="Share" onClick={onShare} Icon={IconShare} active={hasShared} disabled={disabled || hasShared} />
