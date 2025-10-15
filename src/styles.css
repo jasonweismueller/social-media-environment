@@ -1294,3 +1294,32 @@ body.has-overlay .ghost-card:hover {
 /* Ensure the menu stacks correctly and stays interactive */
 .post-card .menu-wrap { position: relative; z-index: 10; }
 .post-card .menu { z-index: 1000; }
+
+/* ===== Modal should sit above everything (even menus) ===== */
+.modal-backdrop{ z-index: 12000; }
+.modal{ z-index: 12001; }
+
+/* ===== When a modal is open, freeze the rest of the UI ===== */
+body.modal-open .page,
+body.modal-open .nav,
+body.modal-open .top-rail-placeholder {
+  pointer-events: none !important;   /* no clicks/hover below the modal */
+}
+
+/* kill hover paints under the modal (no right-rail/card highlights) */
+body.modal-open .feed-row:hover,
+body.modal-open .card:hover,
+body.modal-open .ghost-card:hover,
+body.modal-open .image-btn:hover,
+body.modal-open .action:hover,
+body.modal-open .btn:hover,
+body.modal-open .dots:hover {
+  background: inherit !important;
+  box-shadow: var(--shadow) !important;
+}
+
+/* keep the modal itself interactive */
+.modal-backdrop,
+.modal-backdrop * {
+  pointer-events: auto !important;
+}
