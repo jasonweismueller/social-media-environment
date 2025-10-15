@@ -9,7 +9,7 @@ import {
   computeFeedId, getDefaultFeedFromBackend,
   hasAdminSession, adminLogout, listFeedsFromBackend,
   getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION,
-  VIEWPORT_ENTER_FRACTION_IMAGE,                 // ⬅️ NEW: per-image threshold
+  VIEWPORT_ENTER_FRACTION_IMAGE,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -37,21 +37,24 @@ function getUrlFlag(key) {
   } catch { return null; }
 }
 
-/* Helper: does a post element contain an inline image? (ignore avatar/video)
-   - Prefer an explicit data flag from the post card (data-has-image="1")
-   - Otherwise, scope within the post and look for inline media, excluding avatars
-*/
+/* ===== project id resolver ===== */
+function getInitialProjectId() {
+  const fromUrl =
+    getUrlFlag("project_id") ||
+    getUrlFlag("project") ||
+    null;
+  if (fromUrl) return String(fromUrl);
+  const fromLS = localStorage.getItem("project_id");
+  if (fromLS) return String(fromLS);
+  // final fallback: optional config default
+  return window.CONFIG?.PROJECT_ID || ""; // empty string keeps legacy mode working
+}
+
+/* Helper: inline image detection (unchanged) */
 function elementHasImage(el) {
   if (!el) return false;
-  // Fast-path: PostCard can set this when it renders an image block
   if (el.dataset?.hasImage === "1") return true;
-
-  // Scope to the post root to avoid matching outside elements
   const root = el.matches?.("[data-post-id]") ? el : el.closest?.("[data-post-id]") || el;
-
-  // Look for inline image media inside the card body/media regions
-  // - exclude avatar images via .avatar-img
-  // - exclude video; this helper is for image posts only
   return !!root.querySelector?.(
     [
       ":scope .image-btn img:not(.avatar-img)",
@@ -72,6 +75,8 @@ export default function App() {
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
 
+  const [projectId, setProjectId] = useState(getInitialProjectId());
+
   const [randomize, setRandomize] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
   const [participantId, setParticipantId] = useState("");
@@ -79,19 +84,26 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
 
-  // Route context
   const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
-  // Feed
   const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedIdFromUrl() : null);
   const [posts, setPosts] = useState([]);
 
-  // Unified loading/error phase for participant view
-  const [feedPhase, setFeedPhase] = useState("idle"); // "idle" | "loading" | "ready" | "error"
+  const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
-  // --- Debug viewport flag: exactly like per-post debug (search + hash)
+  // persist projectId if provided in URL later
+  useEffect(() => {
+    const p = getUrlFlag("project_id") || getUrlFlag("project");
+    if (p && p !== projectId) setProjectId(String(p));
+  }, []); // run once on mount
+
+  useEffect(() => {
+    try { localStorage.setItem("project_id", projectId ?? ""); } catch {}
+  }, [projectId]);
+
+  // Debug viewport flag
   useEffect(() => {
     const apply = () => {
       const on = getUrlFlag("debugvp") === "1";
@@ -116,12 +128,10 @@ export default function App() {
         document.querySelector(".topbar") || null;
       const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
 
-      const bottomEl = null; // placeholder for sticky bottom rail if you add one
+      const bottomEl = null;
       const bottom = bottomEl ? Math.ceil(bottomEl.getBoundingClientRect().height || bottomEl.offsetHeight || 0) : 0;
 
       setVpOff({ top, bottom });
-
-      // expose to CSS so the red debug frame matches effective viewport
       document.documentElement.style.setProperty("--vp-top", `${top}px`);
       document.documentElement.style.setProperty("--vp-bottom", `${bottom}px`);
     };
@@ -130,7 +140,7 @@ export default function App() {
     window.addEventListener("resize", readOffsets);
     window.addEventListener("orientationchange", readOffsets);
     window.addEventListener("load", readOffsets);
-    const id = setInterval(readOffsets, 300); // guard against late layout shifts
+    const id = setInterval(readOffsets, 300);
     return () => {
       window.removeEventListener("resize", readOffsets);
       window.removeEventListener("orientationchange", readOffsets);
@@ -143,7 +153,6 @@ export default function App() {
   const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
 
-    // cancel any in-flight attempt
     feedAbortRef.current?.abort?.();
     const ctrl = new AbortController();
     feedAbortRef.current = ctrl;
@@ -152,25 +161,24 @@ export default function App() {
     setFeedError("");
 
     try {
+      // IMPORTANT: pass projectId to both calls
       const [feedsList, backendDefault] = await Promise.all([
-        listFeedsFromBackend({ signal: ctrl.signal }),
-        getDefaultFeedFromBackend({ signal: ctrl.signal }),
+        listFeedsFromBackend({ signal: ctrl.signal, projectId }),
+        getDefaultFeedFromBackend({ signal: ctrl.signal, projectId }),
       ]);
       if (ctrl.signal.aborted) return;
 
       const urlFeedId = getFeedIdFromUrl();
       const chosen =
         (feedsList || []).find(f => f.feed_id === urlFeedId) ||
-        (feedsList || []).find(f => f.feed_id === backendDefault) ||
+        (feedsList || []).find(f => f.feed_id === backendDefault?.feed_id || backendDefault) ||
         (feedsList || [])[0] || null;
 
-      if (!chosen) {
-        throw new Error("No feeds are available.");
-      }
+      if (!chosen) throw new Error("No feeds are available.");
 
       setActiveFeedId(chosen.feed_id);
 
-      // cache check
+      // cache by feed id only (sheets stay named Posts::feed_id)
       let cached = null;
       try {
         const k = `posts::${chosen.feed_id}`;
@@ -187,8 +195,8 @@ export default function App() {
         return;
       }
 
-      // fetch fresh
-      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal });
+      // IMPORTANT: pass projectId so the backend resolves the right default when feedId absent
+      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal, projectId });
       if (ctrl.signal.aborted) return;
 
       const arr = Array.isArray(fresh) ? fresh : [];
@@ -202,20 +210,20 @@ export default function App() {
 
       setFeedPhase("ready");
     } catch (e) {
-      if (e?.name === "AbortError") return; // ignore user/nav aborts
+      if (e?.name === "AbortError") return;
       console.warn("Feed load failed:", e);
       setFeedError(e?.message || "Failed to load the feed. Please try again.");
       setFeedPhase("error");
     } finally {
       if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
     }
-  }, [onAdmin]);
+  }, [onAdmin, projectId]);
 
-  // Initial load + cleanup
+  // Initial load + cleanup (reload when projectId changes)
   useEffect(() => {
     if (!onAdmin) startLoadFeed();
     return () => feedAbortRef.current?.abort?.();
-  }, [onAdmin, startLoadFeed]);
+  }, [onAdmin, startLoadFeed, projectId]);
 
   // --- Auto-login for admin
   useEffect(() => {
@@ -241,27 +249,23 @@ export default function App() {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, feedPhase, submitted, onAdmin]);
 
-  // ===== IO infrastructure (observe new posts immediately) =====
-  const ioRef = useRef(null); // active IntersectionObserver
-  const viewRefs = useRef(new Map()); // post_id -> element
-  const elToId = useRef(new WeakMap()); // element -> post_id
+  // ===== IO infrastructure =====
+  const ioRef = useRef(null);
+  const viewRefs = useRef(new Map());
+  const elToId = useRef(new WeakMap());
 
   const registerViewRef = (postId) => (el) => {
-    // unobserve previous element for this id
     const prev = viewRefs.current.get(postId);
     if (prev && ioRef.current) {
       try { ioRef.current.unobserve(prev); } catch {}
     }
-
     if (el) {
       viewRefs.current.set(postId, el);
       elToId.current.set(el, postId);
-      // observe immediately if IO exists (covers newly mounted posts later)
       if (ioRef.current) {
         try { ioRef.current.observe(el); } catch {}
       }
     } else {
-      // element unmounted
       viewRefs.current.delete(postId);
     }
   };
@@ -303,7 +307,7 @@ export default function App() {
 
   // scroll + session tracking
   useEffect(() => {
-    log("session_start", { user_agent: navigator.userAgent, feed_id: activeFeedId || null });
+    log("session_start", { user_agent: navigator.userAgent, feed_id: activeFeedId || null, project_id: projectId || null });
     const onEnd = () => log("session_end", { total_events: events.length });
     window.addEventListener("beforeunload", onEnd);
     return () => window.removeEventListener("beforeunload", onEnd);
@@ -323,7 +327,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===================== VIEWPORT TRACKING =====================
+  // ===================== VIEWPORT TRACKING (unchanged except logs carry feed_id) =====================
   useEffect(() => {
     if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
 
@@ -337,8 +341,6 @@ export default function App() {
 
     const enteredSet = new Set();
     const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
-
-    // Shift the effective viewport by sticky rails
     const rootMargin = `${-vpOff.top}px 0px ${-vpOff.bottom}px 0px`;
 
     const io = new IntersectionObserver(
@@ -348,11 +350,9 @@ export default function App() {
           if (!postId) continue;
           const el = e.target;
 
-          // Recompute vis_frac with the same math as measureVis (matches IO)
           const m = measureVis(postId);
           const vis_frac = m ? m.vis_frac : Number((e.intersectionRatio || 0).toFixed(4));
 
-          // Per-post threshold (image vs non-image)
           const isImg = elementHasImage(el);
           const TH = isImg ? IMG_FRAC : ENTER_FRAC;
 
@@ -362,31 +362,28 @@ export default function App() {
           if (DEBUG_VP) {
             el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
             el.dataset.state = nowIn ? "IN" : "OUT";
-            el.dataset.th = `${Math.round(TH * 100)}%`; // optional, for debugging which threshold applied
+            el.dataset.th = `${Math.round(TH * 100)}%`;
             el.classList.toggle("__vp-in", nowIn);
             el.classList.toggle("__vp-out", !nowIn);
           }
 
           if (nowIn && !wasIn) {
             enteredSet.add(postId);
-            log("vp_enter", { post_id: postId, vis_frac });
+            log("vp_enter", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
           } else if (!nowIn && wasIn) {
             enteredSet.delete(postId);
-            log("vp_exit", { post_id: postId, vis_frac });
+            log("vp_exit", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
           }
         }
       },
       { root: null, rootMargin, threshold: thresholds }
     );
 
-    // expose the live IO so registerViewRef can observe future nodes
     ioRef.current = io;
-
-    // observe anything already mounted
     for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
     const onHide = () => {
-      enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "page_hide" }));
+      enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "page_hide", feed_id: activeFeedId || null }));
       enteredSet.clear();
     };
 
@@ -396,12 +393,12 @@ export default function App() {
 
     return () => {
       try { io.disconnect(); } catch {}
-      ioRef.current = null; // avoid observing on a dead IO
+      ioRef.current = null;
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("beforeunload", onHide);
     };
-  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom]);
+  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom, activeFeedId]);
   // ===================================================================
 
   const FeedComponent = FBFeed;
@@ -436,15 +433,12 @@ export default function App() {
                     const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
                       ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
                       : ENTER_FRAC;
-
                     const DEBUG_VP = getUrlFlag("debugvp") === "1";
 
                     for (const [post_id, elNode] of viewRefs.current) {
                       const m = measureVis(post_id);
                       if (!m) continue;
                       const { vis_frac, el } = m;
-
-                      // use the same per-post threshold
                       const isImg = elementHasImage(elNode || el);
                       const TH = isImg ? IMG_FRAC : ENTER_FRAC;
 
@@ -456,7 +450,7 @@ export default function App() {
                           el.classList.remove("__vp-in");
                           el.classList.add("__vp-out");
                         }
-                        log("vp_exit", { post_id, vis_frac, reason: "submit" });
+                        log("vp_exit", { post_id, vis_frac, reason: "submit", feed_id: activeFeedId || null });
                       }
                     }
 
@@ -470,6 +464,7 @@ export default function App() {
                       ts_ms: ts,
                       action: "feed_submit",
                       feed_id: activeFeedId || null,
+                      project_id: projectId || null,
                     };
                     const eventsWithSubmit = [...events, submitEvent];
                     const feed_id = activeFeedId || null;
@@ -507,10 +502,12 @@ export default function App() {
                   setShowComposer={setShowComposer}
                   resetLog={() => { setEvents([]); showToast("Event log cleared"); }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {
+                    // thread projectId through to the backend
+                    const fullCtx = { ...ctx, projectId };
                     try {
-                      const ok = await savePostsToBackend(nextPosts, ctx);
+                      const ok = await savePostsToBackend(nextPosts, fullCtx);
                       if (ok) {
-                        const fresh = await loadPostsFromBackend(ctx?.feedId);
+                        const fresh = await loadPostsFromBackend(fullCtx?.feedId, { projectId });
                         setPosts(fresh || []);
                         showToast("Feed saved to backend");
                       } else showToast("Publish failed");
@@ -541,20 +538,15 @@ export default function App() {
             setHasEntered(true);
             enterTsRef.current = ts;
             lastNonScrollTsRef.current = null;
-            log("participant_id_entered", { id, feed_id: activeFeedId || null });
+            log("participant_id_entered", { id, feed_id: activeFeedId || null, project_id: projectId || null });
           }}
         />
       )}
 
-      {/* Loading overlay */}
       {!onAdmin && hasEntered && !submitted && feedPhase === "loading" && (
-        <LoadingOverlay
-          title="Preparing your feed…"
-          subtitle="Fetching posts and setting things up."
-        />
+        <LoadingOverlay title="Preparing your feed…" subtitle="Fetching posts and setting things up." />
       )}
 
-      {/* Error overlay with retry (mirrors admin style) */}
       {!onAdmin && hasEntered && !submitted && feedPhase === "error" && (
         <div className="modal-backdrop modal-backdrop-dim" role="dialog" aria-modal="true" aria-live="assertive">
           <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
