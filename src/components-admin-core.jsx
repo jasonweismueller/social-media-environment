@@ -198,16 +198,18 @@ export function AdminDashboard({
   const [showAllParticipants, setShowAllParticipants] = useState(false);
 
   // --- wipe-on-change global policy
-  const [wipeOnChange, setWipeOnChange] = useState(null);
-  const [updatingWipe, setUpdatingWipe] = useState(false);
-  const showBlur = (feedsLoading && !feedsError) || isSaving;
-  const [feeds, setFeeds] = useState([]);
-  const [feedId, setFeedId] = useState("");
-  const [feedName, setFeedName] = useState("");
-  const [feedsLoading, setFeedsLoading] = useState(true);
-  const [feedsError, setFeedsError] = useState("");
-  const feedsAbortRef = useRef(null);
-  const [defaultFeedId, setDefaultFeedId] = useState(null);
+  // --- wipe-on-change global policy
+const [wipeOnChange, setWipeOnChange] = useState(null);
+const [updatingWipe, setUpdatingWipe] = useState(false);
+
+const [feeds, setFeeds] = useState([]);
+const [feedId, setFeedId] = useState("");
+const [feedName, setFeedName] = useState("");
+const [feedsLoading, setFeedsLoading] = useState(true);
+const [feedsError, setFeedsError] = useState("");
+
+// Blur the dashboard content while loading/saving (but not on hard error)
+const showBlur = (feedsLoading && !feedsError) || isSaving;
 
   const [feedStats, setFeedStats] = useState({});
   const loadStatsFor = async (id) => {
@@ -1087,6 +1089,7 @@ export function AdminDashboard({
     )}
   </Section>
 </RoleGate>
+</div>
 
       {editing && (
         <Modal
@@ -1445,7 +1448,6 @@ export function AdminDashboard({
           </div>
         </div>
       )}
-    </div>
     </div>
   );
 }
