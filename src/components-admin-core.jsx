@@ -543,6 +543,7 @@ useEffect(() => {
     setFeedId(id);
     setFeedName(name);
     setPosts([]);
+    setPostNames({});
     setFeeds(prev => {
       const exists = prev.some(f => String(f.feed_id) === String(id));
       return exists ? prev : [{ feed_id: id, name, checksum: "", updated_at: "" }, ...prev];
@@ -590,7 +591,15 @@ useEffect(() => {
       adButtonText: "",
     });
   };
-  const openEdit = (p) => { setIsNew(false); setEditing({ ...p, showTime: p.showTime !== false }); };
+   const openEdit = (p) => {
+   setIsNew(false);
+   setEditing({
+     ...p,
+     showTime: p.showTime !== false,
+     // prefer external map, fall back to embedded field if present
+     postName: (postNames?.[p.id]) ?? p.postName ?? ""
+   });
+ };
 
   const removePost = (id) => {
     if (!confirm("Delete this post?")) return;
@@ -1159,6 +1168,8 @@ useEffect(() => {
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
                       if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
+                           // keep the name map in sync with the current feed
+     setPostNames(readPostNames(projectId, feedId) || {});
                     }}
                     title="Reload posts for this feed from backend"
                   >
@@ -1261,6 +1272,7 @@ useEffect(() => {
                       <thead>
                         <tr className="subtle">
                           <th style={{ textAlign: "left", padding: 8, width: 36 }} />
+                          <th style={{ textAlign: "left", padding: 8, minWidth: 140 }}>Name (CSV)</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 160 }}>Author</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 260 }}>Text</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 80 }}>Time</th>
@@ -1271,11 +1283,9 @@ useEffect(() => {
                       <tbody>
                         {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
                           <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
-                            <td style={{ padding: 8 }}>
-                              <div className="avatar">
-                                <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
-                              </div>
-                            </td>
+                           +       <td style={{ padding: 8, fontFamily: "monospace" }}>
+         {postNames[p.id] || <span className="subtle">—</span>}
+       </td>
                             <td style={{ padding: 8, fontWeight: 600 }}>
                               {p.author || <span className="subtle">—</span>}
                               {p.badge ? " ✔" : ""}
@@ -1295,6 +1305,22 @@ useEffect(() => {
                             </td>
                             <td style={{ padding: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <button className="btn" onClick={() => openEdit(p)}>Edit</button>
+                               <button
+           className="btn ghost"
+           title="Rename this post for CSV columns"
+           onClick={() => {
+             const cur = postNames[p.id] || "";
+             const next = prompt("Post name (used in CSV headers):", cur ?? "");
+             if (next === null) return; // cancelled
+             const name = (next || "").trim();
+             const map = { ...(postNames || {}) };
+             if (name) map[p.id] = name; else delete map[p.id];
+             setPostNames(map);
+             writePostNames(projectId, feedId, map);
+           }}
+         >
+           Rename
+         </button>
                               <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
                             </td>
                           </tr>
