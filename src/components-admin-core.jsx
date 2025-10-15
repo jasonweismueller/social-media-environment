@@ -104,7 +104,12 @@ async function fetchParticipantsStats(projectId,feedId) {
     const base = window.CONFIG?.API_BASE;
     const admin = window.ADMIN_TOKEN;
     if (!base || !admin) return null;
-    const url = `${base}?path=participants_stats&project_id=${encodeURIComponent(projectId || "global")}&feed_id=${encodeURIComponent(feedId)}&admin_token=${encodeURIComponent(admin)}`;
+       const effPid = projectId && projectId !== "global" ? projectId : null;
+   const url =
+     `${base}?path=participants_stats` +
+     (effPid ? `&project_id=${encodeURIComponent(effPid)}` : "") +
+     `&feed_id=${encodeURIComponent(feedId)}` +
+     `&admin_token=${encodeURIComponent(admin)}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const json = await res.json().catch(() => null);
@@ -375,7 +380,10 @@ const showBlur = showOverlay;
         if (cached) {
           setPosts(cached);
         } else {
-          const fresh = await loadPostsFromBackend(chosen.feed_id, {projectId, force: true, signal: ctrl.signal });
+           const fresh = await loadPostsFromBackend(
+   chosen.feed_id,
+   { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
+);
           if (ctrl.signal.aborted) return;
           const arr = Array.isArray(fresh) ? fresh : [];
           setPosts(arr);
@@ -441,7 +449,7 @@ const showBlur = showOverlay;
       setPosts(cached);
       return;
     }
-    const fresh = await loadPostsFromBackend(id, {projectId, force: true });
+    const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
     const arr = Array.isArray(fresh) ? fresh : [];
     setPosts(arr);
     if (row) setCachedPosts(projectId, id, row.checksum, arr);
@@ -906,18 +914,14 @@ const showBlur = showOverlay;
                             <button
                               className="btn ghost"
                               title="Copy participant link for this feed"
-                              onClick={async () => {
-                                if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
-                                    const effPid = projectId && projectId !== "global" ? projectId : null;
-   const url =
-     `${base}?path=participants_stats` +
-     (effPid ? `&project_id=${encodeURIComponent(effPid)}` : "") +
-     `&feed_id=${encodeURIComponent(feedId)}` +
-     `&admin_token=${encodeURIComponent(admin)}`;
-    const res = await fetch(url);
-                                await navigator.clipboard.writeText(url).catch(()=>{});
-                                alert("Link copied:\n" + url);
-                              }}
+                               onClick={async () => {
+   if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
+   const url = (typeof buildFeedShareUrl === "function")
+     ? buildFeedShareUrl({ ...f, project_id: projectId })
+     : `${window.location.origin}/#/?project=${encodeURIComponent(projectId || "global")}&feed=${encodeURIComponent(f.feed_id)}`;
+   await navigator.clipboard.writeText(url).catch(()=>{});
+   alert("Link copied:\n" + url);
+ }}
                             >
                               Copy link
                             </button>
@@ -1061,7 +1065,7 @@ const showBlur = showOverlay;
                   <button
                     className="btn"
                     onClick={async () => {
-                      const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
+                      const fresh = await loadPostsFromBackend(feedId, { projectId: pidForBackend(projectId), force: true });
                       const arr = Array.isArray(fresh) ? fresh : [];
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
