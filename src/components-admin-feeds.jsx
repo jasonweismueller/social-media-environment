@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { APP, getProjectId as getProjectIdUtil, setProjectId as setProjectIdUtil } from "./utils";
 
 /**
  * AdminFeedsPanel
  * Props:
- *  - apiBase: string   e.g. your Apps Script web app URL
+ *  - apiBase: string   e.g. your proxied Apps Script URL (GS_ENDPOINT)
  *  - adminToken: string (required for admin-only endpoints)
  */
 export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
+  const [projectId, setProjectId] = useState(() => getProjectIdUtil() || "");
   const [feeds, setFeeds] = useState([]);
   const [defaultFeedId, setDefaultFeedId] = useState("");
   const [selectedFeedId, setSelectedFeedId] = useState("");
@@ -18,40 +20,77 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
   const [newFeedId, setNewFeedId] = useState("");
   const [newFeedName, setNewFeedName] = useState("");
 
+  // keep utils’ project in sync so their GET builders add ?project_id
+  useEffect(() => {
+    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
+  }, [projectId]);
+
+  // reflect URL changes (?project / ?project_id) into state
+  useEffect(() => {
+    const syncFromUrl = () => {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const fromUrl = sp.get("project") || sp.get("project_id");
+        if (fromUrl && fromUrl !== projectId) {
+          setProjectId(fromUrl);
+          setProjectIdUtil(fromUrl, { persist: true, updateUrl: false });
+        }
+      } catch {}
+    };
+    window.addEventListener("popstate", syncFromUrl);
+    window.addEventListener("hashchange", syncFromUrl);
+    syncFromUrl();
+    return () => {
+      window.removeEventListener("popstate", syncFromUrl);
+      window.removeEventListener("hashchange", syncFromUrl);
+    };
+  }, [projectId]);
+
   const selectedFeed = useMemo(
     () => feeds.find(f => String(f.feed_id) === String(selectedFeedId)) || null,
     [feeds, selectedFeedId]
   );
 
+  // ---- tiny fetch helpers (auto-include app + project_id) ------------------
   const apiGet = async (path, params = {}) => {
     const url = new URL(apiBase);
     url.searchParams.set("path", path);
+    url.searchParams.set("app", APP);
+    if (projectId) url.searchParams.set("project_id", projectId);
     Object.entries(params).forEach(([k, v]) => {
       if (v != null && v !== "") url.searchParams.set(k, v);
     });
-    const res = await fetch(url.toString(), { method: "GET" });
+    const res = await fetch(url.toString(), { method: "GET", mode: "cors", cache: "no-store" });
     if (!res.ok) throw new Error(`GET ${path} failed (${res.status})`);
     return res.json();
   };
 
   const apiPost = async (payload) => {
+    const body = JSON.stringify({
+      app: APP,
+      project_id: projectId || "",
+      admin_token: adminToken || "",
+      ...payload,
+    });
     const res = await fetch(apiBase, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      mode: "cors",
+      // text/plain avoids a CORS preflight on most hosts (matches your utils)
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body,
     });
     if (!res.ok) throw new Error(`POST ${payload.action} failed (${res.status})`);
     return res.json();
   };
+  // -------------------------------------------------------------------------
 
   const refreshFeeds = async () => {
     const [list, def] = await Promise.all([
       apiGet("feeds"),
-      apiGet("default_feed")
+      apiGet("default_feed"),
     ]);
-    setFeeds(list || []);
+    setFeeds(Array.isArray(list) ? list : []);
     setDefaultFeedId(def?.feed_id || "");
-    // keep selection valid
     setSelectedFeedId(prev => {
       if (prev && (list || []).some(f => String(f.feed_id) === String(prev))) return prev;
       return (list && list[0]?.feed_id) ? String(list[0].feed_id) : "";
@@ -59,9 +98,9 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
   };
 
   const refreshStats = async (feedId) => {
-    if (!feedId) { setStats(null); return; }
+    if (!feedId || !adminToken) { setStats(null); return; }
     const data = await apiGet("participants", { feed_id: feedId, admin_token: adminToken }).catch(() => null);
-    const s = await apiGet("participants_stats", { feed_id: feedId, admin_token: adminToken }).catch(() => null);
+    const s    = await apiGet("participants_stats", { feed_id: feedId, admin_token: adminToken }).catch(() => null);
     setStats(s ? { ...s, _rows: data || [] } : null);
   };
 
@@ -69,29 +108,21 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
     (async () => {
       try { await refreshFeeds(); } catch (e) { setErr(String(e.message || e)); }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // re-fetch when project changes
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    (async () => {
-      try { await refreshStats(selectedFeedId); } catch (_) {}
-    })();
-  }, [selectedFeedId]);
+    (async () => { try { await refreshStats(selectedFeedId); } catch {} })();
+  }, [selectedFeedId, adminToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onAddFeed = async () => {
     const fid = newFeedId.trim();
-    const name = newFeedName.trim() || newFeedId.trim();
+    const name = (newFeedName.trim() || newFeedId.trim());
     if (!fid) { setErr("Feed ID is required"); return; }
     setBusy(true); setErr("");
     try {
-      // create by publishing an empty posts array; registry row is upserted there
-      await apiPost({
-        action: "publish_posts",
-        admin_token: adminToken,
-        feed_id: fid,
-        name,
-        posts: []
-      });
+      // publish empty posts → creates project-scoped Posts sheet + registry row
+      await apiPost({ action: "publish_posts", feed_id: fid, name, posts: [] });
       await refreshFeeds();
       setNewFeedId(""); setNewFeedName("");
       setSelectedFeedId(fid);
@@ -102,10 +133,10 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
 
   const onDeleteFeed = async (fid) => {
     if (!fid) return;
-    if (!window.confirm(`Delete feed "${fid}"? This removes posts, registry row, and participants for that feed.`)) return;
+    if (!window.confirm(`Delete feed "${fid}"? This removes posts and participants for this project only.`)) return;
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "delete_feed", admin_token: adminToken, feed_id: fid });
+      await apiPost({ action: "delete_feed", feed_id: fid });
       await refreshFeeds();
       if (selectedFeedId === fid) setSelectedFeedId("");
     } catch (e) {
@@ -117,7 +148,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
     if (!fid) return;
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "set_default_feed", admin_token: adminToken, feed_id: fid });
+      await apiPost({ action: "set_default_feed", feed_id: fid });
       setDefaultFeedId(fid);
     } catch (e) {
       setErr(String(e.message || e));
@@ -127,7 +158,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
   const onClearDefault = async () => {
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "set_default_feed", admin_token: adminToken, feed_id: "" });
+      await apiPost({ action: "set_default_feed", feed_id: "" });
       setDefaultFeedId("");
     } catch (e) {
       setErr(String(e.message || e));
@@ -136,10 +167,10 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
 
   const onWipeParticipants = async (fid) => {
     if (!fid) return;
-    if (!window.confirm(`Wipe participants for "${fid}"?`)) return;
+    if (!window.confirm(`Wipe participants for "${fid}" in project "${projectId}"?`)) return;
     setBusy(true); setErr("");
     try {
-      await apiPost({ action: "wipe_participants", admin_token: adminToken, feed_id: fid });
+      await apiPost({ action: "wipe_participants", feed_id: fid });
       await refreshStats(fid);
     } catch (e) {
       setErr(String(e.message || e));
@@ -150,7 +181,10 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
     <div className="card" style={{ padding: "1rem" }}>
       <h3 style={{ marginTop: 0 }}>Feeds</h3>
       <p className="subtle" style={{ marginTop: 4 }}>
-        Manage multiple feeds. Create, delete, set a default feed, and review basic participation stats.
+        Project: <strong>{projectId || "global"}</strong> &nbsp;•&nbsp; App: <strong>{APP}</strong>
+      </p>
+      <p className="subtle" style={{ marginTop: 4 }}>
+        Manage feeds for this project. Create, delete, set a default feed, and review participation stats.
       </p>
 
       {/* Add feed */}
@@ -163,7 +197,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
               className="input"
               value={newFeedId}
               onChange={(e) => setNewFeedId(e.target.value)}
-              placeholder="eg. pilot-a"
+              placeholder="eg. feed_7"
             />
           </label>
           <label className="login-label">
@@ -172,7 +206,7 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
               className="input"
               value={newFeedName}
               onChange={(e) => setNewFeedName(e.target.value)}
-              placeholder="Pilot A"
+              placeholder="Control Group A"
             />
           </label>
           <div style={{ alignSelf: "end", display: "flex", gap: 8 }}>
@@ -206,8 +240,8 @@ export default function AdminFeedsPanel({ apiBase = "", adminToken }) {
                   const isDefault = String(defaultFeedId) === String(f.feed_id);
                   const isSelected = String(selectedFeedId) === String(f.feed_id);
                   return (
-                    <tr key={f.feed_id}
-                        style={{ background: isSelected ? "rgba(37,99,235,.06)" : "transparent" }}
+                    <tr key={`${f.feed_id}`}
+                        style={{ background: isSelected ? "rgba(37,99,235,.06)" : "transparent", cursor: "pointer" }}
                         onClick={() => setSelectedFeedId(String(f.feed_id))}>
                       <td style={{ padding: "6px 8px" }}>
                         <input
