@@ -849,6 +849,8 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
   const { feedId = null, name = null } = ctx || {};
   const admin_token = getAdminToken();
   if (!admin_token) { console.warn("savePostsToBackend: missing admin_token"); return false; }
+  // Pull friendly name map so we can inject names even if post objects lack them
+ const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
 
   // Optional but recommended: block data: URLs to avoid huge payloads & CORS issues
   const offenders = [];
@@ -873,11 +875,8 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     delete q._localMyCommentText;
     delete q._tempUpload;
     if (q.image && q.image.svg && q.image.url) delete q.image.svg;
-       // carry friendly label to backend
-   if (q.postName && !q.name) q.name = q.postName;
-   // Optional: keep API schema clean
-   // delete q.postName;
-
+    const nm = (q.postName ?? nameMap[q.id] ?? q.name ?? "").trim();
+    if (nm) q.name = nm;
     return q;
   });
 
