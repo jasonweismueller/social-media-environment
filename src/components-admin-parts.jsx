@@ -6,6 +6,10 @@ import {
   summarizeRoster,
   nfCompact,
   extractPerPostFromRosterRow,
+  // ⬇️ new: to scope cache/labels by app+project
+  APP,
+  getProjectId as getProjectIdUtil,
+  setProjectId as setProjectIdUtil,
 } from "./utils";
 
 /* --------------------------- tiny helper + stat --------------------------- */
@@ -23,7 +27,6 @@ function msShort(n) {
   const sec = String(s % 60).padStart(2, "0");
   return `${m}:${sec}`;
 }
-// NEW: seconds formatter
 function sShort(n) {
   if (!Number.isFinite(n)) return "—";
   return `${Math.round(n)}s`;
@@ -88,7 +91,6 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                 </thead>
                 <tbody>
                   {perPost.map((p) => {
-                    // Prefer seconds; else convert ms→s as a fallback
                     const dwellSeconds = Number.isFinite(p.dwell_s)
                       ? Number(p.dwell_s)
                       : Number.isFinite(p.dwell_ms)
@@ -131,14 +133,8 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
 }
 
 /* ----------------------------- Participants ------------------------------ */
-/** 
- * Props:
- * - feedId: string (required)
- * - compact?: boolean (optional) — tighter spacing/typography
- * - limit?: number (optional) — if provided, show only the first N submissions and hide "Show more"
- * - onCountChange?: (n: number) => void (optional) — report total submissions to parent
- */
 export function ParticipantsPanel({ feedId, compact = false, limit, onCountChange }) {
+  const [projectId, setProjectId] = useState(() => getProjectIdUtil() || "global"); // for cache + labels
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -151,12 +147,37 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
 
   const abortRef = useRef(null);
 
-  // bump cache version so the UI refreshes with new fields
-  const mkCacheKey = (id) => `fb_participants_cache_v7::${id || "noid"}`;
+  // keep utils’ project in sync so roster GET includes ?project_id
+  useEffect(() => {
+    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
+  }, [projectId]);
+
+  // react to URL changes (?project / ?project_id) to keep cache scope correct
+  useEffect(() => {
+    const syncFromUrl = () => {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const fromUrl = sp.get("project") || sp.get("project_id");
+        if (fromUrl && fromUrl !== projectId) {
+          setProjectId(fromUrl);
+          setProjectIdUtil(fromUrl, { persist: true, updateUrl: false });
+        }
+      } catch {}
+    };
+    window.addEventListener("popstate", syncFromUrl);
+    window.addEventListener("hashchange", syncFromUrl);
+    return () => {
+      window.removeEventListener("popstate", syncFromUrl);
+      window.removeEventListener("hashchange", syncFromUrl);
+    };
+  }, [projectId]);
+
+  // cache key now includes APP + projectId + feedId
+  const mkCacheKey = (id) => `participants_cache_v1::${APP}::${projectId || "global"}::${id || "noid"}`;
 
   const saveCache = React.useCallback((data) => {
     try { localStorage.setItem(mkCacheKey(feedId), JSON.stringify({ t: Date.now(), rows: data })); } catch {}
-  }, [feedId]);
+  }, [feedId, projectId]);
 
   const readCache = React.useCallback(() => {
     try {
@@ -165,7 +186,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed?.rows) ? parsed : null;
     } catch { return null; }
-  }, [feedId]);
+  }, [feedId, projectId]);
 
   const computeSummaryIdle = React.useCallback((data) => {
     const run = () => {
@@ -185,7 +206,10 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
     }
     refresh(!!cached?.rows?.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feedId]);
+  }, [feedId, projectId]);
+
+  // abort on unmount
+  useEffect(() => () => abortRef.current?.abort?.(), []);
 
   const refresh = React.useCallback(async (silent = false) => {
     setError("");
@@ -222,7 +246,6 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
 
   const totalRows = rows?.length || 0;
 
-  // report live count to parent
   useEffect(() => {
     if (typeof onCountChange === "function") onCountChange(totalRows);
   }, [totalRows, onCountChange]);
@@ -234,13 +257,12 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
     return a;
   }, [rows]);
 
-  // If limit is provided, ignore pagination and cap to the first N.
   const effectivePageSize = typeof limit === "number" && limit >= 0 ? Math.min(limit, sorted.length) : pageSize;
   const visible = useMemo(() => sorted.slice(0, effectivePageSize), [sorted, effectivePageSize]);
 
-  // Compute avg dwell seconds per post by scanning the roster rows (handles both _dwell_s and legacy _dwell_ms)
+  // avg dwell seconds per post (supports _dwell_s and legacy _dwell_ms)
   const avgDwellSByPost = useMemo(() => {
-    const acc = new Map(); // id -> {sum, count}
+    const acc = new Map();
     if (!rows?.length) return acc;
     for (const r of rows) {
       for (const k of Object.keys(r)) {
@@ -250,8 +272,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
           const s = Number(r[k] || 0);
           if (!acc.has(id)) acc.set(id, { sum: 0, count: 0 });
           const a = acc.get(id);
-          a.sum += s;
-          a.count += 1;
+          a.sum += s; a.count += 1;
           continue;
         }
         m = k.match(/^(.*)_dwell_ms$/);
@@ -260,8 +281,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
           const s = Math.round(Number(r[k] || 0) / 1000);
           if (!acc.has(id)) acc.set(id, { sum: 0, count: 0 });
           const a = acc.get(id);
-          a.sum += s;
-          a.count += 1;
+          a.sum += s; a.count += 1;
         }
       }
     }
@@ -300,6 +320,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
           Participants{feedId ? <span className="subtle"> · {feedId}</span> : null}
+          <span className="subtle"> · {APP} · {projectId || "global"}</span>
         </h4>
         <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap" }}>
           <button className="btn" onClick={() => refresh(false)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
@@ -344,7 +365,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
                     continue;
                   }
                   if (/comment_count$/.test(k)) {
-                    delete out[k]; // 🚫 drop comment_count column entirely
+                    delete out[k];
                     continue;
                   }
                 }
@@ -356,13 +377,13 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
               rowsForCsv.forEach(r => Object.keys(r).forEach(k => headerSet.add(k)));
               const header = Array.from(headerSet);
 
-              // 4) Emit CSV
+              // 4) Emit CSV (filename includes app + project)
               const csv = toCSV(rowsForCsv, header);
               const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = `fakebook_participants${feedId ? `_${feedId}` : ""}.csv`;
+              a.download = `${APP}_participants${projectId ? `_${projectId}` : ""}${feedId ? `_${feedId}` : ""}.csv`;
               document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
             }}
             disabled={!rows?.length}
@@ -380,7 +401,7 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
         gap: statsGap,
         marginTop: compact ? ".5rem" : ".75rem"
       }}>
-        <StatCard compact={compact} title="Total" value={nfCompact.format(summary?.counts?.total ?? totalRows)} />
+        <StatCard compact={compact} title="Total" value={nfCompact.format(summary?.counts?.total ?? (rows?.length || 0))} />
         <StatCard compact={compact} title="Completed" value={nfCompact.format(summary?.counts?.completed ?? 0)} sub={`${(((summary?.counts?.completionRate ?? 0) * 100).toFixed(1))}% completion`} />
         <StatCard compact={compact} title="Avg time to submit" value={ms(summary?.timing?.avgEnterToSubmit)} />
         <StatCard compact={compact} title="Median time to submit" value={ms(summary?.timing?.medEnterToSubmit)} />
@@ -475,14 +496,12 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
                         try {
                           const perPostHash = extractPerPostFromRosterRow(r) || {};
                           const perPost = Object.entries(perPostHash).map(([post_id, agg]) => {
-                            // seconds (fallback from ms)
                             const dwell_s = Number.isFinite(agg?.dwell_s)
                               ? Number(agg.dwell_s)
                               : Number.isFinite(agg?.dwell_ms)
                                 ? Number(agg.dwell_ms) / 1000
                                 : 0;
 
-                            // “real” comment = not empty, not dash
                             const rawComment = String(agg.comment_text || "").trim();
                             const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
 
@@ -522,7 +541,6 @@ export function ParticipantsPanel({ feedId, compact = false, limit, onCountChang
             </tbody>
           </table>
 
-          {/* "Show more" is hidden when an explicit `limit` prop is provided */}
           {typeof limit !== "number" && visible.length < sorted.length && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: ".5rem" }}>
               <button className="btn" onClick={() => setPageSize(s => Math.min(s + 25, sorted.length))} style={{ padding: compact ? ".3rem .75rem" : undefined }}>
