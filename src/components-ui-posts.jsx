@@ -1099,30 +1099,54 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
       <footer className="footer">
         <div className="actions">
           <div
-            className="like-wrap"
-            onMouseEnter={scheduleOpen}
-            onMouseLeave={() => {
-              scheduleClose();
-              suppressHoverUntil.current = 0; // reset so hover can work again
-            }}
-          >
-            <ActionBtn label={likeLabel} active={!!myReaction} onClick={onLike} Icon={LikeIcon} disabled={disabled} />
-            {flyoutOpen && (
-              <div
-                className="react-flyout"
-                role="menu"
-                aria-label="Pick a reaction"
-                onMouseEnter={scheduleOpen}
-                onMouseLeave={scheduleClose}
-              >
-                {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
-                  <button key={key} aria-label={key} onClick={() => onPickReaction(key)} title={key}>
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+  className="like-wrap"
+  onMouseEnter={scheduleOpen}
+  onMouseLeave={() => {
+    scheduleClose();
+    suppressHoverUntil.current = 0;
+  }}
+>
+  <ActionBtn
+    label={likeLabel}
+    active={!!myReaction}
+    onClick={onLike}
+    Icon={LikeIcon}
+    disabled={disabled}
+    /* 👇 touch-only: open flyout immediately, prevent text selection */
+    onPointerDown={(e) => {
+      if (e.pointerType === "touch") {
+        e.preventDefault();
+        e.stopPropagation();
+        clearTimeout(openTimer.current);
+        clearTimeout(closeTimer.current);
+        setFlyoutOpen(true);
+      }
+    }}
+    aria-haspopup="menu"
+    aria-expanded={flyoutOpen}
+  />
+
+  {flyoutOpen && (
+    <div
+      className="react-flyout"
+      role="menu"
+      aria-label="Pick a reaction"
+      onMouseEnter={scheduleOpen}
+      onMouseLeave={scheduleClose}
+    >
+      {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
+        <button
+          key={key}
+          aria-label={key}
+          onClick={() => onPickReaction(key)}
+          title={key}
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  )}
+</div>
 
           <ActionBtn label="Comment" onClick={onOpenComment} Icon={IconComment} disabled={disabled} />
           <ActionBtn label="Share" onClick={onShare} Icon={IconShare} active={hasShared} disabled={disabled || hasShared} />

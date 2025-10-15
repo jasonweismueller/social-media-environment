@@ -1125,3 +1125,17 @@ body.debug-vp::before {
 }
 .section-chev svg{ width:16px; height:16px; transition: transform .18s ease; }
 .section-chev[aria-expanded="true"] svg{ transform: rotate(180deg); }
+
+
+/* Touch-only tweaks so iOS/Android don't select "Like" text */
+@media (hover: none) and (pointer: coarse) {
+  .actions,
+  .like-wrap,
+  .like-wrap .action,
+  .like-wrap .action button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* faster taps, prevent double-tap zoom */
+  }
+}
