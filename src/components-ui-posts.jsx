@@ -515,11 +515,11 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
   return (
     <article
-      ref={registerViewRef(post.id)}
-      data-post-id={post.id}
-      data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined}
-      className={`card post-card ${menuOpen ? "has-open-menu" : ""}`}
-    >
+  ref={registerViewRef(post.id)}
+  data-post-id={post.id}
+  data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined}
+  className={`card post-card ${menuOpen ? "has-open-menu" : ""}`}
+>
       <header className="card-head">
         <div className="avatar">
           {post.avatarUrl ? (
