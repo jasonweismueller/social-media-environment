@@ -37,6 +37,47 @@ export const toggleInSet = (setObj, id) => {
   return next;
 };
 
+/* ============================ Project helpers ============================= */
+const PROJECT_KEY = "current_project_id";
+
+/** Get current project_id from URL (?project / ?project_id) or localStorage. */
+export function getProjectId() {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const fromUrl = sp.get("project") || sp.get("project_id");
+    if (fromUrl) {
+      localStorage.setItem(PROJECT_KEY, fromUrl);
+      return fromUrl;
+    }
+  } catch {}
+  try {
+    return localStorage.getItem(PROJECT_KEY) || "";
+  } catch { return ""; }
+}
+
+/** Set current project_id and optionally reflect it in the URL. */
+export function setProjectId(projectId, { persist = true, updateUrl = true } = {}) {
+  const pid = String(projectId || "");
+  if (persist) {
+    try { pid ? localStorage.setItem(PROJECT_KEY, pid) : localStorage.removeItem(PROJECT_KEY); } catch {}
+  }
+  if (updateUrl) {
+    try {
+      const url = new URL(window.location.href);
+      if (pid) url.searchParams.set("project", pid);
+      else url.searchParams.delete("project");
+      history.replaceState({}, "", url.toString());
+    } catch {}
+  }
+  return pid;
+}
+
+/** Query-string fragment for project; empty string if none. */
+const qProject = () => {
+  const pid = getProjectId();
+  return pid ? `&project_id=${encodeURIComponent(pid)}` : "";
+};
+
 /* ======================= Admin User Management APIs ======================= */
 /**
  * Backend is expected to support actions:
@@ -285,11 +326,9 @@ export const GAS_PROXY_PATH =
   "/default/gas";
 
 // Final Apps Script endpoint (proxied through API Gateway -> Lambda)
-// Final Apps Script endpoint (proxied through API Gateway -> Lambda)
 function joinUrl(base, path) {
   return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
 }
-
 
 // Prefer a single absolute API_BASE if provided; else fall back to base+path
 export const GS_ENDPOINT =
@@ -303,12 +342,12 @@ export const GS_ENDPOINT =
 // NOTE: This token is ONLY for participant logging. Admin actions use admin_token from login.
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
-/* IG-scoped GET URLs (same query strings, just against the proxy) */
-const FEEDS_GET_URL         = `${GS_ENDPOINT}?path=feeds&app=${APP}`;
-const DEFAULT_FEED_GET_URL  = `${GS_ENDPOINT}?path=default_feed&app=${APP}`;
-const POSTS_GET_URL         = `${GS_ENDPOINT}?path=posts&app=${APP}`;
-const PARTICIPANTS_GET_URL  = `${GS_ENDPOINT}?path=participants&app=${APP}`;
-const WIPE_POLICY_GET_URL   = `${GS_ENDPOINT}?path=wipe_policy`; // global
+/* ---------------------- Dynamic GET URL builders -------------------------- */
+const FEEDS_GET_URL        = () => `${GS_ENDPOINT}?path=feeds&app=${APP}${qProject()}`;
+const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${APP}${qProject()}`;
+const POSTS_GET_URL        = () => `${GS_ENDPOINT}?path=posts&app=${APP}${qProject()}`;
+const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${APP}${qProject()}`;
+const WIPE_POLICY_GET_URL  = `${GS_ENDPOINT}?path=wipe_policy`; // remains global
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -337,8 +376,7 @@ async function getJsonWithRetry(url, opts = {}, { retries = 1, timeoutMs = 8000 
   throw lastErr;
 }
 
-/* --------------------- Admin auth (session token) ------------------------- */
-/* --------------------- Admin auth (session token + role/email) ------------- */
+/* --------------------- Admin auth (session token + role/email) ------------ */
 const ADMIN_TOKEN_KEY     = `${APP}_admin_token_v1`;
 const ADMIN_TOKEN_EXP_KEY = `${APP}_admin_token_exp_v1`;
 const ADMIN_ROLE_KEY      = `${APP}_admin_role_v1`;
@@ -545,7 +583,16 @@ export async function adminLogout() {
 /* --------------------- Logging participants & events ---------------------- */
 export async function sendToSheet(header, row, events, feed_id) {
   if (!feed_id) { console.warn("sendToSheet: feed_id required"); return false; }
-  const payload = { token: GS_TOKEN, action: "log_participant", app: APP, feed_id, header, row, events };
+  const payload = {
+    token: GS_TOKEN,
+    action: "log_participant",
+    app: APP,
+    feed_id,
+    header,
+    row,
+    events,
+    project_id: getProjectId() || undefined, // harmless if backend ignores
+  };
 
   if (navigator.sendBeacon) {
     const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" });
@@ -569,7 +616,7 @@ export async function sendToSheet(header, row, events, feed_id) {
 export async function listFeedsFromBackend() {
   try {
     const data = await getJsonWithRetry(
-      FEEDS_GET_URL + "&_ts=" + Date.now(),
+      FEEDS_GET_URL() + "&_ts=" + Date.now(),
       { method: "GET", mode: "cors", cache: "no-store" },
       { retries: 1, timeoutMs: 8000 }
     );
@@ -584,7 +631,7 @@ export async function listFeedsFromBackend() {
 export async function getDefaultFeedFromBackend() {
   try {
     const data = await getJsonWithRetry(
-      DEFAULT_FEED_GET_URL + "&_ts=" + Date.now(),
+      DEFAULT_FEED_GET_URL() + "&_ts=" + Date.now(),
       { method: "GET", mode: "cors", cache: "no-store" },
       { retries: 1, timeoutMs: 8000 }
     );
@@ -607,6 +654,7 @@ export async function setDefaultFeedOnBackend(feedId) {
         app: APP,
         feed_id: feedId || "",
         admin_token,
+        project_id: getProjectId() || undefined,
       }),
     });
     return res.ok;
@@ -625,11 +673,12 @@ export async function deleteFeedOnBackend(feedId) {
       mode: "cors",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-  action: "delete_feed",
-  app: APP,
-  admin_token,
-  feed_id: feedId,
-}),
+        action: "delete_feed",
+        app: APP,
+        admin_token,
+        feed_id: feedId,
+        project_id: getProjectId() || undefined,
+      }),
     });
     return res.ok;
   } catch (e) {
@@ -679,10 +728,14 @@ export function primeVideoCache(url) {
 }
 
 /* ------------------------- POSTS API (multi-feed + cache) ----------------- */
-const __postsCache = new Map(); // key: `${APP}::${feedId||''}` -> { at, data }
+/* cache key now includes project_id */
+const __postsCache = new Map(); // key: `${APP}::${projectId}::${feedId||''}` -> { at, data }
 const POSTS_STALE_MS = 60_000;
 
-function __cacheKey(feedId) { return `${APP}::${feedId || ""}`; }
+function __cacheKey(feedId) {
+  const pid = getProjectId() || "";
+  return `${APP}::${pid}::${feedId || ""}`;
+}
 function __getCachedPosts(feedId) {
   const rec = __postsCache.get(__cacheKey(feedId));
   if (!rec) return null;
@@ -693,7 +746,11 @@ function __setCachedPosts(feedId, data) {
   __postsCache.set(__cacheKey(feedId), { at: Date.now(), data });
 }
 export function invalidatePostsCache(feedId = null) {
-  __postsCache.delete(__cacheKey(feedId));
+  // clear all entries for this feed across projects to be safe
+  const fid = String(feedId || "");
+  for (const k of __postsCache.keys()) {
+    if (k.endsWith(`::${fid}`)) __postsCache.delete(k);
+  }
 }
 
 /**
@@ -726,7 +783,7 @@ export async function loadPostsFromBackend(arg1, arg2) {
 
   try {
     const url =
-      POSTS_GET_URL +
+      POSTS_GET_URL() +
       (feedId ? `&feed_id=${encodeURIComponent(feedId)}` : "") +
       "&_ts=" + Date.now();
 
@@ -799,6 +856,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
         feed_id: feedId,
         name,
         admin_token,
+        project_id: getProjectId() || undefined,
       }),
     });
     if (!res.ok) {
@@ -1073,18 +1131,6 @@ export function buildMinimalHeader(posts) {
 }
 
 /* ---- DICE-style dwell aggregation (multi-visit + height-normalized) ------ */
-/**
- * Returns Map(post_id -> {
- *   dwell_ms,             // total ms visible across all visits
- *   dwell_s,              // rounded seconds (compat)
- *   post_h_px_max,        // max height observed for the post (px)
- *   dwell_ms_per_px,      // normalized by height (ms per pixel); null if height 0
- * })
- *
- * Accepts both legacy and new events:
- *  - Legacy:  action="view_start"/"view_end"
- *  - New:     action="vp_enter"/"vp_exit"  (+ optional post_h_px)
- */
 export function computePostDwellFromEvents(events = []) {
   const open = new Map();   // post_id -> { t0 }
   const total = new Map();  // post_id -> dwell_ms
@@ -1173,7 +1219,7 @@ export function buildParticipantRow({
   const ensure = (id) => {
     if (!per.has(id)) {
       per.set(id, {
-        reaction_type: "",     // "", or "like" | "care" | ...
+        reaction_type: "",
         expandable: false,
         expanded: false,
         commented: false,
@@ -1251,17 +1297,17 @@ export function buildParticipantRow({
     // EXPAND/COMMENTS/SHARE/REPORT
     row[`${id}_expandable`] = agg.expandable ? 1 : "";
     row[`${id}_expanded`]   = agg.expanded ? 1 : "";
-    row[`${id}_commented`] = agg.commented ? 1 : "";     // ✓/— in UI
+    row[`${id}_commented`] = agg.commented ? 1 : "";
     row[`${id}_comment_texts`] = agg.comment_texts.length
       ? agg.comment_texts.join(" | ")
-      : "";                                             // em dash for “no text”
+      : "";
 
     row[`${id}_shared`]            = agg.shared ? 1 : "";
     row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
 
     // DWELL + HEIGHT (new)
     const aggD = dwellAgg.get(id);
-    row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;                                            // compat seconds
+    row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
   }
 
   return row;
@@ -1484,7 +1530,7 @@ export async function loadParticipantsRoster(arg1, arg2) {
   try {
     const qFeed = feedId ? `&feed_id=${encodeURIComponent(feedId)}` : "";
     const qAdmin = `&admin_token=${encodeURIComponent(admin_token)}`;
-    const url = PARTICIPANTS_GET_URL + qFeed + qAdmin + "&_ts=" + Date.now();
+    const url = PARTICIPANTS_GET_URL() + qFeed + qAdmin + "&_ts=" + Date.now();
     const data = await getJsonWithRetry(
       url,
       { method: "GET", mode: "cors", cache: "no-store", signal: opts.signal },
@@ -1517,7 +1563,6 @@ export async function wipeParticipantsOnBackend(feedId) {
     return false;
   }
 }
-
 
 export async function getWipePolicyFromBackend() {
   const admin_token = getAdminToken();
@@ -1606,16 +1651,16 @@ export function summarizeRoster(rows) {
     const reported   = rows.reduce((acc, r) => acc + (Number(r[`${base}_reported_misinfo`]) || 0), 0);
     const expandRate = expandable > 0 ? expanded / expandable : null;
     const dwellSArr = rows
-  .map(r => {
-    const s = Number(r[`${base}_dwell_s`]);
-    if (Number.isFinite(s)) return s;
-    const ms = Number(r[`${base}_dwell_ms`]);
-    return Number.isFinite(ms) ? Math.round(ms / 1000) : null;
-  })
-  .filter(n => Number.isFinite(n));
-const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
+      .map(r => {
+        const s = Number(r[`${base}_dwell_s`]);
+        if (Number.isFinite(s)) return s;
+        const ms = Number(r[`${base}_dwell_ms`]);
+        return Number.isFinite(ms) ? Math.round(ms / 1000) : null;
+      })
+      .filter(n => Number.isFinite(n));
+    const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
 
-perPost[base] = { reacted, expandable, expanded, expandRate, commented, shared, reported, avgDwellS };
+    perPost[base] = { reacted, expandable, expanded, expandRate, commented, shared, reported, avgDwellS };
   }
 
   return {
@@ -1722,12 +1767,11 @@ export async function putToS3({ file, signedPutUrl, onProgress, contentType }) {
 }
 
 // High-level helper used by Admin editor
-// High-level helper used by Admin editor
 export async function uploadFileToS3ViaSigner({
   file,
   feedId,
   onProgress,
-  prefix = "images",   // <-- change default from "videos" to "images"
+  prefix = "images",
 }) {
   if (!file) throw new Error("No file selected");
   if (!feedId) throw new Error("Missing feedId");
@@ -1745,7 +1789,6 @@ export async function uploadFileToS3ViaSigner({
     fileUrl ||
     `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
 
-  // helpful console breadcrumbs (doesn't affect UI)
   try { console.log("[S3] uploaded", { key, cdnUrl }); } catch {}
 
   if (typeof onProgress === "function") onProgress(100);
@@ -1782,5 +1825,9 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
 export function buildFeedShareUrl(feedOrId) {
   const origin = "https://studyfeed.org"; // fixed base
   const fid = typeof feedOrId === "string" ? feedOrId : feedOrId?.feed_id || "";
-  return `${origin}/#/?feed=${encodeURIComponent(fid)}`;
+  const pid = getProjectId();
+  const qp = new URLSearchParams();
+  if (fid) qp.set("feed", fid);
+  if (pid) qp.set("project", pid);
+  return `${origin}/#/?${qp.toString()}`;
 }

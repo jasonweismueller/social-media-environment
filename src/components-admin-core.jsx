@@ -23,7 +23,12 @@ import {
   startSessionWatch,
   getAdminSecondsLeft,
   touchAdminSession,
-  buildFeedShareUrl
+  buildFeedShareUrl,
+listProjectsFromBackend,
+   getDefaultProjectFromBackend,
+   setDefaultProjectOnBackend,
+   createProjectOnBackend,
+   deleteProjectOnBackend
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -55,9 +60,9 @@ function RoleGate({ min = "viewer", children, elseRender = null }) {
 }
 
 // Keep a small rotating local backup history (last 5)
-function saveLocalBackup(feedId, app, posts) {
+function saveLocalBackup(projectId, feedId, app, posts) {
   try {
-    const k = `backup::${app || "fb"}::${feedId}`;
+    const k = `backup::${app || "fb"}::${projectId || "global"}::${feedId}`;
     const list = JSON.parse(localStorage.getItem(k) || "[]");
     const entry = { t: new Date().toISOString(), posts };
     const next = [entry, ...list].slice(0, 5);
@@ -65,14 +70,15 @@ function saveLocalBackup(feedId, app, posts) {
   } catch {}
 }
 
-async function snapshotToS3({ posts, feedId, app = "fb" }) {
+async function snapshotToS3({ posts, projectId, feedId, app = "fb" }) {
   try {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `${feedId}-${ts}.json`;
+    const filename = `${projectId || "global"}-${feedId}-${ts}.json`;
     const { cdnUrl } = await uploadJsonToS3ViaSigner({
-      data: { app, feedId, ts: new Date().toISOString(), posts },
+            data: { app, projectId: projectId || "global", feedId, ts: new Date().toISOString(), posts },
+      projectId,
       feedId,
-      prefix: `backups/${app}/${feedId}`,
+      prefix: `backups/${app}/${projectId || "global"}/${feedId}`,
       filename
     });
     return cdnUrl;
@@ -92,12 +98,12 @@ async function copyText(str) {
 }
 
 /* ------------------------ Tiny admin stats fetcher ------------------------- */
-async function fetchParticipantsStats(feedId) {
+async function fetchParticipantsStats(projectId,feedId) {
   try {
     const base = window.CONFIG?.API_BASE;
     const admin = window.ADMIN_TOKEN;
     if (!base || !admin) return null;
-    const url = `${base}?path=participants_stats&feed_id=${encodeURIComponent(feedId)}&admin_token=${encodeURIComponent(admin)}`;
+    const url = `${base}?path=participants_stats&project_id=${encodeURIComponent(projectId || "global")}&feed_id=${encodeURIComponent(feedId)}&admin_token=${encodeURIComponent(admin)}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const json = await res.json().catch(() => null);
@@ -116,9 +122,9 @@ function msToMinSec(n) {
 }
 
 /* ---------------------------- Posts local cache --------------------------- */
-function getCachedPosts(feedId, checksum) {
+function getCachedPosts(projectId, feedId, checksum) {
   try {
-    const k = `posts::${feedId}`;
+    const k = `posts::${projectId || "global"}::${feedId}`;
     const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
     if (!meta || meta.checksum !== checksum) return null;
     const data = JSON.parse(localStorage.getItem(k) || "null");
@@ -127,9 +133,9 @@ function getCachedPosts(feedId, checksum) {
     return null;
   }
 }
-function setCachedPosts(feedId, checksum, posts) {
+function setCachedPosts(projectId, feedId, checksum, posts) {
   try {
-    const k = `posts::${feedId}`;
+    const k = `posts::${projectId || "global"}::${feedId}`;
     localStorage.setItem(k, JSON.stringify(posts || []));
     localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum, t: Date.now() }));
   } catch {}
@@ -190,6 +196,15 @@ export function AdminDashboard({
 
   const [participantsCount, setParticipantsCount] = useState(null);
 
+   // --- projects
+ const [projects, setProjects] = useState([]);
+ const [projectId, setProjectId] = useState(""); // current
+ const [projectName, setProjectName] = useState("");
+ const [projectsLoading, setProjectsLoading] = useState(true);
+ const [projectsError, setProjectsError] = useState("");
+ const [defaultProjectId, setDefaultProjectId] = useState(null);
+ const projectsAbortRef = useRef(null);
+
   // collapse + participants paging toggle
   const [feedsCollapsed, setFeedsCollapsed] = useState(true); // (unused by design)
   const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
@@ -215,14 +230,16 @@ const [defaultFeedId, setDefaultFeedId] = useState(null);
 const feedsAbortRef = useRef(null);
 
 // Blur the dashboard content while loading/saving (but not on hard error)
-const showBlur = (feedsLoading && !feedsError) || isSaving;
+const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projectsError)) || isSaving;
 
   const [feedStats, setFeedStats] = useState({});
   const loadStatsFor = async (id) => {
     if (!id || feedStats[id]) return;
-    const s = await fetchParticipantsStats(id);
+    const s = await fetchParticipantsStats(projectId, id);
     setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
   };
+
+  
 
   // counts
   const [usersCount, setUsersCount] = useState(null);
@@ -269,6 +286,36 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
     if (left != null && left > 120) setSessExpiringSec(null);
   }, [isSaving]);
 
+  
+  const loadProjects = useCallback(async () => {
+   projectsAbortRef.current?.abort?.();
+   const ctrl = new AbortController();
+   projectsAbortRef.current = ctrl;
+   setProjectsError("");
+   setProjectsLoading(true);
+   try {
+     const [list, backendDefault] = await Promise.all([
+       listProjectsFromBackend({ signal: ctrl.signal }).catch(() => [{ project_id: "global", name: "Global" }]),
+       getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
+     ]);
+     if (ctrl.signal.aborted) return;
+     const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
+     setProjects(projList);
+     const def = backendDefault || projList[0]?.project_id || "global";
+     // Keep current if still present, else choose default/first
+     const chosen = projList.find(p => p.project_id === (projectId || def)) || projList[0];
+     setProjectId(chosen?.project_id || "global");
+     setProjectName(chosen?.name || chosen?.project_id || "Global");
+   } catch (e) {
+     const isAbort = e?.name === "AbortError";
+     setProjectsError(isAbort ? "Project loading was interrupted. You can try again." : "Failed to load projects from the backend. Please try again.");
+   } finally {
+     if (projectsAbortRef.current === ctrl) projectsAbortRef.current = null;
+     setProjectsLoading(false);
+   }
+ }, [projectId]);
+  
+  
   // ---------- Centralized, abortable feed loader with friendly errors ----------
   const loadFeeds = useCallback(async () => {
     // cancel any in-flight attempt
@@ -283,8 +330,8 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
       // Try parallel fetch
       const [list, backendDefault] = await Promise.all([
         // If your utils accept { signal }, pass it; otherwise it will be ignored safely.
-        listFeedsFromBackend({ signal: ctrl.signal }),
-        getDefaultFeedFromBackend({ signal: ctrl.signal }),
+        listFeedsFromBackend({projectId, signal: ctrl.signal }),
+        getDefaultFeedFromBackend({projectId, signal: ctrl.signal }),
       ]);
 
       if (ctrl.signal.aborted) return;
@@ -302,15 +349,15 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
         setFeedId(chosen.feed_id);
         setFeedName(chosen.name || chosen.feed_id);
 
-        const cached = getCachedPosts(chosen.feed_id, chosen.checksum);
+        const cached = getCachedPosts(projectId, chosen.feed_id, chosen.checksum);
         if (cached) {
           setPosts(cached);
         } else {
-          const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal });
+          const fresh = await loadPostsFromBackend(chosen.feed_id, {projectId, force: true, signal: ctrl.signal });
           if (ctrl.signal.aborted) return;
           const arr = Array.isArray(fresh) ? fresh : [];
           setPosts(arr);
-          setCachedPosts(chosen.feed_id, chosen.checksum, arr);
+          setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
         }
       } else {
         // empty registry — keep editor empty
@@ -331,13 +378,20 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
       if (feedsAbortRef.current === ctrl) feedsAbortRef.current = null;
       setFeedsLoading(false);
     }
-  }, [setPosts]);
+  }, [setPosts,projectId]);
 
   // Initial load
-  useEffect(() => {
-    loadFeeds();
-    return () => feedsAbortRef.current?.abort?.();
-  }, [loadFeeds]);
+
+ useEffect(() => {
+   loadProjects();
+   return () => { projectsAbortRef.current?.abort?.(); };
+ }, [loadProjects]);
+
+ useEffect(() => {
+   if (!projectId) return;
+   loadFeeds();
+   return () => { feedsAbortRef.current?.abort?.(); };
+ }, [projectId, loadFeeds]);
 
   useEffect(() => {
     if (!isSaving) return;
@@ -360,16 +414,30 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
     setFeedId(id);
     setFeedName(row?.name || id);
 
-    const cached = row ? getCachedPosts(id, row.checksum) : null;
+    const cached = row ? getCachedPosts(projectId, id, row.checksum) : null;
     if (cached) {
       setPosts(cached);
       return;
     }
-    const fresh = await loadPostsFromBackend(id, { force: true });
+    const fresh = await loadPostsFromBackend(id, {projectId, force: true });
     const arr = Array.isArray(fresh) ? fresh : [];
     setPosts(arr);
-    if (row) setCachedPosts(id, row.checksum, arr);
+    if (row) setCachedPosts(projectId, id, row.checksum, arr);
   };
+
+  const createNewProject = async () => {
+   const id = prompt("New project ID (letters/numbers/underscores):", `proj_${(projects.length || 0) + 1}`);
+   if (!id) return;
+   const name = prompt("Optional project name:", id) || id;
+   const ok = await (createProjectOnBackend?.({ projectId: id, name }).catch(()=>true));
+   if (!ok) { alert("Failed to create project."); return; }
+   setProjects(prev => [{ project_id: id, name }, ...prev]);
+   setProjectId(id);
+   setProjectName(name);
+   // ensure fresh feeds context
+   setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
+   loadFeeds();
+ };
 
   const createNewFeed = () => {
     const id = prompt("New feed ID (letters/numbers/underscores):", `feed_${(feeds.length || 0) + 1}`);
@@ -528,10 +596,76 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
         subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
         right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
       />
-
-      
-
       <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
+
+
+ {/* Projects */}
+ <Section
+   title={`Projects (${projects.length || 0})`}
+   subtitle="Choose the project first; feeds and participants are scoped to the selected project."
+   right={
+     <>
+       <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+         <span className="subtle">Project:</span>
+         <select
+           className="select"
+           value={projectId || "global"}
+           onChange={async (e) => {
+             const pid = e.target.value;
+             const row = projects.find(p => p.project_id === pid);
+             setProjectId(pid);
+             setProjectName(row?.name || pid);
+             // reset feed context so we don’t display stale data
+             setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
+           }}
+           title="Choose project"
+           style={{ minWidth: 220 }}
+         >
+           {projects.map((p) => (
+             <option key={p.project_id} value={p.project_id}>
+               {(p.name || p.project_id)}{p.project_id === defaultProjectId ? " (default)" : ""}
+             </option>
+           ))}
+         </select>
+         <button className="btn" onClick={() => loadProjects()} title="Reload project list">Refresh Projects</button>
+       </div>
+       <RoleGate min="editor">
+         <button className="btn ghost" onClick={createNewProject}>+ New project</button>
+         <button
+           className="btn ghost"
+           onClick={async () => {
+             const ok = await setDefaultProjectOnBackend?.(projectId);
+             if (ok) setDefaultProjectId(projectId);
+           }}
+           disabled={!projectId || projectId === defaultProjectId}
+           title="Make this the default project"
+         >
+           Default
+         </button>
+       </RoleGate>
+       <RoleGate min="owner">
+         <button
+           className="btn ghost danger"
+           onClick={async () => {
+             if (!projectId) return;
+             if (!confirm(`Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`)) return;
+             const ok = await deleteProjectOnBackend?.(projectId);
+             if (!ok) { alert("Failed to delete project."); return; }
+             const next = projects.filter(p => p.project_id !== projectId);
+             setProjects(next);
+             const fallback = next[0] || { project_id: "global", name: "Global" };
+             setProjectId(fallback.project_id);
+             setProjectName(fallback.name || fallback.project_id);
+           }}
+         >
+           Delete
+         </button>
+       </RoleGate>
+     </>
+   }
+ />
+
+
         {/* Feeds (no collapse by design) */}
         <Section
           title={`Feeds (${feeds.length || 0})`}
@@ -585,7 +719,7 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                     try {
                       setUpdatingWipe(true);
                       const next = !wipeOnChange;
-                      const res = await setWipePolicyOnBackend(next);
+                      const res = await setWipePolicyOnBackend(projectId, next);
                       if (res?.ok) {
                         setWipeOnChange(!!res.wipe_on_change);
                       } else {
@@ -679,7 +813,7 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                                 className="btn"
                                 title="Make this the backend default feed"
                                 onClick={async () => {
-                                  const ok = await setDefaultFeedOnBackend(f.feed_id);
+                                  const ok = await setDefaultFeedOnBackend(projectId, f.feed_id);
                                   if (ok) setDefaultFeedId(f.feed_id);
                                 }}
                                 disabled={isDefault}
@@ -701,23 +835,24 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
 
                                   setIsSaving(true);
                                   try {
-                                    saveLocalBackup(feedId, "fb", posts);
-                                    await snapshotToS3({ posts, feedId, app: "fb" });
+                                    saveLocalBackup(projectId, feedId, "fb", posts);
+                                    await snapshotToS3({ posts, projectId, feedId, app: "fb" });
                                     const ok = await savePostsToBackend(posts, {
+                                      projectId,
                                       feedId: f.feed_id,
                                       name: f.name || f.feed_id,
                                       app: "fb",
                                     });
                                     if (ok) {
-                                      const list = await listFeedsFromBackend();
+                                      const list = await listFeedsFromBackend({ projectId });
                                       const nextFeeds = Array.isArray(list) ? list : [];
                                       setFeeds(nextFeeds);
                                       const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
                                       if (row) {
-                                        const fresh = await loadPostsFromBackend(f.feed_id, { force: true });
+                                        const fresh = await loadPostsFromBackend(f.feed_id, {projectId, force: true });
                                         const arr = Array.isArray(fresh) ? fresh : [];
                                         setPosts(arr);
-                                        setCachedPosts(f.feed_id, row.checksum, arr);
+                                        setCachedPosts(projectId, f.feed_id, row.checksum, arr);
                                       }
                                       alert("Feed saved (snapshot created).");
                                     } else {
@@ -747,9 +882,9 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                               title="Copy participant link for this feed"
                               onClick={async () => {
                                 if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
-                                const url = (typeof buildFeedShareUrl === "function")
-                                  ? buildFeedShareUrl(f)
-                                  : `${window.location.origin}/#/?feed=${encodeURIComponent(f.feed_id)}`;
+                                 const url = (typeof buildFeedShareUrl === "function")
+   ? buildFeedShareUrl({ ...f, project_id: projectId })
+   : `${window.location.origin}/#/?project=${encodeURIComponent(projectId || "global")}&feed=${encodeURIComponent(f.feed_id)}`;
                                 await navigator.clipboard.writeText(url).catch(()=>{});
                                 alert("Link copied:\n" + url);
                               }}
@@ -764,7 +899,7 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                                 onClick={async () => {
                                   const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
                                   if (!okGo) return;
-                                  const ok = await deleteFeedOnBackend(f.feed_id);
+                                  const ok = await deleteFeedOnBackend(projectId, f.feed_id);
                                   if (ok) {
                                     if (f.feed_id === feedId) {
                                       const next = feeds.filter(x => x.feed_id !== f.feed_id);
@@ -804,8 +939,10 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
           title={`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
           subtitle={
             <>
-              <span>Live snapshot & interaction aggregates for </span>
-              <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
+               <span>Live snapshot for </span>
+ <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
+ <span className="subtle"> · </span>
+ <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
               {defaultFeedId === feedId && <span className="subtle"> · default</span>}
             </>
           }
@@ -831,7 +968,7 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                           `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
                         );
                         if (!okGo) return;
-                        const ok = await wipeParticipantsOnBackend(feedId);
+                        const ok = await wipeParticipantsOnBackend(projectId, feedId);
                         if (ok) {
                           setParticipantsRefreshKey(k => k + 1);
                           alert("Participants wiped.");
@@ -893,11 +1030,11 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                   <button
                     className="btn"
                     onClick={async () => {
-                      const fresh = await loadPostsFromBackend(feedId, { force: true });
+                      const fresh = await loadPostsFromBackend(feedId, {projectId, force: true });
                       const arr = Array.isArray(fresh) ? fresh : [];
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
-                      if (row) setCachedPosts(feedId, row.checksum, arr);
+                      if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
                     }}
                     title="Reload posts for this feed from backend"
                   >
@@ -908,12 +1045,12 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
                     className="btn ghost"
                     title="Export current posts as JSON"
                     onClick={() => {
-                      const payload = { app: "fb", feedId, ts: new Date().toISOString(), posts };
+                      const payload = { app: "fb", projectId: projectId || "global", feedId, ts: new Date().toISOString(), posts };
                       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
-                      a.download = `${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+                      a.download = `${projectId || "global"}-${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
                       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
                     }}
                   >
@@ -1226,7 +1363,8 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
 
                           const { cdnUrl } = await uploadFileToS3ViaSigner({
                             file: f,
-                            feedId: feedId || "global",
+                            projectId: projectId || "global",
+ feedId: feedId || "default",
                             prefix: "avatars",
                             onProgress: setPct,
                           });
