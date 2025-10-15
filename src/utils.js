@@ -1831,3 +1831,86 @@ export function buildFeedShareUrl(feedOrId) {
   if (pid) qp.set("project", pid);
   return `${origin}/#/?${qp.toString()}`;
 }
+
+/* ============================ Project helpers (backend) ============================ */
+
+// Base API (same as feeds)
+const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects&app=${APP}${qProject()}`;
+
+/** List projects from backend */
+export async function listProjectsFromBackend({ signal } = {}) {
+  try {
+    const data = await getJsonWithRetry(
+      PROJECTS_GET_URL() + "&_ts=" + Date.now(),
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+    if (!Array.isArray(data) || data.length === 0) {
+      return [{ project_id: "global", name: "Global" }];
+    }
+    return data;
+  } catch (e) {
+    console.warn("listProjectsFromBackend failed:", e);
+    return [{ project_id: "global", name: "Global" }];
+  }
+}
+
+/** Default project handling (client side) */
+const DEFAULT_PROJECT_KEY = "DEFAULT_PROJECT_ID";
+
+export async function getDefaultProjectFromBackend() {
+  return localStorage.getItem(DEFAULT_PROJECT_KEY) || "global";
+}
+
+export async function setDefaultProjectOnBackend(projectId) {
+  localStorage.setItem(DEFAULT_PROJECT_KEY, projectId || "global");
+  return true;
+}
+
+/** Create a project on backend */
+export async function createProjectOnBackend({ projectId, name, notes } = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return false;
+
+  try {
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "project_create",
+        admin_token,
+        project_id: projectId,
+        name,
+        notes,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return !!json?.ok;
+  } catch (e) {
+    console.warn("createProjectOnBackend failed:", e);
+    return false;
+  }
+}
+
+/** Delete a project on backend */
+export async function deleteProjectOnBackend(projectId) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return false;
+
+  try {
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "project_delete",
+        admin_token,
+        project_id: projectId,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return !!json?.ok;
+  } catch (e) {
+    console.warn("deleteProjectOnBackend failed:", e);
+    return false;
+  }
+}
