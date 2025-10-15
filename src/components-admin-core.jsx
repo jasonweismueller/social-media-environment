@@ -1046,9 +1046,8 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
             </div>
           </div>
         </Section>
-      </div>
 
-      {/* Users (owners only) */}
+        {/* Users (owners only) */}
      <RoleGate min="owner">
   <Section
     title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
@@ -1084,6 +1083,9 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
    
   </Section>
 </RoleGate>
+      </div>
+
+      
 </div>
 
       {editing && (
