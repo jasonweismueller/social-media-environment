@@ -255,12 +255,17 @@ const showOverlay =
 // (Or make this just `isSaving` if you only want blur while saving.)
 const showBlur = showOverlay;
 
-  const [feedStats, setFeedStats] = useState({});
-  const loadStatsFor = async (id) => {
-    if (!id || feedStats[id]) return;
-    const s = await fetchParticipantsStats(projectId, id);
-    setFeedStats((m) => ({ ...m, [id]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null } }));
-  };
+  const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
+ const loadStatsFor = async (id) => {
+   if (!id) return;
+   const k = keyFor(projectId, id);
+   if (feedStats[k]) return; // already have stats for *this project + feed*
+   const s = await fetchParticipantsStats(projectId, id);
+   setFeedStats((m) => ({
+     ...m,
+     [k]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null }
+   }));
+ };
 
   
 
@@ -275,12 +280,12 @@ const showBlur = showOverlay;
 }, [projectsLoading, feedsLoading]);
 
   // always fetch stats for the currently selected feed (so the title has a number)
-  useEffect(() => {
-    if (feedId) loadStatsFor(feedId);
-  }, [feedId]);
+   useEffect(() => {
+   if (feedId) loadStatsFor(feedId);
+ }, [feedId, projectId]); // <- include projectId
 
   // handy local for the current feed's stats
-  const curStats = feedStats[feedId];
+  const curStats = feedStats[keyFor(projectId, feedId)];
 
   const keepAlive = async () => {
     try {
@@ -422,11 +427,15 @@ const showBlur = showOverlay;
    return () => { projectsAbortRef.current?.abort?.(); };
  }, [loadProjects]);
 
- useEffect(() => {
-   if (!projectId) return;
-   loadFeeds();
-   return () => { feedsAbortRef.current?.abort?.(); };
- }, [projectId, loadFeeds]);
+useEffect(() => {
+  if (!projectId) return;
+
+  // clear per-project feed stats cache when switching projects
+  setFeedStats({});
+
+  loadFeeds();
+  return () => { feedsAbortRef.current?.abort?.(); };
+}, [projectId, loadFeeds]);
 
   useEffect(() => {
     if (!isSaving) return;
@@ -809,7 +818,7 @@ const showBlur = showOverlay;
                   return visible.map((f) => {
                     const isDefault = f.feed_id === defaultFeedId;
                     const isLoaded = f.feed_id === feedId;
-                    const stats = feedStats[f.feed_id];
+                    const stats = feedStats[keyFor(projectId, f.feed_id)];
 
                     return (
                       <tr
