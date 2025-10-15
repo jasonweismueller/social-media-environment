@@ -30,6 +30,7 @@ listProjectsFromBackend,
    createProjectOnBackend,
    deleteProjectOnBackend,
    setProjectId as persistProjectId,
+  getProjectId,
   GS_ENDPOINT, APP, getAdminToken 
 } from "./utils";
 
@@ -212,7 +213,14 @@ const [booting, setBooting] = useState(true);
 
    // --- projects
  const [projects, setProjects] = useState([]);
- const [projectId, setProjectId] = useState(""); // current
+  const [projectId, setProjectId] = useState(() => {
+   try {
+     const sp = new URLSearchParams(window.location.search);
+     return sp.get("project") || sp.get("project_id") || getProjectId?.() || "global";
+   } catch {
+     return getProjectId?.() || "global";
+   }
+ });
  const [projectName, setProjectName] = useState("");
  const [projectsLoading, setProjectsLoading] = useState(true);
  const [projectsError, setProjectsError] = useState("");
@@ -267,6 +275,11 @@ const showBlur = showOverlay;
    }));
  };
 
+  useEffect(() => {
+   if (!projectId) return;
+   // Persist for other modules/refreshes, but don’t touch the URL here
+   persistProjectId(projectId, { persist: true, updateUrl: false });
+ }, [projectId]);
   
 
   // counts
@@ -334,15 +347,29 @@ const showBlur = showOverlay;
        getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
      ]);
      if (ctrl.signal.aborted) return;
-     const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
-     setProjects(projList);
-    setDefaultProjectId(backendDefault || null);
- const def = backendDefault || projList[0]?.project_id || "global";
-     // Keep current if still present, else choose default/first
-     const chosen = projList.find(p => p.project_id === (projectId || def)) || projList[0];
-     setProjectId(chosen?.project_id || "global");           // React state
-     persistProjectId(chosen?.project_id || "global", { persist: true, updateUrl: false });
-     setProjectName(chosen?.name || chosen?.project_id || "Global");
+      const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
+ setProjects(projList);
+ setDefaultProjectId(backendDefault || null);
+ 
+ // read from URL first (hard-refresh friendly), then current state/storage, then backend default, then first
+ let fromUrl = "";
+ try {
+   const sp = new URLSearchParams(window.location.search);
+   fromUrl = sp.get("project") || sp.get("project_id") || "";
+ } catch {}
+ const desired =
+   fromUrl ||
+   projectId ||
+   getProjectId?.() ||
+   backendDefault ||
+   projList[0]?.project_id ||
+   "global";
+ 
+ const chosen = projList.find(p => p.project_id === desired) || projList[0];
+ const chosenId = chosen?.project_id || "global";
+ setProjectId(chosenId);
+ persistProjectId(chosenId, { persist: true, updateUrl: false });
+ setProjectName(chosen?.name || chosenId || "Global");
    } catch (e) {
      const isAbort = e?.name === "AbortError";
      setProjectsError(isAbort ? "Project loading was interrupted. You can try again." : "Failed to load projects from the backend. Please try again.");
