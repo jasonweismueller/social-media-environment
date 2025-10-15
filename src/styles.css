@@ -1096,3 +1096,32 @@ body.debug-vp::before {
 @media (prefers-reduced-motion: reduce){
   .section-collapse{ transition: none; }
 }
+
+/* Section header host must be relative */
+.card > :first-child { position: relative; }
+
+/* add a bit of right padding so the chev doesn't overlap header content */
+.card > :first-child { padding-right: 44px; }
+
+
+/* Smooth section expand/collapse */
+.section-collapse{
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .22s ease, opacity .22s ease;
+}
+.section-collapse:not(.is-collapsed){
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.section-collapse-inner{ overflow: hidden; }
+
+/* Chevron button: stable hit area + rotation */
+.section-chev{
+  width:32px; height:32px; min-width:32px;
+  display:grid; place-items:center;
+  padding:0; border-radius:8px;
+}
+.section-chev svg{ width:16px; height:16px; transition: transform .18s ease; }
+.section-chev[aria-expanded="true"] svg{ transform: rotate(180deg); }
