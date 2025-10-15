@@ -220,7 +220,7 @@ const [updatingWipe, setUpdatingWipe] = useState(false);
 const [feeds, setFeeds] = useState([]);
 const [feedId, setFeedId] = useState("");
 const [feedName, setFeedName] = useState("");
-const [feedsLoading, setFeedsLoading] = useState(true);
+const [feedsLoading, setFeedsLoading] = useState(false);
 const [feedsError, setFeedsError] = useState("");
 
 // ✅ needed for “(default)” labels & actions
@@ -564,7 +564,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
       )}
 
       {/* Loading & error overlays for feeds */}
-      {feedsLoading && !feedsError && (
+      {projectId && feedsLoading && !feedsError && (
         <LoadingOverlay
           title="Loading dashboard…"
           subtitle="Fetching feeds and posts from backend"
