@@ -1139,3 +1139,8 @@ body.debug-vp::before {
     touch-action: manipulation; /* faster taps, prevent double-tap zoom */
   }
 }
+
+@media (hover: none) and (pointer: coarse) {
+  /* ensure flyout is touch-friendly above other content */
+  .react-flyout { z-index: 1000; }
+}
