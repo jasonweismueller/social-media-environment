@@ -29,7 +29,8 @@ listProjectsFromBackend,
    setDefaultProjectOnBackend,
    createProjectOnBackend,
    deleteProjectOnBackend,
-   setProjectId as persistProjectId
+   setProjectId as persistProjectId,
+  GS_ENDPOINT, APP, getAdminToken 
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -99,18 +100,22 @@ async function copyText(str) {
 }
 
 /* ------------------------ Tiny admin stats fetcher ------------------------- */
-async function fetchParticipantsStats(projectId,feedId) {
+async function fetchParticipantsStats(projectId, feedId) {
   try {
-    const base = window.CONFIG?.API_BASE;
-    const admin = window.ADMIN_TOKEN;
-    if (!base || !admin) return null;
-       const effPid = projectId && projectId !== "global" ? projectId : null;
-   const url =
-     `${base}?path=participants_stats` +
-     (effPid ? `&project_id=${encodeURIComponent(effPid)}` : "") +
-     `&feed_id=${encodeURIComponent(feedId)}` +
-     `&admin_token=${encodeURIComponent(admin)}`;
-    const res = await fetch(url);
+    const admin = getAdminToken?.();
+    if (!admin || !feedId) return null;
+
+    // Respect project scoping: omit project_id when "global" or empty
+    const params = new URLSearchParams({
+      path: "participants_stats",
+      app: APP,
+      feed_id: String(feedId),
+      admin_token: admin,
+    });
+    const effPid = projectId && projectId !== "global" ? String(projectId) : "";
+    if (effPid) params.set("project_id", effPid);
+
+    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, { mode: "cors", cache: "no-store" });
     if (!res.ok) return null;
     const json = await res.json().catch(() => null);
     return json || null;

@@ -1553,7 +1553,13 @@ export async function wipeParticipantsOnBackend(feedId) {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ action: "wipe_participants", app: APP, feed_id: feedId, admin_token }),
+      body: JSON.stringify({
+        action: "wipe_participants",
+        app: APP,
+        feed_id: feedId,
+        admin_token,
+        project_id: getProjectId() || undefined,
+      }),
       keepalive: true,
     });
 

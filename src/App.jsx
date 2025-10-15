@@ -10,6 +10,9 @@ import {
   hasAdminSession, adminLogout, listFeedsFromBackend,
   getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION,
   VIEWPORT_ENTER_FRACTION_IMAGE,
+  // ⬇️ use the project helpers from utils so URLs include ?project_id
+  getProjectId as getProjectIdUtil,
+  setProjectId as setProjectIdUtil,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -37,20 +40,7 @@ function getUrlFlag(key) {
   } catch { return null; }
 }
 
-/* ===== project id resolver ===== */
-function getInitialProjectId() {
-  const fromUrl =
-    getUrlFlag("project_id") ||
-    getUrlFlag("project") ||
-    null;
-  if (fromUrl) return String(fromUrl);
-  const fromLS = localStorage.getItem("project_id");
-  if (fromLS) return String(fromLS);
-  // final fallback: optional config default
-  return window.CONFIG?.PROJECT_ID || ""; // empty string keeps legacy mode working
-}
-
-/* Helper: inline image detection (unchanged) */
+/* Helper: inline image detection */
 function elementHasImage(el) {
   if (!el) return false;
   if (el.dataset?.hasImage === "1") return true;
@@ -75,7 +65,31 @@ export default function App() {
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
 
-  const [projectId, setProjectId] = useState(getInitialProjectId());
+  // === Project ID: source of truth comes from utils (reads URL/localStorage)
+  const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
+
+  // keep utils' project in sync (so utils adds ?project_id to requests)
+  useEffect(() => {
+    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
+  }, [projectId]);
+
+  // also watch URL for changes to ?project / ?project_id and reflect in state
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const p = getUrlFlag("project_id") || getUrlFlag("project");
+      if (p != null && String(p) !== projectId) {
+        setProjectIdState(String(p));
+        setProjectIdUtil(String(p), { persist: true, updateUrl: false });
+      }
+    };
+    window.addEventListener("popstate", syncFromUrl);
+    window.addEventListener("hashchange", syncFromUrl);
+    syncFromUrl();
+    return () => {
+      window.removeEventListener("popstate", syncFromUrl);
+      window.removeEventListener("hashchange", syncFromUrl);
+    };
+  }, [projectId]);
 
   const [randomize, setRandomize] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
@@ -92,16 +106,6 @@ export default function App() {
   const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
-
-  // persist projectId if provided in URL later
-  useEffect(() => {
-    const p = getUrlFlag("project_id") || getUrlFlag("project");
-    if (p && p !== projectId) setProjectId(String(p));
-  }, []); // run once on mount
-
-  useEffect(() => {
-    try { localStorage.setItem("project_id", projectId ?? ""); } catch {}
-  }, [projectId]);
 
   // Debug viewport flag
   useEffect(() => {
@@ -161,27 +165,27 @@ export default function App() {
     setFeedError("");
 
     try {
-      // IMPORTANT: pass projectId to both calls
+      // list/default use utils → utils reads current project from its own store
       const [feedsList, backendDefault] = await Promise.all([
-        listFeedsFromBackend({ signal: ctrl.signal, projectId }),
-        getDefaultFeedFromBackend({ signal: ctrl.signal, projectId }),
+        listFeedsFromBackend({ signal: ctrl.signal }),
+        getDefaultFeedFromBackend({ signal: ctrl.signal }),
       ]);
       if (ctrl.signal.aborted) return;
 
       const urlFeedId = getFeedIdFromUrl();
       const chosen =
         (feedsList || []).find(f => f.feed_id === urlFeedId) ||
-        (feedsList || []).find(f => f.feed_id === backendDefault?.feed_id || backendDefault) ||
+        (feedsList || []).find(f => f.feed_id === (backendDefault?.feed_id || backendDefault)) ||
         (feedsList || [])[0] || null;
 
       if (!chosen) throw new Error("No feeds are available.");
 
       setActiveFeedId(chosen.feed_id);
 
-      // cache by feed id only (sheets stay named Posts::feed_id)
+      // cache BY PROJECT + FEED to avoid collisions across projects
       let cached = null;
       try {
-        const k = `posts::${chosen.feed_id}`;
+        const k = `posts::${projectId || ""}::${chosen.feed_id}`;
         const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
         if (meta?.checksum === chosen.checksum) {
           const data = JSON.parse(localStorage.getItem(k) || "null");
@@ -195,15 +199,15 @@ export default function App() {
         return;
       }
 
-      // IMPORTANT: pass projectId so the backend resolves the right default when feedId absent
-      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal, projectId });
+      // load posts (utils will include ?project_id automatically)
+      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal });
       if (ctrl.signal.aborted) return;
 
       const arr = Array.isArray(fresh) ? fresh : [];
       setPosts(arr);
 
       try {
-        const k = `posts::${chosen.feed_id}`;
+        const k = `posts::${projectId || ""}::${chosen.feed_id}`;
         localStorage.setItem(k, JSON.stringify(arr));
         localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum: chosen.checksum, t: Date.now() }));
       } catch {}
@@ -327,7 +331,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===================== VIEWPORT TRACKING (unchanged except logs carry feed_id) =====================
+  // ===================== VIEWPORT TRACKING =====================
   useEffect(() => {
     if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
 
@@ -502,15 +506,16 @@ export default function App() {
                   setShowComposer={setShowComposer}
                   resetLog={() => { setEvents([]); showToast("Event log cleared"); }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {
-                    // thread projectId through to the backend
-                    const fullCtx = { ...ctx, projectId };
                     try {
-                      const ok = await savePostsToBackend(nextPosts, fullCtx);
+                      // utils uses current project from its own store; we already synced it
+                      const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
-                        const fresh = await loadPostsFromBackend(fullCtx?.feedId, { projectId });
+                        const fresh = await loadPostsFromBackend(ctx?.feedId);
                         setPosts(fresh || []);
                         showToast("Feed saved to backend");
-                      } else showToast("Publish failed");
+                      } else {
+                        showToast("Publish failed");
+                      }
                     } catch {
                       showToast("Publish failed");
                     }
