@@ -591,15 +591,15 @@ useEffect(() => {
       adButtonText: "",
     });
   };
-   const openEdit = (p) => {
+    const openEdit = (p) => {
    setIsNew(false);
    setEditing({
      ...p,
+     // prefer previously-saved backend name if postName not set
+     postName: p.postName ?? p.name ?? "",
      showTime: p.showTime !== false,
-     // prefer external map, fall back to embedded field if present
-     postName: (postNames?.[p.id]) ?? p.postName ?? ""
    });
- };
+};
 
   const removePost = (id) => {
     if (!confirm("Delete this post?")) return;
@@ -620,6 +620,10 @@ useEffect(() => {
     setPosts((arr) => {
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
+
+  
+    // persist friendly name on the post object itself
+     if (clean.postName && !clean.name) clean.name = clean.postName;
 
       // apply avatar rules
       if (clean.avatarMode === "random" && !clean.avatarUrl) {

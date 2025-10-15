@@ -873,6 +873,11 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     delete q._localMyCommentText;
     delete q._tempUpload;
     if (q.image && q.image.svg && q.image.url) delete q.image.svg;
+       // carry friendly label to backend
+   if (q.postName && !q.name) q.name = q.postName;
+   // Optional: keep API schema clean
+   // delete q.postName;
+
     return q;
   });
 
