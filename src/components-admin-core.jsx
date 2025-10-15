@@ -34,6 +34,8 @@ listProjectsFromBackend,
   GS_ENDPOINT, APP, getAdminToken ,
   readPostNames,
   writePostNames,
+  postDisplayName,
+  toCSV, buildMinimalHeader, headerLabelsForKeys,
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -59,6 +61,7 @@ function genNeutralAvatarDataUrl(size = 64) {
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
+
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : (elseRender ?? null);
@@ -194,6 +197,7 @@ export function AdminDashboard({
   onPublishPosts, // optional override
   onLogout,
 }) {
+
 
   const pidForBackend = (pid) => (pid && pid !== "global" ? pid : undefined);
   const [sessExpiringSec, setSessExpiringSec] = useState(null);
@@ -1286,7 +1290,9 @@ useEffect(() => {
                       <thead>
                         <tr className="subtle">
                           <th style={{ textAlign: "left", padding: 8, width: 36 }} />
-                          <th style={{ textAlign: "left", padding: 8, minWidth: 140 }}>Name (CSV)</th>
+                          <td style={{ padding: 8, fontFamily: "monospace" }}>
+  {postDisplayName(p, postNames) || <span className="subtle">—</span>}
+</td>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 160 }}>Author</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 260 }}>Text</th>
                           <th style={{ textAlign: "left", padding: 8, minWidth: 80 }}>Time</th>

@@ -18,15 +18,22 @@ export const nfCompact = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
 });
 
-export function toCSV(rows, header) {
+export function toCSV(rows, header, headerLabels) {
   const esc = (v) => {
     if (v == null) return "";
     const s = typeof v === "string" ? v : JSON.stringify(v);
     if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
     return s;
   };
+
   const lines = [];
-  if (header) lines.push(header.map(esc).join(","));
+  if (header) {
+    // If pretty labels are provided and length matches, use them for the first row
+    const firstRow = Array.isArray(headerLabels) && headerLabels.length === header.length
+      ? headerLabels
+      : header;
+    lines.push(firstRow.map(esc).join(","));
+  }
   for (const r of rows) lines.push(header.map((h) => esc(r[h])).join(","));
   return lines.join("\n");
 }
@@ -1899,6 +1906,34 @@ export function labelForPostId(
   if (!postId) return fallback;
   const m = readPostNames(projectId, feedId);
   return (m && m[postId]) || fallback;
+}
+
+/** Display name for a post: prefer .name from backend, else saved label, else id */
+export function postDisplayName(p, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
+  const id = p?.id || "";
+  const nm = (p?.name || "").trim();
+  if (nm) return nm;
+  const saved = readPostNames(projectId, feedId);
+  return (saved && saved[id]) || id;
+}
+
+/** Build pretty header labels from id-based keys like "<id>_reacted" */
+export function headerLabelsForKeys(keys, posts, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
+  // id → display label map
+  const nameMap = {};
+  (posts || []).forEach(p => {
+    const id = p?.id;
+    if (!id) return;
+    nameMap[id] = postDisplayName(p, { projectId, feedId });
+  });
+
+  return keys.map(k => {
+    const m = /^(.+?)_(.+)$/.exec(k);
+    if (!m) return nameMap[k] || k;
+    const [, id, suffix] = m;
+    const base = nameMap[id] || id;
+    return `${base}_${suffix}`;
+  });
 }
 
 /** Seed storage from loaded posts that already carry a .name field */
