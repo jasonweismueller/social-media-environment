@@ -86,6 +86,12 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
     };
   }, []);
 
+  useEffect(() => {
+  const hasOverlay = !!(menuOpen || showComment || reportAck);
+  document.body.classList.toggle("has-overlay", hasOverlay);
+  return () => document.body.classList.remove("has-overlay");
+}, [menuOpen, showComment, reportAck]);
+
   // in-view detector for media
   const { wrapRef, inView } = useInViewAutoplay(0.6);
 
@@ -509,11 +515,11 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
   return (
     <article
-  ref={registerViewRef(post.id)}
-  data-post-id={post.id}
-  data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined} // ⬅️ add this
-  className="card post-card"
->
+      ref={registerViewRef(post.id)}
+      data-post-id={post.id}
+      data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined}
+      className={`card post-card ${menuOpen ? "has-open-menu" : ""}`}
+    >
       <header className="card-head">
         <div className="avatar">
           {post.avatarUrl ? (
