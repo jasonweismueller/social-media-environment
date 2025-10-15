@@ -1,6 +1,6 @@
 // components-admin-media.jsx
 import React from "react";
-import { randomSVG, uploadFileToS3ViaSigner,  getProjectId as getProjectIdUtil } from "./utils";
+import { randomSVG, uploadFileToS3ViaSigner } from "./utils";
 
 
 export function MediaFieldset({
@@ -12,7 +12,6 @@ export function MediaFieldset({
   setUploadingVideo,
   setUploadingPoster,
 }) {
-  const projectId = getProjectIdUtil();
   return (
     <>
       <h4 className="section-title">Post Media</h4>
