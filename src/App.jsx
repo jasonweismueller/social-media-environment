@@ -13,6 +13,7 @@ import {
   // ⬇️ use the project helpers from utils so URLs include ?project_id
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
+  setFeedIdInUrl,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -181,6 +182,7 @@ export default function App() {
       if (!chosen) throw new Error("No feeds are available.");
 
       setActiveFeedId(chosen.feed_id);
+      try { setFeedIdInUrl(chosen.feed_id, { replace: true }); } catch {}
 
       // cache BY PROJECT + FEED to avoid collisions across projects
       let cached = null;
@@ -222,6 +224,27 @@ export default function App() {
       if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
     }
   }, [onAdmin, projectId]);
+
+  // ⬇️ Watch URL for feed/project changes and react (deep-link friendly)
+  useEffect(() => {
+    const onUrlChange = () => {
+      const pid = getProjectIdUtil();
+      const fid = getFeedIdFromUrl();
+      if (pid) setProjectIdUtil(pid, { persist: true, updateUrl: false });
+      if (fid && fid !== activeFeedId) {
+        setFeedIdInUrl(fid, { replace: true });
+        setActiveFeedId(fid);
+        startLoadFeed();
+      }
+    };
+    onUrlChange(); // run once on mount for pasted links
+    window.addEventListener("hashchange", onUrlChange);
+    window.addEventListener("popstate", onUrlChange);
+    return () => {
+      window.removeEventListener("hashchange", onUrlChange);
+      window.removeEventListener("popstate", onUrlChange);
+    };
+  }, [activeFeedId, startLoadFeed]);
 
   // Initial load + cleanup (reload when projectId changes)
   useEffect(() => {
