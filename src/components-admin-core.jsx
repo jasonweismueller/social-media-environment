@@ -1184,7 +1184,17 @@ useEffect(() => {
                     className="btn ghost"
                     title="Export current posts as JSON"
                     onClick={() => {
-                      const payload = { app: "fb", projectId: projectId || "global", feedId, ts: new Date().toISOString(), posts };
+                       const payload = {
+  app: "fb",
+   projectId: projectId || "global",
+   feedId,
+   ts: new Date().toISOString(),
+   posts: posts.map(p => ({
+     ...p,
+     // ensure 'name' exists in the export (falls back to the local map)
+     name: (p.name ?? (postNames?.[p.id]) ?? "").trim() || undefined,
+   })),
+ };
                       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
