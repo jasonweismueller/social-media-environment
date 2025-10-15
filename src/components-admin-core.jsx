@@ -1073,28 +1073,15 @@ const showBlur = (feedsLoading && !feedsError) || isSaving;
       className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
       aria-hidden={usersCollapsed}
     >
-      <div className="section-collapse-inner">
-        {/* Visible content only when expanded */}
-        {!usersCollapsed ? <AdminUsersPanel embed onCountChange={setUsersCount} /> : null}
-      </div>
+      <div
+  className="section-collapse-inner"
+  style={{ display: usersCollapsed ? "none" : "block" }} // hide, don't unmount
+>
+  <AdminUsersPanel embed onCountChange={setUsersCount} />
+</div>
     </div>
 
-    {/* Hidden preloader so the count refreshes immediately */}
-    {usersCollapsed && (
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          width: 0,
-          height: 0,
-          overflow: "hidden",
-          clip: "rect(0 0 0 0)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        <AdminUsersPanel embed onCountChange={setUsersCount} />
-      </div>
-    )}
+   
   </Section>
 </RoleGate>
 </div>
