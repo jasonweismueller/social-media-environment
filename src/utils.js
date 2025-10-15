@@ -599,8 +599,10 @@ export async function adminLogout() {
 }
 
 /* --------------------- Logging participants & events ---------------------- */
-export async function sendToSheet(header, row, events, feed_id) {
+export async function sendToSheet(header, row, _events, feed_id) {
   if (!feed_id) { console.warn("sendToSheet: feed_id required"); return false; }
+
+  // Backend ignores `events`, so omit it to keep payload tiny.
   const payload = {
     token: GS_TOKEN,
     action: "log_participant",
@@ -608,24 +610,34 @@ export async function sendToSheet(header, row, events, feed_id) {
     feed_id,
     header,
     row,
-    events,
-    project_id: getProjectId() || undefined, // harmless if backend ignores
+    project_id: getProjectId() || undefined,
   };
 
-  if (navigator.sendBeacon) {
-    const blob = new Blob([JSON.stringify(payload)], { type: "text/plain;charset=UTF-8" });
-    return navigator.sendBeacon(GS_ENDPOINT, blob);
+  const body = JSON.stringify(payload);
+
+  // Try Beacon only when safely under the ~64KB keepalive limit.
+  // (body.length is close enough for UTF-8 here since content is mostly ASCII.)
+  if (navigator.sendBeacon && body.length < 60000) {
+    try {
+      const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+      const ok = navigator.sendBeacon(GS_ENDPOINT, blob);
+      if (ok) return true;
+    } catch (e) {
+      // fall through to fetch
+    }
   }
+
+  // Fallback: regular fetch (no keepalive), text/plain to avoid preflight.
   try {
     const res = await fetch(GS_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      keepalive: true,
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body,
     });
     return res.ok;
   } catch (err) {
-    console.warn("sendToSheet failed:", err);
+    console.warn("sendToSheet(fetch) failed:", err);
     return false;
   }
 }
