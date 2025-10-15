@@ -208,6 +208,12 @@ const [feedName, setFeedName] = useState("");
 const [feedsLoading, setFeedsLoading] = useState(true);
 const [feedsError, setFeedsError] = useState("");
 
+// ✅ needed for “(default)” labels & actions
+const [defaultFeedId, setDefaultFeedId] = useState(null);
+
+// ✅ needed for abortable loading
+const feedsAbortRef = useRef(null);
+
 // Blur the dashboard content while loading/saving (but not on hard error)
 const showBlur = (feedsLoading && !feedsError) || isSaving;
 
