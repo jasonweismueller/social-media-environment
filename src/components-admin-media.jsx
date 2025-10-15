@@ -1,17 +1,27 @@
 // components-admin-media.jsx
 import React from "react";
-import { randomSVG, uploadFileToS3ViaSigner } from "./utils";
-
+import {
+  randomSVG,
+  uploadFileToS3ViaSigner,
+  getProjectId as getProjectIdUtil, // fallback if prop not provided
+} from "./utils";
 
 export function MediaFieldset({
   editing,
   setEditing,
   feedId,
-  projectId, 
+  projectId,        // optional
   isNew,
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const resolvedProjectId = projectId ?? getProjectIdUtil?.();
+  const uploadsDisabled = !feedId; // uploader requires a feedId
+
+  const headerEl = () => document.querySelector(".modal h3, .section-title");
+  const setHeaderText = (txt) => { const el = headerEl(); if (el) el.textContent = txt; };
+  const resetHeaderText = () => setHeaderText(isNew ? "Add Post" : "Edit Post");
+
   return (
     <>
       <h4 className="section-title">Post Media</h4>
@@ -19,10 +29,7 @@ export function MediaFieldset({
         <label>Media type
           <select
             className="select"
-            value={
-              editing.videoMode !== "none" ? "video"
-              : (editing.imageMode !== "none" ? "image" : "none")
-            }
+            value={editing.videoMode !== "none" ? "video" : (editing.imageMode !== "none" ? "image" : "none")}
             onChange={(e) => {
               const type = e.target.value;
               if (type === "none") {
@@ -34,15 +41,15 @@ export function MediaFieldset({
                   video: null,
                   videoPosterUrl: "",
                   imageMode: (ed.imageMode === "none" ? "random" : ed.imageMode) || "random",
-                  image: ed.image || randomSVG("Image")
+                  image: ed.image || randomSVG("Image"),
                 }));
-              } else if (type === "video") {
+              } else {
                 setEditing(ed => ({
                   ...ed,
                   imageMode: "none",
                   image: null,
                   videoMode: (ed.videoMode === "none" ? "url" : ed.videoMode) || "url",
-                  video: ed.video || { url: "" }
+                  video: ed.video || { url: "" },
                 }));
               }
             }}
@@ -53,7 +60,7 @@ export function MediaFieldset({
           </select>
         </label>
 
-        {/* Image controls */}
+        {/* IMAGE controls */}
         {editing.videoMode === "none" && editing.imageMode !== "none" && (
           <>
             <div className="grid-2">
@@ -82,68 +89,51 @@ export function MediaFieldset({
                 <input
                   className="input"
                   value={(editing.image && editing.image.url) || ""}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      image: { ...(editing.image||{}), url: e.target.value, alt: (editing.image && editing.image.alt) || "Image" }
-                    })
-                  }
+                  onChange={(e) => setEditing({
+                    ...editing,
+                    image: { ...(editing.image || {}), url: e.target.value, alt: (editing.image && editing.image.alt) || "Image" },
+                  })}
                 />
               </label>
             )}
+
             {editing.imageMode === "upload" && (
-  <label>Upload image
-    <input
-      type="file"
-      accept="image/*"
-      onChange={async (e) => {
-        const f = e.target.files?.[0];
-        if (!f) return;
-
-        const headerEl = document.querySelector(".modal h3, .section-title");
-
-        try {
-          // show initial state
-          if (headerEl) headerEl.textContent = "Uploading… 0%";
-
-          // progress callback
-          const setPct = (pct) => {
-            if (headerEl && typeof pct === "number") {
-              headerEl.textContent = `Uploading… ${pct}%`;
-            }
-          };
-
-          // do upload via signer
-          const { cdnUrl } = await uploadFileToS3ViaSigner({
-            file: f,
-            feedId,
-            projectId, 
-            prefix: "images",
-            onProgress: setPct, // this only works if utils uses XHR
-          });
-
-          // restore UI text
-          if (headerEl) headerEl.textContent = isNew ? "Add Post" : "Edit Post";
-
-          // update state
-          setEditing((ed) => ({
-            ...ed,
-            imageMode: "url",
-            image: { alt: f.name || "Image", url: cdnUrl },
-          }));
-
-          alert("Image uploaded ✔");
-        } catch (err) {
-          console.error("Image upload failed", err);
-          alert(String(err?.message || "Image upload failed."));
-          if (headerEl) headerEl.textContent = isNew ? "Add Post" : "Edit Post";
-        } finally {
-          e.target.value = ""; // allow re-pick
-        }
-      }}
-    />
-  </label>
-)}
+              <label>Upload image
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploadsDisabled}
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    if (!feedId) { alert("Select or create a feed before uploading."); e.target.value = ""; return; }
+                    try {
+                      setHeaderText("Uploading… 0%");
+                      const setPct = (pct) => { if (typeof pct === "number") setHeaderText(`Uploading… ${pct}%`); };
+                      const { cdnUrl } = await uploadFileToS3ViaSigner({
+                        file: f,
+                        feedId,
+                        projectId: resolvedProjectId,
+                        prefix: "images",
+                        onProgress: setPct,
+                      });
+                      setEditing((ed) => ({
+                        ...ed,
+                        imageMode: "url",
+                        image: { alt: f.name || "Image", url: cdnUrl },
+                      }));
+                      alert("Image uploaded ✔");
+                    } catch (err) {
+                      console.error("Image upload failed", err);
+                      alert(String(err?.message || "Image upload failed."));
+                    } finally {
+                      resetHeaderText();
+                      e.target.value = ""; // allow re-pick
+                    }
+                  }}
+                />
+              </label>
+            )}
 
             {(editing.imageMode === "upload" || editing.imageMode === "url") && editing.image?.url && (
               <div className="img-preview" style={{ maxWidth:"100%", maxHeight:"min(40vh, 360px)", minHeight:120, overflow:"hidden", borderRadius:8, background:"#f9fafb", display:"flex", alignItems:"center", justifyContent:"center", padding:8 }}>
@@ -171,7 +161,7 @@ export function MediaFieldset({
                     setEditing(ed => ({
                       ...ed,
                       videoMode: m,
-                      video: m === "url" ? (ed.video || { url: "" }) : null
+                      video: m === "url" ? (ed.video || { url: "" }) : null,
                     }));
                   }}
                 >
@@ -188,12 +178,10 @@ export function MediaFieldset({
                   className="input"
                   placeholder="https://…/clip.mp4 (CloudFront URL)"
                   value={editing.video?.url || ""}
-                  onChange={(e) =>
-                    setEditing(ed => ({
-                      ...ed,
-                      video: { ...(ed.video || {}), url: e.target.value }
-                    }))
-                  }
+                  onChange={(e) => setEditing(ed => ({
+                    ...ed,
+                    video: { ...(ed.video || {}), url: e.target.value },
+                  }))}
                 />
               </label>
             )}
@@ -203,30 +191,21 @@ export function MediaFieldset({
                 <input
                   type="file"
                   accept="video/*"
+                  disabled={uploadsDisabled}
                   onChange={async (e) => {
                     const f = e.target.files?.[0]; if (!f) return;
+                    if (!feedId) { alert("Select or create a feed before uploading."); e.target.value = ""; return; }
                     try {
                       setUploadingVideo?.(true);
-
-                      // UI progress hook that won't throw if header not present
-                      const setPct = (pct) => {
-                        const el = document.querySelector(".modal h3, .section-title");
-                        if (el && typeof pct === "number") el.textContent = `Uploading… ${pct}%`;
-                      };
-
-                      // FIX for “Failed to fetch”: rely on utils’ robust helper
-                      // (ensures correct presign URL, CORS mode, timeout, and better error surfacing)
+                      setHeaderText("Uploading… 0%");
+                      const setPct = (pct) => { if (typeof pct === "number") setHeaderText(`Uploading… ${pct}%`); };
                       const { cdnUrl } = await uploadFileToS3ViaSigner({
                         file: f,
                         feedId,
-                        projectId, 
+                        projectId: resolvedProjectId,
                         onProgress: setPct,
                         prefix: "videos",
                       });
-
-                      const el = document.querySelector(".modal h3, .section-title");
-                      if (el) el.textContent = isNew ? "Add Post" : "Edit Post";
-
                       setEditing(ed => ({
                         ...ed,
                         videoMode: "url",
@@ -238,6 +217,7 @@ export function MediaFieldset({
                       alert(String(err?.message || "Video upload failed."));
                     } finally {
                       setUploadingVideo?.(false);
+                      resetHeaderText();
                       e.target.value = ""; // allow re-pick
                     }
                   }}
@@ -258,11 +238,18 @@ export function MediaFieldset({
                 <input
                   type="file"
                   accept="image/*"
+                  disabled={uploadsDisabled}
                   onChange={async (e) => {
                     const f = e.target.files?.[0]; if (!f) return;
+                    if (!feedId) { alert("Select or create a feed before uploading."); e.target.value = ""; return; }
                     try {
                       setUploadingPoster?.(true);
-                      const { cdnUrl } = await uploadFileToS3ViaSigner({ file: f, feedId, projectId, prefix: "posters" });
+                      const { cdnUrl } = await uploadFileToS3ViaSigner({
+                        file: f,
+                        feedId,
+                        projectId: resolvedProjectId,
+                        prefix: "posters",
+                      });
                       setEditing(ed => ({ ...ed, videoPosterUrl: cdnUrl }));
                       alert("Poster uploaded ✔");
                     } catch (err) {
