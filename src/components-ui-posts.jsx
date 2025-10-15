@@ -86,11 +86,11 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
     };
   }, []);
 
-  useEffect(() => {
-  const hasOverlay = !!(menuOpen || showComment || reportAck);
-  document.body.classList.toggle("has-overlay", hasOverlay);
+  // NEW — only flag overlay when the 3-dots menu is open
+useEffect(() => {
+  document.body.classList.toggle("has-overlay", !!menuOpen);
   return () => document.body.classList.remove("has-overlay");
-}, [menuOpen, showComment, reportAck]);
+}, [menuOpen]);
 
   // in-view detector for media
   const { wrapRef, inView } = useInViewAutoplay(0.6);
