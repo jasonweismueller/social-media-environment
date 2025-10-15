@@ -230,8 +230,15 @@ const [defaultFeedId, setDefaultFeedId] = useState(null);
 // ✅ needed for abortable loading
 const feedsAbortRef = useRef(null);
 
-// Blur the dashboard content while loading/saving (but not on hard error)
-const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projectsError)) || isSaving;
+// One source of truth for the blocking overlay
+const showOverlay =
+  ((projectsLoading && !projectsError) ||
+   (feedsLoading && !feedsError) ||
+   isSaving);
+
+// If you still want to blur the app behind the overlay, tie it to the same flag.
+// (Or make this just `isSaving` if you only want blur while saving.)
+const showBlur = showOverlay;
 
   const [feedStats, setFeedStats] = useState({});
   const loadStatsFor = async (id) => {
@@ -566,12 +573,13 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
       )}
 
       {/* Loading & error overlays for feeds */}
-      {projectId && feedsLoading && !feedsError && (
-        <LoadingOverlay
-          title="Loading dashboard…"
-          subtitle="Fetching feeds and posts from backend"
-        />
-      )}
+       {showOverlay && (
+   <LoadingOverlay
+     title={isSaving ? "Saving feed…" : "Loading dashboard…"}
+     subtitle={isSaving ? "Creating snapshot & publishing your changes"
+                        : "Fetching projects, feeds and posts from backend"}
+   />
+ )}
       {!feedsLoading && !!feedsError && (
         <div aria-live="assertive" className="admin-expired-backdrop">
           <div className="admin-expired-dialog">
@@ -1567,12 +1575,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
         </Modal>
       )}
 
-      {isSaving && (
-        <LoadingOverlay
-          title="Saving feed…"
-          subtitle="Creating snapshot & publishing your changes"
-        />
-      )}
+      
 
       {sessExpired && (
         <div aria-live="assertive" className="admin-expired-backdrop">
