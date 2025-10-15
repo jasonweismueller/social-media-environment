@@ -835,8 +835,12 @@ useEffect(() => {
   }
 >
   {/* Body collapses, header stays */}
-  {!participantsCollapsed ? (
-    feedId ? (
+<div
+  className={`section-collapse ${participantsCollapsed ? "is-collapsed" : ""}`}
+  aria-hidden={participantsCollapsed}
+>
+  <div className="section-collapse-inner">
+    {feedId ? (
       <ParticipantsPanel
         key={`pp::${feedId}::${participantsRefreshKey}`}
         feedId={feedId}
@@ -847,8 +851,9 @@ useEffect(() => {
       <div className="subtle" style={{ padding: ".5rem 0" }}>
         No feed selected.
       </div>
-    )
-  ) : null}
+    )}
+  </div>
+</div>
 </Section>
        
 {/* Posts (compact-only) */}

@@ -1075,3 +1075,24 @@ body.debug-vp::before {
   pointer-events: none;
   z-index: 2;
 }
+
+/* Smooth expand/collapse for section bodies */
+.section-collapse{
+  display: grid;
+  grid-template-rows: 1fr;          /* open = full height */
+  transition: grid-template-rows .25s ease, opacity .25s ease;
+  will-change: grid-template-rows, opacity;
+  overflow: hidden;
+}
+.section-collapse.is-collapsed{
+  grid-template-rows: 0fr;          /* closed = 0 height */
+  opacity: 0.0;
+}
+.section-collapse > .section-collapse-inner{
+  min-height: 0;                     /* allow shrinking to 0 */
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .section-collapse{ transition: none; }
+}
