@@ -301,7 +301,8 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
      if (ctrl.signal.aborted) return;
      const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
      setProjects(projList);
-     const def = backendDefault || projList[0]?.project_id || "global";
+    setDefaultProjectId(backendDefault || null);
+ const def = backendDefault || projList[0]?.project_id || "global";
      // Keep current if still present, else choose default/first
      const chosen = projList.find(p => p.project_id === (projectId || def)) || projList[0];
      setProjectId(chosen?.project_id || "global");
@@ -368,7 +369,7 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
 
       // Best-effort policy fetch
       try {
-        const policy = await getWipePolicyFromBackend({ signal: ctrl.signal });
+        const policy = await getWipePolicyFromBackend({ projectId, signal: ctrl.signal });
         if (!ctrl.signal.aborted && policy !== null) setWipeOnChange(!!policy);
       } catch {}
     } catch (e) {
@@ -1006,8 +1007,9 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
           >
             <div className="section-collapse-inner">
               <ParticipantsPanel
-                key={`pp::${feedId}::${participantsRefreshKey}`}
-                feedId={feedId}
+              key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
+  projectId={projectId}
+  feedId={feedId}
                 compact
                 limit={showAllParticipants ? undefined : 5}
                 onCountChange={setParticipantsCount}
@@ -1396,7 +1398,8 @@ const showBlur = ((feedsLoading && !feedsError) || (projectsLoading && !projects
               <MediaFieldset
                 editing={editing}
                 setEditing={setEditing}
-                feedId={feedId}
+                projectId={projectId}
+  feedId={feedId}
                 isNew={isNew}
                 setUploadingVideo={setUploadingVideo}
                 setUploadingPoster={setUploadingPoster}
