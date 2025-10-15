@@ -38,7 +38,7 @@ import { randomAvatarByKind } from "./avatar-utils";
 import { MediaFieldset } from "./components-admin-media";
 import { AdminUsersPanel } from "./components-admin-users";
 
-/* -------- local helper: gender-neutral comic avatar (64px) ---------------- */
+/* ---------- local helper: gender-neutral comic avatar (64px) ---------------- */
 function genNeutralAvatarDataUrl(size = 64) {
   const s = size;
   const svg = `
