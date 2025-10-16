@@ -1247,3 +1247,55 @@ html, body {
   .card-head .meta { flex-wrap: wrap; }
   .link-row .link { word-break: break-word; }
 }
+
+/* ---- Desktop feed: keep existing top rail ---- */
+/* You already have:
+   body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
+   body:not(.admin-mode) .nav { display: none !important; }
+*/
+
+/* ---- Mobile-only top rail ---- */
+.top-rail-mobile { display: none; }
+
+@media (max-width: 768px) {
+  /* On phones: use the mobile rail, hide the desktop rail */
+  body:not(.admin-mode) .top-rail-placeholder { display: none !important; }
+  body:not(.admin-mode) .top-rail-mobile { display: block !important; }
+  body:not(.admin-mode) .nav { display: none !important; } /* legacy nav stays hidden on feed */
+
+  /* Admin on mobile still uses legacy nav (unchanged) */
+  body.admin-mode .top-rail-mobile,
+  body.admin-mode .top-rail-placeholder { display: none !important; }
+  body.admin-mode .nav { display: block !important; }
+
+  /* Mobile rail look & layout */
+  .top-rail-mobile{
+    position: sticky;
+    top: env(safe-area-inset-top, 0);
+    z-index: 100;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+  }
+  .top-rail-mobile .trm-inner{
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    height: 52px;
+    padding: 0 12px;
+    max-width: 100%; /* avoid 100vw overflow issues */
+    margin: 0 auto;
+    gap: 8px;
+  }
+  .trm-left, .trm-center, .trm-right { display: flex; align-items: center; gap: 8px; }
+  .trm-center { justify-content: center; gap: 14px; }
+
+  /* little grey blocks to match your desktop placeholders */
+  .trm-logo    { width: 28px; height: 28px; border-radius: 999px; background: #e5e7eb; }
+  .trm-tab     { width: 36px; height: 24px; border-radius: 6px; background: #f3f4f6; }
+  .trm-search  { width: 120px; height: 28px; border-radius: 999px; background: #f0f2f5; }
+  .trm-avatar  { width: 28px; height: 28px; border-radius: 999px; background: #d1d5db; }
+}
+
+/* Keep feed aligned under whichever rail is visible */
+.page { padding-top: var(--feed-gap); }
+.page .feed > .card:first-child { margin-top: 0 !important; }
