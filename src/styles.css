@@ -1323,3 +1323,58 @@ html{
 @supports (-webkit-touch-callout: none){
   html{ -webkit-text-size-adjust: 100% !important; }
 }
+
+
+/* --- HARDEN LAYOUT MAPPING --- */
+/* Make sure we always have three tracks on desktop */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+  grid-auto-flow: row; /* stack children vertically within their column */
+}
+
+/* Explicitly map children to columns */
+.rail-left{ grid-column: 1 !important; }
+.container.feed, .feed{ grid-column: 2 !important; }  /* your main feed wrapper */
+.rail-right{ grid-column: 3 !important; }
+
+/* If you don’t render a left rail, still keep the feed visible */
+.page > .container.feed:first-child,
+.page > .feed:first-child{
+  grid-column: 2 !important;
+}
+
+/* Prevent “zoomed” feeling from a too-large min on phones */
+@media (max-width: 700px){
+  :root{
+    --feed-min: 0px !important;
+    --feed-max: 100vw !important;
+  }
+  .page{
+    grid-template-columns: 1fr !important;
+    padding-inline: 0 !important;
+  }
+  /* everything stacks in one column */
+  .rail-left,
+  .rail-right,
+  .container.feed,
+  .feed{ grid-column: 1 !important; }
+}
+
+/* Make sure the feed can actually shrink inside the track */
+.page, .feed, .container.feed,
+.card, .card-head, .card-body, .link-row { min-width: 0 !important; }
+
+/* Guard against accidental invisibility */
+.container.feed, .feed{ display:block !important; opacity:1 !important; visibility:visible !important; }
+
+/* iOS text auto-zoom sometimes looks like an initial “zoomed in” feed */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
