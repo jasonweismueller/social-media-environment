@@ -3,7 +3,8 @@
   --blue:#1877f2; --blue-ink:#0b5cc4; --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.06);
 
   /* layout knobs */
-  --feed-max: 700px; /* --feed-min removed to prevent mobile overflow */
+  --feed-min: 640px;
+  --feed-max: 700px;
   --gap: 16px;
   --rail-gap: 30px;
   --feed-gap: 12px;
@@ -18,24 +19,12 @@
   --menu-icon-size: 16px;
   --menu-item-h: 44px;
   --menu-max-items: 7;
-
-  /* bottom-sheet */
-  --bs-radius: 16px;
-
-  /* video volume */
-  --vol-len: 100px;
-  --vol-track: 4px;
-  --vol-thumb: 6px;
-  --vol-pad: 6px;
-  --vol-base: rgba(255,255,255,.25);
-  --vol-fill: #fff;
-  --vol-val: 100;
 }
 
 /* ============= Base ============= */
 *{box-sizing:border-box}
 html,body,#root{height:100%}
-html, body { overflow-x: hidden; width: 100%; max-width: 100%; } /* iOS 100vw guard */
+html, body { overflow-x: hidden; }
 body{
   margin:0;
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
@@ -45,15 +34,14 @@ body{
 a{color:var(--blue);text-decoration:none}
 a:hover{text-decoration:underline}
 
-/* Media should never overflow */
-img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
-
 /* Top bar (optional legacy nav) */
 .nav{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.9);backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line)}
 .nav-inner{max-width:960px;margin:0 auto;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem}
 
 /* Inputs / buttons */
-.input,.select{border:1px solid var(--line);border-radius:.5rem;padding:.375rem .5rem;font-size:.9rem;background:#fff}
+.input,.select{
+  border:1px solid var(--line);border-radius:.5rem;padding:.375rem .5rem;font-size:.9rem;background:#fff
+}
 .select{padding:.35rem .5rem}
 .btn{border:1px solid var(--line);border-radius:.5rem;background:#fff;padding:.375rem .6rem;font-size:.9rem;cursor:pointer}
 .btn:hover{background:#f9fafb}
@@ -71,9 +59,9 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .name{font-weight:600}
 .name-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
 /* meta text sizing + alignment */
-.meta { font-size: .75rem; }
-.meta .subtle { font-size: inherit; }
-.meta .sep { line-height: 1; display: inline-block; transform: translateY(-1px); }
+.meta { font-size: .75rem; }        /* already present; keep */
+.meta .subtle { font-size: inherit; }  /* <- add this so time/Sponsored match */
+.meta .sep { line-height: 1; display: inline-block; transform: translateY(-1px); } /* tidy baseline */
 
 .dots{border:none;background:transparent;padding:.25rem .4rem;border-radius:999px;cursor:pointer;color:#6b7280}
 .dots:hover{background:#f3f4f6}
@@ -103,6 +91,7 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .app-shell{transition:filter .2s ease,opacity .2s ease}
 .app-shell.blurred{
   filter: blur(6px);
+  /* opacity: .85;  ← delete this */
   pointer-events: none;
   user-select: none;
 }
@@ -114,9 +103,23 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .fade-more::before{content:"";position:absolute;right:100%;top:0;width:6ch;height:100%;background:linear-gradient(90deg, rgba(255,255,255,0), var(--card))}
 .dots{font:inherit;line-height:inherit;display:inline}
 
+
 /* Facebook-like "See more" */
-.see-more{background:none;border:none;padding:0;display:inline;cursor:pointer;font:inherit;line-height:inherit;color:#111827;font-weight:600;text-decoration:none}
-.see-more:hover{text-decoration:underline}
+.see-more {
+  background: none;
+  border: none;
+  padding: 0;
+  display: inline;
+  cursor: pointer;
+  font: inherit;             /* inherit same font size/style as text */
+  line-height: inherit;
+  color: #111827;            /* black like text */
+  font-weight: 600;          /* bold */
+  text-decoration: none;     /* no underline normally */
+}
+.see-more:hover {
+  text-decoration: underline; /* underline on hover */
+}
 
 /* Badge */
 .badge{display:inline-flex;align-items:center}
@@ -124,27 +127,13 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 
 /* ============= Dots menu ============= */
 .menu-wrap{position:relative;z-index:1}
-
-/* NOTE: no positional rules here; MenuPortal sets position/left/top inline */
 .menu{
-  min-width:var(--menu-min-w);
-  max-width:min(var(--menu-max-w), calc(100vw - 24px));
-  max-height: calc(var(--menu-item-h) * var(--menu-max-items));
-  overflow-y:auto;
-  background:#fff;
-  border:1px solid var(--line);
-  border-radius:.75rem;
-  box-shadow:var(--shadow);
-  z-index:9999;
-  padding:var(--menu-pad);
-  animation:menuIn .08s ease-out;
-  font-size:var(--menu-font);
-  line-height:1.3;
-  scrollbar-width:thin;
-}
-#post-menu-portal.menu{
-  right:auto !important;
-  top:auto !important;
+  position:absolute; right:.5rem; top:2.25rem;
+  min-width:var(--menu-min-w); max-width:var(--menu-max-w);
+  max-height: calc(var(--menu-item-h) * var(--menu-max-items)); overflow-y:auto;
+  background:#fff; border:1px solid var(--line); border-radius:.75rem; box-shadow:var(--shadow);
+  z-index:9999; padding:var(--menu-pad); animation:menuIn .08s ease-out;
+  font-size:var(--menu-font); line-height:1.3; scrollbar-width:thin;
 }
 .menu::-webkit-scrollbar{width:6px}
 .menu::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
@@ -160,7 +149,7 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
   width:var(--menu-icon-size);height:var(--menu-icon-size);
   flex:0 0 var(--menu-icon-size);color:#111827;
   display:flex;align-items:center;
-  transform: translateY(.5px);
+  transform: translateY(.5px); /* subtle top-line align */
 }
 .menu-item .mi-text{display:flex;flex-direction:column;min-width:0}
 .menu-item .mi-title{font-weight:600;font-size:.88rem;line-height:1.15}
@@ -211,7 +200,9 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .rx-count{margin-left:9px;line-height:18px;display:inline-block}
 
 /* — Tighten gap when reactions follow text directly (no image) — */
-.card-body + .bar-stats { margin-top: -1rem; }
+.card-body + .bar-stats {
+  margin-top: -1rem; /* adjust to taste: -1rem if you want tighter */
+}
 
 /* Reaction flyout */
 .like-wrap{position:relative;display:flex;flex:1}
@@ -229,7 +220,7 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 /* ============= Page layout (3-column + skeleton rails) ============= */
 .page{
   display:grid;
-  grid-template-columns: minmax(0,1fr) minmax(0, var(--feed-max)) minmax(0,1fr);
+  grid-template-columns: minmax(0,1fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,1fr);
   gap: var(--gap);
   width: 100%;
   margin: 0;
@@ -237,12 +228,7 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
   overflow: visible;
   justify-content: center;
 }
-.page .container.feed{
-  max-width: var(--feed-max) !important;
-  width: 100% !important;
-  padding: 0;
-  margin: 0 auto !important;
-}
+.page .container.feed{max-width: var(--feed-max) !important; width: 100% !important; padding: 0 !important; margin: 0 auto !important;}
 .page .feed > .card:first-child{margin-top:var(--feed-gap)}
 
 .rail{
@@ -275,7 +261,7 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 @keyframes ghostShimmer{0%{background-position:-220px 0}100%{background-position:220px 0}}
 
 @media (max-width: 1200px){
-  .page{ grid-template-columns: 0 minmax(0, 1fr) minmax(0,1fr); }
+  .page{ grid-template-columns: 0 minmax(var(--feed-min), 1fr) minmax(0,1fr); }
   .rail-left{ display:none; }
 }
 @media (max-width: 1024px){
@@ -285,6 +271,7 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 }
 
 /* ============= Modals / Overlays ============== */
+/* Modal overlay should be above menus, tooltips, FAB, etc. */
 .modal-backdrop{
   position: fixed;
   isolation: isolate;
@@ -292,23 +279,23 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
   display: grid;
   place-items: center;
   padding: 16px;
-  z-index: 11000;
+  z-index: 11000;            /* was 100 */
   background: rgba(0,0,0,0.45);
 }
 .modal{
   position: relative;
   z-index: 11001;
-  background:#fff;
+  background:#fff;            /* ← restore */
   border-radius:1rem;
   box-shadow:var(--shadow);
-  width: min(680px, calc(100vw - 24px)); /* clamp to viewport */
+  width:calc(100vw - 48px);
   max-width:680px;
   max-height:90vh;
   display:flex;
   flex-direction:column;
   overflow:hidden;
 }
-.modal.modal-wide{max-width:1120px;width: min(1120px, calc(100vw - 32px))}
+.modal.modal-wide{max-width:1120px;width:calc(100vw - 64px)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--line)}
 .modal-body{flex:1 1 auto;padding:1rem;overflow:auto;-webkit-overflow-scrolling:touch}
 .modal-footer{padding:10px 16px;border-top:1px solid var(--line);background:#fff;display:flex;gap:.5rem;justify-content:flex-end}
@@ -385,14 +372,17 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .preview-zoom { transform: scale(.9); transform-origin: top left; }
 
 /* FAB — ensure always clickable above overlays/top rail */
+/* === Admin FAB (subtle overlay style) === */
 .admin-fab-wrap {
   position: fixed;
   bottom: 12px;
   right: 12px;
   z-index: 2000;
-  pointer-events: none;
+  pointer-events: none;              /* wrapper is inert */
 }
-.admin-fab-wrap .btn.admin-fab { pointer-events: auto; }
+.admin-fab-wrap .btn.admin-fab {
+  pointer-events: auto;              /* button remains clickable */
+}
 
 .btn.admin-fab {
   position: relative;
@@ -401,16 +391,18 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
   border-radius: 999px;
   border: 0;
   background: transparent;
-  color: #6b7280;
+  color: #6b7280;                    /* gear icon color */
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.1rem;
+
+  /* barely visible by default */
   opacity: 0.06;
   transition: opacity .25s ease, transform .25s ease, box-shadow .25s ease;
 }
 
-/* Overlay circle — behind the icon */
+/* Overlay circle — but behind the icon */
 .btn.admin-fab::before {
   content: "";
   position: absolute;
@@ -424,9 +416,10 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
   -webkit-backdrop-filter: blur(6px);
   opacity: .18;
   transition: opacity .25s ease, box-shadow .25s ease;
-  z-index: -1;
+  z-index: -1; /* <-- put it behind the gear icon */
 }
 
+/* Hover/focus: show everything clearly */
 .btn.admin-fab:hover,
 .btn.admin-fab:focus-visible {
   opacity: 1;
@@ -440,7 +433,6 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
     0 0 0 1px var(--line),
     0 6px 18px rgba(0,0,0,.08);
 }
-
 /* --- Inputs with inline icon button (eye) --- */
 .input-wrap { position:relative; display:flex; align-items:center; }
 .input-wrap .input { width:100%; padding-right:2.5rem; }
@@ -484,11 +476,12 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .top-rail-placeholder .trp-inner{
   width: 100%;
   display:grid;
-  grid-template-columns: minmax(0,1fr) minmax(0, var(--feed-max)) minmax(0,1fr);
+  grid-template-columns: minmax(0,1fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,1fr);
   align-items:center;
   height:52px;
   padding: 0 24px;
 }
+/* left / center / right map to the grid columns */
 .trp-left{ grid-column:1; justify-self:start; display:flex; align-items:center; gap:12px; }
 .trp-center{ grid-column:2; justify-self:center; display:flex; gap:24px; }
 .trp-right{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; }
@@ -504,13 +497,21 @@ img, video, canvas, iframe { max-width:100%; height:auto; display:block; }
 .page .feed > .card:first-child { margin-top: 0 !important; }
 
 /* === Top bars: Feed vs Admin (place at END of CSS) === */
+
+/* In ADMIN: hide the feed top rail, show the legacy nav */
 body.admin-mode .top-rail-placeholder { display: none !important; }
 body.admin-mode .nav { display: block !important; }
+
+/* In FEED (not admin): hide the legacy nav, show the feed top rail */
 body:not(.admin-mode) .nav { display: none !important; }
 body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
+
+/* Keep spacing consistent regardless of which bar is showing */
 .page { padding-top: var(--feed-gap); }
 
-/* ================== Admin Login ================== */
+/* ================== Admin Login (matches your AdminLogin JSX) ================== */
+
+/* Full-screen center with a soft, neutral gradient (subtle) */
 .admin-login-wrap {
   min-height: 100vh;
   display: grid;
@@ -521,90 +522,244 @@ body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
     radial-gradient(1200px 600px at 110% 120%, rgba(16, 185, 129, 0.10), transparent 60%),
     linear-gradient(#f8fafc, #f3f4f6);
 }
+
+/* Card overrides specifically for the login box */
 .admin-login-wrap .card.admin-login-card {
   width: min(420px, 92vw);
   padding: 16px 20px;
   border-radius: 16px;
   border: 1px solid var(--line);
   background: #fff;
+  /* Stronger, clean shadow for a dialog feel */
   box-shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
 }
-.admin-login-wrap .card.admin-login-card h2 { font-size: 1.25rem; font-weight: 700; }
-.admin-login-wrap .card.admin-login-card .subtle { font-size: .95rem; color: #6b7280; }
-.admin-login-wrap .card.admin-login-card label { font-weight: 600; display: grid; gap: .4rem; margin-top: 1rem; }
+
+/* Title + subtitle spacing */
+.admin-login-wrap .card.admin-login-card h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.admin-login-wrap .card.admin-login-card .subtle {
+  font-size: .95rem;
+  color: #6b7280;
+}
+
+/* Label spacing */
+.admin-login-wrap .card.admin-login-card label {
+  font-weight: 600;
+  display: grid;
+  gap: .4rem;
+  margin-top: 1rem;
+}
 
 /* Password input with eye toggle */
-.input-with-toggle { position: relative; }
-.input-with-toggle .input { width: 100%; padding-right: 2.25rem; }
+.input-with-toggle {
+  position: relative;
+}
+.input-with-toggle .input {
+  width: 100%;
+  padding-right: 2.25rem; /* room for the eye button */
+}
 .eye-btn {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  border: 0; background: transparent; padding: 4px; line-height: 0;
-  color: #6b7280; cursor: pointer; transition: color .2s ease;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  line-height: 0;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color .2s ease;
 }
 .eye-btn:hover { color: #374151; }
 
+/* Error message look (uses inline crimson color from JSX as fallback) */
 .admin-login-wrap .card.admin-login-card .error,
 .admin-login-wrap .card.admin-login-card [style*="color: crimson"] {
-  background: #fef2f2; color: #991b1b !important; border: 1px solid #fecaca;
-  border-radius: 8px; padding: .5rem .6rem; font-size: .9rem;
+  background: #fef2f2;
+  color: #991b1b !important;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: .5rem .6rem;
+  font-size: .9rem;
 }
-.admin-login-wrap .card.admin-login-card .btn.primary { width: 100%; margin-top: 1rem; }
+
+/* Full-width primary button already in JSX; polish hover via existing vars */
+.admin-login-wrap .card.admin-login-card .btn.primary {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+/* Optional: hide feed top rail, show legacy nav while on the login page */
 body:has(.admin-login-wrap) .top-rail-placeholder { display: none !important; }
 body:has(.admin-login-wrap) .nav { display: block !important; }
 
-/* ============= Video ============= */
+.video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;   /* the slot shape – shows pillarboxing for portrait */
+  background: #000;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.video-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;            /* important: both dimensions set */
+  object-fit: contain;     /* no crop; black bars left/right for vertical video */
+  display: block;
+  background: #000;
+}
+.video-center-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 66px;
+  height: 66px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform .08s ease, background .12s ease;
+}
+.video-center-btn:hover { background: rgba(0,0,0,.7); transform: scale(1.03); }
+.video-center-btn:active { transform: scale(0.98); }
+.video-mute-btn {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.video-mute-btn:hover { background: rgba(0,0,0,.7); }
+
+/* NEW */
 .video-wrap {
   position: relative;
   width: 100%;
   background: #000;
   overflow: hidden;
   border-radius: 8px;
-  aspect-ratio: 16 / 9;
-  max-height: min(60vh, 520px);
+  aspect-ratio: 16 / 9;                  /* fixed box; no layout jumps */
+  max-height: min(60vh, 520px);          /* clamp overall height */
 }
+
 .video-el {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  object-fit: contain; background: #000;
+  position: absolute;                     /* fill the box */
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;                    /* pillarbox for vertical videos */
+  background: #000;
 }
+
+/* Drive embed should also fill the box */
 .video-wrap.drive-embed iframe {
-  position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #000;
 }
-.video-center-btn { position: absolute; inset: 0; margin: auto; width: 66px; height: 66px; border-radius: 999px; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 28px; line-height: 1; display: grid; place-items: center; cursor: pointer; transition: transform .08s ease, background .12s ease; z-index: 2; }
-.video-center-btn:hover { background: rgba(0,0,0,.7); transform: scale(1.03); }
-.video-center-btn:active { transform: scale(0.98); }
-.video-mute-btn { position: absolute; left: 8px; bottom: 8px; padding: 6px 10px; border-radius: 999px; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 14px; cursor: pointer; z-index: 2; }
-.video-mute-btn:hover { background: rgba(0,0,0,.7); }
+
+/* Make sure the center play button really centers inside the box */
+.video-center-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  z-index: 2;                             /* over the video */
+}
+.video-mute-btn { z-index: 2; }
+
+/* kill rounded corners on videos */
+.video-wrap,
+.video-el {
+  border-radius: 0 !important;
+}
 
 /* FB-like video control bar */
 .fb-controls{
-  position:absolute; left:0; right:0; bottom:0;
-  height:40px; display:flex; align-items:center; gap:6px; padding:0 8px;
+  position:absolute;
+  left:0; right:0; bottom:0;
+  height:40px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:0 8px;
+  /* subtle dark gradient like FB */
   background: linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0));
-  opacity:0; transition: opacity .15s ease; pointer-events:none;
+  opacity:0;
+  transition: opacity .15s ease;
+  pointer-events:none;               /* bar is inert unless visible */
 }
 .video-wrap:hover .fb-controls{ opacity:1; pointer-events:auto; }
 
-.fb-btn { background: none; box-shadow: none; border: none; color: white; padding: 4px; border-radius: 0; }
-.fb-btn:hover { background: rgba(255,255,255,0.1); }
+.fb-btn {
+  background: none;        /* remove dark background */
+  box-shadow: none;        /* remove 3D effect */
+  border: none;            /* no borders */
+  color: white;            /* icons/text show as flat white */
+  padding: 4px;            /* small click/tap area */
+  border-radius: 0;        /* remove pill/circle */
+}
+
+.fb-btn:hover {
+  background: rgba(255,255,255,0.1); /* optional subtle hover highlight */
+}
+
 .fb-spacer{ flex:1; }
 
+/* settings popover */
 .fb-settings{ position:relative; }
 .fb-settings-menu{
-  position:absolute; bottom: 36px; right: 0;
-  background:#111827; color:#fff; border:1px solid rgba(255,255,255,.08);
-  border-radius:8px; padding:6px; box-shadow:0 8px 28px rgba(0,0,0,.25);
-  min-width:120px; z-index:5;
+  position:absolute;
+  bottom: 36px;            /* float above the bar */
+  right: 0;
+  background:#111827;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;
+  padding:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.25);
+  min-width:120px;
+  z-index:5;
 }
 .fb-settings-item{
-  width:100%; text-align:left; border:0; background:transparent; color:#fff; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px;
+  width:100%;
+  text-align:left;
+  border:0;
+  background:transparent;
+  color:#fff;
+  padding:6px 8px;
+  border-radius:6px;
+  cursor:pointer;
+  font-size:13px;
 }
 .fb-settings-item:hover{ background: rgba(255,255,255,.08); }
 .fb-settings-item.active{ background: rgba(255,255,255,.16); }
 
-/* Volume popover */
+
+
+/* --- Volume popover container (no dark box) --- */
 .fb-vol { position: relative; pointer-events: auto; }
 .fb-vol > button { position: relative; z-index: 10; }
+
 .fb-vol-pop{
   position:absolute; bottom: calc(100% + 10px); left:50%;
   transform: translateX(-50%);
@@ -613,164 +768,482 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
   opacity:1; transition: opacity .12s ease, transform .12s ease;
 }
 .fb-vol-pop.hide{ opacity:0; transform:translateX(-50%) translateY(6px) scale(.98); pointer-events:none; }
-.fb-vol-box{ position: relative; width: 28px; height: calc(var(--vol-len) + var(--vol-pad) * 2); display: grid; place-items: center; }
+
+/* ---- Volume sizes & colors ---- */
+:root{
+  --vol-len: 100px;
+  --vol-track: 4px;
+  --vol-thumb: 6px;
+  --vol-pad: 6px;
+
+  /* Defaults now match the timeline: grey track + white fill */
+  --vol-base: rgba(255,255,255,.25);  /* unfilled */
+  --vol-fill: #fff;                   /* filled */
+  --vol-val: 100;
+}
+
+/* Holder for visual + input */
+.fb-vol-box{
+  position: relative;
+  width: 28px;
+  height: calc(var(--vol-len) + var(--vol-pad) * 2);
+  display: grid;
+  place-items: center;
+}
+
+/* Perfectly rounded pill behind the input (padded) */
 .fb-vol-visual{
-  position: absolute; top: var(--vol-pad); bottom: var(--vol-pad); left: 50%;
+  position: absolute;
+  top: var(--vol-pad);
+  bottom: var(--vol-pad);
+  left: 50%;
+  /* center without sub-pixel translate */
   margin-left: calc(var(--vol-track) / -2);
-  width: var(--vol-track); padding: 2px; border-radius: 999px;
-  background: var(--vol-base); overflow: hidden; pointer-events: none;
+  width: var(--vol-track);
+
+  /* padding creates an inner gutter so the fill never reaches the outer edge */
+  padding: 2px;
+
+  border-radius: 999px;
+  background: var(--vol-base);
+  overflow: hidden;
+  pointer-events: none;
 }
+
+/* Fill grows bottom-up, inset to stay fully inside the pill */
 .fb-vol-visual::after{
-  content: ""; position: absolute; left: 2px; right: 2px; bottom: 2px;
-  height: calc(var(--vol-val) * 1%); background: var(--vol-fill); border-radius: 999px; will-change: height;
+  content: "";
+  position: absolute;
+  left: 2px;                /* match the padding above */
+  right: 2px;
+  bottom: 2px;
+  height: calc(var(--vol-val) * 1%);
+  background: var(--vol-fill);
+  border-radius: 999px;
+  will-change: height;
 }
+
+/* Native slider on top: transparent track; keep only thumb */
 .fb-vol-slider{
-  position: relative; z-index: 1;
-  -webkit-appearance: slider-vertical !important; appearance: none;
-  width: 28px; height: var(--vol-len); background: transparent; padding: 0; border: 0; outline: none; cursor: pointer; accent-color: transparent; touch-action: none; -webkit-tap-highlight-color: transparent;
+  position: relative;
+  z-index: 1;
+  -webkit-appearance: slider-vertical !important;
+  appearance: none;
+  width: 28px;
+  height: var(--vol-len);
+  background: transparent;
+  padding: 0; border: 0; outline: none;
+  cursor: pointer;
+  accent-color: transparent;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .fb-vol-slider::-webkit-slider-runnable-track{ background: transparent; border: 0; height: 100%; }
 .fb-vol-slider::-moz-range-track{ background: transparent; border: 0; }
 .fb-vol-slider::-moz-range-progress{ background: transparent !important; }
+
 .fb-vol-slider::-webkit-slider-thumb{
-  -webkit-appearance: none; appearance: none;
-  width: var(--vol-thumb); height: var(--vol-thumb); border-radius: 50%;
-  background: #fff; border: 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--vol-thumb);
+  height: var(--vol-thumb);
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  margin: 0;
 }
 .fb-vol-slider::-moz-range-thumb{
-  width: var(--vol-thumb); height: var(--vol-thumb); border-radius: 50%;
-  background: #fff; border: 0; box-shadow: 0 2px 10px rgba(0,0,0,.25); margin: 0;
+  width: var(--vol-thumb);
+  height: var(--vol-thumb);
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  margin: 0;
 }
+
+/* Firefox fallback (rotate) */
 @supports not (-webkit-appearance: slider-vertical) {
   .fb-vol-slider{
     -webkit-appearance: none; appearance: none;
-    width: calc(var(--vol-len) + var(--vol-thumb)); height: 28px;
-    transform: rotate(-90deg); transform-origin: center; background: transparent;
+    width: calc(var(--vol-len) + var(--vol-thumb));
+    height: 28px;
+    transform: rotate(-90deg);
+    transform-origin: center;
+    background: transparent;
   }
 }
-.fb-vol-slider:focus-visible{ outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px; }
 
-/* Inline controls row */
-.fb-ctrls{ display:flex; align-items:center; gap:8px; pointer-events:auto; }
+/* Focus ring */
+.fb-vol-slider:focus-visible{
+  outline: 2px solid rgba(255,255,255,.6);
+  outline-offset: 2px;
+}
+
+/* --- Inline controls row (time | progress | mute/settings/fs) --- */
+.fb-ctrls{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  pointer-events:auto; /* make the row interactive */
+}
 .fb-ctrl-left{ display:flex; align-items:center; gap:6px; }
 .fb-ctrl-right{ display:flex; align-items:center; gap:6px; }
+
+/* Seek/timeline that sits inline between the left and right clusters */
 .fb-progress-inline{
-  flex:1; position:relative; height:6px; border-radius:999px; background: rgba(255,255,255,.25); cursor:pointer; overflow:hidden;
+  flex:1;
+  position:relative;
+  height:6px;
+  border-radius:999px;
+  background: rgba(255,255,255,.25); /* same as your top progress track */
+  cursor:pointer;
+  overflow:hidden;
 }
 
-/* ===================== */
-/* FB FEED — MOBILE      */
-/* ===================== */
-@media (max-width: 700px){
-  :root{
-    --feed-max: 100% !important;
-    --feed-gap: 0 !important;
+/* ===== Admin Login: segmented toggle buttons - equal size ===== */
+.admin-login-wrap .admin-login-card .segmented {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.admin-login-wrap .admin-login-card .segmented .btn {
+  flex: 1 1 0;                  /* equal widths */
+  display: flex;                /* center text vertically */
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;          /* prevent wrapping → consistent height */
+  height: 40px;                 /* fixed equal height */
+  padding: 0 .75rem;            /* consistent horizontal padding */
+  line-height: 1;               /* remove extra vertical space variance */
+}
+
+/* ===== Admin Login: label → field spacing a bit larger ===== */
+.admin-login-wrap .card.admin-login-card label {
+  display: grid;
+  gap: .6rem;                   /* was .4rem — gives a touch more space */
+  margin-top: 1rem;
+}
+
+/* Segmented toggle: lock into one row, equal size, perfectly aligned */
+.admin-login-wrap .admin-login-card .segmented{
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;  /* two equal columns */
+  gap: 8px;
+  align-items: stretch;            /* same vertical alignment */
+}
+
+.admin-login-wrap .admin-login-card .segmented .btn{
+  width: 100%;
+  height: 42px;                    /* same height for both */
+  margin: 0;                       /* kill any stray margins */
+  padding: 0 .75rem;               /* horizontal only */
+  line-height: 1;                  /* consistent vertical centering */
+  display: flex; align-items: center; justify-content: center;
+  white-space: nowrap;
+}
+
+/* --- Feed table row highlighting --- */
+.feed-row {
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+
+.feed-row:hover {
+  background: var(--row-hover, #f8fafc);
+}
+
+/* currently loaded feed (the one in the editor) */
+.feed-row.is-loaded {
+  background: var(--row-loaded-bg, #eef6ff);
+  box-shadow: inset 0 0 0 2px var(--accent, #2563eb);
+}
+
+/* backend default feed (when not the loaded one) */
+.feed-row.is-default:not(.is-loaded) {
+  background: var(--row-default-bg, #f0fdf4);
+  box-shadow: inset 0 0 0 1px #10b981;
+}
+
+/* tiny state dot in the first column */
+.feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--line);
+  vertical-align: middle;
+}
+
+.feed-row.is-default .feed-dot { background: #10b981; } /* green for default */
+.feed-row.is-loaded  .feed-dot { background: #2563eb; } /* blue for loaded */
+
+/* header chip showing which feed is being edited */
+.editing-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--blue, #2563eb);
+  color: #fff;
+  line-height: 1.2;
+}
+
+/* === Admin session warning banner === */
+.admin-banner {
+  /* base “card” look, but slim */
+  border: 1px solid var(--line);
+  background: #fff7ed;           /* warm amber-ish */
+  color: #7c2d12;
+  border-radius: .75rem;
+  box-shadow: var(--shadow);
+
+  /* the padding you asked about */
+  padding: .6rem .8rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: 1rem;            /* space below the bar */
+}
+.admin-banner .title {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  font-weight: 700;
+}
+.admin-banner .title .subtle {
+  font-size: .9rem;
+  color: #92400e;                 /* slightly darker than body text */
+}
+.admin-banner .actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+/* === Admin expired-session overlay === */
+.admin-expired-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,.7);
+  display: grid;
+  place-items: center;
+  z-index: 9999;                 /* above menus/tooltips */
+  padding: 16px;                 /* small gutter on mobile */
+}
+.admin-expired-dialog {
+  width: min(520px, 92vw);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+}
+.admin-expired-dialog h3 { margin: 0 0 .5rem 0; }
+.admin-expired-dialog .subtle { margin: 0 0 .75rem 0; }
+.admin-expired-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+
+/* ===== DEBUG: show viewport outline (only when debugvp=1) ===== */
+body.debug-vp::before {
+  content: "Viewport boundary";
+  position: fixed;
+  top: var(--vp-top, 0px);
+  left: 0;
+  right: 0;
+  bottom: var(--vp-bottom, 0px);
+  pointer-events: none;
+  border: 3px dashed rgba(255, 0, 0, 0.5);
+  z-index: 9999;
+  font-size: 12px;
+  color: red;
+  background: rgba(255,0,0,0.05);
+}
+
+/* ===== DEBUG: per-post visibility ===== */
+.debug-vp [data-post-id] { position: relative; }
+
+.debug-vp [data-post-id].__vp-in {
+  outline: 3px solid rgba(34,197,94,.9);
+  background: rgba(34,197,94,.06);
+}
+
+.debug-vp [data-post-id].__vp-out {
+  outline: 3px solid rgba(239,68,68,.7);
+  background: rgba(239,68,68,.04);
+}
+
+.debug-vp [data-post-id]::after {
+  content: attr(data-vis) " · " attr(data-state) " · th=" attr(data-th);
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  font: 600 11px/1 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: #111;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Smooth expand/collapse for section bodies */
+.section-collapse{
+  display: grid;
+  grid-template-rows: 1fr;          /* open = full height */
+  transition: grid-template-rows .25s ease, opacity .25s ease;
+  will-change: grid-template-rows, opacity;
+  overflow: hidden;
+}
+.section-collapse.is-collapsed{
+  grid-template-rows: 0fr;          /* closed = 0 height */
+  opacity: 0.0;
+}
+.section-collapse > .section-collapse-inner{
+  min-height: 0;                     /* allow shrinking to 0 */
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .section-collapse{ transition: none; }
+}
+
+/* Section header host must be relative */
+.card > :first-child { position: relative; }
+
+/* add a bit of right padding so the chev doesn't overlap header content */
+.card > :first-child { padding-right: 44px; }
+
+
+/* Smooth section expand/collapse */
+.section-collapse{
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .22s ease, opacity .22s ease;
+}
+.section-collapse:not(.is-collapsed){
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.section-collapse-inner{ overflow: hidden; }
+
+/* Chevron button: stable hit area + rotation */
+.section-chev{
+  width:32px; height:32px; min-width:32px;
+  display:grid; place-items:center;
+  padding:0; border-radius:8px;
+}
+.section-chev svg{ width:16px; height:16px; transition: transform .18s ease; }
+.section-chev[aria-expanded="true"] svg{ transform: rotate(180deg); }
+
+
+/* Touch-only tweaks so iOS/Android don't select "Like" text */
+@media (hover: none) and (pointer: coarse) {
+  .actions,
+  .like-wrap,
+  .like-wrap .action,
+  .like-wrap .action button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* faster taps, prevent double-tap zoom */
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* ensure flyout is touch-friendly above other content */
+  .react-flyout { z-index: 1000; }
+}
+
+/* ---- Bottom sheet helpers (global) ---- */
+:root {
+  --bs-radius: 16px;
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  .bs-backdrop,
+  .bs-panel {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* iOS/Android safe-area padding */
+.bs-panel {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Prevent any horizontal scroll */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  touch-action: pan-y;            /* disable horizontal swipes */
+}
+
+/* Clamp layout to viewport on mobile */
+@media (max-width: 768px) {
+  .page { max-width: 100vw; overflow-x: hidden; }
+
+  /* Hide rails so they don't push width */
+  .rail { display: none !important; }
+
+  /* Main column is full width */
+  .container.feed {
+    width: 100%;
+    max-width: 100vw;
+    padding: 8px;
+    margin: 0 auto;
   }
 
-  html, body{
-    overflow-x: hidden !important;
-    font-size: 16px; /* avoid iOS input zoom */
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  html::-webkit-scrollbar,
-  body::-webkit-scrollbar{ display: none; }
-
-  .page{
-    grid-template-columns: 1fr !important;
-    padding-inline: 0 !important;
-    justify-content: stretch !important;
-    justify-items: stretch !important;
-    max-width: 100% !important;
-    overflow-x: hidden !important;
+  /* Cards must never exceed viewport */
+  .post-card {
+    width: 100%;
+    max-width: 100vw;
+    margin: 8px 0;
+    overflow: hidden;
   }
 
-  .rail, .rail-left, .rail-right{ display: none !important; }
-
-  .top-rail-placeholder{ display: none !important; }
-  body:not(.admin-mode) .top-rail-mobile{ display: block !important; }
-
-  .page .feed,
-  .container.feed{
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 0 16px 0 !important;
-  }
-
-  .card{
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    margin: 0 !important;
-    background: #fff !important;
-  }
-
+  /* Media must scale down */
+  .video-wrap,
+  .drive-embed,
   .image-btn,
   .image-btn img,
-  .video-wrap,
-  .video-el,
-  .drive-embed{
+  .video-el {
     display: block;
     width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
+    max-width: 100vw !important;
+    height: auto;
   }
 
+  /* Long names/text/links shouldn't force width */
   .card-head .name-row,
   .card-head .meta,
   .card-body,
-  .link-row{
-    min-width: 0 !important;
-    overflow: hidden !important;
+  .link-row {
+    min-width: 0;            /* important for flex items */
+    overflow: hidden;
   }
-  .card-head .name{
+  .card-head .name { 
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .card-head .meta{ flex-wrap: wrap; }
-  .link-row .link{ word-break: break-word; }
-
-  .submit-wrap, .end{
-    display: block !important;
-    text-align: center;
-    padding: 12px 16px;
-  }
-}
-
-/* ===== Mobile overflow guardrails ===== */
-
-/* 1) Let grid children shrink */
-.page, .feed, .container.feed, .card, .card-head, .card-body, .link-row { min-width: 0; }
-
-/* 2) Break long strings/URLs anywhere */
-.text, .link-row .link, .meta, .name, .card-body { 
-  overflow-wrap: anywhere; 
-  word-break: break-word;
-}
-
-/* 3) Menus: never exceed viewport width (position handled by portal) */
-.menu{ max-width: min(var(--menu-max-w), calc(100vw - 24px)); }
-
-/* 4) Modals: clamp to viewport width (handled above) */
-
-/* 5) Images/embeds already set to max-width:100%; ensure no parent enforces wider */
-.image-btn, .drive-embed { min-width: 0; }
-
-/* 6) Extra safety for tiny phones */
-@media (max-width: 360px){
-  :root{ --menu-min-w: 260px; }
-  .nav-inner{ padding-left:.5rem; padding-right:.5rem; }
-}
-
-/* Prevent mobile browsers (esp. iOS Safari) from auto-zooming text */
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-/* iOS-specific guard (older Safari versions) */
-@supports (-webkit-touch-callout: none) {
-  html { -webkit-text-size-adjust: 100% !important; }
+  .card-head .meta { flex-wrap: wrap; }
+  .link-row .link { word-break: break-word; }
 }

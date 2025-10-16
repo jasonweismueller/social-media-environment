@@ -94,36 +94,21 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
   if (!open || !coords.ready || typeof document === "undefined") return null;
 
   return createPortal(
-  <div
-    id="post-menu-portal"
-    className="menu"
-    role="menu"
-    style={{
-      position: "fixed",
-      zIndex: 20000,
-      top: coords.top,
-      left: coords.left, // initial; will be clamped after mount
-      visibility: "hidden", // hide until we clamp
-    }}
-    ref={(el) => {
-      if (!el) return;
-      // Clamp after first render
-      const vw = window.innerWidth;
-      const w  = el.offsetWidth;
-      const margin = 8;
-      // Prefer aligning the menu's right edge with the button's right edge
-      const desiredLeft = Math.min(
-        Math.max(margin, coords.left + (anchorRef?.current?.offsetWidth || 0) - w),
-        vw - w - margin
-      );
-      el.style.left = `${desiredLeft}px`;
-      el.style.visibility = "visible";
-    }}
-  >
-    {children}
-  </div>,
-  document.body
-);
+    <div
+      id="post-menu-portal"
+      className="menu"
+      role="menu"
+      style={{
+        position: "fixed",             // fixed is simpler once we compute viewport coords
+        zIndex: 20000,
+        top: coords.top,
+        left: coords.left,
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
 }
 
 /* ----------------------------- Post Card ---------------------------------- */
@@ -977,7 +962,17 @@ const isMobile = useIsMobile();  // ⟵ add this
                 controls={!!post.videoShowControls}
                 disablePictureInPicture
                 controlsList="nodownload noremoteplayback"
-                style={{ background:"#000", cursor:"pointer" }}
+                style={{
+                  display: "block",
+                  width: "auto",
+                  height: "auto",
+                  maxWidth: "100%",
+                  maxHeight: "min(78vh, 600px)",
+                  objectFit: "contain",
+                  background: "#000",
+                  margin: "0 auto",
+                  cursor: "pointer",
+                }}
                 // toggle play/pause like FB
                 onClick={onVideoTogglePlay}
                 role="button"
