@@ -1,5 +1,6 @@
 // components-admin-parts.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   toCSV,
   loadParticipantsRoster,   // requires admin_token (handled in utils)
@@ -83,7 +84,8 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
   );
 
   const perPost = submission?.perPost || [];
-  return (
+
+  return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal modal-wide">
         {header}
@@ -96,7 +98,9 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
           </div>
 
           {perPost.length === 0 ? (
-            <div className="card" style={{ padding: "1rem" }}>No per-post interaction fields found for this submission.</div>
+            <div className="card" style={{ padding: "1rem" }}>
+              No per-post interaction fields found for this submission.
+            </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".9rem" }}>
@@ -153,10 +157,10 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
           <button className="btn" onClick={onClose}>Close</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
-
 /* ----------------------------- Participants ------------------------------ */
 export function ParticipantsPanel({
   feedId,
