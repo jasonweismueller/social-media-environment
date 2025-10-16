@@ -1414,3 +1414,19 @@ html{
 /* Also stop iOS from doing any “helpful” zooming behavior */
 html{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 input, select, textarea{ font-size:16px; } /* prevent focus-zoom later */
+
+
+/* iOS: stop focus-zoom on the participant overlay */
+@supports (-webkit-touch-callout: none) {
+  .participant-overlay input,
+  .participant-overlay .input,
+  .participant-overlay select,
+  .participant-overlay textarea {
+    font-size: 16px !important;
+    line-height: 1.2;
+    min-height: 40px;          /* comfy tap target */
+  }
+}
+
+/* Also stop iOS auto-resizing text weirdness */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
