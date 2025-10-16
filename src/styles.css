@@ -1274,3 +1274,59 @@ html, body {
 }
 
 html, body { overflow-x: hidden; overscroll-behavior-x: none; touch-action: pan-y; }
+
+
+/* 1) On phones, avoid 100vw; use 100% so it respects container padding */
+@media (max-width: 768px) {
+  :root {
+    --feed-min: 0px;
+    --feed-max: 100%;   /* was 100vw */
+  }
+}
+
+/* 2) Eliminate grid padding on the 1-col layout (so nothing can exceed the viewport) */
+@media (max-width: 768px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 0;          /* was 12/24px in other rules */
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  /* give the feed its own small gutter instead */
+  .page .feed { padding: 12px; }
+}
+
+/* 3) Top rail: keep it truly fluid on mobile */
+@media (max-width: 768px) {
+  .top-rail-placeholder .trp-inner {
+    grid-template-columns: 1fr !important;
+    padding: 0 12px !important;
+    max-width: 100% !important;   /* not 100vw */
+  }
+  .trp-left, .trp-right { display: none !important; }
+  .trp-center {
+    grid-column: 1 !important;
+    justify-self: stretch !important;
+  }
+}
+
+/* 4) Belt & suspenders: no post/card can be wider than its column */
+.card,
+.post-card,
+.container.feed { max-width: 100% !important; }
+
+/* 5) Media elements never push width */
+img, video, iframe, canvas, svg,
+.video-wrap, .video-el, .drive-embed {
+  display: block;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: auto;
+}
+
+/* 6) iOS Safari quirk: prevent horizontal “visual vs layout viewport” drift */
+html, body { 
+  overflow-x: hidden; 
+  overscroll-behavior-x: none; 
+  touch-action: pan-y; 
+}
