@@ -1017,19 +1017,28 @@ useEffect(() => {
                             )}
 
                             <button
-                              className="btn ghost"
-                              title="Copy participant link for this feed"
-                               onClick={async () => {
-   if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
-   const url = (typeof buildFeedShareUrl === "function")
-     ? buildFeedShareUrl({ ...f, project_id: projectId })
-     : `${window.location.origin}/?project=${encodeURIComponent(projectId || "global")}&feed=${encodeURIComponent(f.feed_id)}`;
-   await navigator.clipboard.writeText(url).catch(()=>{});
-   alert("Link copied:\n" + url);
- }}
-                            >
-                              Copy link
-                            </button>
+  className="btn ghost"
+  title="Copy participant link for this feed"
+  onClick={async () => {
+    if (!f?.feed_id) {
+      alert("Missing feed_id for this row");
+      return;
+    }
+
+    // ✅ Use query params (no hash)
+    const url =
+      typeof buildFeedShareUrl === "function"
+        ? buildFeedShareUrl({ ...f, project_id: projectId })
+        : `${window.location.origin}/?project=${encodeURIComponent(
+            projectId || "global"
+          )}&feed=${encodeURIComponent(f.feed_id)}`;
+
+    await navigator.clipboard.writeText(url).catch(() => {});
+    alert("Link copied:\n" + url);
+  }}
+>
+  Copy Link
+</button>
 
                             <RoleGate min="owner">
                               <button
