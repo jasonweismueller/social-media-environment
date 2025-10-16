@@ -16,6 +16,8 @@ import {
   headerLabelsForKeys,
 } from "./utils";
 
+
+
 /* --------------------------- tiny helper + stat ----------------------------- */
 function ms(n) {
   if (n == null) return "—";
@@ -34,6 +36,17 @@ function msShort(n) {
 function sShort(n) {
   if (!Number.isFinite(n)) return "—";
   return `${Math.round(n)}s`;
+}
+
+function makeCsvWithPrettyHeaders(rows, keys, labels) {
+  const esc = (v) => {
+    if (v == null) return "";
+    const s = typeof v === "string" ? v : JSON.stringify(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const head = (labels && labels.length === keys.length ? labels : keys).map(esc).join(",");
+  const body = rows.map(r => keys.map(k => esc(r[k])).join(",")).join("\n");
+  return head + "\n" + body;
 }
 
 export function StatCard({ title, value, sub, compact = false }) {
@@ -401,7 +414,7 @@ export function ParticipantsPanel({
               const labels = headerLabelsForKeys(keys, null, nameStore);
 
               // 5) Emit CSV (data uses ids; headers show friendly names)
-              const csv = toCSV(normalized, keys, labels);
+              const csv = makeCsvWithPrettyHeaders(normalized, keys, labels);
               const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
