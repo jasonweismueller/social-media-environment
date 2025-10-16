@@ -4,6 +4,8 @@ import {
   REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor
 } from "./utils";
 
+import { createPortal } from "react-dom";
+
 import {
   IconBadge, IconDots, IconGlobe, IconInfo, IconUsers,
   IconThumb, IconComment, IconShare,
@@ -622,56 +624,122 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
             )}
           </div>
         </div>
-        <div className="menu-wrap">
-          <button
-            ref={dotsRef}
-            className="dots"
-            onClick={() => { if (!disabled) { setMenuOpen(v => !v); onAction("post_menu_toggle", { post_id: post.id }); } }}
-            aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Post menu" disabled={disabled}
-          >
-            <IconDots />
-          </button>
 
-          {menuOpen && (
-            <div className="menu" role="menu" ref={menuRef}>
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1} title="Unavailable in this study">
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12"/><path d="M12 7v10M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Interested</span><span className="mi-sub">More of your posts will be like this.</span></span>
-              </button>
+<div className="menu-wrap">
+  <button
+    ref={dotsRef}
+    className="dots"
+    onClick={() => {
+      if (!disabled) {
+        setMenuOpen(v => !v);
+        onAction("post_menu_toggle", { post_id: post.id });
+      }
+    }}
+    aria-haspopup="menu"
+    aria-expanded={menuOpen}
+    aria-label="Post menu"
+    disabled={disabled}
+  >
+    <IconDots />
+  </button>
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1} title="Unavailable in this study">
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12"/><path d="M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Not interested</span><span className="mi-sub">Less of your posts will be like this.</span></span>
-              </button>
+  {menuOpen &&
+    createPortal(
+      <div
+        className="menu"
+        role="menu"
+        ref={menuRef}
+        style={{
+          position: "absolute",
+          zIndex: 20000,
+          top: dotsRef.current
+            ? dotsRef.current.getBoundingClientRect().bottom + window.scrollY + 4
+            : 0,
+          left: dotsRef.current
+            ? dotsRef.current.getBoundingClientRect().left + window.scrollX
+            : 0,
+        }}
+      >
+        <button
+          className="menu-item disabled"
+          role="menuitem"
+          aria-disabled="true"
+          tabIndex={-1}
+          title="Unavailable in this study"
+        >
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20">
+              <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
+              <path
+                d="M12 7v10M7 12h10"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+          <span className="mi-text">
+            <span className="mi-title">Interested</span>
+            <span className="mi-sub">More of your posts will be like this.</span>
+          </span>
+        </button>
 
-              <div className="menu-divider" />
+        <button
+          className="menu-item disabled"
+          role="menuitem"
+          aria-disabled="true"
+          tabIndex={-1}
+          title="Unavailable in this study"
+        >
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20">
+              <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
+              <path
+                d="M7 12h10"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+          <span className="mi-text">
+            <span className="mi-title">Not interested</span>
+            <span className="mi-sub">Less of your posts will be like this.</span>
+          </span>
+        </button>
 
-              {/* report — active */}
-              <button
-                className="menu-item"
-                role="menuitem"
-                tabIndex={0}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onAction("report_misinformation_click", { post_id: post.id });
-                  setReportAck(true);
-                }}
-              >
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                    <line x1="7" y1="3" x2="7" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M7 4h10l-2 4 2 4H7z" fill="currentColor" />
-                  </svg>
-                </span>
-                <span className="mi-text">
-                  <span className="mi-title">Report post</span>
-                  <span className="mi-sub">Tell us if it is misinformation.</span>
-                </span>
-              </button>
+        <div className="menu-divider" />
+
+        {/* report — active */}
+        <button
+          className="menu-item"
+          role="menuitem"
+          tabIndex={0}
+          onClick={() => {
+            setMenuOpen(false);
+            onAction("report_misinformation_click", { post_id: post.id });
+            setReportAck(true);
+          }}
+        >
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <line
+                x1="7"
+                y1="3"
+                x2="7"
+                y2="21"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <path d="M7 4h10l-2 4 2 4H7z" fill="currentColor" />
+            </svg>
+          </span>
+          <span className="mi-text">
+            <span className="mi-title">Report post</span>
+            <span className="mi-sub">Tell us if it is misinformation.</span>
+          </span>
+        </button>
 
               <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
                 <span className="mi-icon" aria-hidden="true">
