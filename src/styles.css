@@ -1184,7 +1184,7 @@ body.debug-vp::before {
   :root{
     --feed-min: 0px !important;
     --feed-max: 100% !important;
-    --feed-gap: 0px !important;
+    --feed-gap: 20px !important;
   }
 
   html, body{
