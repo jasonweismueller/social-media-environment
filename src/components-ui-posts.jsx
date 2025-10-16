@@ -962,17 +962,7 @@ const isMobile = useIsMobile();  // ⟵ add this
                 controls={!!post.videoShowControls}
                 disablePictureInPicture
                 controlsList="nodownload noremoteplayback"
-                style={{
-                  display: "block",
-                  width: "auto",
-                  height: "auto",
-                  maxWidth: "100%",
-                  maxHeight: "min(78vh, 600px)",
-                  objectFit: "contain",
-                  background: "#000",
-                  margin: "0 auto",
-                  cursor: "pointer",
-                }}
+                style={{ background:"#000", cursor:"pointer" }}
                 // toggle play/pause like FB
                 onClick={onVideoTogglePlay}
                 role="button"
