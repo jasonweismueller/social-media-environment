@@ -3,7 +3,6 @@
   --blue:#1877f2; --blue-ink:#0b5cc4; --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.06);
 
   /* layout knobs */
-  --feed-min: 640px;
   --feed-max: 700px;
   --gap: 16px;
   --rail-gap: 30px;
@@ -1264,5 +1263,47 @@ body.debug-vp::before {
     display: block !important;
     text-align: center;
     padding: 12px 16px;
+  }
+}
+
+@media (max-width: 700px){
+  :root{
+    --feed-min: 0px !important;   /* kill 640px min */
+    --feed-max: 100% !important;
+    --feed-gap: 0px !important;
+  }
+
+  .page{
+    grid-template-columns: 1fr !important;   /* one column */
+    padding-inline: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .container.feed{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 0 16px 0 !important;
+  }
+
+  .card{
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  /* media must never overflow */
+  .image-btn,
+  .image-btn img,
+  .video-wrap,
+  .video-el,
+  .drive-embed{
+    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
   }
 }
