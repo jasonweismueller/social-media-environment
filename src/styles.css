@@ -906,3 +906,42 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
     padding: 12px 16px;
   }
 }
+
+/* ===== Mobile overflow guardrails ===== */
+
+/* 1) Let grid children shrink */
+.page, .feed, .container.feed,
+.card, .card-head, .card-body, .link-row { min-width: 0; }
+
+/* 2) Break long strings/URLs anywhere (FB-style feeds often have gnarly links) */
+.text, .link-row .link, .meta, .name, .card-body { 
+  overflow-wrap: anywhere; 
+  word-break: break-word;
+}
+
+/* 3) Menus: never exceed viewport width */
+.menu{
+  max-width: min(var(--menu-max-w), calc(100vw - 24px));
+  /* keep inside safe area on iOS */
+  right: max(8px, env(safe-area-inset-right));
+}
+
+/* 4) Modals: clamp to viewport width (padding already included) */
+.modal{
+  width: min(680px, calc(100vw - 24px));
+}
+.modal.modal-wide{
+  width: min(1120px, calc(100vw - 32px));
+}
+
+/* 5) iOS Safari quirks: prevent 100vw overshoot from scrollbars */
+html, body { width: 100%; max-width: 100%; }
+
+/* 6) Images/embeds already set to max-width:100%; ensure no parent enforces wider */
+.image-btn, .drive-embed { min-width: 0; }
+
+/* 7) Extra safety for tiny phones */
+@media (max-width: 360px){
+  :root{ --menu-min-w: 260px; }
+  .nav-inner{ padding-left:.5rem; padding-right:.5rem; }
+}
