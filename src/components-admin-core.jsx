@@ -416,64 +416,47 @@ const showBlur = showOverlay;
     try {
       // Try parallel fetch
       const effPid = pidForBackend(projectId);
-const [list, backendDefault] = await Promise.all([
-  listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
-  getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
-]);
+ const [list, backendDefault] = await Promise.all([
+   listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
+   getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
+ ]);
 
-if (ctrl.signal.aborted) return;
+      if (ctrl.signal.aborted) return;
 
-const feedsList = Array.isArray(list) ? list : [];
-setFeeds(feedsList);
-setDefaultFeedId(backendDefault || null);
+      const feedsList = Array.isArray(list) ? list : [];
+      setFeeds(feedsList);
+      setDefaultFeedId(backendDefault || null);
 
-// 👇 preserve current selection if it still exists;
-// else fall back to backend default; else first feed.
-const currentId = feedId;
-const chosen =
-  (currentId && feedsList.find(f => f.feed_id === currentId)) ||
-  (backendDefault && feedsList.find(f => f.feed_id === backendDefault)) ||
-  feedsList[0] ||
-  null;
+      const chosen =
+        feedsList.find(f => f.feed_id === backendDefault) ||
+        feedsList[0] ||
+        null;
 
-if (chosen) {
-  setFeedId(chosen.feed_id);
-  setFeedName(chosen.name || chosen.feed_id);
+      if (chosen) {
+        setFeedId(chosen.feed_id);
+        setFeedName(chosen.name || chosen.feed_id);
 
-  // posts cache/load stays the same logic:
-  const cached = getCachedPosts(projectId, chosen.feed_id, chosen.checksum);
-  if (cached) {
-    setPosts(cached);
-  } else {
-    const fresh = await loadPostsFromBackend(
-      chosen.feed_id,
-      { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
-    );
-    if (ctrl.signal.aborted) return;
-    const arr = Array.isArray(fresh) ? fresh : [];
-    setPosts(arr);
-    setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
-  }
+        const cached = getCachedPosts(projectId, chosen.feed_id, chosen.checksum);
+        if (cached) {
+          setPosts(cached);
+        } else {
+           const fresh = await loadPostsFromBackend(
+   chosen.feed_id,
+   { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
+);
+          if (ctrl.signal.aborted) return;
+          const arr = Array.isArray(fresh) ? fresh : [];
+          setPosts(arr);
+          setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
+        }
+      setPostNames(readPostNames(projectId, chosen.feed_id) || {});
+      } else {
+        setFeedId("");
+        setFeedName("");
+        setPosts([]);
+        setPostNames({});
+      }
 
-  // keep the name map in sync with the current feed
-   // refresh id→name map from the latest posts
- const nameMap = Object.fromEntries(
-   arr
-     .filter(p => p && p.id && (p.postName || p.name))
-     .map(p => [p.id, (p.postName || p.name).trim()])
- );
- if (Object.keys(nameMap).length) {
-   writePostNames(projectId, feedId, nameMap);
-   setPostNames(nameMap);
- } else {
-   setPostNames(readPostNames(projectId, feedId) || {});
- }
-} else {
-  setFeedId("");
-  setFeedName("");
-  setPosts([]);
-  setPostNames({});
-}
       
       // Best-effort policy fetch
       try {
@@ -539,18 +522,7 @@ useEffect(() => {
     }
 
     // Load names
-    // Persist names derived from fetched posts
- const nameMap = Object.fromEntries(
-   arr
-     .filter(p => p && p.id && (p.postName || p.name))
-     .map(p => [p.id, (p.postName || p.name).trim()])
- );
- if (Object.keys(nameMap).length) {
-   writePostNames(projectId, id, nameMap);
-   setPostNames(nameMap);
- } else {
-   setPostNames(readPostNames(projectId, id) || {});
- }
+    setPostNames(readPostNames(projectId, id) || {});
   };
 
   const createNewProject = async () => {
@@ -1203,18 +1175,8 @@ useEffect(() => {
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
                       if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
-                           // Build & persist id→name map from backend posts
- const nameMap = Object.fromEntries(
-   arr
-     .filter(p => p && p.id && (p.postName || p.name))
-     .map(p => [p.id, (p.postName || p.name).trim()])
- );
- if (Object.keys(nameMap).length) {
-   writePostNames(projectId, chosen.feed_id, nameMap);
-   setPostNames(nameMap);
- } else {
-   setPostNames(readPostNames(projectId, chosen.feed_id) || {});
- }
+                           // keep the name map in sync with the current feed
+     setPostNames(readPostNames(projectId, feedId) || {});
                     }}
                     title="Reload posts for this feed from backend"
                   >

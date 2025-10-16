@@ -650,25 +650,13 @@ export async function sendToSheet(header, row, _events, feed_id) {
 }
 
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
-export async function listFeedsFromBackend({ projectId, signal } = {}) {
+export async function listFeedsFromBackend() {
   try {
-    // Build URL safely, add project_id if provided, and a ts cache-buster
-    const url = new URL(FEEDS_GET_URL());
-    if (projectId) url.searchParams.set("project_id", projectId);
-    url.searchParams.set("_ts", Date.now());
-
     const data = await getJsonWithRetry(
-      url.toString(),
-      {
-        method: "GET",
-        mode: "cors",
-        cache: "no-store",
-        // IMPORTANT: no custom headers on GET (keeps it a simple request; no preflight)
-        signal,
-      },
+      FEEDS_GET_URL() + "&_ts=" + Date.now(),
+      { method: "GET", mode: "cors", cache: "no-store" },
       { retries: 1, timeoutMs: 8000 }
     );
-
     return Array.isArray(data) ? data : [];
   } catch (e) {
     console.warn("listFeedsFromBackend failed:", e);
