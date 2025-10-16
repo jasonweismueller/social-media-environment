@@ -456,7 +456,18 @@ if (chosen) {
   }
 
   // keep the name map in sync with the current feed
-  setPostNames(readPostNames(projectId, chosen.feed_id) || {});
+   // refresh id→name map from the latest posts
+ const nameMap = Object.fromEntries(
+   arr
+     .filter(p => p && p.id && (p.postName || p.name))
+     .map(p => [p.id, (p.postName || p.name).trim()])
+ );
+ if (Object.keys(nameMap).length) {
+   writePostNames(projectId, feedId, nameMap);
+   setPostNames(nameMap);
+ } else {
+   setPostNames(readPostNames(projectId, feedId) || {});
+ }
 } else {
   setFeedId("");
   setFeedName("");
@@ -528,7 +539,18 @@ useEffect(() => {
     }
 
     // Load names
-    setPostNames(readPostNames(projectId, id) || {});
+    // Persist names derived from fetched posts
+ const nameMap = Object.fromEntries(
+   arr
+     .filter(p => p && p.id && (p.postName || p.name))
+     .map(p => [p.id, (p.postName || p.name).trim()])
+ );
+ if (Object.keys(nameMap).length) {
+   writePostNames(projectId, id, nameMap);
+   setPostNames(nameMap);
+ } else {
+   setPostNames(readPostNames(projectId, id) || {});
+ }
   };
 
   const createNewProject = async () => {
@@ -1181,8 +1203,18 @@ useEffect(() => {
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
                       if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
-                           // keep the name map in sync with the current feed
-     setPostNames(readPostNames(projectId, feedId) || {});
+                           // Build & persist id→name map from backend posts
+ const nameMap = Object.fromEntries(
+   arr
+     .filter(p => p && p.id && (p.postName || p.name))
+     .map(p => [p.id, (p.postName || p.name).trim()])
+ );
+ if (Object.keys(nameMap).length) {
+   writePostNames(projectId, chosen.feed_id, nameMap);
+   setPostNames(nameMap);
+ } else {
+   setPostNames(readPostNames(projectId, chosen.feed_id) || {});
+ }
                     }}
                     title="Reload posts for this feed from backend"
                   >
