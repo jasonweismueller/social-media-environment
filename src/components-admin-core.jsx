@@ -1023,7 +1023,7 @@ useEffect(() => {
    if (!f?.feed_id) { alert("Missing feed_id for this row"); return; }
    const url = (typeof buildFeedShareUrl === "function")
      ? buildFeedShareUrl({ ...f, project_id: projectId })
-     : `${window.location.origin}/#/?project=${encodeURIComponent(projectId || "global")}&feed=${encodeURIComponent(f.feed_id)}`;
+     : `${window.location.origin}/?project=${encodeURIComponent(projectId || "global")}&feed=${encodeURIComponent(f.feed_id)}`;
    await navigator.clipboard.writeText(url).catch(()=>{});
    alert("Link copied:\n" + url);
  }}
