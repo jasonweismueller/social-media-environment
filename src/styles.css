@@ -1272,3 +1272,5 @@ html, body {
     gap: 12px;
   }
 }
+
+html, body { overflow-x: hidden; overscroll-behavior-x: none; touch-action: pan-y; }
