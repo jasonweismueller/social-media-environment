@@ -676,25 +676,26 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
     </div>
 
     {/* Sponsored for ads; otherwise time + globe */}
-    <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-      {post.adType === "ad" ? (
+   {/* Sponsored for ads; otherwise time + globe */}
+<div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+  {post.adType === "ad" ? (
+    <>
+      <span className="subtle">Sponsored</span>
+      <span className="sep" aria-hidden="true">·</span>
+      <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+    </>
+  ) : (
+    <>
+      {post.showTime !== false && post.time ? (
         <>
-          <span className="subtle">Sponsored</span>
+          <span className="subtle">{post.time}</span>
           <span className="sep" aria-hidden="true">·</span>
           <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
         </>
-      ) : (
-        <>
-          {post.showTime !== false && post.time ? (
-            <>
-              <span className="subtle">{post.time}</span>
-              <span className="sep" aria-hidden="true">·</span>
-            </>
-          ) : null}
-          <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-        </>
-      )}
-    </div>
+      ) : null}
+    </>
+  )}
+</div>
   </div>
 
   <div className="menu-wrap">
