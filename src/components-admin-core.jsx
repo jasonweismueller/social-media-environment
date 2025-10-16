@@ -416,47 +416,53 @@ const showBlur = showOverlay;
     try {
       // Try parallel fetch
       const effPid = pidForBackend(projectId);
- const [list, backendDefault] = await Promise.all([
-   listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
-   getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
- ]);
+const [list, backendDefault] = await Promise.all([
+  listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
+  getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
+]);
 
-      if (ctrl.signal.aborted) return;
+if (ctrl.signal.aborted) return;
 
-      const feedsList = Array.isArray(list) ? list : [];
-      setFeeds(feedsList);
-      setDefaultFeedId(backendDefault || null);
+const feedsList = Array.isArray(list) ? list : [];
+setFeeds(feedsList);
+setDefaultFeedId(backendDefault || null);
 
-      const chosen =
-        feedsList.find(f => f.feed_id === backendDefault) ||
-        feedsList[0] ||
-        null;
+// 👇 preserve current selection if it still exists;
+// else fall back to backend default; else first feed.
+const currentId = feedId;
+const chosen =
+  (currentId && feedsList.find(f => f.feed_id === currentId)) ||
+  (backendDefault && feedsList.find(f => f.feed_id === backendDefault)) ||
+  feedsList[0] ||
+  null;
 
-      if (chosen) {
-        setFeedId(chosen.feed_id);
-        setFeedName(chosen.name || chosen.feed_id);
+if (chosen) {
+  setFeedId(chosen.feed_id);
+  setFeedName(chosen.name || chosen.feed_id);
 
-        const cached = getCachedPosts(projectId, chosen.feed_id, chosen.checksum);
-        if (cached) {
-          setPosts(cached);
-        } else {
-           const fresh = await loadPostsFromBackend(
-   chosen.feed_id,
-   { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
-);
-          if (ctrl.signal.aborted) return;
-          const arr = Array.isArray(fresh) ? fresh : [];
-          setPosts(arr);
-          setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
-        }
-      setPostNames(readPostNames(projectId, chosen.feed_id) || {});
-      } else {
-        setFeedId("");
-        setFeedName("");
-        setPosts([]);
-        setPostNames({});
-      }
+  // posts cache/load stays the same logic:
+  const cached = getCachedPosts(projectId, chosen.feed_id, chosen.checksum);
+  if (cached) {
+    setPosts(cached);
+  } else {
+    const fresh = await loadPostsFromBackend(
+      chosen.feed_id,
+      { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
+    );
+    if (ctrl.signal.aborted) return;
+    const arr = Array.isArray(fresh) ? fresh : [];
+    setPosts(arr);
+    setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
+  }
 
+  // keep the name map in sync with the current feed
+  setPostNames(readPostNames(projectId, chosen.feed_id) || {});
+} else {
+  setFeedId("");
+  setFeedName("");
+  setPosts([]);
+  setPostNames({});
+}
       
       // Best-effort policy fetch
       try {

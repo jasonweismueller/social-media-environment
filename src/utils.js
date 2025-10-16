@@ -652,11 +652,23 @@ export async function sendToSheet(header, row, _events, feed_id) {
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
 export async function listFeedsFromBackend() {
   try {
+    const url = `${FEEDS_GET_URL()}&_ts=${Date.now()}`; // cache buster param
+
     const data = await getJsonWithRetry(
-      FEEDS_GET_URL() + "&_ts=" + Date.now(),
-      { method: "GET", mode: "cors", cache: "no-store" },
+      url,
+      {
+        method: "GET",
+        mode: "cors",
+        cache: "no-store",        // prevents cached responses
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      },
       { retries: 1, timeoutMs: 8000 }
     );
+
     return Array.isArray(data) ? data : [];
   } catch (e) {
     console.warn("listFeedsFromBackend failed:", e);
