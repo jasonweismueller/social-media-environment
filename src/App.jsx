@@ -25,6 +25,98 @@ import {
 import { AdminDashboard } from "./components-admin-core";
 import AdminLogin from "./components-admin-login";
 
+/* ============================================
+   iOS viewport + input zoom guards
+   ============================================ */
+
+/** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
+function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isIOS = /iP(hone|ad|od)/.test(ua);
+    if (!isIOS) return;
+
+    // Ensure -webkit-text-size-adjust doesn't mess with base sizing
+    const htmlStyle = document.documentElement.style;
+    const prevAdj = htmlStyle.webkitTextSizeAdjust || htmlStyle.textSizeAdjust || "";
+    htmlStyle.webkitTextSizeAdjust = "100%";
+    htmlStyle.textSizeAdjust = "100%";
+
+    // Inject a minimal stylesheet to force 16px controls just on the participant overlay
+    const style = document.createElement("style");
+    style.setAttribute("data-ios-input-zoom-fix", "1");
+    style.textContent =
+      `@supports(-webkit-touch-callout:none){
+        ${selector}{
+          font-size:16px !important;
+          line-height:1.2;
+          min-height:40px;
+        }
+      }`;
+    document.head.appendChild(style);
+
+    return () => {
+      if (style.parentNode) style.parentNode.removeChild(style);
+      htmlStyle.webkitTextSizeAdjust = prevAdj;
+      htmlStyle.textSizeAdjust = prevAdj;
+    };
+  }, [selector]);
+}
+
+/** Lock viewport scale while the PID overlay / input is focused; restore on blur/after entry. */
+function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-overlay input" } = {}) {
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isIOS = /iP(hone|ad|od)/.test(ua);
+    if (!isIOS) return;
+
+    let vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) {
+      vp = document.createElement("meta");
+      vp.setAttribute("name", "viewport");
+      document.head.appendChild(vp);
+    }
+
+    const BASE = "width=device-width, initial-scale=1, viewport-fit=cover";
+    const LOCK = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
+
+    const set = (content) => vp && vp.setAttribute("content", content);
+
+    const nudgeLayout = () => {
+      // Encourage Safari to recompute after zoom state change
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        window.dispatchEvent(new Event("resize"));
+      });
+    };
+
+    const onFocus = (e) => {
+      if (e.target && e.target.matches && e.target.matches(fieldSelector)) {
+        set(LOCK);
+      }
+    };
+    const onBlur = (e) => {
+      if (e.target && e.target.matches && e.target.matches(fieldSelector)) {
+        set(BASE);
+        nudgeLayout();
+      }
+    };
+
+    document.addEventListener("focusin", onFocus, true);
+    document.addEventListener("focusout", onBlur, true);
+
+    // Pre-lock when overlay is active to avoid initial zoom jump
+    if (overlayActive) set(LOCK);
+    else set(BASE);
+
+    return () => {
+      document.removeEventListener("focusin", onFocus, true);
+      document.removeEventListener("focusout", onBlur, true);
+      set(BASE);
+    };
+  }, [overlayActive, fieldSelector]);
+}
+
 // ---- Mode flag ----
 const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
 if (typeof document !== "undefined") {
@@ -276,6 +368,11 @@ export default function App() {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, feedPhase, submitted, onAdmin]);
 
+  // ---- iOS zoom fixes ----
+  const overlayActive = !onAdmin && !hasEntered;
+  useIOSInputZoomFix();
+  useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
+
   // ===== IO infrastructure =====
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
@@ -433,9 +530,7 @@ export default function App() {
   return (
     <Router>
       <div
-        className={`app-shell ${
-          (!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted)) ? "blurred" : ""
-        }`}
+        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted)) ? "blurred" : ""}`}
       >
         <RouteAwareTopbar />
         <Routes>
@@ -567,6 +662,14 @@ export default function App() {
             enterTsRef.current = ts;
             lastNonScrollTsRef.current = null;
             log("participant_id_entered", { id, feed_id: activeFeedId || null, project_id: projectId || null });
+
+            // Hard reset viewport + layout so feed starts perfectly framed on iOS
+            const vp = document.querySelector('meta[name="viewport"]');
+            if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
+            requestAnimationFrame(() => {
+              window.scrollTo(0, 0);
+              window.dispatchEvent(new Event("resize"));
+            });
           }}
         />
       )}
