@@ -1969,7 +1969,7 @@ export function buildFeedShareUrl(feedOrId) {
   const qp = new URLSearchParams();
   if (fid) qp.set("feed", fid);
   if (pid) qp.set("project", pid);
-  return `${origin}/#/?${qp.toString()}`;
+  return `${origin}/?${qp.toString()}`;
 }
 
 /* ============================ Project helpers (backend) ============================ */
