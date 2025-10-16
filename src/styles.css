@@ -1283,3 +1283,43 @@ html{
 @supports (-webkit-touch-callout: none){
   html{ -webkit-text-size-adjust: 100% !important; }
 }
+
+
+/* --- FIX: restore center track + remove hard min that caused zoom --- */
+
+/* 0) Make the feed min width flexible on phones */
+:root { --feed-min: 0px !important; }
+
+/* 1) Restore the 3-col grid formula so the center shows up */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+}
+
+/* 2) Top rail uses the same center track */
+.top-rail-placeholder .trp-inner{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+}
+
+/* 3) Keep the breakpoint simple (no hidden center) */
+@media (max-width: 1200px){
+  .page{ grid-template-columns: 0 minmax(0, 1fr) minmax(0, 1fr) !important; }
+}
+
+/* 4) Guardrails so content can shrink inside tracks */
+.page, .feed, .container.feed,
+.card, .card-head, .card-body, .link-row { min-width: 0 !important; }
+
+/* 5) iOS auto-text zoom can feel like “zoomed in” */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
