@@ -446,6 +446,7 @@ const showBlur = showOverlay;
 );
           if (ctrl.signal.aborted) return;
           const arr = Array.isArray(fresh) ? fresh : [];
+          arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
           setPosts(arr);
           setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
         }
@@ -517,6 +518,7 @@ useEffect(() => {
     } else {
       const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
       const arr = Array.isArray(fresh) ? fresh : [];
+      arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
       setPosts(arr);
       if (row) setCachedPosts(projectId, id, row.checksum, arr);
     }
@@ -561,7 +563,6 @@ useEffect(() => {
       postName: "",
       author: "",
       time: "Just now",
-      showTime: true,
       text: "",
       links: [],
       badge: false,
@@ -600,7 +601,6 @@ useEffect(() => {
      ...p,
      // prefer previously-saved backend name if postName not set
      postName: p.postName ?? p.name ?? "",
-     showTime: p.showTime !== false,
    });
 };
 
@@ -623,6 +623,7 @@ useEffect(() => {
     setPosts((arr) => {
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
+      if ("showTime" in clean) delete clean.showTime; // normalize legacy posts
 
   
     // persist friendly name on the post object itself
@@ -650,8 +651,6 @@ useEffect(() => {
       }
       if (clean.imageMode === "none") clean.image = null;
       if (clean.imageMode === "random" && !clean.image) clean.image = randomSVG("Image");
-
-      if (typeof clean.showTime === "undefined") clean.showTime = true;
 
       // update list
       const nextPosts = idx === -1 ? [...arr, clean] : arr.map((p, i) => (i === idx ? clean : p));
@@ -990,6 +989,7 @@ useEffect(() => {
                                       if (row) {
                                         const fresh = await loadPostsFromBackend(f.feed_id, { projectId: pidForBackend(projectId), force: true });
                                         const arr = Array.isArray(fresh) ? fresh : [];
+                                        arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
                                         setPosts(arr);
                                         setCachedPosts(projectId, f.feed_id, row.checksum, arr);
                                       }
@@ -1148,6 +1148,7 @@ useEffect(() => {
               key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
   projectId={projectId}
   feedId={feedId}
+  postNamesMap={postNames}
                 compact
                 limit={showAllParticipants ? undefined : 5}
                 onCountChange={setParticipantsCount}
@@ -1172,6 +1173,7 @@ useEffect(() => {
                     onClick={async () => {
                       const fresh = await loadPostsFromBackend(feedId, { projectId: pidForBackend(projectId), force: true });
                       const arr = Array.isArray(fresh) ? fresh : [];
+                      arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
                       setPosts(arr);
                       const row = feeds.find(f => f.feed_id === feedId);
                       if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
@@ -1317,7 +1319,7 @@ useEffect(() => {
                               {p.text || <span className="subtle">—</span>}
                             </td>
                             <td style={{ padding: 8 }}>
-                              <span className="subtle">{p.showTime === false ? "—" : (p.time || "—")}</span>
+                              <span className="subtle">{p.time ? p.time : "—"}</span>
                             </td>
                             <td style={{ padding: 8 }}>
                               {p.videoMode !== "none"
@@ -1455,15 +1457,9 @@ useEffect(() => {
                 </label>
                 <label>Time
                   <input className="input" value={editing.time} onChange={(e) => setEditing({ ...editing, time: e.target.value })} />
-                  <div className="subtle" style={{ marginTop: 6 }}>
-                    <label className="checkbox">
-                      <input
-                        type="checkbox"
-                        checked={editing.showTime !== false}
-                        onChange={(e) => setEditing({ ...editing, showTime: !!e.target.checked })}
-                      /> Show time
-                    </label>
-                  </div>
+                    <div className="subtle" style={{ marginTop: 6 }}>
+   Leave blank to hide time.
+  </div>
                 </label>
               </div>
               <label>Post text
@@ -1730,7 +1726,7 @@ useEffect(() => {
                         : (editing.avatarMode === "random" && !editing.avatarUrl
                             ? randomAvatarByKind(editing.avatarRandomKind || "any", editing.id || editing.author || "seed", editing.author || "", randomAvatarUrl)
                             : editing.avatarUrl),
-                    time: editing.showTime === false ? "" : editing.time,
+                    
                     image:
                       editing.imageMode === "random"
                         ? (editing.image || randomSVG("Image"))
@@ -1830,7 +1826,7 @@ function makeRandomPost() {
   return {
     id: uid(),
     postName: "",
-    author, time, showTime: true, text, links: [],
+    author, time, text, links: [],
     badge: chance(0.15),
     avatarMode: "random",
     avatarRandomKind,
