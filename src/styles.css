@@ -1247,3 +1247,28 @@ html, body {
   .card-head .meta { flex-wrap: wrap; }
   .link-row .link { word-break: break-word; }
 }
+
+@media (max-width: 768px) {
+  :root {
+    --feed-min: 0px;       /* kill the 640px min on phones */
+    --feed-max: 100vw;     /* let center column shrink to viewport */
+  }
+}
+
+
+@media (max-width: 768px) {
+  .top-rail-placeholder .trp-inner {
+    grid-template-columns: 1fr !important;
+    padding: 0 12px !important;
+    max-width: 100vw !important;
+  }
+  .trp-left,
+  .trp-right {
+    display: none !important;
+  }
+  .trp-center {
+    grid-column: 1 !important;
+    justify-self: stretch !important;
+    gap: 12px;
+  }
+}
