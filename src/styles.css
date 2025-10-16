@@ -228,7 +228,12 @@ a:hover{text-decoration:underline}
   overflow: visible;
   justify-content: center;
 }
-.page .container.feed{max-width: var(--feed-max) !important; width: 100% !important; padding: 0 !important; margin: 0 auto !important;}
+.page .container.feed{
+  max-width: var(--feed-max) !important;
+  width: 100% !important;
+  padding: 0;                 /* no !important */
+  margin: 0 auto !important;
+}
 .page .feed > .card:first-child{margin-top:var(--feed-gap)}
 
 .rail{
@@ -1302,9 +1307,55 @@ html, body {
 
 
 @media (max-width: 768px) {
-  :root {
-    --feed-min: 0px;
-    --feed-max: 100%;
+  .page {
+    display: block;
+    padding-inline: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .container.feed {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 12px;
   }
 }
 
+
+/* default hidden */
+.top-rail-mobile { display: none; }
+
+@media (max-width: 768px) {
+  body:not(.admin-mode) .top-rail-placeholder { display: none !important; }
+  body:not(.admin-mode) .top-rail-mobile { display: block !important; }
+  body:not(.admin-mode) .nav { display: none !important; }
+
+  body.admin-mode .top-rail-mobile,
+  body.admin-mode .top-rail-placeholder { display: none !important; }
+  body.admin-mode .nav { display: block !important; }
+
+  .top-rail-mobile{
+    position: sticky;
+    top: env(safe-area-inset-top, 0);
+    z-index: 100;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+  }
+  .top-rail-mobile .trm-inner{
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    height: 52px;
+    padding: 0 12px;
+    max-width: 100%;
+    margin: 0 auto;
+    gap: 8px;
+  }
+  .trm-left, .trm-center, .trm-right { display:flex; align-items:center; gap:8px; }
+  .trm-center { justify-content: center; gap: 14px; }
+
+  .trm-logo{width:28px;height:28px;border-radius:999px;background:#e5e7eb;}
+  .trm-tab{width:36px;height:24px;border-radius:6px;background:#f3f4f6;}
+  .trm-search{width:120px;height:28px;border-radius:999px;background:#f0f2f5;}
+  .trm-avatar{width:28px;height:28px;border-radius:999px;background:#d1d5db;}
+}
