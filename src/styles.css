@@ -89,7 +89,12 @@ a:hover{text-decoration:underline}
 
 /* Gated blur while overlays shown */
 .app-shell{transition:filter .2s ease,opacity .2s ease}
-.app-shell.blurred{filter:blur(6px);opacity:.85;pointer-events:none;user-select:none}
+.app-shell.blurred{
+  filter: blur(6px);
+  /* opacity: .85;  ← delete this */
+  pointer-events: none;
+  user-select: none;
+}
 
 /* “See more” clamp */
 .text-wrap{position:relative}
@@ -277,8 +282,17 @@ a:hover{text-decoration:underline}
   background: rgba(0,0,0,0.45);
 }
 .modal{
-  position: relative;         /* ensure it participates above backdrop */
+  position: relative;
   z-index: 11001;
+  background:#fff;            /* ← restore */
+  border-radius:1rem;
+  box-shadow:var(--shadow);
+  width:calc(100vw - 48px);
+  max-width:680px;
+  max-height:90vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
 }
 .modal.modal-wide{max-width:1120px;width:calc(100vw - 64px)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--line)}
