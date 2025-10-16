@@ -38,6 +38,14 @@ function sShort(n) {
   return `${Math.round(n)}s`;
 }
 
+function labelForKey(key, nameMap) {
+  const m = /^(.+?)_([a-z_]+)$/.exec(key); // base + suffix
+  if (!m) return key;
+  const [, base, suf] = m;
+  const pretty = (nameMap && nameMap[base]) ? nameMap[base].trim() : base;
+  return `${pretty}_${suf}`;
+}
+
 function makeCsvWithPrettyHeaders(rows, keys, labels) {
   const esc = (v) => {
     if (v == null) return "";
@@ -409,9 +417,9 @@ export function ParticipantsPanel({
               const keys = Array.from(keySet);
 
               // 4) Build pretty header labels using stored post names
-              const nameStore = readPostNames(projectId, feedId) || {};
-              // utils will map "<postId>_<suffix>" → "<friendlyName>_<suffix>" where possible
-              const labels = headerLabelsForKeys(keys, null, nameStore);
+              // 4) Build pretty header labels using stored post names
+const nameStore = readPostNames(projectId, feedId) || {};
+const labels = keys.map(k => labelForKey(k, nameStore));
 
               // 5) Emit CSV (data uses ids; headers show friendly names)
               const csv = makeCsvWithPrettyHeaders(normalized, keys, labels);
