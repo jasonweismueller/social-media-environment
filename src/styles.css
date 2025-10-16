@@ -3,6 +3,7 @@
   --blue:#1877f2; --blue-ink:#0b5cc4; --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.06);
 
   /* layout knobs */
+  --feed-min: 640px;
   --feed-max: 700px;
   --gap: 16px;
   --rail-gap: 30px;
