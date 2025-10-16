@@ -163,7 +163,8 @@ export function ParticipantsPanel({
   projectId: projectIdProp,
   compact = false,
   limit,
-  onCountChange
+  onCountChange,
+  postNamesMap
 }) {
   // Effective project id: prefer prop, else util, else "global"
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
@@ -417,9 +418,8 @@ export function ParticipantsPanel({
               const keys = Array.from(keySet);
 
               // 4) Build pretty header labels using stored post names
-              // 4) Build pretty header labels using stored post names
-const nameStore = readPostNames(projectId, feedId) || {};
-const labels = keys.map(k => labelForKey(k, nameStore));
+ const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
+ const labels = keys.map(k => labelForKey(k, nameStore));
 
               // 5) Emit CSV (data uses ids; headers show friendly names)
               const csv = makeCsvWithPrettyHeaders(normalized, keys, labels);
