@@ -31,6 +31,73 @@ function useInViewAutoplay(threshold = 0.6) {
   return { wrapRef, inView };
 }
 
+// put this near the top of the file (after imports)
+function MenuPortal({ anchorRef, open, onClose, children }) {
+  const [coords, setCoords] = React.useState({ top: 0, left: 0, ready: false });
+
+  // compute position in a layout effect (safe ref read)
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const anchor = anchorRef?.current;
+    if (!anchor || typeof window === "undefined" || !document?.body) return;
+
+    const update = () => {
+      const r = anchor.getBoundingClientRect();
+      setCoords({
+        top: r.bottom + window.scrollY + 4,
+        left: r.left + window.scrollX,
+        ready: true,
+      });
+    };
+
+    update();
+    window.addEventListener("scroll", update, true);  // capture to catch scrollable parents
+    window.addEventListener("resize", update);
+
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, anchorRef]);
+
+  // close on outside click / Esc
+  React.useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e) => {
+      const menuEl = document.querySelector("#post-menu-portal");
+      const inMenu = menuEl && menuEl.contains(e.target);
+      const inBtn  = anchorRef?.current && anchorRef.current.contains(e.target);
+      if (!inMenu && !inBtn) onClose?.();
+    };
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, anchorRef, onClose]);
+
+  if (!open || !coords.ready || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      id="post-menu-portal"
+      className="menu"
+      role="menu"
+      style={{
+        position: "fixed",             // fixed is simpler once we compute viewport coords
+        zIndex: 20000,
+        top: coords.top,
+        left: coords.left,
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
 /* ----------------------------- Post Card ---------------------------------- */
 export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false }) {
   const [reportAck, setReportAck] = useState(false);
@@ -584,82 +651,76 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
       className="card post-card"
     >
       <header className="card-head">
-        <div className="avatar">
-          {post.avatarUrl ? (
-            <img
-              src={post.avatarUrl}
-              alt=""
-              className="avatar-img"
-              loading="lazy"
-              decoding="async"
-              onLoad={() => click("avatar_load")}
-              onError={() => click("avatar_error")}
-            />
+  <div className="avatar">
+    {post.avatarUrl ? (
+      <img
+        src={post.avatarUrl}
+        alt=""
+        className="avatar-img"
+        loading="lazy"
+        decoding="async"
+        onLoad={() => click("avatar_load")}
+        onError={() => click("avatar_error")}
+      />
+    ) : null}
+  </div>
+
+  <div style={{ flex: 1 }}>
+    <div className="name-row">
+      <div className="name">{post.author}</div>
+      {post.badge && (
+        <span className="badge">
+          <IconBadge />
+        </span>
+      )}
+    </div>
+
+    {/* Sponsored for ads; otherwise time + globe */}
+    <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+      {post.adType === "ad" ? (
+        <>
+          <span className="subtle">Sponsored</span>
+          <span className="sep" aria-hidden="true">·</span>
+          <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+        </>
+      ) : (
+        <>
+          {post.showTime !== false && post.time ? (
+            <>
+              <span className="subtle">{post.time}</span>
+              <span className="sep" aria-hidden="true">·</span>
+            </>
           ) : null}
-        </div>
-        <div style={{ flex: 1 }}>
-          <div className="name-row">
-            <div className="name">{post.author}</div>
-            {post.badge && <span className="badge"><IconBadge /></span>}
-          </div>
+          <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+        </>
+      )}
+    </div>
+  </div>
 
-          {/* Sponsored for ads; otherwise time + globe */}
-          <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            {post.adType === "ad" ? (
-              <>
-                <span className="subtle">Sponsored</span>
-                <span className="sep" aria-hidden="true">·</span>
-                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-              </>
-            ) : (
-              <>
-                {post.showTime !== false && post.time ? (
-                  <>
-                    <span className="subtle">{post.time}</span>
-                    <span className="sep" aria-hidden="true">·</span>
-                  </>
-                ) : null}
-                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-              </>
-            )}
-          </div>
-        </div>
+  <div className="menu-wrap">
+    <button
+      ref={dotsRef}
+      className="dots"
+      onClick={() => {
+        if (!disabled) {
+          setMenuOpen(v => !v);
+          onAction("post_menu_toggle", { post_id: post.id });
+        }
+      }}
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      aria-label="Post menu"
+      disabled={disabled}
+    >
+      <IconDots />
+    </button>
 
-<div className="menu-wrap">
-  <button
-    ref={dotsRef}
-    className="dots"
-    onClick={() => {
-      if (!disabled) {
-        setMenuOpen(v => !v);
-        onAction("post_menu_toggle", { post_id: post.id });
-      }
-    }}
-    aria-haspopup="menu"
-    aria-expanded={menuOpen}
-    aria-label="Post menu"
-    disabled={disabled}
-  >
-    <IconDots />
-  </button>
-
-  {menuOpen &&
-    createPortal(
-      <div
-        className="menu"
-        role="menu"
-        ref={menuRef}
-        style={{
-          position: "absolute",
-          zIndex: 20000,
-          top: dotsRef.current
-            ? dotsRef.current.getBoundingClientRect().bottom + window.scrollY + 4
-            : 0,
-          left: dotsRef.current
-            ? dotsRef.current.getBoundingClientRect().left + window.scrollX
-            : 0,
-        }}
-      >
+    <MenuPortal
+      anchorRef={dotsRef}
+      open={menuOpen}
+      onClose={() => setMenuOpen(false)}
+    >
+      <div ref={menuRef}>
         <button
           className="menu-item disabled"
           role="menuitem"
@@ -670,12 +731,7 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
           <span className="mi-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="20" height="20">
               <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
-              <path
-                d="M12 7v10M7 12h10"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
+              <path d="M12 7v10M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </span>
           <span className="mi-text">
@@ -694,12 +750,7 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
           <span className="mi-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="20" height="20">
               <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
-              <path
-                d="M7 12h10"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
+              <path d="M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </span>
           <span className="mi-text">
@@ -710,7 +761,6 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
         <div className="menu-divider" />
 
-        {/* report — active */}
         <button
           className="menu-item"
           role="menuitem"
@@ -723,15 +773,7 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
         >
           <span className="mi-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <line
-                x1="7"
-                y1="3"
-                x2="7"
-                y2="21"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
+              <line x1="7" y1="3" x2="7" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               <path d="M7 4h10l-2 4 2 4H7z" fill="currentColor" />
             </svg>
           </span>
@@ -741,64 +783,64 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
           </span>
         </button>
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v16l-6-4-6 4V4z" fill="currentColor"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Save post</span><span className="mi-sub">Add this to your saved items.</span></span>
-              </button>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v16l-6-4-6 4V4z" fill="currentColor"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Save post</span><span className="mi-sub">Add this to your saved items.</span></span>
+        </button>
 
-              <div className="menu-divider" />
+        <div className="menu-divider" />
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 8a6 6 0 10-12 0v5l-2 2h16l-2-2V8zM9 19a3 3 0 006 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Turn on notifications for this post</span></span>
-              </button>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 8a6 6 0 10-12 0v5l-2 2h16l-2-2V8zM9 19a3 3 0 006 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Turn on notifications for this post</span></span>
+        </button>
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5L3 12l5 7M16 5l5 7-5 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Embed</span></span>
-              </button>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5L3 12l5 7M16 5l5 7-5 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Embed</span></span>
+        </button>
 
-              <div className="menu-divider" />
+        <div className="menu-divider" />
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="5" width="16" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Hide post</span><span className="mi-sub">See fewer posts like this.</span></span>
-              </button>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="5" width="16" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Hide post</span><span className="mi-sub">See fewer posts like this.</span></span>
+        </button>
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Snooze {post.author} for 30 days</span><span className="mi-sub">Temporarily stop seeing posts.</span></span>
-              </button>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Snooze {post.author} for 30 days</span><span className="mi-sub">Temporarily stop seeing posts.</span></span>
+        </button>
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Hide all from {post.author}</span><span className="mi-sub">Stop seeing posts from this Page.</span></span>
-              </button>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Hide all from {post.author}</span><span className="mi-sub">Stop seeing posts from this Page.</span></span>
+        </button>
 
-              <div className="menu-divider" />
+        <div className="menu-divider" />
 
-              <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-                <span className="mi-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                </span>
-                <span className="mi-text"><span className="mi-title">Dismiss</span></span>
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
+        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+          <span className="mi-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          </span>
+          <span className="mi-text"><span className="mi-title">Dismiss</span></span>
+        </button>
+      </div>
+    </MenuPortal>
+  </div>
+</header>
 
       <div className="card-body">
         <PostText text={post.text || ""} expanded={expanded} onExpand={onExpand} onClamp={() => click("text_clamped")} />
