@@ -808,7 +808,7 @@ const isMobile = useIsMobile();  // ⟵ add this
     ) : null}
   </div>
 
-  <div style={{ flex: 1 }}>
+  <div style={{ flex: 1, minWidth:0 }}>
     <div className="name-row">
       <div className="name">{post.author}</div>
       {post.badge && (
@@ -1387,7 +1387,7 @@ const isMobile = useIsMobile();  // ⟵ add this
               {shouldShowGhosts && Array.from({ length: Math.min(3, baseCommentCount) }).map((_, i) => (
                 <div key={`ghost-${i}`} className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: i === 0 ? 2 : 10 }}>
                   <div className="ghost-avatar sm" />
-                  <div className="ghost-lines" style={{ flex: 1 }}>
+                  <div className="ghost-lines" style={{ flex: 1, minWidth:0 }}>
                     <div className="ghost-line w-80" />
                     <div className="ghost-line w-50" />
                   </div>

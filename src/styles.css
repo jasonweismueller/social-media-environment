@@ -1183,3 +1183,67 @@ body.debug-vp::before {
 .bs-panel {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
+
+/* Prevent any horizontal scroll */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  touch-action: pan-y;            /* disable horizontal swipes */
+}
+
+/* Clamp layout to viewport on mobile */
+@media (max-width: 768px) {
+  .page { max-width: 100vw; overflow-x: hidden; }
+
+  /* Hide rails so they don't push width */
+  .rail { display: none !important; }
+
+  /* Main column is full width */
+  .container.feed {
+    width: 100%;
+    max-width: 100vw;
+    padding: 8px;
+    margin: 0 auto;
+  }
+
+  /* Cards must never exceed viewport */
+  .post-card {
+    width: 100%;
+    max-width: 100vw;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+
+  /* Media must scale down */
+  .video-wrap,
+  .drive-embed,
+  .image-btn,
+  .image-btn img,
+  .video-el {
+    display: block;
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: auto;
+  }
+
+  /* Long names/text/links shouldn't force width */
+  .card-head .name-row,
+  .card-head .meta,
+  .card-body,
+  .link-row {
+    min-width: 0;            /* important for flex items */
+    overflow: hidden;
+  }
+  .card-head .name { 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-head .meta { flex-wrap: wrap; }
+  .link-row .link { word-break: break-word; }
+}
