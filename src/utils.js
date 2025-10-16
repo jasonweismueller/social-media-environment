@@ -650,21 +650,21 @@ export async function sendToSheet(header, row, _events, feed_id) {
 }
 
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
-export async function listFeedsFromBackend() {
+export async function listFeedsFromBackend({ projectId, signal } = {}) {
   try {
-    const url = `${FEEDS_GET_URL()}&_ts=${Date.now()}`; // cache buster param
+    // Build URL safely, add project_id if provided, and a ts cache-buster
+    const url = new URL(FEEDS_GET_URL());
+    if (projectId) url.searchParams.set("project_id", projectId);
+    url.searchParams.set("_ts", Date.now());
 
     const data = await getJsonWithRetry(
-      url,
+      url.toString(),
       {
         method: "GET",
         mode: "cors",
-        cache: "no-store",        // prevents cached responses
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
+        cache: "no-store",
+        // IMPORTANT: no custom headers on GET (keeps it a simple request; no preflight)
+        signal,
       },
       { retries: 1, timeoutMs: 8000 }
     );
