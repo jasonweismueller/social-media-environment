@@ -1175,187 +1175,209 @@ body.debug-vp::before {
   --bs-radius: 16px;
 }
 
-/* Respect users who prefer less motion */
-@media (prefers-reduced-motion: reduce) {
-  .bs-backdrop,
-  .bs-panel {
-    animation: none !important;
-    transition: none !important;
+
+
+
+/* ===================== */
+/* IG FEED — MOBILE (consolidated, minimal) */
+/* ===================== */
+@media (max-width: 700px){
+  :root{
+    --feed-min: 0px !important;
+    --feed-gap: 0px !important;
+  }
+
+  html, body{
+    overflow-x: hidden !important;
+    font-size: 16px; /* prevent zoomed-in scaling */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar, body::-webkit-scrollbar{ display: none; }
+
+  /* one-column layout; no side padding; hide desktop rails */
+  .page{
+    grid-template-columns: 1fr !important;
+    padding-inline: 0 !important;
+    justify-content: stretch !important;
+    justify-items: stretch !important;
+  }
+  .rail, .rail-left, .rail-right{ display: none !important; }
+
+  /* keep placeholder desktop top rail hidden on mobile,
+     but allow IG top bar (if you render it) */
+  .top-rail-placeholder{ display: none !important; }
+  body:not(.admin-mode) .ig-topbar{ display: block !important; }
+
+  /* feed spans container width (avoid 100vw overshoot) */
+  .feed-wrap{ width:100% !important; }
+  .page .feed,
+  .insta-feed{
+    width:100% !important;
+    max-width:100% !important;
+    margin:0 !important;
+    padding:0 0 16px 0 !important;
+    gap:12px !important;
+  }
+
+  /* cards flush to edges */
+  .insta-card{
+    border:none !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+    margin:0 !important;
+    background:#fff !important;
+  }
+
+  /* ensure the mobile stories strip is visible */
+  .ig-stories-bar{ display:block !important; visibility:visible !important; }
+
+  /* show end/submit blocks on mobile */
+  .feed-end, .feed-submit, .submit-wrap, .end{
+    display:block !important;
+    text-align:center;
+    padding:12px 16px;
   }
 }
 
-/* iOS/Android safe-area padding */
-.bs-panel {
-  padding-bottom: env(safe-area-inset-bottom, 0);
-}
-
-/* Prevent any horizontal scroll */
-*,
-*::before,
-*::after { box-sizing: border-box; }
-
-html, body {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  touch-action: pan-y;            /* disable horizontal swipes */
-}
-
-/* Clamp layout to viewport on mobile */
-@media (max-width: 768px) {
-  .page { max-width: 100%; overflow-x: hidden; }
-
-  /* Hide rails so they don't push width */
-  .rail { display: none !important; }
-
-  /* Main column is full width */
-  .container.feed {
-    width: 100%;
-    max-width: 100%;
-    padding: 8px;
-    margin: 0 auto;
-  }
-
-  /* Cards must never exceed viewport */
-  .post-card {
-    width: 100%;
-    max-width: 100%;
-    margin: 8px 0;
-    overflow: hidden;
-  }
-
-  /* Media must scale down */
-  .video-wrap,
-  .drive-embed,
-  .image-btn,
-  .image-btn img,
-  .video-el {
-    display: block;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto;
-  }
-
-  /* Long names/text/links shouldn't force width */
-  .card-head .name-row,
-  .card-head .meta,
-  .card-body,
-  .link-row {
-    min-width: 0;            /* important for flex items */
-    overflow: hidden;
-  }
-  .card-head .name { 
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .card-head .meta { flex-wrap: wrap; }
-  .link-row .link { word-break: break-word; }
-}
-
-/* ---- Desktop feed: keep existing top rail ---- */
-/* You already have:
-   body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
-   body:not(.admin-mode) .nav { display: none !important; }
-*/
-
-/* ---- Mobile-only top rail ---- */
-.top-rail-mobile { display: none; }
-
-@media (max-width: 768px) {
-  /* On phones: use the mobile rail, hide the desktop rail */
-  body:not(.admin-mode) .top-rail-placeholder { display: none !important; }
-  body:not(.admin-mode) .top-rail-mobile { display: block !important; }
-  body:not(.admin-mode) .nav { display: none !important; }
-
-  /* Admin on mobile still uses legacy nav */
-  body.admin-mode .top-rail-mobile,
-  body.admin-mode .top-rail-placeholder { display: none !important; }
-  body.admin-mode .nav { display: block !important; }
-
-  /* Mobile rail look & layout */
-  .top-rail-mobile{
-    position: sticky;
-    top: env(safe-area-inset-top, 0);
-    z-index: 100;
-    background: #fff;
-    border-bottom: 1px solid var(--line);
-  }
-  .top-rail-mobile .trm-inner{
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    height: 52px;
-    padding: 0 12px;
-    max-width: 100%;
-    margin: 0 auto;
-    gap: 8px;
-  }
-  .trm-left, .trm-center, .trm-right { display: flex; align-items: center; gap: 8px; }
-  .trm-center { justify-content: center; gap: 14px; }
-
-  .trm-logo   { width: 28px; height: 28px; border-radius: 999px; background: #e5e7eb; }
-  .trm-tab    { width: 36px; height: 24px; border-radius: 6px; background: #f3f4f6; }
-  .trm-search { width: 120px; height: 28px; border-radius: 999px; background: #f0f2f5; }
-  .trm-avatar { width: 28px; height: 28px; border-radius: 999px; background: #d1d5db; }
-}
-
-/* Keep feed aligned under whichever rail is visible */
-.page { padding-top: var(--feed-gap); }
-.page .feed > .card:first-child { margin-top: 0 !important; }
-
-
-
-@media (max-width: 768px) {
-  .page {
-    display: block;
-    padding-inline: 0;
-    max-width: 100%;
-    overflow-x: hidden;
-  }
-
-  .container.feed {
-    width: 100%;
-    max-width: 100%;
-    padding: 8px 12px;
+/* Desktop/tablet keep centered feed... */
+@media (min-width: 701px){
+  .insta-feed{
+    width:100%;
+    max-width:470px;
+    margin:0 auto !important;
+    display:grid;
+    gap:16px;
+    padding:12px 12px 24px;
   }
 }
 
-
-/* default hidden */
-.top-rail-mobile { display: none; }
-
-@media (max-width: 768px) {
-  body:not(.admin-mode) .top-rail-placeholder { display: none !important; }
-  body:not(.admin-mode) .top-rail-mobile { display: block !important; }
-  body:not(.admin-mode) .nav { display: none !important; }
-
-  body.admin-mode .top-rail-mobile,
-  body.admin-mode .top-rail-placeholder { display: none !important; }
-  body.admin-mode .nav { display: block !important; }
-
-  .top-rail-mobile{
-    position: sticky;
-    top: env(safe-area-inset-top, 0);
-    z-index: 100;
-    background: #fff;
-    border-bottom: 1px solid var(--line);
+/* IG stories bar — no scroll, fits exactly N items computed in JS */
+@media (max-width:700px){
+  .ig-stories-bar.noscroll{
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:8px 12px 10px;   /* <= 12px must match sidePad in JS */
+    margin:0;
   }
-  .top-rail-mobile .trm-inner{
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    height: 52px;
-    padding: 0 12px;
-    max-width: 100%;
-    margin: 0 auto;
-    gap: 8px;
+  .ig-stories-row{
+    display:flex;
+    justify-content:space-between; /* spreads the N items evenly */
+    align-items:flex-start;
+    gap:10px;                      /* minimum visual gap, not used for fit math */
+    overflow:hidden;               /* ensure no accidental scrollbars */
   }
-  .trm-left, .trm-center, .trm-right { display:flex; align-items:center; gap:8px; }
-  .trm-center { justify-content: center; gap: 14px; }
+  .ig-story-ghost{
+    flex:0 0 72px;                 /* <= must match itemW in JS */
+    width:72px;
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .ig-story-ring{
+    width:58px; height:58px; border-radius:999px; padding:3px;
+    background: conic-gradient(#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75);
+    display:grid; place-items:center;
+  }
+  .ig-story-avatar{ width:100%; height:100%; border-radius:999px; background:#e5e7eb; }
+  .ig-story-name{ width:48px; height:9px; border-radius:4px; background:#f0f2f5; }
+}
 
-  .trm-logo{width:28px;height:28px;border-radius:999px;background:#e5e7eb;}
-  .trm-tab{width:36px;height:24px;border-radius:6px;background:#f3f4f6;}
-  .trm-search{width:120px;height:28px;border-radius:999px;background:#f0f2f5;}
-  .trm-avatar{width:28px;height:28px;border-radius:999px;background:#d1d5db;}
+/* ---------------- IG Carousel ---------------- */
+.igcar-wrap{
+  position:relative; width:100%; border-radius:8px; overflow:hidden; background:#000;
+  aspect-ratio: 1 / 1;
+  touch-action: pan-x;
+  overscroll-behavior: contain;
+  user-select: none;
+}
+.igcar-track{ display:flex; width:100%; height:100%; transition: transform .22s ease-in-out; will-change: transform; }
+.igcar-slide{ flex:0 0 100%; height:100%; position:relative; }
+.igcar-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; -webkit-user-drag: none; user-drag: none; }
+.igcar-arrow{ position:absolute; top:50%; transform: translateY(-50%); width:32px; height:32px; border-radius:999px; border:none; background:rgba(0,0,0,.45); cursor:pointer; z-index:3; }
+.igcar-arrow.left{ left:8px; }
+.igcar-arrow.right{ right:8px; }
+.igcar-arrow:hover{ background:rgba(0,0,0,.65); }
+@media (max-width:700px){ .igcar-arrow{ display:none !important; } }
+.igcar-dots{ position:absolute; left:0; right:0; bottom:8px; display:flex; gap:6px; justify-content:center; z-index:3; }
+.igcar-dots .dot{ width:6px; height:6px; border-radius:999px; border:0; padding:0; background:rgba(255,255,255,.5); cursor:pointer; }
+.igcar-dots .dot.on{ background:#fff; }
+.igcar-count{
+  position:absolute; top:8px; right:8px; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600; line-height:1;
+  color:#fff; background:rgba(0,0,0,.55); backdrop-filter: blur(2px); box-shadow: 0 2px 10px rgba(0,0,0,.25); z-index:3; display:none;
+}
+@media (max-width:700px){ .igcar-count{ display:inline-block; } }
+
+
+/* ===== IG caption: inline with username, clamp only when truly overflowing ===== */
+.ig-caption-row{
+  padding: 6px 12px 0 12px;
+  font-size:14px;
+  line-height:1.4;
+  color:#111827;
+}
+
+.ig-caption-row .ig-username{
+  display:inline;
+  font-weight:600;
+  white-space:nowrap;
+  margin-right:.5ch;
+}
+
+/* PostText wrapper stays inline so its right edge hugs the last characters */
+.ig-caption-row .text-wrap{
+  display:inline;
+  position:relative;              /* anchor for fade-more */
+  vertical-align:baseline;
+  max-width:100%;
+}
+
+/* Caption text */
+.ig-caption-row .text{
+  display:inline;
+  margin:0;
+  white-space:pre-wrap;
+}
+
+/* INLINE clamp (so it can start on same line as username) */
+.ig-caption-row .text.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding-right: 2.75ch; /* reserve space for “more” */
+}
+
+/* Only add the reserve space when overflow is REAL */
+.ig-caption-row .text.clamp.needs{
+  padding-right: 2.75ch;
+}
+
+/* Fade + "more" cluster sits snug to the end of the inline wrapper */
+.ig-caption-row .fade-more{
+  position:absolute;
+  right:0;
+  bottom:0;
+  height:1.4em;
+  display:inline-flex;
+  align-items:center;
+  gap:.35ch;
+  background:var(--card);
+  padding-left:.25ch;
+  z-index:1;
+}
+.ig-caption-row .fade-more::before{
+  content:"";
+  position:absolute;
+  right:100%;
+  top:0;
+  width:4.5ch;
+  height:100%;
+  background:linear-gradient(90deg, rgba(255,255,255,0), var(--card));
+}
+
+/* Avoid duplicate ellipsis look if your component also renders dots */
+.ig-caption-row .fade-more .dots{ display:none !important; }
+
+/* Mobile: slightly more pad so "more" never wraps */
+@media (max-width:700px){
+  .ig-caption-row .text.clamp.needs{ padding-right:3.25ch; }
 }
