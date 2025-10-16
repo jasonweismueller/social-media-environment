@@ -1247,3 +1247,39 @@ html, body {
   .card-head .meta { flex-wrap: wrap; }
   .link-row .link { word-break: break-word; }
 }
+
+
+/* --- MOBILE ZOOM/FIT FIXES (paste at end) --- */
+
+/* 1) Kill the hard min width that forces oversize layouts */
+:root { --feed-min: 0px !important; }
+
+/* 2) Clamp the center column to the viewport width */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, min(100%, var(--feed-max)))
+    minmax(0, 1fr) !important;
+}
+
+/* Top rail uses the same grid—clamp it too */
+.top-rail-placeholder .trp-inner{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, min(100%, var(--feed-max)))
+    minmax(0, 1fr) !important;
+}
+
+/* 3) Keep the 1200px breakpoint from re-introducing a min */
+@media (max-width: 1200px){
+  .page{ grid-template-columns: 0 minmax(0, 1fr) minmax(0, 1fr) !important; }
+}
+
+/* 4) iOS text autosize can make things feel “zoomed” */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
