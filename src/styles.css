@@ -763,3 +763,14 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
   :root{ --menu-min-w: 260px; }
   .nav-inner{ padding-left:.5rem; padding-right:.5rem; }
 }
+
+/* Prevent mobile browsers (esp. iOS Safari) from auto-zooming text */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* iOS-specific guard (older Safari versions) */
+@supports (-webkit-touch-callout: none) {
+  html { -webkit-text-size-adjust: 100% !important; }
+}
