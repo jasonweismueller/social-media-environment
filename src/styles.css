@@ -1164,3 +1164,22 @@ body.debug-vp::before {
   /* ensure flyout is touch-friendly above other content */
   .react-flyout { z-index: 1000; }
 }
+
+/* ---- Bottom sheet helpers (global) ---- */
+:root {
+  --bs-radius: 16px;
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  .bs-backdrop,
+  .bs-panel {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* iOS/Android safe-area padding */
+.bs-panel {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
