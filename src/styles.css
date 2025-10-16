@@ -274,6 +274,7 @@ a:hover{text-decoration:underline}
 /* Modal overlay should be above menus, tooltips, FAB, etc. */
 .modal-backdrop{
   position: fixed;
+  isolation: isolate;
   inset: 0;
   display: grid;
   place-items: center;
