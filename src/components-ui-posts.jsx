@@ -104,6 +104,9 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
+  // right before the meta markup, derive once:
+const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
+const hasTime = shouldShowTime && !!post?.time;
 
   // FB-like video settings UI
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -675,8 +678,7 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
       )}
     </div>
 
-    {/* Sponsored for ads; otherwise time + globe */}
-   {/* Sponsored for ads; otherwise time + globe */}
+   {/* Sponsored for ads; otherwise time + globe (both hidden if showTime is false) */}
 <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
   {post.adType === "ad" ? (
     <>
@@ -685,15 +687,13 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
       <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
     </>
   ) : (
-    <>
-      {post.showTime !== false && post.time ? (
-        <>
-          <span className="subtle">{post.time}</span>
-          <span className="sep" aria-hidden="true">·</span>
-          <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-        </>
-      ) : null}
-    </>
+    hasTime ? (
+      <>
+        <span className="subtle">{post.time}</span>
+        <span className="sep" aria-hidden="true">·</span>
+        <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+      </>
+    ) : null
   )}
 </div>
   </div>
