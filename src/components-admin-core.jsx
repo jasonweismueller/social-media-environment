@@ -31,7 +31,7 @@ import {
   deleteProjectOnBackend,
   setProjectId as persistProjectId,
   getProjectId,
-  GS_ENDPOINT, APP, getAdminToken ,
+  GS_ENDPOINT, APP, getAdminToken,
   readPostNames,
   writePostNames,
   postDisplayName
@@ -60,7 +60,6 @@ function genNeutralAvatarDataUrl(size = 64) {
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
-
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : (elseRender ?? null);
@@ -137,6 +136,114 @@ function msToMinSec(n) {
   return `${m}:${sec}`;
 }
 
+/* ---------------- Randomize-time flags (per feed) ---------------- */
+async function fetchFeedRandomizeTime({ projectId, feedId }) {
+  try {
+    const admin = getAdminToken?.();
+    if (!admin || !feedId) return false;
+    const params = new URLSearchParams({
+      path: "get_randomize_time",
+      app: APP,
+      admin_token: admin,
+      feed_id: String(feedId),
+    });
+    const effPid = projectId && projectId !== "global" ? String(projectId) : "";
+    if (effPid) params.set("project_id", effPid);
+
+    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, { mode: "cors", cache: "no-store" });
+    if (!res.ok) return false;
+    const json = await res.json().catch(() => null);
+    return !!json?.randomize_time;
+  } catch {
+    return false;
+  }
+}
+
+async function setFeedRandomizeTime({ projectId, feedId, enabled }) {
+  const admin = getAdminToken?.();
+  if (!admin) throw new Error("Missing admin token");
+  if (!feedId) throw new Error("Missing feedId");
+
+  const effPid = projectId && projectId !== "global" ? String(projectId) : "";
+  const payload = {
+    path: "set_randomize_time",
+    app: APP,
+    admin_token: admin,
+    feed_id: String(feedId),
+    randomize_time: !!enabled,
+    ...(effPid ? { project_id: effPid } : {}),
+  };
+
+  const res = await fetch(GS_ENDPOINT, {
+    method: "POST",
+    mode: "cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let msg = `Backend responded ${res.status}`;
+    try { const j = await res.json(); if (j?.err) msg = j.err; } catch {}
+    throw new Error(msg);
+  }
+  return res.json().catch(() => ({}));
+}
+
+/* --------------- Deterministic “relative time” generator --------------- */
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function seededRandInt(seedStr, min, max) {
+  const h = hashStr(seedStr);
+  const r = (h % 100000) / 100000; // 0..1
+  return min + Math.floor(r * (max - min + 1));
+}
+function toRelString(minsAgo) {
+  if (minsAgo <= 0) return "Just now";
+  if (minsAgo < 60) return `${minsAgo}m`;
+  const hours = Math.floor(minsAgo / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  return `${days}d`;
+}
+/** Make a _copy_ of posts with randomized time. Stores original in _origTime. */
+function withRandomizedTimes(posts, { projectId, feedId }) {
+  const scope = `${projectId || "global"}::${feedId || ""}`;
+  return (posts || []).map((p, idx) => {
+    const base = String(p?.id || idx);
+    const seed = `${scope}::${base}`;
+    const minutesAgo = seededRandInt(seed, 0, 72 * 60); // 0..72h
+    const rel = toRelString(minutesAgo);
+    return {
+      ...p,
+      _origTime: p._origTime ?? p.time ?? "",
+      time: rel,
+    };
+  });
+}
+/** Restore original times if present */
+function withRestoredTimes(posts) {
+  return (posts || []).map((p) => {
+    if (p && "_origTime" in p) {
+      const { _origTime, ...rest } = p;
+      return { ...rest, time: _origTime };
+    }
+    return p;
+  });
+}
+/** Strip helper before saving to backend */
+function sanitizePostsForSave(posts) {
+  return (posts || []).map(p => {
+    const { _origTime, ...rest } = p || {};
+    return rest;
+  });
+}
+
 /* ---------------------------- Posts local cache --------------------------- */
 function getCachedPosts(projectId, feedId, checksum) {
   try {
@@ -173,12 +280,13 @@ function Section({ title, subtitle, right = null, children }) {
   );
 }
 
-function ChipToggle({ label, checked, onChange }) {
+function ChipToggle({ label, checked, onChange, disabled }) {
   return (
     <button
       className={`btn ghost ${checked ? "active" : ""}`}
-      onClick={() => onChange(!checked)}
+      onClick={() => !disabled && onChange(!checked)}
       aria-pressed={checked}
+      disabled={disabled}
       style={{ borderRadius: 999, padding: ".35rem .7rem" }}
     >
       <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", marginRight:8, background: checked ? "var(--accent, #2563eb)" : "var(--line)" }} />
@@ -196,7 +304,6 @@ export function AdminDashboard({
   onPublishPosts, // optional override
   onLogout,
 }) {
-
 
   const pidForBackend = (pid) => (pid && pid !== "global" ? pid : undefined);
   const [sessExpiringSec, setSessExpiringSec] = useState(null);
@@ -242,7 +349,6 @@ export function AdminDashboard({
   const [showAllParticipants, setShowAllParticipants] = useState(false);
 
   // --- wipe-on-change global policy
-  // --- wipe-on-change global policy
   const [wipeOnChange, setWipeOnChange] = useState(null);
   const [updatingWipe, setUpdatingWipe] = useState(false);
 
@@ -251,8 +357,6 @@ export function AdminDashboard({
   const [feedName, setFeedName] = useState("");
   const [feedsLoading, setFeedsLoading] = useState(false);
   const [feedsError, setFeedsError] = useState("");
-
-
 
   // ✅ needed for “(default)” labels & actions
   const [defaultFeedId, setDefaultFeedId] = useState(null);
@@ -303,7 +407,6 @@ export function AdminDashboard({
     // Persist for other modules/refreshes, but don’t touch the URL here
     persistProjectId(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
-  
 
   // counts
   const [usersCount, setUsersCount] = useState(null);
@@ -357,7 +460,6 @@ export function AdminDashboard({
     if (left != null && left > 120) setSessExpiringSec(null);
   }, [isSaving]);
 
-  
   const loadProjects = useCallback(async () => {
     projectsAbortRef.current?.abort?.();
     const ctrl = new AbortController();
@@ -373,7 +475,7 @@ export function AdminDashboard({
       const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
       setProjects(projList);
       setDefaultProjectId(backendDefault || null);
-      
+
       // read from URL first (hard-refresh friendly), then current state/storage, then backend default, then first
       let fromUrl = "";
       try {
@@ -387,7 +489,7 @@ export function AdminDashboard({
         backendDefault ||
         projList[0]?.project_id ||
         "global";
-      
+
       const chosen = projList.find(p => p.project_id === desired) || projList[0];
       const chosenId = chosen?.project_id || "global";
       setProjectId(chosenId);
@@ -401,8 +503,7 @@ export function AdminDashboard({
       setProjectsLoading(false);
     }
   }, [projectId]);
-  
-  
+
   // ---------- Centralized, abortable feed loader with friendly errors ----------
   const loadFeeds = useCallback(async () => {
     // cancel any in-flight attempt
@@ -451,6 +552,16 @@ export function AdminDashboard({
           setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
         }
         setPostNames(readPostNames(projectId, chosen.feed_id) || {});
+
+        // Fetch and apply per-feed randomize-time flag
+        try {
+          const enabled = await fetchFeedRandomizeTime({ projectId, feedId: chosen.feed_id });
+          if (!ctrl.signal.aborted) {
+            setRandomizeTime(enabled);
+            setPosts(prev => enabled ? withRandomizedTimes(prev, { projectId, feedId: chosen.feed_id })
+                                     : withRestoredTimes(prev));
+          }
+        } catch {}
       } else {
         setFeedId("");
         setFeedName("");
@@ -458,7 +569,6 @@ export function AdminDashboard({
         setPostNames({});
       }
 
-      
       // Best-effort policy fetch
       try {
         const policy = await getWipePolicyFromBackend({ signal: ctrl.signal });
@@ -471,10 +581,9 @@ export function AdminDashboard({
       if (feedsAbortRef.current === ctrl) feedsAbortRef.current = null;
       setFeedsLoading(false);
     }
-  }, [setPosts,projectId]);
+  }, [setPosts, projectId]);
 
   // Initial load
-
   useEffect(() => {
     loadProjects();
     return () => { projectsAbortRef.current?.abort?.(); };
@@ -506,6 +615,9 @@ export function AdminDashboard({
     };
   }, [isSaving]);
 
+  const [randomizeTime, setRandomizeTime] = useState(false);
+  const [randomizeTimeSaving, setRandomizeTimeSaving] = useState(false);
+
   const selectFeed = async (id) => {
     const row = feeds.find(f => String(f.feed_id) === String(id));
     setFeedId(id);
@@ -525,6 +637,14 @@ export function AdminDashboard({
 
     // Load names
     setPostNames(readPostNames(projectId, id) || {});
+
+    // Fetch and apply per-feed randomize-time flag
+    try {
+      const enabled = await fetchFeedRandomizeTime({ projectId, feedId: id });
+      setRandomizeTime(enabled);
+      setPosts(prev => enabled ? withRandomizedTimes(prev, { projectId, feedId: id })
+                               : withRestoredTimes(prev));
+    } catch {}
   };
 
   const createNewProject = async () => {
@@ -624,8 +744,8 @@ export function AdminDashboard({
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
       if ("showTime" in clean) delete clean.showTime; // normalize legacy posts
+      if ("_origTime" in clean) delete clean._origTime; // do not persist helper field
 
-  
       // persist friendly name on the post object itself
       if (clean.postName && !clean.name) clean.name = clean.postName;
 
@@ -701,7 +821,7 @@ export function AdminDashboard({
         <LoadingOverlay
           title={isSaving ? "Saving feed…" : "Loading dashboard…"}
           subtitle={isSaving ? "Creating snapshot & publishing your changes"
-                            : "Fetching projects, feeds and posts from backend"}
+                             : "Fetching projects, feeds and posts from backend"}
         />
       )}
       {!feedsLoading && !!feedsError && (
@@ -732,7 +852,6 @@ export function AdminDashboard({
           right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
         />
         <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
-
 
           {/* Projects */}
           <Section
@@ -802,7 +921,6 @@ export function AdminDashboard({
               </>
             }
           />
-
 
           {/* Feeds (no collapse by design) */}
           <Section
@@ -975,8 +1093,8 @@ export function AdminDashboard({
                                     try {
                                       saveLocalBackup(projectId, feedId, "fb", posts);
                                       await snapshotToS3({ posts, projectId, feedId, app: "fb" });
-                                      const ok = await savePostsToBackend(posts, {
-                                        projectId: pidForBackend(projectId),                                      
+                                      const ok = await savePostsToBackend(sanitizePostsForSave(posts), {
+                                        projectId: pidForBackend(projectId),
                                         feedId: f.feed_id,
                                         name: f.name || f.feed_id,
                                         app: "fb",
@@ -1188,6 +1306,9 @@ export function AdminDashboard({
                         if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
                         // keep the name map in sync with the current feed
                         setPostNames(readPostNames(projectId, feedId) || {});
+                        // Re-apply randomize-time if enabled
+                        setPosts(prev => randomizeTime ? withRandomizedTimes(prev, { projectId, feedId })
+                                                       : withRestoredTimes(prev));
                       }}
                       title="Reload posts for this feed from backend"
                     >
@@ -1236,6 +1357,9 @@ export function AdminDashboard({
                             if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
                             if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
                             setPosts(imported);
+                            // Re-apply flag
+                            setPosts(prev => randomizeTime ? withRandomizedTimes(prev, { projectId, feedId })
+                                                           : withRestoredTimes(prev));
                             alert("Imported. Remember to Save to publish back to the backend.");
                           } catch (err) {
                             console.error(err);
@@ -1255,16 +1379,41 @@ export function AdminDashboard({
                       {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
                     </button>
 
-                    <RoleGate min="editor">
-                      <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
-                      <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
-                        + Random Post
-                      </button>
-                      <button className="btn ghost" onClick={openNew}>+ Add Post</button>
-                      <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
-                        Clear Feed
-                      </button>
-                    </RoleGate>
+                    {/* FEED-SCOPED: Randomize time */}
+                    <ChipToggle
+                      label={randomizeTimeSaving ? "Saving…" : "Randomize time (feed)"}
+                      checked={!!randomizeTime}
+                      disabled={randomizeTimeSaving || !feedId}
+                      onChange={async (next) => {
+                        if (!feedId) { alert("Pick a feed first."); return; }
+                        const prev = !!randomizeTime;
+                        setRandomizeTime(next);
+                        setRandomizeTimeSaving(true);
+                        setPosts(curr => next ? withRandomizedTimes(curr, { projectId, feedId })
+                                              : withRestoredTimes(curr));
+                        try {
+                          await setFeedRandomizeTime({ projectId, feedId, enabled: next });
+                        } catch (err) {
+                          setRandomizeTime(prev);
+                          setPosts(curr => prev ? withRandomizedTimes(curr, { projectId, feedId })
+                                                : withRestoredTimes(curr));
+                          alert(`Failed to update randomize-time: ${err?.message || "Unknown error"}`);
+                        } finally {
+                          setRandomizeTimeSaving(false);
+                        }
+                      }}
+                    />
+
+                    {/* Existing order randomization */}
+                    <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
+
+                    <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
+                      + Random Post
+                    </button>
+                    <button className="btn ghost" onClick={openNew}>+ Add Post</button>
+                    <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
+                      Clear Feed
+                    </button>
                   </>
                 )}
 
@@ -1400,13 +1549,10 @@ export function AdminDashboard({
                   <AdminUsersPanel embed onCountChange={setUsersCount} />
                 </div>
               </div>
-
-            
             </Section>
           </RoleGate>
         </div>
 
-        
       </div>
 
       {editing && (
@@ -1735,7 +1881,7 @@ export function AdminDashboard({
                         : (editing.avatarMode === "random" && !editing.avatarUrl
                             ? randomAvatarByKind(editing.avatarRandomKind || "any", editing.id || editing.author || "seed", editing.author || "", randomAvatarUrl)
                             : editing.avatarUrl),
-                    
+
                     image:
                       editing.imageMode === "random"
                         ? (editing.image || randomSVG("Image"))
@@ -1752,8 +1898,6 @@ export function AdminDashboard({
           </div>
         </Modal>
       )}
-
-      
 
       {sessExpired && (
         <div aria-live="assertive" className="admin-expired-backdrop">
