@@ -47,6 +47,36 @@ import { randomAvatarByKind } from "./avatar-utils";
 import { MediaFieldset } from "./components-admin-media";
 import { AdminUsersPanel } from "./components-admin-users";
 
+/* ------------------------------- UI Bits --------------------------------- */
+function Section({ title, subtitle, right = null, children }) {
+  return (
+    <section className="card" style={{ padding: "1rem" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
+        <div>
+          <h3 style={{ margin: 0 }}>{title}</h3>
+          {subtitle && <div className="subtle" style={{ marginTop: 4 }}>{subtitle}</div>}
+        </div>
+        {!!right && <div style={{ display:"flex", gap:".5rem", flexWrap:"wrap" }}>{right}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ChipToggle({ label, checked, onChange }) {
+  return (
+    <button
+      className={`btn ghost ${checked ? "active" : ""}`}
+      onClick={() => onChange(!checked)}
+      aria-pressed={checked}
+      style={{ borderRadius: 999, padding: ".35rem .7rem" }}
+    >
+      <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", marginRight:8, background: checked ? "var(--accent, #2563eb)" : "var(--line)" }} />
+      {label}
+    </button>
+  );
+}
+
 /* ---------- local helper: gender-neutral comic avatar (64px) ---------------- */
 function genNeutralAvatarDataUrl(size = 64) {
   const s = size;
