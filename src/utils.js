@@ -786,6 +786,55 @@ export async function setFeedFlagsOnBackend({ feedId, projectId, flags }) {
   }
 }
 
+/* ---------- Convenience: flag wrappers + time randomization helpers -------- */
+export async function fetchFeedRandomizeTime({ projectId, feedId }) {
+  const { random_time } = await getFeedFlagsFromBackend({ feedId, projectId });
+  return !!random_time;
+}
+export async function setFeedRandomizeTime({ projectId, feedId, enabled }) {
+  const res = await setFeedFlagsOnBackend({
+    feedId,
+    projectId,
+    flags: { random_time: !!enabled },
+  });
+  return { ok: !!res?.ok, random_time: !!(res?.flags?.random_time ?? enabled) };
+}
+
+function toRelString_(minsAgo) {
+  if (minsAgo <= 0) return "Just now";
+  if (minsAgo < 60) return `${minsAgo}m`;
+  const h = Math.floor(minsAgo / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "Yesterday";
+  return `${d}d`;
+}
+/** Non-mutating helper to assign randomized time strings to posts.time */
+export function applyRandomizedTimes(posts = [], { projectId, feedId } = {}) {
+  const scope = `${projectId || getProjectId() || "global"}::${feedId || ""}`;
+  return posts.map((p, i) => {
+    const id = p?.id ?? i;
+    const seed = hashStrToInt_(`${scope}::${id}::rand_time_v1`);
+    const rnd = mulberry32_(seed)();
+    const minutes = Math.floor(rnd * (72 * 60 + 1)); // 0..72h
+    return { ...p, _origTime: p._origTime ?? p.time ?? "", time: toRelString_(minutes) };
+  });
+}
+/** Non-mutating helper to restore original times from _origTime */
+export function restoreOriginalTimes(posts = []) {
+  return posts.map((p) => {
+    if (p && "_origTime" in p) {
+      const { _origTime, ...rest } = p;
+      return { ...rest, time: _origTime };
+    }
+    return p;
+  });
+}
+/** Strip transient fields before save */
+export function sanitizePostsForSave(posts = []) {
+  return posts.map(({ _origTime, showTime, _localMyCommentText, _tempUpload, ...rest }) => rest);
+}
+
 /* ------------------------- Video preload helpers -------------------------- */
 const DRIVE_RE = /(?:^|\/\/)(?:drive\.google\.com|drive\.usercontent\.google\.com)/i;
 const __videoPreloadSet = new Set();
@@ -951,7 +1000,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
   const admin_token = getAdminToken();
   if (!admin_token) { console.warn("savePostsToBackend: missing admin_token"); return false; }
   // Pull friendly name map so we can inject names even if post objects lack them
- const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
+  const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
 
   // Optional but recommended: block data: URLs to avoid huge payloads & CORS issues
   const offenders = [];
@@ -971,10 +1020,14 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     return false;
   }
 
+  // 🔧 sanitize & inject .name where applicable
   const posts = (rawPosts || []).map((p) => {
     const q = { ...p };
+    // remove transient fields
     delete q._localMyCommentText;
     delete q._tempUpload;
+    delete q._origTime;
+    delete q.showTime;
     if (q.image && q.image.svg && q.image.url) delete q.image.svg;
     const nm = (q.postName ?? nameMap[q.id] ?? q.name ?? "").trim();
     if (nm) q.name = nm;

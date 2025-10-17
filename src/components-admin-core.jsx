@@ -34,7 +34,10 @@ import {
   GS_ENDPOINT, APP, getAdminToken,
   readPostNames,
   writePostNames,
-  postDisplayName
+  postDisplayName,
+  // ✅ new helpers (use these instead of local functions)
+  fetchFeedRandomizeTime,
+  setFeedRandomizeTime,
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -134,58 +137,6 @@ function msToMinSec(n) {
   const m = Math.floor(s / 60);
   const sec = String(s % 60).padStart(2, "0");
   return `${m}:${sec}`;
-}
-
-/* ---------------- Randomize-time flags (per feed) ---------------- */
-async function fetchFeedRandomizeTime({ projectId, feedId }) {
-  try {
-    const admin = getAdminToken?.();
-    if (!admin || !feedId) return false;
-    const params = new URLSearchParams({
-      path: "get_randomize_time",
-      app: APP,
-      admin_token: admin,
-      feed_id: String(feedId),
-    });
-    const effPid = projectId && projectId !== "global" ? String(projectId) : "";
-    if (effPid) params.set("project_id", effPid);
-
-    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, { mode: "cors", cache: "no-store" });
-    if (!res.ok) return false;
-    const json = await res.json().catch(() => null);
-    return !!json?.randomize_time;
-  } catch {
-    return false;
-  }
-}
-
-async function setFeedRandomizeTime({ projectId, feedId, enabled }) {
-  const admin = getAdminToken?.();
-  if (!admin) throw new Error("Missing admin token");
-  if (!feedId) throw new Error("Missing feedId");
-
-  const effPid = projectId && projectId !== "global" ? String(projectId) : "";
-  const payload = {
-    path: "set_randomize_time",
-    app: APP,
-    admin_token: admin,
-    feed_id: String(feedId),
-    randomize_time: !!enabled,
-    ...(effPid ? { project_id: effPid } : {}),
-  };
-
-  const res = await fetch(GS_ENDPOINT, {
-    method: "POST",
-    mode: "cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    let msg = `Backend responded ${res.status}`;
-    try { const j = await res.json(); if (j?.err) msg = j.err; } catch {}
-    throw new Error(msg);
-  }
-  return res.json().catch(() => ({}));
 }
 
 /* --------------- Deterministic “relative time” generator --------------- */
@@ -322,7 +273,6 @@ export function AdminDashboard({
   const [postNames, setPostNames] = useState({});
 
   const [participantsCount, setParticipantsCount] = useState(null);
-  // One-time "app boot" latch. We hide it only after the first full load finishes.
   const [booting, setBooting] = useState(true);
 
   // --- projects
@@ -370,15 +320,13 @@ export function AdminDashboard({
     (booting && !projectsError && !feedsError) ||
     (!booting && feedsLoading && !feedsError);
 
-  // If you still want to blur the app behind the overlay, tie it to the same flag.
-  // (Or make this just `isSaving` if you only want blur while saving.)
   const showBlur = showOverlay;
 
   const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
   const loadStatsFor = async (id) => {
     if (!id) return;
     const k = keyFor(projectId, id);
-    if (feedStats[k]) return; // already have stats for *this project + feed*
+    if (feedStats[k]) return;
     const s = await fetchParticipantsStats(projectId, id);
     setFeedStats((m) => ({
       ...m,
@@ -404,7 +352,6 @@ export function AdminDashboard({
 
   useEffect(() => {
     if (!projectId) return;
-    // Persist for other modules/refreshes, but don’t touch the URL here
     persistProjectId(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
 
@@ -412,18 +359,15 @@ export function AdminDashboard({
   const [usersCount, setUsersCount] = useState(null);
 
   useEffect(() => {
-    // Hide the initial, one-and-done boot overlay once BOTH loaders are idle
     if (!projectsLoading && !feedsLoading) {
       setBooting(false);
     }
   }, [projectsLoading, feedsLoading]);
 
-  // always fetch stats for the currently selected feed (so the title has a number)
   useEffect(() => {
     if (feedId) loadStatsFor(feedId);
-  }, [feedId, projectId]); // <- include projectId
+  }, [feedId, projectId]);
 
-  // handy local for the current feed's stats
   const curStats = feedStats[keyFor(projectId, feedId)];
 
   const keepAlive = async () => {
@@ -476,7 +420,6 @@ export function AdminDashboard({
       setProjects(projList);
       setDefaultProjectId(backendDefault || null);
 
-      // read from URL first (hard-refresh friendly), then current state/storage, then backend default, then first
       let fromUrl = "";
       try {
         const sp = new URLSearchParams(window.location.search);
@@ -506,7 +449,6 @@ export function AdminDashboard({
 
   // ---------- Centralized, abortable feed loader with friendly errors ----------
   const loadFeeds = useCallback(async () => {
-    // cancel any in-flight attempt
     feedsAbortRef.current?.abort?.();
     const ctrl = new AbortController();
     feedsAbortRef.current = ctrl;
@@ -515,7 +457,6 @@ export function AdminDashboard({
     setFeedsLoading(true);
 
     try {
-      // Try parallel fetch
       const effPid = pidForBackend(projectId);
       const [list, backendDefault] = await Promise.all([
         listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
@@ -553,7 +494,7 @@ export function AdminDashboard({
         }
         setPostNames(readPostNames(projectId, chosen.feed_id) || {});
 
-        // Fetch and apply per-feed randomize-time flag
+        // ✅ Use utils wrapper for per-feed randomize-time flag
         try {
           const enabled = await fetchFeedRandomizeTime({ projectId, feedId: chosen.feed_id });
           if (!ctrl.signal.aborted) {
@@ -572,7 +513,11 @@ export function AdminDashboard({
       // Best-effort policy fetch
       try {
         const policy = await getWipePolicyFromBackend({ signal: ctrl.signal });
-        if (!ctrl.signal.aborted && policy !== null) setWipeOnChange(!!policy);
+        const wipeVal =
+          typeof policy === "object" && policy !== null
+            ? !!policy.wipe_on_change
+            : !!policy;
+        if (!ctrl.signal.aborted) setWipeOnChange(wipeVal);
       } catch {}
     } catch (e) {
       const isAbort = e?.name === "AbortError";
@@ -591,10 +536,7 @@ export function AdminDashboard({
 
   useEffect(() => {
     if (!projectId) return;
-
-    // clear per-project feed stats cache when switching projects
     setFeedStats({});
-
     loadFeeds();
     return () => { feedsAbortRef.current?.abort?.(); };
   }, [projectId, loadFeeds]);
@@ -623,7 +565,6 @@ export function AdminDashboard({
     setFeedId(id);
     setFeedName(row?.name || id);
 
-    // Load posts
     const cached = row ? getCachedPosts(projectId, id, row.checksum) : null;
     if (cached) {
       setPosts(cached);
@@ -635,10 +576,9 @@ export function AdminDashboard({
       if (row) setCachedPosts(projectId, id, row.checksum, arr);
     }
 
-    // Load names
     setPostNames(readPostNames(projectId, id) || {});
 
-    // Fetch and apply per-feed randomize-time flag
+    // ✅ Use utils wrapper here as well
     try {
       const enabled = await fetchFeedRandomizeTime({ projectId, feedId: id });
       setRandomizeTime(enabled);
@@ -656,7 +596,6 @@ export function AdminDashboard({
     setProjects(prev => [{ project_id: id, name }, ...prev]);
     setProjectId(id);
     setProjectName(name);
-    // ensure fresh feeds context
     setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
     loadFeeds();
   };
@@ -719,7 +658,6 @@ export function AdminDashboard({
     setIsNew(false);
     setEditing({
       ...p,
-      // prefer previously-saved backend name if postName not set
       postName: p.postName ?? p.name ?? "",
     });
   };
@@ -727,7 +665,6 @@ export function AdminDashboard({
   const removePost = (id) => {
     if (!confirm("Delete this post?")) return;
     setPosts((arr) => arr.filter((p) => p.id !== id));
-    // Remove its name from the mapping
     const next = { ...(postNames || {}) };
     if (next[id]) {
       delete next[id];
@@ -743,13 +680,11 @@ export function AdminDashboard({
     setPosts((arr) => {
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
-      if ("showTime" in clean) delete clean.showTime; // normalize legacy posts
-      if ("_origTime" in clean) delete clean._origTime; // do not persist helper field
+      if ("showTime" in clean) delete clean.showTime;
+      if ("_origTime" in clean) delete clean._origTime;
 
-      // persist friendly name on the post object itself
       if (clean.postName && !clean.name) clean.name = clean.postName;
 
-      // apply avatar rules
       if (clean.avatarMode === "random" && !clean.avatarUrl) {
         clean.avatarUrl = randomAvatarByKind(clean.avatarRandomKind || "any", clean.id || clean.author || "seed", clean.author || "", randomAvatarUrl);
       }
@@ -760,7 +695,6 @@ export function AdminDashboard({
         clean.avatarUrl = genNeutralAvatarDataUrl(64);
       }
 
-      // media exclusivity
       if (clean.videoMode !== "none") {
         clean.imageMode = "none";
         clean.image = null;
@@ -772,10 +706,8 @@ export function AdminDashboard({
       if (clean.imageMode === "none") clean.image = null;
       if (clean.imageMode === "random" && !clean.image) clean.image = randomSVG("Image");
 
-      // update list
       const nextPosts = idx === -1 ? [...arr, clean] : arr.map((p, i) => (i === idx ? clean : p));
 
-      // ⬇️ persist post name (for CSV header mapping)
       const name = (clean.postName || "").trim();
       const nextNames = { ...(postNames || {}) };
       if (name) nextNames[clean.id] = name;
@@ -793,7 +725,7 @@ export function AdminDashboard({
     if (!confirm("Delete ALL posts from this feed? This cannot be undone.")) return;
     setPosts([]);
     setPostNames({});
-    writePostNames(projectId, feedId, {}); // clear name map too
+    writePostNames(projectId, feedId, {});
   };
 
   return (
@@ -816,7 +748,6 @@ export function AdminDashboard({
         </div>
       )}
 
-      {/* Loading & error overlays for feeds */}
       {showOverlay && (
         <LoadingOverlay
           title={isSaving ? "Saving feed…" : "Loading dashboard…"}
@@ -867,11 +798,10 @@ export function AdminDashboard({
                     onChange={async (e) => {
                       const pid = e.target.value;
                       const row = projects.find(p => p.project_id === pid);
-                      setBooting(true); // optional: treat project switches like a fresh boot
+                      setBooting(true);
                       setProjectId(pid);
                       setProjectName(row?.name || pid);
                       persistProjectId(pid, { persist: true, updateUrl: true });
-                      // reset feed context so we don’t display stale data
                       setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
                     }}
                     title="Choose project"
@@ -890,7 +820,7 @@ export function AdminDashboard({
                   <button
                     className="btn ghost"
                     onClick={async () => {
-                      const ok = await setDefaultProjectOnBackend?.(projectId);
+                      const ok = await setDefaultProjectOnBackend?.({ projectId });
                       if (ok) setDefaultProjectId(projectId);
                     }}
                     disabled={!projectId || projectId === defaultProjectId}
@@ -905,7 +835,7 @@ export function AdminDashboard({
                     onClick={async () => {
                       if (!projectId) return;
                       if (!confirm(`Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`)) return;
-                      const ok = await deleteProjectOnBackend?.(projectId);
+                      const ok = await deleteProjectOnBackend?.({ projectId });
                       if (!ok) { alert("Failed to delete project."); return; }
                       const next = projects.filter(p => p.project_id !== projectId);
                       setProjects(next);
@@ -922,7 +852,7 @@ export function AdminDashboard({
             }
           />
 
-          {/* Feeds (no collapse by design) */}
+          {/* Feeds */}
           <Section
             title={`Feeds (${feeds.length || 0})`}
             subtitle="Keep the UI minimal: choose the editing feed via dropdown. By default, only the Default and Loaded feeds are shown; expand to see all."
@@ -957,11 +887,7 @@ export function AdminDashboard({
                   <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
                 </RoleGate>
 
-                <button
-                  className="btn"
-                  onClick={() => loadFeeds()}
-                  title="Reload feed registry from backend"
-                >
+                <button className="btn" onClick={() => loadFeeds()} title="Reload feed registry from backend">
                   Refresh Feeds
                 </button>
 
@@ -1009,9 +935,7 @@ export function AdminDashboard({
                 <tbody>
                   {(() => {
                     const importantIds = Array.from(new Set([defaultFeedId, feedId].filter(Boolean)));
-                    const visible = showAllFeeds
-                      ? feeds
-                      : feeds.filter(f => importantIds.includes(f.feed_id));
+                    const visible = showAllFeeds ? feeds : feeds.filter(f => importantIds.includes(f.feed_id));
 
                     if (!visible.length) {
                       return (
@@ -1069,7 +993,7 @@ export function AdminDashboard({
                                   className="btn"
                                   title="Make this the backend default feed"
                                   onClick={async () => {
-                                    const ok = await setDefaultFeedOnBackend(f.feed_id);
+                                    const ok = await setDefaultFeedOnBackend({ feedId: f.feed_id, projectId: pidForBackend(projectId) });
                                     if (ok) setDefaultFeedId(f.feed_id);
                                   }}
                                   disabled={isDefault}
@@ -1143,10 +1067,9 @@ export function AdminDashboard({
                                     return;
                                   }
 
-                                  // ✅ Use query params (no hash)
                                   const url =
                                     typeof buildFeedShareUrl === "function"
-                                      ? buildFeedShareUrl({ ...f, project_id: projectId })
+                                      ? buildFeedShareUrl({ projectId: projectId || "global", feedId: f.feed_id })
                                       : `${window.location.origin}/?project=${encodeURIComponent(
                                           projectId || "global"
                                         )}&feed=${encodeURIComponent(f.feed_id)}`;
@@ -1165,7 +1088,7 @@ export function AdminDashboard({
                                   onClick={async () => {
                                     const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
                                     if (!okGo) return;
-                                    const ok = await deleteFeedOnBackend(f.feed_id);
+                                    const ok = await deleteFeedOnBackend({ feedId: f.feed_id, projectId: pidForBackend(projectId) });
                                     if (ok) {
                                       if (f.feed_id === feedId) {
                                         const next = feeds.filter(x => x.feed_id !== f.feed_id);
@@ -1234,7 +1157,7 @@ export function AdminDashboard({
                             `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
                           );
                           if (!okGo) return;
-                          const ok = await wipeParticipantsOnBackend(feedId);
+                          const ok = await wipeParticipantsOnBackend({ feedId, projectId: pidForBackend(projectId) });
                           if (ok) {
                             setParticipantsRefreshKey(k => k + 1);
                             alert("Participants wiped.");
@@ -1304,9 +1227,7 @@ export function AdminDashboard({
                         setPosts(arr);
                         const row = feeds.find(f => f.feed_id === feedId);
                         if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
-                        // keep the name map in sync with the current feed
                         setPostNames(readPostNames(projectId, feedId) || {});
-                        // Re-apply randomize-time if enabled
                         setPosts(prev => randomizeTime ? withRandomizedTimes(prev, { projectId, feedId })
                                                        : withRestoredTimes(prev));
                       }}
@@ -1326,8 +1247,7 @@ export function AdminDashboard({
                           ts: new Date().toISOString(),
                           posts: posts.map(p => ({
                             ...p,
-                            // ensure 'name' exists in the export (falls back to the local map)
-                            name: (p.name ?? (postNames?.[p.id]) ?? "").trim() || undefined,
+                            name: (postDisplayName(p, postNames) || "").trim() || undefined,
                           })),
                         };
                         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1357,7 +1277,6 @@ export function AdminDashboard({
                             if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
                             if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
                             setPosts(imported);
-                            // Re-apply flag
                             setPosts(prev => randomizeTime ? withRandomizedTimes(prev, { projectId, feedId })
                                                            : withRestoredTimes(prev));
                             alert("Imported. Remember to Save to publish back to the backend.");
@@ -1379,7 +1298,7 @@ export function AdminDashboard({
                       {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
                     </button>
 
-                    {/* FEED-SCOPED: Randomize time */}
+                    {/* FEED-SCOPED: Randomize time (via utils) */}
                     <ChipToggle
                       label={randomizeTimeSaving ? "Saving…" : "Randomize time (feed)"}
                       checked={!!randomizeTime}
@@ -1392,7 +1311,13 @@ export function AdminDashboard({
                         setPosts(curr => next ? withRandomizedTimes(curr, { projectId, feedId })
                                               : withRestoredTimes(curr));
                         try {
-                          await setFeedRandomizeTime({ projectId, feedId, enabled: next });
+                          const res = await setFeedRandomizeTime({ projectId, feedId, enabled: next });
+                          // keep UI in sync with the source of truth
+                          setRandomizeTime(!!res?.random_time);
+                          if (!!res?.random_time !== next) {
+                            setPosts(curr => res?.random_time ? withRandomizedTimes(curr, { projectId, feedId })
+                                                              : withRestoredTimes(curr));
+                          }
                         } catch (err) {
                           setRandomizeTime(prev);
                           setPosts(curr => prev ? withRandomizedTimes(curr, { projectId, feedId })
@@ -1467,7 +1392,7 @@ export function AdminDashboard({
                               </td>
 
                               <td style={{ padding: 8, fontFamily: "monospace" }}>
-                                {postNames[p.id] || <span className="subtle">—</span>}
+                                {postDisplayName(p, postNames) || <span className="subtle">—</span>}
                               </td>
                               <td style={{ padding: 8, fontWeight: 600 }}>
                                 {p.author || <span className="subtle">—</span>}
@@ -1492,9 +1417,9 @@ export function AdminDashboard({
                                   className="btn ghost"
                                   title="Rename this post for CSV columns"
                                   onClick={() => {
-                                    const cur = postNames[p.id] || "";
+                                    const cur = postDisplayName(p, postNames) || "";
                                     const next = prompt("Post name (used in CSV headers):", cur ?? "");
-                                    if (next === null) return; // cancelled
+                                    if (next === null) return;
                                     const name = (next || "").trim();
                                     const map = { ...(postNames || {}) };
                                     if (name) map[p.id] = name; else delete map[p.id];
@@ -1544,7 +1469,7 @@ export function AdminDashboard({
               >
                 <div
                   className="section-collapse-inner"
-                  style={{ display: usersCollapsed ? "none" : "block" }} // hide, don't unmount
+                  style={{ display: usersCollapsed ? "none" : "block" }}
                 >
                   <AdminUsersPanel embed onCountChange={setUsersCount} />
                 </div>
@@ -1573,7 +1498,6 @@ export function AdminDashboard({
             <div className="editor-form">
               <h4 className="section-title">Basics</h4>
 
-              {/* NEW: Post name for CSV mapping */}
               <label>Post name (for CSV)
                 <input
                   className="input"
@@ -1721,7 +1645,7 @@ export function AdminDashboard({
                           alert(String(err?.message || "Avatar upload failed."));
                           restoreTitle();
                         } finally {
-                          e.target.value = ""; // allow re-pick
+                          e.target.value = "";
                         }
                       }}
                     />
@@ -1730,7 +1654,6 @@ export function AdminDashboard({
 
               </fieldset>
 
-              {/* ----------------------- MEDIA (moved to its own file) ----------------------- */}
               <MediaFieldset
                 editing={editing}
                 setEditing={setEditing}
