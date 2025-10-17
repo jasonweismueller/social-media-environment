@@ -34,7 +34,11 @@ listProjectsFromBackend,
   GS_ENDPOINT, APP, getAdminToken ,
   readPostNames,
   writePostNames,
-  postDisplayName
+  postDisplayName,
+   getFeedFlagsFromBackend,
+  setFeedFlagsOnBackend,
+  resolveRandomTimesFlag,
+  setRandomTimesLocal,
 } from "./utils";
 
 import { PostCard } from "./components-ui-posts";
@@ -103,6 +107,8 @@ async function copyText(str) {
     prompt("Copy this URL:", str);
   }
 }
+
+
 
 /* ------------------------ Tiny admin stats fetcher --------------------------- */
 async function fetchParticipantsStats(projectId, feedId) {
@@ -213,6 +219,53 @@ export function AdminDashboard({
   const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
   const [postNames, setPostNames] = useState({});
+  // Per-feed flags (keyed by `${projectId}::${feedId}`)
+const [feedFlags, setFeedFlags] = useState({}); // { [key]: { random_time?: boolean, loading?: boolean, _loaded?: boolean } }
+
+const flagsKey = (pid, fid) => `${pid || "global"}::${fid || ""}`;
+
+const setFlagsLocal = (pid, fid, next) => {
+  const k = flagsKey(pid, fid);
+  setFeedFlags((m) => ({ ...m, [k]: { ...(m[k] || {}), ...next } }));
+};
+
+/** Lazy-load flags for a feed (caches in state) */
+const loadFlagsForFeed = async (pid, fid) => {
+  if (!fid) return;
+  const k = flagsKey(pid, fid);
+  if (feedFlags[k]?._loaded) return;
+  try {
+    setFlagsLocal(pid, fid, { loading: true });
+    const flags = await getFeedFlagsFromBackend(fid);
+    setFlagsLocal(pid, fid, { ...(flags || {}), loading: false, _loaded: true });
+  } catch {
+    setFlagsLocal(pid, fid, { loading: false, _loaded: true });
+  }
+};
+
+/** Toggle random_time for a feed (persists to backend + local cache) */
+const toggleRandomTimesForFeed = async (pid, fid, curVal) => {
+  if (!fid) return;
+  const next = !curVal;
+  // optimistic UI
+  setFlagsLocal(pid, fid, { random_time: next, loading: true });
+  try {
+    const res = await setFeedFlagsOnBackend(fid, { random_time: next });
+    if (!res?.ok) throw new Error(res?.err || "Update failed");
+    // also persist into local cache used by the public UI resolver
+    setRandomTimesLocal(next, fid);
+    setFlagsLocal(pid, fid, { random_time: next, loading: false, _loaded: true });
+    alert(`Random times ${next ? "enabled" : "disabled"} for "${fid}".`);
+  } catch (e) {
+    // revert on failure
+    setFlagsLocal(pid, fid, { random_time: curVal, loading: false });
+    alert(String(e?.message || e || "Failed to update flag."));
+  }
+};
+
+useEffect(() => {
+  if (feedId) loadFlagsForFeed(projectId, feedId);
+}, [projectId, feedId]);
 
   const [participantsCount, setParticipantsCount] = useState(null);
   // One-time "app boot" latch. We hide it only after the first full load finishes.
@@ -780,6 +833,7 @@ useEffect(() => {
            Default
          </button>
        </RoleGate>
+
        <RoleGate min="owner">
          <button
            className="btn ghost danger"
@@ -1257,6 +1311,24 @@ useEffect(() => {
 
                   <RoleGate min="editor">
                     <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
+                     {(() => {
+   const k = flagsKey(projectId, feedId);
+   const rec = feedFlags[k] || {};
+   // lazy-load once for current feed
+   if (feedId && !rec._loaded && !rec.loading) loadFlagsForFeed(projectId, feedId);
+   const checked = !!rec.random_time;
+   const label = rec.loading ? "Randomize times (updating…)" : "Randomize times";
+   return (
+     <ChipToggle
+       label={label}
+       checked={checked}
+       onChange={(nextVal) => {
+         if (rec.loading) return;           // ignore while mid-update
+         toggleRandomTimesForFeed(projectId, feedId, checked);
+       }}
+     />
+   );
+ })()}
                     <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
                       + Random Post
                     </button>
