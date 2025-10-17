@@ -13,11 +13,6 @@ import {
   ActionBtn, PostText, Modal, NamesPeek, neutralAvatarDataUrl, IconVolume, IconVolumeMute,
 } from "./components-ui-core";
 
-function randomHour1to23() {
-  const n = 1 + Math.floor(Math.random() * 23); // 1..23 inclusive
-  return `${n}h`;
-}
-
 /* --- In-view autoplay hook --- */
 function useInViewAutoplay(threshold = 0.6) {
   const wrapRef = React.useRef(null);
@@ -1460,34 +1455,12 @@ function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
 
   return null;
 }
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit, randomTimes }) {
+
+/* ------------------------------- Feed ------------------------------------- */
+export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
-
-  // Allow prop override; fallback to global flag for easy testing
-  const randomTimesEnabled = !!(randomTimes ?? (typeof window !== "undefined" && window.FEED_RANDOM_TIMES));
-
-  // Per-load random time map { [post.id]: "Nh" }
-  const [randTimes, setRandTimes] = useState({});
-
-  // Seed/extend when posts change or flag turns on; clear when flag turns off
-  useEffect(() => {
-    if (!randomTimesEnabled) {
-      setRandTimes({});
-      return;
-    }
-    setRandTimes(prev => {
-      const next = { ...prev };
-      for (const p of posts) {
-        if (!p) continue;
-        if (p.adType === "ad") continue;            // don't randomize ads
-        if (p.showTime === false) continue;         // respect explicit hide
-        if (!next[p.id]) next[p.id] = randomHour1to23();
-      }
-      return next;
-    });
-  }, [posts, randomTimesEnabled]);
 
   useEffect(() => {
     if (!posts?.length) return;
@@ -1507,17 +1480,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, randomTi
     return () => io.unobserve(el);
   }, [posts.length]);
 
-  // Slice + optionally override time for display only
-  const renderPosts = useMemo(() => {
-    const base = posts.slice(0, visibleCount);
-    if (!randomTimesEnabled) return base;
-    return base.map((p) => {
-      if (!p) return p;
-      if (p.adType === "ad" || p.showTime === false) return p; // keep original
-      const time = randTimes[p.id] || randomHour1to23();
-      return { ...p, time };
-    });
-  }, [posts, visibleCount, randomTimesEnabled, randTimes]);
+  const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
 
   return (
     <div className="page">
