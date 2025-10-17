@@ -606,7 +606,7 @@ export default function App() {
                     };
                     const eventsWithSubmit = [...events, submitEvent];
                     const feed_id = activeFeedId || null;
-                    const feed_checksum = computeFeedId(posts);
+                    const feed_checksum = computeFeedId(restoreOriginalTimes(posts));
                     const row = buildParticipantRow({
                       session_id: sessionIdRef.current,
                       participant_id: participantId,

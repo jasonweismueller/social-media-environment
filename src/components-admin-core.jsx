@@ -35,7 +35,7 @@ import {
   readPostNames,
   writePostNames,
   postDisplayName,
-  // ✅ new helpers (use these instead of local functions)
+  // backend helpers for the flag
   fetchFeedRandomizeTime,
   setFeedRandomizeTime,
 } from "./utils";
@@ -97,15 +97,6 @@ async function snapshotToS3({ posts, projectId, feedId, app = "fb" }) {
   }
 }
 
-async function copyText(str) {
-  try {
-    await navigator.clipboard.writeText(str);
-    alert("Link copied:\n\n" + str);
-  } catch {
-    prompt("Copy this URL:", str);
-  }
-}
-
 /* ------------------------ Tiny admin stats fetcher --------------------------- */
 async function fetchParticipantsStats(projectId, feedId) {
   try {
@@ -139,62 +130,6 @@ function msToMinSec(n) {
   return `${m}:${sec}`;
 }
 
-/* --------------- Deterministic “relative time” generator --------------- */
-function hashStr(s) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-function seededRandInt(seedStr, min, max) {
-  const h = hashStr(seedStr);
-  const r = (h % 100000) / 100000; // 0..1
-  return min + Math.floor(r * (max - min + 1));
-}
-function toRelString(minsAgo) {
-  if (minsAgo <= 0) return "Just now";
-  if (minsAgo < 60) return `${minsAgo}m`;
-  const hours = Math.floor(minsAgo / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "Yesterday";
-  return `${days}d`;
-}
-/** Make a _copy_ of posts with randomized time. Stores original in _origTime. */
-function withRandomizedTimes(posts, { projectId, feedId }) {
-  const scope = `${projectId || "global"}::${feedId || ""}`;
-  return (posts || []).map((p, idx) => {
-    const base = String(p?.id || idx);
-    const seed = `${scope}::${base}`;
-    const minutesAgo = seededRandInt(seed, 0, 72 * 60); // 0..72h
-    const rel = toRelString(minutesAgo);
-    return {
-      ...p,
-      _origTime: p._origTime ?? p.time ?? "",
-      time: rel,
-    };
-  });
-}
-/** Restore original times if present */
-function withRestoredTimes(posts) {
-  return (posts || []).map((p) => {
-    if (p && "_origTime" in p) {
-      const { _origTime, ...rest } = p;
-      return { ...rest, time: _origTime };
-    }
-    return p;
-  });
-}
-/** Strip helper before saving to backend */
-function sanitizePostsForSave(posts) {
-  return (posts || []).map(p => {
-    const { _origTime, ...rest } = p || {};
-    return rest;
-  });
-}
-
 /* ---------------------------- Posts local cache --------------------------- */
 function getCachedPosts(projectId, feedId, checksum) {
   try {
@@ -213,37 +148,6 @@ function setCachedPosts(projectId, feedId, checksum, posts) {
     localStorage.setItem(k, JSON.stringify(posts || []));
     localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum, t: Date.now() }));
   } catch {}
-}
-
-/* ------------------------------- UI Bits --------------------------------- */
-function Section({ title, subtitle, right = null, children }) {
-  return (
-    <section className="card" style={{ padding: "1rem" }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
-        <div>
-          <h3 style={{ margin: 0 }}>{title}</h3>
-          {subtitle && <div className="subtle" style={{ marginTop: 4 }}>{subtitle}</div>}
-        </div>
-        {!!right && <div style={{ display:"flex", gap:".5rem", flexWrap:"wrap" }}>{right}</div>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ChipToggle({ label, checked, onChange, disabled }) {
-  return (
-    <button
-      className={`btn ghost ${checked ? "active" : ""}`}
-      onClick={() => !disabled && onChange(!checked)}
-      aria-pressed={checked}
-      disabled={disabled}
-      style={{ borderRadius: 999, padding: ".35rem .7rem" }}
-    >
-      <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", marginRight:8, background: checked ? "var(--accent, #2563eb)" : "var(--line)" }} />
-      {label}
-    </button>
-  );
 }
 
 /* ----------------------------- Admin Dashboard ------------------------------ */
@@ -268,7 +172,6 @@ export function AdminDashboard({
   const [isSaving, setIsSaving] = useState(false);
   const [showAllFeeds, setShowAllFeeds] = useState(false);
   const [showAllPosts, setShowAllPosts] = useState(false);
-  const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
   const [postNames, setPostNames] = useState({});
 
@@ -292,7 +195,6 @@ export function AdminDashboard({
   const projectsAbortRef = useRef(null);
 
   // collapse + participants paging toggle
-  const [feedsCollapsed, setFeedsCollapsed] = useState(true); // (unused by design)
   const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
   const [postsCollapsed, setPostsCollapsed] = useState(true);
   const [usersCollapsed, setUsersCollapsed] = useState(true);
@@ -308,10 +210,8 @@ export function AdminDashboard({
   const [feedsLoading, setFeedsLoading] = useState(false);
   const [feedsError, setFeedsError] = useState("");
 
-  // ✅ needed for “(default)” labels & actions
+  // “(default)” labels & actions
   const [defaultFeedId, setDefaultFeedId] = useState(null);
-
-  // ✅ needed for abortable loading
   const feedsAbortRef = useRef(null);
 
   // One source of truth for the blocking overlay
@@ -367,8 +267,6 @@ export function AdminDashboard({
   useEffect(() => {
     if (feedId) loadStatsFor(feedId);
   }, [feedId, projectId]);
-
-  const curStats = feedStats[keyFor(projectId, feedId)];
 
   const keepAlive = async () => {
     try {
@@ -449,6 +347,8 @@ export function AdminDashboard({
 
   // ---------- Centralized, abortable feed loader with friendly errors ----------
   const loadFeeds = useCallback(async () => {
+    const pid = pidForBackend(projectId);
+
     feedsAbortRef.current?.abort?.();
     const ctrl = new AbortController();
     feedsAbortRef.current = ctrl;
@@ -457,10 +357,9 @@ export function AdminDashboard({
     setFeedsLoading(true);
 
     try {
-      const effPid = pidForBackend(projectId);
       const [list, backendDefault] = await Promise.all([
-        listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
-        getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
+        listFeedsFromBackend({ projectId: pid, signal: ctrl.signal }),
+        getDefaultFeedFromBackend({ projectId: pid, signal: ctrl.signal }),
       ]);
 
       if (ctrl.signal.aborted) return;
@@ -484,7 +383,7 @@ export function AdminDashboard({
         } else {
           const fresh = await loadPostsFromBackend(
             chosen.feed_id,
-            { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
+            { projectId: pid, force: true, signal: ctrl.signal }
           );
           if (ctrl.signal.aborted) return;
           const arr = Array.isArray(fresh) ? fresh : [];
@@ -494,13 +393,11 @@ export function AdminDashboard({
         }
         setPostNames(readPostNames(projectId, chosen.feed_id) || {});
 
-        // ✅ Use utils wrapper for per-feed randomize-time flag
+        // Read backend flag into local state ONLY (do NOT alter posts here).
         try {
           const enabled = await fetchFeedRandomizeTime({ projectId, feedId: chosen.feed_id });
           if (!ctrl.signal.aborted) {
             setRandomizeTime(enabled);
-            setPosts(prev => enabled ? withRandomizedTimes(prev, { projectId, feedId: chosen.feed_id })
-                                     : withRestoredTimes(prev));
           }
         } catch {}
       } else {
@@ -578,12 +475,10 @@ export function AdminDashboard({
 
     setPostNames(readPostNames(projectId, id) || {});
 
-    // ✅ Use utils wrapper here as well
+    // Only sync the UI toggle from backend; do not modify posts.
     try {
       const enabled = await fetchFeedRandomizeTime({ projectId, feedId: id });
       setRandomizeTime(enabled);
-      setPosts(prev => enabled ? withRandomizedTimes(prev, { projectId, feedId: id })
-                               : withRestoredTimes(prev));
     } catch {}
   };
 
@@ -681,7 +576,6 @@ export function AdminDashboard({
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
       if ("showTime" in clean) delete clean.showTime;
-      if ("_origTime" in clean) delete clean._origTime;
 
       if (clean.postName && !clean.name) clean.name = clean.postName;
 
@@ -777,18 +671,28 @@ export function AdminDashboard({
         }}
       >
 
-        <Section
-          title="Admin Dashboard"
-          subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
-          right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
-        />
+        {/* Header */}
+        <section className="card" style={{ padding: "1rem" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
+            <div>
+              <h3 style={{ margin: 0 }}>Admin Dashboard</h3>
+              <div className="subtle" style={{ marginTop: 4 }}>
+                {`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
+              </div>
+            </div>
+            <button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>
+          </div>
+        </section>
+
         <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
 
           {/* Projects */}
-          <Section
-            title={`Projects (${projects.length || 0})`}
-            subtitle="Choose the project first; feeds and participants are scoped to the selected project."
-            right={
+          <section className="card" style={{ padding:"1rem" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
+              <div>
+                <h3 style={{ margin:0 }}>{`Projects (${projects.length || 0})`}</h3>
+                <div className="subtle" style={{ marginTop: 4 }}>Choose the project first; feeds and participants are scoped to the selected project.</div>
+              </div>
               <>
                 <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
                   <span className="subtle">Project:</span>
@@ -849,14 +753,19 @@ export function AdminDashboard({
                   </button>
                 </RoleGate>
               </>
-            }
-          />
+            </div>
+          </section>
 
           {/* Feeds */}
-          <Section
-            title={`Feeds (${feeds.length || 0})`}
-            subtitle="Keep the UI minimal: choose the editing feed via dropdown. By default, only the Default and Loaded feeds are shown; expand to see all."
-            right={
+          <section className="card" style={{ padding:"1rem" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
+              <div>
+                <h3 style={{ margin:0 }}>{`Feeds (${feeds.length || 0})`}</h3>
+                <div className="subtle" style={{ marginTop: 4 }}>
+                  Keep the UI minimal: choose the editing feed via dropdown. Show default + loaded by default.
+                </div>
+              </div>
+
               <>
                 <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
                   <span className="subtle">Editing:</span>
@@ -877,7 +786,7 @@ export function AdminDashboard({
                   <button
                     className="btn ghost"
                     onClick={() => setShowAllFeeds(v => !v)}
-                    title={showAllFeeds ? "Hide full list and show only Default + Loaded" : "Show all feeds in the registry"}
+                    title={showAllFeeds ? "Hide full list" : "Show all feeds in the registry"}
                   >
                     {showAllFeeds ? "Hide full list" : "All feeds…"}
                   </button>
@@ -916,8 +825,8 @@ export function AdminDashboard({
                   </button>
                 </RoleGate>
               </>
-            }
-          >
+            </div>
+
             <div style={{ overflowX: "auto" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead>
@@ -950,7 +859,7 @@ export function AdminDashboard({
                     return visible.map((f) => {
                       const isDefault = f.feed_id === defaultFeedId;
                       const isLoaded = f.feed_id === feedId;
-                      const stats = feedStats[keyFor(projectId, f.feed_id)];
+                      const stats = (key => feedStats[key])(keyFor(projectId, f.feed_id));
 
                       return (
                         <tr
@@ -1020,7 +929,7 @@ export function AdminDashboard({
 
                                       // 🔒 Never persist randomized times
                                       const ok = await savePostsToBackend(
-                                        sanitizePostsForSave(withRestoredTimes(posts)),
+                                        posts, // posts contain editor-entered times only
                                         {
                                           projectId: pidForBackend(projectId),
                                           feedId: f.feed_id,
@@ -1127,21 +1036,23 @@ export function AdminDashboard({
                 </tbody>
               </table>
             </div>
-          </Section>
+          </section>
 
           {/* Participants */}
-          <Section
-            title={`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
-            subtitle={
-              <>
-                <span>Live snapshot for </span>
-                <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
-                <span className="subtle"> · </span>
-                <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
-                {defaultFeedId === feedId && <span className="subtle"> · default</span>}
-              </>
-            }
-            right={
+          <section className="card" style={{ padding:"1rem" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
+              <div>
+                <h3 style={{ margin:0 }}>
+                  {`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
+                </h3>
+                <div className="subtle" style={{ marginTop: 4 }}>
+                  Live snapshot for <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
+                  <span className="subtle"> · </span>
+                  <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
+                  {defaultFeedId === feedId && <span className="subtle"> · default</span>}
+                </div>
+              </div>
+
               <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
                 {!participantsCollapsed && (
                   <>
@@ -1192,8 +1103,8 @@ export function AdminDashboard({
                   </svg>
                 </button>
               </div>
-            }
-          >
+            </div>
+
             <div
               id="participants-body"
               className={`section-collapse ${participantsCollapsed ? "is-collapsed" : ""}`}
@@ -1211,16 +1122,18 @@ export function AdminDashboard({
                 />
               </div>
             </div>
-          </Section>
+          </section>
 
-          <Section
-            title={`Posts (${posts.length})`}
-            subtitle={
-              showAllPosts
-                ? "Compact list of all posts."
-                : `Compact list · showing first ${Math.min(5, posts.length)}`
-            }
-            right={
+          {/* Posts */}
+          <section className="card" style={{ padding:"1rem" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
+              <div>
+                <h3 style={{ margin:0 }}>{`Posts (${posts.length})`}</h3>
+                <div className="subtle" style={{ marginTop: 4 }}>
+                  {showAllPosts ? "Compact list of all posts." : `Compact list · showing first ${Math.min(5, posts.length)}`}
+                </div>
+              </div>
+
               <>
                 {!postsCollapsed && (
                   <>
@@ -1234,8 +1147,6 @@ export function AdminDashboard({
                         const row = feeds.find(f => f.feed_id === feedId);
                         if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
                         setPostNames(readPostNames(projectId, feedId) || {});
-                        setPosts(prev => randomizeTime ? withRandomizedTimes(prev, { projectId, feedId })
-                                                       : withRestoredTimes(prev));
                       }}
                       title="Reload posts for this feed from backend"
                     >
@@ -1283,8 +1194,6 @@ export function AdminDashboard({
                             if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
                             if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
                             setPosts(imported);
-                            setPosts(prev => randomizeTime ? withRandomizedTimes(prev, { projectId, feedId })
-                                                           : withRestoredTimes(prev));
                             alert("Imported. Remember to Save to publish back to the backend.");
                           } catch (err) {
                             console.error(err);
@@ -1304,36 +1213,28 @@ export function AdminDashboard({
                       {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
                     </button>
 
-                    {/* FEED-SCOPED: Randomize time (via utils) */}
+                    {/* FEED-SCOPED: Randomize-time FLAG (writes to backend only) */}
                     <ChipToggle
-                      label={randomizeTimeSaving ? "Saving…" : "Randomize time (feed)"}
+                      label={randomizeTimeSaving ? "Saving…" : "Randomize time (feed flag)"}
                       checked={!!randomizeTime}
                       disabled={randomizeTimeSaving || !feedId}
                       onChange={async (next) => {
                         if (!feedId) { alert("Pick a feed first."); return; }
                         const prev = !!randomizeTime;
-                        setRandomizeTime(next);
+                        setRandomizeTime(next); // optimistic
                         setRandomizeTimeSaving(true);
-                        setPosts(curr => next ? withRandomizedTimes(curr, { projectId, feedId })
-                                              : withRestoredTimes(curr));
                         try {
                           const res = await setFeedRandomizeTime({ projectId, feedId, enabled: next });
-                          // keep UI in sync with the source of truth
                           setRandomizeTime(!!res?.random_time);
-                          if (!!res?.random_time !== next) {
-                            setPosts(curr => res?.random_time ? withRandomizedTimes(curr, { projectId, feedId })
-                                                              : withRestoredTimes(curr));
-                          }
                         } catch (err) {
                           setRandomizeTime(prev);
-                          setPosts(curr => prev ? withRandomizedTimes(curr, { projectId, feedId })
-                                                : withRestoredTimes(curr));
                           alert(`Failed to update randomize-time: ${err?.message || "Unknown error"}`);
                         } finally {
                           setRandomizeTimeSaving(false);
                         }
                       }}
                     />
+
 
                     {/* Existing order randomization */}
                     <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
@@ -1361,8 +1262,8 @@ export function AdminDashboard({
                   </svg>
                 </button>
               </>
-            }
-          >
+            </div>
+
             <div
               id="posts-body"
               className={`section-collapse ${postsCollapsed ? "is-collapsed" : ""}`}
@@ -1446,7 +1347,7 @@ export function AdminDashboard({
                 </div>
               </div>
             </div>
-          </Section>
+          </section>
 
           {/* Users (owners only) */}
           <RoleGate min="owner">
