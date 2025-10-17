@@ -13,6 +13,38 @@ import {
   ActionBtn, PostText, Modal, NamesPeek, neutralAvatarDataUrl, IconVolume, IconVolumeMute,
 } from "./components-ui-core";
 
+/* ---------- helpers for randomised time (stable per post id) ------------- */
+function hashString(str = "") {
+  let h = 2166136261 >>> 0; // FNV-1a base
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function seededUnit(key) {
+  // simple, deterministic [0,1) from integer seed
+  const s = hashString(String(key));
+  // Mulberry32-ish
+  let t = (s + 0x6D2B79F5) | 0;
+  t = Math.imul(t ^ (t >>> 15), 1 | t);
+  t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+  const u = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  return u; // 0..1
+}
+function relLabelFromMinutes(mins) {
+  const m = Math.max(0, Math.floor(mins));
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  const w = Math.floor(d / 7);
+  return `${w}w`;
+}
+/* ------------------------------------------------------------------------- */
+
 /* --- In-view autoplay hook --- */
 function useInViewAutoplay(threshold = 0.6) {
   const wrapRef = React.useRef(null);
@@ -99,7 +131,7 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
       className="menu"
       role="menu"
       style={{
-        position: "fixed",             // fixed is simpler once we compute viewport coords
+        position: "fixed",
         zIndex: 20000,
         top: coords.top,
         left: coords.left,
@@ -117,32 +149,28 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
-  // right before the meta markup, derive once:
-const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
-const hasTime = shouldShowTime && !!post?.time;
-const isMobile = useIsMobile();  // ⟵ add this
+
+  // prefer randomised display time (from Feed) if present
+  const displayTime = post?._displayTime ?? post?.time ?? "";
+  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
+  const hasTime = shouldShowTime && !!displayTime;
+  const isMobile = useIsMobile();
 
   // FB-like video settings UI
   const [playbackRate, setPlaybackRate] = useState(1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef(null);
   const [volume, setVolume] = useState(0); // start muted visually & logically
-  // Volume popover state (hover-in open, hover-out delayed close with fade)
   const [volOpen, setVolOpen] = useState(false);
   const [volFading, setVolFading] = useState(false);
   const volHideTimer = useRef(null);
 
   // cleanup
   useEffect(() => () => clearTimeout(volHideTimer.current), []);
-
-  // when closing, briefly apply the fade class
   useEffect(() => {
-    if (volOpen) {
-      setVolFading(false);
-      return;
-    }
+    if (volOpen) { setVolFading(false); return; }
     setVolFading(true);
-    const t = setTimeout(() => setVolFading(false), 180); // match your CSS transition
+    const t = setTimeout(() => setVolFading(false), 180);
     return () => clearTimeout(t);
   }, [volOpen]);
 
@@ -794,49 +822,50 @@ const isMobile = useIsMobile();  // ⟵ add this
       className="card post-card"
     >
       <header className="card-head">
-  <div className="avatar">
-    {post.avatarUrl ? (
-      <img
-        src={post.avatarUrl}
-        alt=""
-        className="avatar-img"
-        loading="lazy"
-        decoding="async"
-        onLoad={() => click("avatar_load")}
-        onError={() => click("avatar_error")}
-      />
-    ) : null}
-  </div>
+        <div className="avatar">
+          {post.avatarUrl ? (
+            <img
+              src={post.avatarUrl}
+              alt=""
+              className="avatar-img"
+              loading="lazy"
+              decoding="async"
+              onLoad={() => click("avatar_load")}
+              onError={() => click("avatar_error")}
+            />
+          ) : null}
+        </div>
 
-  <div style={{ flex: 1, minWidth:0 }}>
-    <div className="name-row">
-      <div className="name">{post.author}</div>
-      {post.badge && (
-        <span className="badge">
-          <IconBadge />
-        </span>
-      )}
-    </div>
+        <div style={{ flex: 1, minWidth:0 }}>
+          <div className="name-row">
+            <div className="name">{post.author}</div>
+            {post.badge && (
+              <span className="badge">
+                <IconBadge />
+              </span>
+            )}
+          </div>
 
-   {/* Sponsored for ads; otherwise time + globe (both hidden if showTime is false) */}
-<div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-  {post.adType === "ad" ? (
-    <>
-      <span className="subtle">Sponsored</span>
-      <span className="sep" aria-hidden="true">·</span>
-      <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-    </>
-  ) : (
-    hasTime ? (
-      <>
-        <span className="subtle">{post.time}</span>
-        <span className="sep" aria-hidden="true">·</span>
-        <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-      </>
-    ) : null
-  )}
-</div>
-  </div>
+          {/* Sponsored for ads; otherwise time + globe (both hidden if showTime is false) */}
+          <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            {post.adType === "ad" ? (
+              <>
+                <span className="subtle">Sponsored</span>
+                <span className="sep" aria-hidden="true">·</span>
+                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+              </>
+            ) : (
+              hasTime ? (
+                <>
+                  <span className="subtle">{displayTime}</span>
+                  <span className="sep" aria-hidden="true">·</span>
+                  <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+                </>
+              ) : null
+            )}
+          </div>
+        </div>
+
 
   <div className="menu-wrap">
     <button
@@ -1457,7 +1486,15 @@ function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
 }
 
 /* ------------------------------- Feed ------------------------------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
+export function Feed({
+  posts,
+  registerViewRef,
+  disabled,
+  log,
+  onSubmit,
+  randomizeTime = false,
+  randomTimeRangeMins = [5, 4320], // 5 minutes … 3 days
+}) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
@@ -1481,6 +1518,22 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
   }, [posts.length]);
 
   const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
+
+  // Inject a stable randomised time label when enabled
+  const preparedPosts = useMemo(() => {
+    if (!randomizeTime) return renderPosts;
+    const [minM, maxM] = Array.isArray(randomTimeRangeMins) && randomTimeRangeMins.length === 2
+      ? randomTimeRangeMins
+      : [5, 4320];
+
+    return renderPosts.map((p) => {
+      if (p?.adType === "ad") return p; // ads show "Sponsored" instead of time
+      if (p?.showTime === false) return p; // time hidden
+      const u = seededUnit(p?.id ?? JSON.stringify(p));
+      const mins = Math.floor(minM + u * (Math.max(maxM, minM) - minM));
+      return { ...p, _displayTime: relLabelFromMinutes(mins) };
+    });
+  }, [renderPosts, randomizeTime, randomTimeRangeMins]);
 
   return (
     <div className="page">
