@@ -1017,12 +1017,18 @@ export function AdminDashboard({
                                     try {
                                       saveLocalBackup(projectId, feedId, "fb", posts);
                                       await snapshotToS3({ posts, projectId, feedId, app: "fb" });
-                                      const ok = await savePostsToBackend(sanitizePostsForSave(posts), {
-                                        projectId: pidForBackend(projectId),
-                                        feedId: f.feed_id,
-                                        name: f.name || f.feed_id,
-                                        app: "fb",
-                                      });
+
+                                      // 🔒 Never persist randomized times
+                                      const ok = await savePostsToBackend(
+                                        sanitizePostsForSave(withRestoredTimes(posts)),
+                                        {
+                                          projectId: pidForBackend(projectId),
+                                          feedId: f.feed_id,
+                                          name: f.name || f.feed_id,
+                                          app: "fb",
+                                        }
+                                      );
+
                                       if (ok) {
                                         const list = await listFeedsFromBackend({ projectId: pidForBackend(projectId) });
                                         const nextFeeds = Array.isArray(list) ? list : [];
