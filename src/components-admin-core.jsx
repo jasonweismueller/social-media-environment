@@ -24,12 +24,12 @@ import {
   getAdminSecondsLeft,
   touchAdminSession,
   buildFeedShareUrl,
-listProjectsFromBackend,
-   getDefaultProjectFromBackend,
-   setDefaultProjectOnBackend,
-   createProjectOnBackend,
-   deleteProjectOnBackend,
-   setProjectId as persistProjectId,
+  listProjectsFromBackend,
+  getDefaultProjectFromBackend,
+  setDefaultProjectOnBackend,
+  createProjectOnBackend,
+  deleteProjectOnBackend,
+  setProjectId as persistProjectId,
   getProjectId,
   GS_ENDPOINT, APP, getAdminToken ,
   readPostNames,
@@ -82,7 +82,7 @@ async function snapshotToS3({ posts, projectId, feedId, app = "fb" }) {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `${projectId || "global"}-${feedId}-${ts}.json`;
     const { cdnUrl } = await uploadJsonToS3ViaSigner({
-            data: { app, projectId: projectId || "global", feedId, ts: new Date().toISOString(), posts },
+      data: { app, projectId: projectId || "global", feedId, ts: new Date().toISOString(), posts },
       projectId,
       feedId,
       prefix: `backups/${app}/${projectId || "global"}/${feedId}`,
@@ -216,23 +216,23 @@ export function AdminDashboard({
 
   const [participantsCount, setParticipantsCount] = useState(null);
   // One-time "app boot" latch. We hide it only after the first full load finishes.
-const [booting, setBooting] = useState(true);
+  const [booting, setBooting] = useState(true);
 
-   // --- projects
- const [projects, setProjects] = useState([]);
+  // --- projects
+  const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState(() => {
-   try {
-     const sp = new URLSearchParams(window.location.search);
-     return sp.get("project") || sp.get("project_id") || getProjectId?.() || "global";
-   } catch {
-     return getProjectId?.() || "global";
-   }
- });
- const [projectName, setProjectName] = useState("");
- const [projectsLoading, setProjectsLoading] = useState(true);
- const [projectsError, setProjectsError] = useState("");
- const [defaultProjectId, setDefaultProjectId] = useState(null);
- const projectsAbortRef = useRef(null);
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      return sp.get("project") || sp.get("project_id") || getProjectId?.() || "global";
+    } catch {
+      return getProjectId?.() || "global";
+    }
+  });
+  const [projectName, setProjectName] = useState("");
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState("");
+  const [defaultProjectId, setDefaultProjectId] = useState(null);
+  const projectsAbortRef = useRef(null);
 
   // collapse + participants paging toggle
   const [feedsCollapsed, setFeedsCollapsed] = useState(true); // (unused by design)
@@ -243,82 +243,82 @@ const [booting, setBooting] = useState(true);
 
   // --- wipe-on-change global policy
   // --- wipe-on-change global policy
-const [wipeOnChange, setWipeOnChange] = useState(null);
-const [updatingWipe, setUpdatingWipe] = useState(false);
+  const [wipeOnChange, setWipeOnChange] = useState(null);
+  const [updatingWipe, setUpdatingWipe] = useState(false);
 
-const [feeds, setFeeds] = useState([]);
-const [feedId, setFeedId] = useState("");
-const [feedName, setFeedName] = useState("");
-const [feedsLoading, setFeedsLoading] = useState(false);
-const [feedsError, setFeedsError] = useState("");
+  const [feeds, setFeeds] = useState([]);
+  const [feedId, setFeedId] = useState("");
+  const [feedName, setFeedName] = useState("");
+  const [feedsLoading, setFeedsLoading] = useState(false);
+  const [feedsError, setFeedsError] = useState("");
 
 
 
-// ✅ needed for “(default)” labels & actions
-const [defaultFeedId, setDefaultFeedId] = useState(null);
+  // ✅ needed for “(default)” labels & actions
+  const [defaultFeedId, setDefaultFeedId] = useState(null);
 
-// ✅ needed for abortable loading
-const feedsAbortRef = useRef(null);
+  // ✅ needed for abortable loading
+  const feedsAbortRef = useRef(null);
 
-// One source of truth for the blocking overlay
-const showOverlay =
-  isSaving ||
-  (booting && !projectsError && !feedsError) ||
-  (!booting && feedsLoading && !feedsError);
+  // One source of truth for the blocking overlay
+  const showOverlay =
+    isSaving ||
+    (booting && !projectsError && !feedsError) ||
+    (!booting && feedsLoading && !feedsError);
 
-// If you still want to blur the app behind the overlay, tie it to the same flag.
-// (Or make this just `isSaving` if you only want blur while saving.)
-const showBlur = showOverlay;
+  // If you still want to blur the app behind the overlay, tie it to the same flag.
+  // (Or make this just `isSaving` if you only want blur while saving.)
+  const showBlur = showOverlay;
 
   const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
- const loadStatsFor = async (id) => {
-   if (!id) return;
-   const k = keyFor(projectId, id);
-   if (feedStats[k]) return; // already have stats for *this project + feed*
-   const s = await fetchParticipantsStats(projectId, id);
-   setFeedStats((m) => ({
-     ...m,
-     [k]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null }
-   }));
- };
-
- useEffect(() => {
-  const syncFromUrl = () => {
-    try {
-      const sp = new URLSearchParams(window.location.search);
-      const pid = sp.get("project") || sp.get("project_id");
-      if (pid && pid !== projectId) setProjectId(pid);
-    } catch {}
+  const loadStatsFor = async (id) => {
+    if (!id) return;
+    const k = keyFor(projectId, id);
+    if (feedStats[k]) return; // already have stats for *this project + feed*
+    const s = await fetchParticipantsStats(projectId, id);
+    setFeedStats((m) => ({
+      ...m,
+      [k]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null }
+    }));
   };
-  window.addEventListener("popstate", syncFromUrl);
-  window.addEventListener("hashchange", syncFromUrl);
-  return () => {
-    window.removeEventListener("popstate", syncFromUrl);
-    window.removeEventListener("hashchange", syncFromUrl);
-  };
-}, [projectId]);
 
   useEffect(() => {
-   if (!projectId) return;
-   // Persist for other modules/refreshes, but don’t touch the URL here
-   persistProjectId(projectId, { persist: true, updateUrl: false });
- }, [projectId]);
+    const syncFromUrl = () => {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const pid = sp.get("project") || sp.get("project_id");
+        if (pid && pid !== projectId) setProjectId(pid);
+      } catch {}
+    };
+    window.addEventListener("popstate", syncFromUrl);
+    window.addEventListener("hashchange", syncFromUrl);
+    return () => {
+      window.removeEventListener("popstate", syncFromUrl);
+      window.removeEventListener("hashchange", syncFromUrl);
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    // Persist for other modules/refreshes, but don’t touch the URL here
+    persistProjectId(projectId, { persist: true, updateUrl: false });
+  }, [projectId]);
   
 
   // counts
   const [usersCount, setUsersCount] = useState(null);
 
   useEffect(() => {
-  // Hide the initial, one-and-done boot overlay once BOTH loaders are idle
-  if (!projectsLoading && !feedsLoading) {
-    setBooting(false);
-  }
-}, [projectsLoading, feedsLoading]);
+    // Hide the initial, one-and-done boot overlay once BOTH loaders are idle
+    if (!projectsLoading && !feedsLoading) {
+      setBooting(false);
+    }
+  }, [projectsLoading, feedsLoading]);
 
   // always fetch stats for the currently selected feed (so the title has a number)
-   useEffect(() => {
-   if (feedId) loadStatsFor(feedId);
- }, [feedId, projectId]); // <- include projectId
+  useEffect(() => {
+    if (feedId) loadStatsFor(feedId);
+  }, [feedId, projectId]); // <- include projectId
 
   // handy local for the current feed's stats
   const curStats = feedStats[keyFor(projectId, feedId)];
@@ -359,48 +359,48 @@ const showBlur = showOverlay;
 
   
   const loadProjects = useCallback(async () => {
-   projectsAbortRef.current?.abort?.();
-   const ctrl = new AbortController();
-   projectsAbortRef.current = ctrl;
-   setProjectsError("");
-   setProjectsLoading(true);
-   try {
-     const [list, backendDefault] = await Promise.all([
-       listProjectsFromBackend({ signal: ctrl.signal }).catch(() => [{ project_id: "global", name: "Global" }]),
-       getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
-     ]);
-     if (ctrl.signal.aborted) return;
+    projectsAbortRef.current?.abort?.();
+    const ctrl = new AbortController();
+    projectsAbortRef.current = ctrl;
+    setProjectsError("");
+    setProjectsLoading(true);
+    try {
+      const [list, backendDefault] = await Promise.all([
+        listProjectsFromBackend({ signal: ctrl.signal }).catch(() => [{ project_id: "global", name: "Global" }]),
+        getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
+      ]);
+      if (ctrl.signal.aborted) return;
       const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
- setProjects(projList);
- setDefaultProjectId(backendDefault || null);
- 
- // read from URL first (hard-refresh friendly), then current state/storage, then backend default, then first
- let fromUrl = "";
- try {
-   const sp = new URLSearchParams(window.location.search);
-   fromUrl = sp.get("project") || sp.get("project_id") || "";
- } catch {}
- const desired =
-   fromUrl ||
-   projectId ||
-   getProjectId?.() ||
-   backendDefault ||
-   projList[0]?.project_id ||
-   "global";
- 
- const chosen = projList.find(p => p.project_id === desired) || projList[0];
- const chosenId = chosen?.project_id || "global";
- setProjectId(chosenId);
- persistProjectId(chosenId, { persist: true, updateUrl: false });
- setProjectName(chosen?.name || chosenId || "Global");
-   } catch (e) {
-     const isAbort = e?.name === "AbortError";
-     setProjectsError(isAbort ? "Project loading was interrupted. You can try again." : "Failed to load projects from the backend. Please try again.");
-   } finally {
-     if (projectsAbortRef.current === ctrl) projectsAbortRef.current = null;
-     setProjectsLoading(false);
-   }
- }, [projectId]);
+      setProjects(projList);
+      setDefaultProjectId(backendDefault || null);
+      
+      // read from URL first (hard-refresh friendly), then current state/storage, then backend default, then first
+      let fromUrl = "";
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        fromUrl = sp.get("project") || sp.get("project_id") || "";
+      } catch {}
+      const desired =
+        fromUrl ||
+        projectId ||
+        getProjectId?.() ||
+        backendDefault ||
+        projList[0]?.project_id ||
+        "global";
+      
+      const chosen = projList.find(p => p.project_id === desired) || projList[0];
+      const chosenId = chosen?.project_id || "global";
+      setProjectId(chosenId);
+      persistProjectId(chosenId, { persist: true, updateUrl: false });
+      setProjectName(chosen?.name || chosenId || "Global");
+    } catch (e) {
+      const isAbort = e?.name === "AbortError";
+      setProjectsError(isAbort ? "Project loading was interrupted. You can try again." : "Failed to load projects from the backend. Please try again.");
+    } finally {
+      if (projectsAbortRef.current === ctrl) projectsAbortRef.current = null;
+      setProjectsLoading(false);
+    }
+  }, [projectId]);
   
   
   // ---------- Centralized, abortable feed loader with friendly errors ----------
@@ -416,10 +416,10 @@ const showBlur = showOverlay;
     try {
       // Try parallel fetch
       const effPid = pidForBackend(projectId);
- const [list, backendDefault] = await Promise.all([
-   listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
-   getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
- ]);
+      const [list, backendDefault] = await Promise.all([
+        listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
+        getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
+      ]);
 
       if (ctrl.signal.aborted) return;
 
@@ -440,17 +440,17 @@ const showBlur = showOverlay;
         if (cached) {
           setPosts(cached);
         } else {
-           const fresh = await loadPostsFromBackend(
-   chosen.feed_id,
-   { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
-);
+          const fresh = await loadPostsFromBackend(
+            chosen.feed_id,
+            { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
+          );
           if (ctrl.signal.aborted) return;
           const arr = Array.isArray(fresh) ? fresh : [];
           arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
           setPosts(arr);
           setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
         }
-      setPostNames(readPostNames(projectId, chosen.feed_id) || {});
+        setPostNames(readPostNames(projectId, chosen.feed_id) || {});
       } else {
         setFeedId("");
         setFeedName("");
@@ -475,20 +475,20 @@ const showBlur = showOverlay;
 
   // Initial load
 
- useEffect(() => {
-   loadProjects();
-   return () => { projectsAbortRef.current?.abort?.(); };
- }, [loadProjects]);
+  useEffect(() => {
+    loadProjects();
+    return () => { projectsAbortRef.current?.abort?.(); };
+  }, [loadProjects]);
 
-useEffect(() => {
-  if (!projectId) return;
+  useEffect(() => {
+    if (!projectId) return;
 
-  // clear per-project feed stats cache when switching projects
-  setFeedStats({});
+    // clear per-project feed stats cache when switching projects
+    setFeedStats({});
 
-  loadFeeds();
-  return () => { feedsAbortRef.current?.abort?.(); };
-}, [projectId, loadFeeds]);
+    loadFeeds();
+    return () => { feedsAbortRef.current?.abort?.(); };
+  }, [projectId, loadFeeds]);
 
   useEffect(() => {
     if (!isSaving) return;
@@ -528,18 +528,18 @@ useEffect(() => {
   };
 
   const createNewProject = async () => {
-   const id = prompt("New project ID (letters/numbers/underscores):", `proj_${(projects.length || 0) + 1}`);
-   if (!id) return;
-   const name = prompt("Optional project name:", id) || id;
-   const ok = await (createProjectOnBackend?.({ projectId: id, name }).catch(()=>true));
-   if (!ok) { alert("Failed to create project."); return; }
-   setProjects(prev => [{ project_id: id, name }, ...prev]);
-   setProjectId(id);
-   setProjectName(name);
-   // ensure fresh feeds context
-   setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
-   loadFeeds();
- };
+    const id = prompt("New project ID (letters/numbers/underscores):", `proj_${(projects.length || 0) + 1}`);
+    if (!id) return;
+    const name = prompt("Optional project name:", id) || id;
+    const ok = await (createProjectOnBackend?.({ projectId: id, name }).catch(()=>true));
+    if (!ok) { alert("Failed to create project."); return; }
+    setProjects(prev => [{ project_id: id, name }, ...prev]);
+    setProjectId(id);
+    setProjectName(name);
+    // ensure fresh feeds context
+    setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
+    loadFeeds();
+  };
 
   const createNewFeed = () => {
     const id = prompt("New feed ID (letters/numbers/underscores):", `feed_${(feeds.length || 0) + 1}`);
@@ -595,14 +595,14 @@ useEffect(() => {
       adButtonText: "",
     });
   };
-    const openEdit = (p) => {
-   setIsNew(false);
-   setEditing({
-     ...p,
-     // prefer previously-saved backend name if postName not set
-     postName: p.postName ?? p.name ?? "",
-   });
-};
+  const openEdit = (p) => {
+    setIsNew(false);
+    setEditing({
+      ...p,
+      // prefer previously-saved backend name if postName not set
+      postName: p.postName ?? p.name ?? "",
+    });
+  };
 
   const removePost = (id) => {
     if (!confirm("Delete this post?")) return;
@@ -626,8 +626,8 @@ useEffect(() => {
       if ("showTime" in clean) delete clean.showTime; // normalize legacy posts
 
   
-    // persist friendly name on the post object itself
-     if (clean.postName && !clean.name) clean.name = clean.postName;
+      // persist friendly name on the post object itself
+      if (clean.postName && !clean.name) clean.name = clean.postName;
 
       // apply avatar rules
       if (clean.avatarMode === "random" && !clean.avatarUrl) {
@@ -697,13 +697,13 @@ useEffect(() => {
       )}
 
       {/* Loading & error overlays for feeds */}
-       {showOverlay && (
-   <LoadingOverlay
-     title={isSaving ? "Saving feed…" : "Loading dashboard…"}
-     subtitle={isSaving ? "Creating snapshot & publishing your changes"
-                        : "Fetching projects, feeds and posts from backend"}
-   />
- )}
+      {showOverlay && (
+        <LoadingOverlay
+          title={isSaving ? "Saving feed…" : "Loading dashboard…"}
+          subtitle={isSaving ? "Creating snapshot & publishing your changes"
+                            : "Fetching projects, feeds and posts from backend"}
+        />
+      )}
       {!feedsLoading && !!feedsError && (
         <div aria-live="assertive" className="admin-expired-backdrop">
           <div className="admin-expired-dialog">
@@ -717,697 +717,697 @@ useEffect(() => {
         </div>
       )}
 
-<div
-  style={{
-    filter: showBlur ? "blur(6px)" : "none",
-    transition: "filter .2s ease",
-    pointerEvents: showBlur ? "none" : "auto",
-    userSelect: showBlur ? "none" : "auto",
-  }}
->
+      <div
+        style={{
+          filter: showBlur ? "blur(6px)" : "none",
+          transition: "filter .2s ease",
+          pointerEvents: showBlur ? "none" : "auto",
+          userSelect: showBlur ? "none" : "auto",
+        }}
+      >
 
-      <Section
-        title="Admin Dashboard"
-        subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
-        right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
-      />
-      <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
-
-
- {/* Projects */}
- <Section
-   title={`Projects (${projects.length || 0})`}
-   subtitle="Choose the project first; feeds and participants are scoped to the selected project."
-   right={
-     <>
-       <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
-         <span className="subtle">Project:</span>
-         <select
-           className="select"
-           value={projectId || "global"}
-           onChange={async (e) => {
-             const pid = e.target.value;
-             const row = projects.find(p => p.project_id === pid);
-             setBooting(true); // optional: treat project switches like a fresh boot
-             setProjectId(pid);
-             setProjectName(row?.name || pid);
-             persistProjectId(pid, { persist: true, updateUrl: true });
-             // reset feed context so we don’t display stale data
-             setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
-           }}
-           title="Choose project"
-           style={{ minWidth: 220 }}
-         >
-           {projects.map((p) => (
-             <option key={p.project_id} value={p.project_id}>
-               {(p.name || p.project_id)}{p.project_id === defaultProjectId ? " (default)" : ""}
-             </option>
-           ))}
-         </select>
-         <button className="btn" onClick={() => loadProjects()} title="Reload project list">Refresh Projects</button>
-       </div>
-       <RoleGate min="editor">
-         <button className="btn ghost" onClick={createNewProject}>+ New project</button>
-         <button
-           className="btn ghost"
-           onClick={async () => {
-             const ok = await setDefaultProjectOnBackend?.(projectId);
-             if (ok) setDefaultProjectId(projectId);
-           }}
-           disabled={!projectId || projectId === defaultProjectId}
-           title="Make this the default project"
-         >
-           Default
-         </button>
-       </RoleGate>
-       <RoleGate min="owner">
-         <button
-           className="btn ghost danger"
-           onClick={async () => {
-             if (!projectId) return;
-             if (!confirm(`Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`)) return;
-             const ok = await deleteProjectOnBackend?.(projectId);
-             if (!ok) { alert("Failed to delete project."); return; }
-             const next = projects.filter(p => p.project_id !== projectId);
-             setProjects(next);
-             const fallback = next[0] || { project_id: "global", name: "Global" };
-             setProjectId(fallback.project_id);
-             setProjectName(fallback.name || fallback.project_id);
-             persistProjectId(fallback.project_id, { persist: true, updateUrl: true });
-           }}
-         >
-           Delete
-         </button>
-       </RoleGate>
-     </>
-   }
- />
-
-
-        {/* Feeds (no collapse by design) */}
         <Section
-          title={`Feeds (${feeds.length || 0})`}
-          subtitle="Keep the UI minimal: choose the editing feed via dropdown. By default, only the Default and Loaded feeds are shown; expand to see all."
-          right={
-            <>
-              <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
-                <span className="subtle">Editing:</span>
-                <select
-                  className="select"
-                  value={feedId || ""}
-                  onChange={(e) => selectFeed(e.target.value)}
-                  title="Choose which feed to load into the editor"
-                  style={{ minWidth: 220 }}
-                >
-                  {feeds.map((f) => (
-                    <option key={f.feed_id} value={f.feed_id}>
-                      {(f.name || f.feed_id)}{f.feed_id === defaultFeedId ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
+          title="Admin Dashboard"
+          subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
+          right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
+        />
+        <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
+
+
+          {/* Projects */}
+          <Section
+            title={`Projects (${projects.length || 0})`}
+            subtitle="Choose the project first; feeds and participants are scoped to the selected project."
+            right={
+              <>
+                <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+                  <span className="subtle">Project:</span>
+                  <select
+                    className="select"
+                    value={projectId || "global"}
+                    onChange={async (e) => {
+                      const pid = e.target.value;
+                      const row = projects.find(p => p.project_id === pid);
+                      setBooting(true); // optional: treat project switches like a fresh boot
+                      setProjectId(pid);
+                      setProjectName(row?.name || pid);
+                      persistProjectId(pid, { persist: true, updateUrl: true });
+                      // reset feed context so we don’t display stale data
+                      setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
+                    }}
+                    title="Choose project"
+                    style={{ minWidth: 220 }}
+                  >
+                    {projects.map((p) => (
+                      <option key={p.project_id} value={p.project_id}>
+                        {(p.name || p.project_id)}{p.project_id === defaultProjectId ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="btn" onClick={() => loadProjects()} title="Reload project list">Refresh Projects</button>
+                </div>
+                <RoleGate min="editor">
+                  <button className="btn ghost" onClick={createNewProject}>+ New project</button>
+                  <button
+                    className="btn ghost"
+                    onClick={async () => {
+                      const ok = await setDefaultProjectOnBackend?.(projectId);
+                      if (ok) setDefaultProjectId(projectId);
+                    }}
+                    disabled={!projectId || projectId === defaultProjectId}
+                    title="Make this the default project"
+                  >
+                    Default
+                  </button>
+                </RoleGate>
+                <RoleGate min="owner">
+                  <button
+                    className="btn ghost danger"
+                    onClick={async () => {
+                      if (!projectId) return;
+                      if (!confirm(`Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`)) return;
+                      const ok = await deleteProjectOnBackend?.(projectId);
+                      if (!ok) { alert("Failed to delete project."); return; }
+                      const next = projects.filter(p => p.project_id !== projectId);
+                      setProjects(next);
+                      const fallback = next[0] || { project_id: "global", name: "Global" };
+                      setProjectId(fallback.project_id);
+                      setProjectName(fallback.name || fallback.project_id);
+                      persistProjectId(fallback.project_id, { persist: true, updateUrl: true });
+                    }}
+                  >
+                    Delete
+                  </button>
+                </RoleGate>
+              </>
+            }
+          />
+
+
+          {/* Feeds (no collapse by design) */}
+          <Section
+            title={`Feeds (${feeds.length || 0})`}
+            subtitle="Keep the UI minimal: choose the editing feed via dropdown. By default, only the Default and Loaded feeds are shown; expand to see all."
+            right={
+              <>
+                <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+                  <span className="subtle">Editing:</span>
+                  <select
+                    className="select"
+                    value={feedId || ""}
+                    onChange={(e) => selectFeed(e.target.value)}
+                    title="Choose which feed to load into the editor"
+                    style={{ minWidth: 220 }}
+                  >
+                    {feeds.map((f) => (
+                      <option key={f.feed_id} value={f.feed_id}>
+                        {(f.name || f.feed_id)}{f.feed_id === defaultFeedId ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    className="btn ghost"
+                    onClick={() => setShowAllFeeds(v => !v)}
+                    title={showAllFeeds ? "Hide full list and show only Default + Loaded" : "Show all feeds in the registry"}
+                  >
+                    {showAllFeeds ? "Hide full list" : "All feeds…"}
+                  </button>
+                </div>
+
+                <RoleGate min="editor">
+                  <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
+                </RoleGate>
 
                 <button
-                  className="btn ghost"
-                  onClick={() => setShowAllFeeds(v => !v)}
-                  title={showAllFeeds ? "Hide full list and show only Default + Loaded" : "Show all feeds in the registry"}
+                  className="btn"
+                  onClick={() => loadFeeds()}
+                  title="Reload feed registry from backend"
                 >
-                  {showAllFeeds ? "Hide full list" : "All feeds…"}
+                  Refresh Feeds
                 </button>
-              </div>
 
-              <RoleGate min="editor">
-                <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
-              </RoleGate>
-
-              <button
-                className="btn"
-                onClick={() => loadFeeds()}
-                title="Reload feed registry from backend"
-              >
-                Refresh Feeds
-              </button>
-
-              <RoleGate min="owner">
-                <button
-                  className={`btn ghost ${wipeOnChange ? "active" : ""}`}
-                  disabled={updatingWipe || wipeOnChange === null}
-                  title="When ON, publishing posts that change the checksum wipes that feed’s participants."
-                  onClick={async () => {
-                    if (wipeOnChange === null) return;
-                    try {
-                      setUpdatingWipe(true);
-                      const next = !wipeOnChange;
-                      const res = await setWipePolicyOnBackend(next);
-                      if (res?.ok) {
-                        setWipeOnChange(!!res.wipe_on_change);
-                      } else {
-                        alert(res?.err || "Failed to update policy");
+                <RoleGate min="owner">
+                  <button
+                    className={`btn ghost ${wipeOnChange ? "active" : ""}`}
+                    disabled={updatingWipe || wipeOnChange === null}
+                    title="When ON, publishing posts that change the checksum wipes that feed’s participants."
+                    onClick={async () => {
+                      if (wipeOnChange === null) return;
+                      try {
+                        setUpdatingWipe(true);
+                        const next = !wipeOnChange;
+                        const res = await setWipePolicyOnBackend(next);
+                        if (res?.ok) {
+                          setWipeOnChange(!!res.wipe_on_change);
+                        } else {
+                          alert(res?.err || "Failed to update policy");
+                        }
+                      } finally {
+                        setUpdatingWipe(false);
                       }
-                    } finally {
-                      setUpdatingWipe(false);
+                    }}
+                  >
+                    {wipeOnChange ? "Wipe on change: ON" : "Wipe on change: OFF"}
+                  </button>
+                </RoleGate>
+              </>
+            }
+          >
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <thead>
+                  <tr className="subtle" style={{ textAlign:"left" }}>
+                    <th style={{ padding: ".4rem .5rem", width: 36 }} />
+                    <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>Name</th>
+                    <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>ID</th>
+                    <th style={{ padding: ".4rem .5rem", minWidth: 80 }}>Updated</th>
+                    <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Total</th>
+                    <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Submitted</th>
+                    <th style={{ padding: ".4rem .5rem", textAlign: "center"}}>Avg (m:ss)</th>
+                    <th style={{ padding: ".4rem .5rem", minWidth: 420 }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const importantIds = Array.from(new Set([defaultFeedId, feedId].filter(Boolean)));
+                    const visible = showAllFeeds
+                      ? feeds
+                      : feeds.filter(f => importantIds.includes(f.feed_id));
+
+                    if (!visible.length) {
+                      return (
+                        <tr>
+                          <td colSpan={8} className="subtle" style={{ padding: ".75rem" }}>
+                            No feeds yet. Click "+ New feed" to create one, then use "Save" to publish posts into it.
+                          </td>
+                        </tr>
+                      );
                     }
-                  }}
-                >
-                  {wipeOnChange ? "Wipe on change: ON" : "Wipe on change: OFF"}
-                </button>
-              </RoleGate>
-            </>
-          }
-        >
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr className="subtle" style={{ textAlign:"left" }}>
-                  <th style={{ padding: ".4rem .5rem", width: 36 }} />
-                  <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>Name</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>ID</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 80 }}>Updated</th>
-                  <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Total</th>
-                  <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Submitted</th>
-                  <th style={{ padding: ".4rem .5rem", textAlign: "center"}}>Avg (m:ss)</th>
-                  <th style={{ padding: ".4rem .5rem", minWidth: 420 }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const importantIds = Array.from(new Set([defaultFeedId, feedId].filter(Boolean)));
-                  const visible = showAllFeeds
-                    ? feeds
-                    : feeds.filter(f => importantIds.includes(f.feed_id));
 
-                  if (!visible.length) {
-                    return (
-                      <tr>
-                        <td colSpan={8} className="subtle" style={{ padding: ".75rem" }}>
-                          No feeds yet. Click "+ New feed" to create one, then use "Save" to publish posts into it.
-                        </td>
-                      </tr>
-                    );
-                  }
+                    return visible.map((f) => {
+                      const isDefault = f.feed_id === defaultFeedId;
+                      const isLoaded = f.feed_id === feedId;
+                      const stats = feedStats[keyFor(projectId, f.feed_id)];
 
-                  return visible.map((f) => {
-                    const isDefault = f.feed_id === defaultFeedId;
-                    const isLoaded = f.feed_id === feedId;
-                    const stats = feedStats[keyFor(projectId, f.feed_id)];
+                      return (
+                        <tr
+                          key={f.feed_id}
+                          className={`feed-row ${isLoaded ? "is-loaded" : ""} ${isDefault ? "is-default" : ""}`}
+                          style={{ borderTop: "1px solid var(--line)" }}
+                          aria-current={isLoaded ? "true" : undefined}
+                        >
+                          <td style={{ padding: ".5rem .5rem" }}>
+                            <span className="feed-dot" aria-hidden="true" />
+                          </td>
+                          <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                            {f.name || f.feed_id} {isDefault ? <span className="subtle">· default</span> : null}
+                            {isLoaded && !isDefault ? <span className="subtle"> · loaded</span> : null}
+                          </td>
+                          <td style={{ padding: ".5rem .5rem", fontFamily: "monospace" }}>{f.feed_id}</td>
+                          <td style={{ padding: ".5rem .5rem" }}>
+                            <span className="subtle">{f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}</span>
+                          </td>
 
-                    return (
-                      <tr
-                        key={f.feed_id}
-                        className={`feed-row ${isLoaded ? "is-loaded" : ""} ${isDefault ? "is-default" : ""}`}
-                        style={{ borderTop: "1px solid var(--line)" }}
-                        aria-current={isLoaded ? "true" : undefined}
-                      >
-                        <td style={{ padding: ".5rem .5rem" }}>
-                          <span className="feed-dot" aria-hidden="true" />
-                        </td>
-                        <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                          {f.name || f.feed_id} {isDefault ? <span className="subtle">· default</span> : null}
-                          {isLoaded && !isDefault ? <span className="subtle"> · loaded</span> : null}
-                        </td>
-                        <td style={{ padding: ".5rem .5rem", fontFamily: "monospace" }}>{f.feed_id}</td>
-                        <td style={{ padding: ".5rem .5rem" }}>
-                          <span className="subtle">{f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}</span>
-                        </td>
+                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.total : "—"}</td>
+                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.submitted : "—"}</td>
+                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
+                            {stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
+                          </td>
 
-                        <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.total : "—"}</td>
-                        <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.submitted : "—"}</td>
-                        <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
-                          {stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
-                        </td>
-
-                        <td style={{ padding: ".5rem .5rem" }}>
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem", alignItems:"center" }}>
-                            <button
-                              className="btn"
-                              title="Load this feed into the editor"
-                              onClick={() => selectFeed(f.feed_id)}
-                              disabled={isLoaded}
-                            >
-                              Load
-                            </button>
-
-                            <RoleGate min="editor">
+                          <td style={{ padding: ".5rem .5rem" }}>
+                            <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem", alignItems:"center" }}>
                               <button
                                 className="btn"
-                                title="Make this the backend default feed"
-                                onClick={async () => {
-                                  const ok = await setDefaultFeedOnBackend(f.feed_id);
-                                  if (ok) setDefaultFeedId(f.feed_id);
-                                }}
-                                disabled={isDefault}
+                                title="Load this feed into the editor"
+                                onClick={() => selectFeed(f.feed_id)}
+                                disabled={isLoaded}
                               >
-                                Default
+                                Load
                               </button>
 
-                              <button
-                                className="btn"
-                                disabled={isSaving}
-                                title="Save CURRENT editor posts into this feed"
-                                onClick={async () => {
-                                  if (f.feed_id !== feedId) {
-                                    const proceed = confirm(
-                                      `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
-                                    );
-                                    if (!proceed) return;
-                                  }
+                              <RoleGate min="editor">
+                                <button
+                                  className="btn"
+                                  title="Make this the backend default feed"
+                                  onClick={async () => {
+                                    const ok = await setDefaultFeedOnBackend(f.feed_id);
+                                    if (ok) setDefaultFeedId(f.feed_id);
+                                  }}
+                                  disabled={isDefault}
+                                >
+                                  Default
+                                </button>
 
-                                  setIsSaving(true);
-                                  try {
-                                    saveLocalBackup(projectId, feedId, "fb", posts);
-                                    await snapshotToS3({ posts, projectId, feedId, app: "fb" });
-                                    const ok = await savePostsToBackend(posts, {
-                                      projectId: pidForBackend(projectId),                                      
-                                      feedId: f.feed_id,
-                                      name: f.name || f.feed_id,
-                                      app: "fb",
-                                    });
-                                    if (ok) {
-                                      const list = await listFeedsFromBackend({ projectId: pidForBackend(projectId) });
-                                      const nextFeeds = Array.isArray(list) ? list : [];
-                                      setFeeds(nextFeeds);
-                                      const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
-                                      if (row) {
-                                        const fresh = await loadPostsFromBackend(f.feed_id, { projectId: pidForBackend(projectId), force: true });
-                                        const arr = Array.isArray(fresh) ? fresh : [];
-                                        arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
-                                        setPosts(arr);
-                                        setCachedPosts(projectId, f.feed_id, row.checksum, arr);
-                                      }
-                                      alert("Feed saved (snapshot created).");
-                                    } else {
-                                      alert("Failed to save feed. A local snapshot was still created.");
+                                <button
+                                  className="btn"
+                                  disabled={isSaving}
+                                  title="Save CURRENT editor posts into this feed"
+                                  onClick={async () => {
+                                    if (f.feed_id !== feedId) {
+                                      const proceed = confirm(
+                                        `You are about to SAVE the CURRENT editor posts (for "${feedName || feedId}") INTO a DIFFERENT feed ("${f.name || f.feed_id}").\n\nThis may overwrite that feed. Continue?`
+                                      );
+                                      if (!proceed) return;
                                     }
-                                  } finally {
-                                    setIsSaving(false);
-                                  }
-                                }}
-                              >
-                                {isSaving ? "Saving…" : "Save"}
-                              </button>
-                            </RoleGate>
 
-                            {!stats && (
+                                    setIsSaving(true);
+                                    try {
+                                      saveLocalBackup(projectId, feedId, "fb", posts);
+                                      await snapshotToS3({ posts, projectId, feedId, app: "fb" });
+                                      const ok = await savePostsToBackend(posts, {
+                                        projectId: pidForBackend(projectId),                                      
+                                        feedId: f.feed_id,
+                                        name: f.name || f.feed_id,
+                                        app: "fb",
+                                      });
+                                      if (ok) {
+                                        const list = await listFeedsFromBackend({ projectId: pidForBackend(projectId) });
+                                        const nextFeeds = Array.isArray(list) ? list : [];
+                                        setFeeds(nextFeeds);
+                                        const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
+                                        if (row) {
+                                          const fresh = await loadPostsFromBackend(f.feed_id, { projectId: pidForBackend(projectId), force: true });
+                                          const arr = Array.isArray(fresh) ? fresh : [];
+                                          arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
+                                          setPosts(arr);
+                                          setCachedPosts(projectId, f.feed_id, row.checksum, arr);
+                                        }
+                                        alert("Feed saved (snapshot created).");
+                                      } else {
+                                        alert("Failed to save feed. A local snapshot was still created.");
+                                      }
+                                    } finally {
+                                      setIsSaving(false);
+                                    }
+                                  }}
+                                >
+                                  {isSaving ? "Saving…" : "Save"}
+                                </button>
+                              </RoleGate>
+
+                              {!stats && (
+                                <button
+                                  className="btn ghost"
+                                  title="Load participant stats for this feed"
+                                  onClick={() => loadStatsFor(f.feed_id)}
+                                >
+                                  Load stats
+                                </button>
+                              )}
+
                               <button
                                 className="btn ghost"
-                                title="Load participant stats for this feed"
-                                onClick={() => loadStatsFor(f.feed_id)}
-                              >
-                                Load stats
-                              </button>
-                            )}
-
-                            <button
-  className="btn ghost"
-  title="Copy participant link for this feed"
-  onClick={async () => {
-    if (!f?.feed_id) {
-      alert("Missing feed_id for this row");
-      return;
-    }
-
-    // ✅ Use query params (no hash)
-    const url =
-      typeof buildFeedShareUrl === "function"
-        ? buildFeedShareUrl({ ...f, project_id: projectId })
-        : `${window.location.origin}/?project=${encodeURIComponent(
-            projectId || "global"
-          )}&feed=${encodeURIComponent(f.feed_id)}`;
-
-    await navigator.clipboard.writeText(url).catch(() => {});
-    alert("Link copied:\n" + url);
-  }}
->
-  Copy Link
-</button>
-
-                            <RoleGate min="owner">
-                              <button
-                                className="btn ghost danger"
-                                title="Delete the entire feed (posts, participants, registry)"
+                                title="Copy participant link for this feed"
                                 onClick={async () => {
-                                  const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
-                                  if (!okGo) return;
-                                  const ok = await deleteFeedOnBackend(f.feed_id);
-                                  if (ok) {
-                                    if (f.feed_id === feedId) {
-                                      const next = feeds.filter(x => x.feed_id !== f.feed_id);
-                                      const nextSel = next[0] || null;
-                                      setFeeds(next);
-                                      if (nextSel) {
-                                        await selectFeed(nextSel.feed_id);
-                                      } else {
-                                        setFeedId(""); setFeedName(""); setPosts([]);
-                                      }
-                                    } else {
-                                      setFeeds(prev => prev.filter(x => x.feed_id !== f.feed_id));
-                                    }
-                                    if (defaultFeedId === f.feed_id) setDefaultFeedId(null);
-                                    alert("Feed deleted.");
-                                  } else {
-                                    alert("Failed to delete feed. Please re-login and try again.");
+                                  if (!f?.feed_id) {
+                                    alert("Missing feed_id for this row");
+                                    return;
                                   }
+
+                                  // ✅ Use query params (no hash)
+                                  const url =
+                                    typeof buildFeedShareUrl === "function"
+                                      ? buildFeedShareUrl({ ...f, project_id: projectId })
+                                      : `${window.location.origin}/?project=${encodeURIComponent(
+                                          projectId || "global"
+                                        )}&feed=${encodeURIComponent(f.feed_id)}`;
+
+                                  await navigator.clipboard.writeText(url).catch(() => {});
+                                  alert("Link copied:\n" + url);
                                 }}
                               >
-                                Delete
+                                Copy Link
                               </button>
-                            </RoleGate>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </Section>
 
-        {/* Participants */}
-        <Section
-          title={`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
-          subtitle={
-            <>
-               <span>Live snapshot for </span>
- <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
- <span className="subtle"> · </span>
- <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
-              {defaultFeedId === feedId && <span className="subtle"> · default</span>}
-            </>
-          }
-          right={
-            <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
-              {!participantsCollapsed && (
-                <>
-                  <button
-                    className="btn ghost"
-                    onClick={() => setShowAllParticipants(s => !s)}
-                    title={showAllParticipants ? "Show only the first 5 participants" : "Show all participants"}
-                  >
-                    {showAllParticipants ? "Show first 5" : "Show all"}
-                  </button>
+                              <RoleGate min="owner">
+                                <button
+                                  className="btn ghost danger"
+                                  title="Delete the entire feed (posts, participants, registry)"
+                                  onClick={async () => {
+                                    const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
+                                    if (!okGo) return;
+                                    const ok = await deleteFeedOnBackend(f.feed_id);
+                                    if (ok) {
+                                      if (f.feed_id === feedId) {
+                                        const next = feeds.filter(x => x.feed_id !== f.feed_id);
+                                        const nextSel = next[0] || null;
+                                        setFeeds(next);
+                                        if (nextSel) {
+                                          await selectFeed(nextSel.feed_id);
+                                        } else {
+                                          setFeedId(""); setFeedName(""); setPosts([]);
+                                        }
+                                      } else {
+                                        setFeeds(prev => prev.filter(x => x.feed_id !== f.feed_id));
+                                      }
+                                      if (defaultFeedId === f.feed_id) setDefaultFeedId(null);
+                                      alert("Feed deleted.");
+                                    } else {
+                                      alert("Failed to delete feed. Please re-login and try again.");
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </RoleGate>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </Section>
 
-                  <RoleGate min="owner">
+          {/* Participants */}
+          <Section
+            title={`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
+            subtitle={
+              <>
+                <span>Live snapshot for </span>
+                <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
+                <span className="subtle"> · </span>
+                <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
+                {defaultFeedId === feedId && <span className="subtle"> · default</span>}
+              </>
+            }
+            right={
+              <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
+                {!participantsCollapsed && (
+                  <>
                     <button
-                      className="btn ghost danger"
-                      title="Delete the participants sheet for this feed (cannot be undone)"
+                      className="btn ghost"
+                      onClick={() => setShowAllParticipants(s => !s)}
+                      title={showAllParticipants ? "Show only the first 5 participants" : "Show all participants"}
+                    >
+                      {showAllParticipants ? "Show first 5" : "Show all"}
+                    </button>
+
+                    <RoleGate min="owner">
+                      <button
+                        className="btn ghost danger"
+                        title="Delete the participants sheet for this feed (cannot be undone)"
+                        onClick={async () => {
+                          if (!feedId) return;
+                          const okGo = confirm(
+                            `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
+                          );
+                          if (!okGo) return;
+                          const ok = await wipeParticipantsOnBackend(feedId);
+                          if (ok) {
+                            setParticipantsRefreshKey(k => k + 1);
+                            alert("Participants wiped.");
+                          } else {
+                            alert("Failed to wipe participants. Please re-login and try again.");
+                            onLogout?.();
+                          }
+                        }}
+                      >
+                        Wipe
+                      </button>
+                    </RoleGate>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="btn ghost section-chev"
+                  onClick={() => setParticipantsCollapsed(v => !v)}
+                  aria-expanded={!participantsCollapsed}
+                  aria-controls="participants-body"
+                  title={participantsCollapsed ? "Expand" : "Collapse"}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                  </svg>
+                </button>
+              </div>
+            }
+          >
+            <div
+              id="participants-body"
+              className={`section-collapse ${participantsCollapsed ? "is-collapsed" : ""}`}
+              aria-hidden={participantsCollapsed}
+            >
+              <div className="section-collapse-inner">
+                <ParticipantsPanel
+                  key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
+                  projectId={projectId}
+                  feedId={feedId}
+                  postNamesMap={postNames}
+                  compact
+                  limit={showAllParticipants ? undefined : 5}
+                  onCountChange={setParticipantsCount}
+                />
+              </div>
+            </div>
+          </Section>
+
+          <Section
+            title={`Posts (${posts.length})`}
+            subtitle={
+              showAllPosts
+                ? "Compact list of all posts."
+                : `Compact list · showing first ${Math.min(5, posts.length)}`
+            }
+            right={
+              <>
+                {!postsCollapsed && (
+                  <>
+                    <button
+                      className="btn"
                       onClick={async () => {
-                        if (!feedId) return;
-                        const okGo = confirm(
-                          `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
-                        );
-                        if (!okGo) return;
-                        const ok = await wipeParticipantsOnBackend(feedId);
-                        if (ok) {
-                          setParticipantsRefreshKey(k => k + 1);
-                          alert("Participants wiped.");
-                        } else {
-                          alert("Failed to wipe participants. Please re-login and try again.");
-                          onLogout?.();
-                        }
+                        const fresh = await loadPostsFromBackend(feedId, { projectId: pidForBackend(projectId), force: true });
+                        const arr = Array.isArray(fresh) ? fresh : [];
+                        arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
+                        setPosts(arr);
+                        const row = feeds.find(f => f.feed_id === feedId);
+                        if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
+                        // keep the name map in sync with the current feed
+                        setPostNames(readPostNames(projectId, feedId) || {});
+                      }}
+                      title="Reload posts for this feed from backend"
+                    >
+                      Refresh Posts
+                    </button>
+
+                    <button
+                      className="btn ghost"
+                      title="Export current posts as JSON"
+                      onClick={() => {
+                        const payload = {
+                          app: "fb",
+                          projectId: projectId || "global",
+                          feedId,
+                          ts: new Date().toISOString(),
+                          posts: posts.map(p => ({
+                            ...p,
+                            // ensure 'name' exists in the export (falls back to the local map)
+                            name: (p.name ?? (postNames?.[p.id]) ?? "").trim() || undefined,
+                          })),
+                        };
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${projectId || "global"}-${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
+                        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
                       }}
                     >
-                      Wipe
+                      Export JSON
                     </button>
-                  </RoleGate>
-                </>
-              )}
 
-              <button
-                type="button"
-                className="btn ghost section-chev"
-                onClick={() => setParticipantsCollapsed(v => !v)}
-                aria-expanded={!participantsCollapsed}
-                aria-controls="participants-body"
-                title={participantsCollapsed ? "Expand" : "Collapse"}
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-                </svg>
-              </button>
-            </div>
-          }
-        >
-          <div
-            id="participants-body"
-            className={`section-collapse ${participantsCollapsed ? "is-collapsed" : ""}`}
-            aria-hidden={participantsCollapsed}
+                    <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
+                      Import JSON
+                      <input
+                        type="file"
+                        accept="application/json"
+                        style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          try {
+                            const text = await f.text();
+                            const parsed = JSON.parse(text);
+                            const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
+                            if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
+                            if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
+                            setPosts(imported);
+                            alert("Imported. Remember to Save to publish back to the backend.");
+                          } catch (err) {
+                            console.error(err);
+                            alert("Failed to import JSON.");
+                          } finally {
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      className="btn ghost"
+                      onClick={() => setShowAllPosts(s => !s)}
+                      title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
+                    >
+                      {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
+                    </button>
+
+                    <RoleGate min="editor">
+                      <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
+                      <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
+                        + Random Post
+                      </button>
+                      <button className="btn ghost" onClick={openNew}>+ Add Post</button>
+                      <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
+                        Clear Feed
+                      </button>
+                    </RoleGate>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="btn ghost section-chev"
+                  onClick={() => setPostsCollapsed(v => !v)}
+                  aria-expanded={!postsCollapsed}
+                  aria-controls="posts-body"
+                  title={postsCollapsed ? "Expand" : "Collapse"}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                  </svg>
+                </button>
+              </>
+            }
           >
-            <div className="section-collapse-inner">
-              <ParticipantsPanel
-              key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
-  projectId={projectId}
-  feedId={feedId}
-  postNamesMap={postNames}
-                compact
-                limit={showAllParticipants ? undefined : 5}
-                onCountChange={setParticipantsCount}
-              />
-            </div>
-          </div>
-        </Section>
-
-        <Section
-          title={`Posts (${posts.length})`}
-          subtitle={
-            showAllPosts
-              ? "Compact list of all posts."
-              : `Compact list · showing first ${Math.min(5, posts.length)}`
-          }
-          right={
-            <>
-              {!postsCollapsed && (
-                <>
-                  <button
-                    className="btn"
-                    onClick={async () => {
-                      const fresh = await loadPostsFromBackend(feedId, { projectId: pidForBackend(projectId), force: true });
-                      const arr = Array.isArray(fresh) ? fresh : [];
-                      arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
-                      setPosts(arr);
-                      const row = feeds.find(f => f.feed_id === feedId);
-                      if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
-                           // keep the name map in sync with the current feed
-     setPostNames(readPostNames(projectId, feedId) || {});
-                    }}
-                    title="Reload posts for this feed from backend"
-                  >
-                    Refresh Posts
-                  </button>
-
-                  <button
-                    className="btn ghost"
-                    title="Export current posts as JSON"
-                    onClick={() => {
-                       const payload = {
-  app: "fb",
-   projectId: projectId || "global",
-   feedId,
-   ts: new Date().toISOString(),
-   posts: posts.map(p => ({
-     ...p,
-     // ensure 'name' exists in the export (falls back to the local map)
-     name: (p.name ?? (postNames?.[p.id]) ?? "").trim() || undefined,
-   })),
- };
-                      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `${projectId || "global"}-${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-                      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-                    }}
-                  >
-                    Export JSON
-                  </button>
-
-                  <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
-                    Import JSON
-                    <input
-                      type="file"
-                      accept="application/json"
-                      style={{ display: "none" }}
-                      onChange={async (e) => {
-                        const f = e.target.files?.[0];
-                        if (!f) return;
-                        try {
-                          const text = await f.text();
-                          const parsed = JSON.parse(text);
-                          const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
-                          if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
-                          if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
-                          setPosts(imported);
-                          alert("Imported. Remember to Save to publish back to the backend.");
-                        } catch (err) {
-                          console.error(err);
-                          alert("Failed to import JSON.");
-                        } finally {
-                          e.target.value = "";
-                        }
-                      }}
-                    />
-                  </label>
-
-                  <button
-                    className="btn ghost"
-                    onClick={() => setShowAllPosts(s => !s)}
-                    title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
-                  >
-                    {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
-                  </button>
-
-                  <RoleGate min="editor">
-                    <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
-                    <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
-                      + Random Post
-                    </button>
-                    <button className="btn ghost" onClick={openNew}>+ Add Post</button>
-                    <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
-                      Clear Feed
-                    </button>
-                  </RoleGate>
-                </>
-              )}
-
-              <button
-                type="button"
-                className="btn ghost section-chev"
-                onClick={() => setPostsCollapsed(v => !v)}
-                aria-expanded={!postsCollapsed}
-                aria-controls="posts-body"
-                title={postsCollapsed ? "Expand" : "Collapse"}
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-                </svg>
-              </button>
-            </>
-          }
-        >
-          <div
-            id="posts-body"
-            className={`section-collapse ${postsCollapsed ? "is-collapsed" : ""}`}
-            aria-hidden={postsCollapsed}
-          >
-            <div className="section-collapse-inner">
-              <div style={{ overflowX: "auto" }}>
+            <div
+              id="posts-body"
+              className={`section-collapse ${postsCollapsed ? "is-collapsed" : ""}`}
+              aria-hidden={postsCollapsed}
+            >
+              <div className="section-collapse-inner">
                 <div style={{ overflowX: "auto" }}>
-                  {posts.length === 0 ? (
-                    <div className="subtle" style={{ padding: ".5rem 0" }}>
-                      No posts yet.
-                    </div>
-                  ) : (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr className="subtle">
-                          <th style={{ textAlign: "left", padding: 8, width: 36 }} />
-                          <th style={{ padding: 8, fontFamily: "monospace" }}>Post</th>
-                          <th style={{ textAlign: "left", padding: 8, minWidth: 160 }}>Author</th>
-                          <th style={{ textAlign: "left", padding: 8, minWidth: 260 }}>Text</th>
-                          <th style={{ textAlign: "left", padding: 8, minWidth: 80 }}>Time</th>
-                          <th style={{ textAlign: "left", padding: 8, minWidth: 120 }}>Media</th>
-                          <th style={{ textAlign: "left", padding: 8, minWidth: 220 }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
-                          <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
-                               <td style={{ padding: 8 }}>
-         <div className="avatar">
-           <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
-         </div>
-       </td>
-
-                                  <td style={{ padding: 8, fontFamily: "monospace" }}>
-         {postNames[p.id] || <span className="subtle">—</span>}
-       </td>
-                            <td style={{ padding: 8, fontWeight: 600 }}>
-                              {p.author || <span className="subtle">—</span>}
-                              {p.badge ? " ✔" : ""}
-                            </td>
-                            <td style={{ padding: 8, maxWidth: 520, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {p.text || <span className="subtle">—</span>}
-                            </td>
-                            <td style={{ padding: 8 }}>
-                              <span className="subtle">{p.time ? p.time : "—"}</span>
-                            </td>
-                            <td style={{ padding: 8 }}>
-                              {p.videoMode !== "none"
-                                ? "🎬 video"
-                                : p.imageMode !== "none"
-                                ? "🖼️ image"
-                                : <span className="subtle">none</span>}
-                            </td>
-                            <td style={{ padding: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button className="btn" onClick={() => openEdit(p)}>Edit</button>
-                               <button
-           className="btn ghost"
-           title="Rename this post for CSV columns"
-           onClick={() => {
-             const cur = postNames[p.id] || "";
-             const next = prompt("Post name (used in CSV headers):", cur ?? "");
-             if (next === null) return; // cancelled
-             const name = (next || "").trim();
-             const map = { ...(postNames || {}) };
-             if (name) map[p.id] = name; else delete map[p.id];
-             setPostNames(map);
-             writePostNames(projectId, feedId, map);
-           }}
-         >
-           Rename
-         </button>
-                              <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
-                            </td>
+                  <div style={{ overflowX: "auto" }}>
+                    {posts.length === 0 ? (
+                      <div className="subtle" style={{ padding: ".5rem 0" }}>
+                        No posts yet.
+                      </div>
+                    ) : (
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr className="subtle">
+                            <th style={{ textAlign: "left", padding: 8, width: 36 }} />
+                            <th style={{ padding: 8, fontFamily: "monospace" }}>Post</th>
+                            <th style={{ textAlign: "left", padding: 8, minWidth: 160 }}>Author</th>
+                            <th style={{ textAlign: "left", padding: 8, minWidth: 260 }}>Text</th>
+                            <th style={{ textAlign: "left", padding: 8, minWidth: 80 }}>Time</th>
+                            <th style={{ textAlign: "left", padding: 8, minWidth: 120 }}>Media</th>
+                            <th style={{ textAlign: "left", padding: 8, minWidth: 220 }}>Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                        </thead>
+                        <tbody>
+                          {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
+                            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
+                              <td style={{ padding: 8 }}>
+                                <div className="avatar">
+                                  <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
+                                </div>
+                              </td>
+
+                              <td style={{ padding: 8, fontFamily: "monospace" }}>
+                                {postNames[p.id] || <span className="subtle">—</span>}
+                              </td>
+                              <td style={{ padding: 8, fontWeight: 600 }}>
+                                {p.author || <span className="subtle">—</span>}
+                                {p.badge ? " ✔" : ""}
+                              </td>
+                              <td style={{ padding: 8, maxWidth: 520, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {p.text || <span className="subtle">—</span>}
+                              </td>
+                              <td style={{ padding: 8 }}>
+                                <span className="subtle">{p.time ? p.time : "—"}</span>
+                              </td>
+                              <td style={{ padding: 8 }}>
+                                {p.videoMode !== "none"
+                                  ? "🎬 video"
+                                  : p.imageMode !== "none"
+                                  ? "🖼️ image"
+                                  : <span className="subtle">none</span>}
+                              </td>
+                              <td style={{ padding: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button className="btn" onClick={() => openEdit(p)}>Edit</button>
+                                <button
+                                  className="btn ghost"
+                                  title="Rename this post for CSV columns"
+                                  onClick={() => {
+                                    const cur = postNames[p.id] || "";
+                                    const next = prompt("Post name (used in CSV headers):", cur ?? "");
+                                    if (next === null) return; // cancelled
+                                    const name = (next || "").trim();
+                                    const map = { ...(postNames || {}) };
+                                    if (name) map[p.id] = name; else delete map[p.id];
+                                    setPostNames(map);
+                                    writePostNames(projectId, feedId, map);
+                                  }}
+                                >
+                                  Rename
+                                </button>
+                                <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </Section>
+          </Section>
 
-        {/* Users (owners only) */}
-     <RoleGate min="owner">
-  <Section
-    title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
-    subtitle="Manage admin users & roles."
-    right={
-      <button
-        type="button"
-        className="btn ghost section-chev"
-        onClick={() => setUsersCollapsed(v => !v)}
-        aria-expanded={!usersCollapsed}
-        aria-controls="users-body"
-        title={usersCollapsed ? "Expand" : "Collapse"}
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
-        </svg>
-      </button>
-    }
-  >
-    <div
-      id="users-body"
-      className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
-      aria-hidden={usersCollapsed}
-    >
-      <div
-  className="section-collapse-inner"
-  style={{ display: usersCollapsed ? "none" : "block" }} // hide, don't unmount
->
-  <AdminUsersPanel embed onCountChange={setUsersCount} />
-</div>
-    </div>
+          {/* Users (owners only) */}
+          <RoleGate min="owner">
+            <Section
+              title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
+              subtitle="Manage admin users & roles."
+              right={
+                <button
+                  type="button"
+                  className="btn ghost section-chev"
+                  onClick={() => setUsersCollapsed(v => !v)}
+                  aria-expanded={!usersCollapsed}
+                  aria-controls="users-body"
+                  title={usersCollapsed ? "Expand" : "Collapse"}
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                  </svg>
+                </button>
+              }
+            >
+              <div
+                id="users-body"
+                className={`section-collapse ${usersCollapsed ? "is-collapsed" : ""}`}
+                aria-hidden={usersCollapsed}
+              >
+                <div
+                  className="section-collapse-inner"
+                  style={{ display: usersCollapsed ? "none" : "block" }} // hide, don't unmount
+                >
+                  <AdminUsersPanel embed onCountChange={setUsersCount} />
+                </div>
+              </div>
 
-   
-  </Section>
-</RoleGate>
+            
+            </Section>
+          </RoleGate>
+        </div>
+
+        
       </div>
-
-      
-</div>
 
       {editing && (
         <Modal
@@ -1466,9 +1466,9 @@ useEffect(() => {
                 </label>
                 <label>Time
                   <input className="input" value={editing.time} onChange={(e) => setEditing({ ...editing, time: e.target.value })} />
-                    <div className="subtle" style={{ marginTop: 6 }}>
-   Leave blank to hide time.
-  </div>
+                  <div className="subtle" style={{ marginTop: 6 }}>
+                    Leave blank to hide time.
+                  </div>
                 </label>
               </div>
               <label>Post text
@@ -1556,7 +1556,7 @@ useEffect(() => {
                           const { cdnUrl } = await uploadFileToS3ViaSigner({
                             file: f,
                             projectId: projectId || "global",
- feedId: feedId || "default",
+                            feedId: feedId || "default",
                             prefix: "avatars",
                             onProgress: setPct,
                           });
@@ -1589,7 +1589,7 @@ useEffect(() => {
                 editing={editing}
                 setEditing={setEditing}
                 projectId={projectId}
-  feedId={feedId}
+                feedId={feedId}
                 isNew={isNew}
                 setUploadingVideo={setUploadingVideo}
                 setUploadingPoster={setUploadingPoster}

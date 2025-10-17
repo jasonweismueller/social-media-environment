@@ -189,6 +189,7 @@ export async function adminDeleteUser(email) {
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({
         action: "admin_delete_user",
+        app: APP,
         admin_token,
         email,
       }),
@@ -319,7 +320,7 @@ export function neutralAvatarDataUrl(seed = "") {
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="g" x1="0" y1="0" x2="1" y1="0" y2="1">
       <stop offset="0%" stop-color="${bg}" />
       <stop offset="100%" stop-color="#111827" stop-opacity=".25" />
     </linearGradient>
@@ -724,6 +725,67 @@ export async function deleteFeedOnBackend(feedId) {
   }
 }
 
+/* ------------------------- NEW: per-feed flags (random time) -------------- */
+/**
+ * GET:  path=get_feed_flags → { ok:true, flags:{ random_time:boolean } }
+ * POST: action=set_feed_flags → { ok:true, flags:{ random_time:boolean } }
+ */
+export async function getFeedFlagsFromBackend({ feedId, projectId } = {}) {
+  const fid = String(feedId || "").trim();
+  if (!fid) return { random_time: false };
+  try {
+    const params = new URLSearchParams();
+    params.set("path", "get_feed_flags");
+    params.set("app", APP);
+    params.set("feed_id", fid);
+    const pid = projectId || getProjectId();
+    if (pid) params.set("project_id", String(pid));
+    params.set("_ts", String(Date.now()));
+    const data = await getJsonWithRetry(
+      `${GS_ENDPOINT}?${params.toString()}`,
+      { method: "GET", mode: "cors", cache: "no-store" },
+      { retries: 1, timeoutMs: 8000 }
+    );
+    const flags = (data && data.flags) || {};
+    return { random_time: !!flags.random_time };
+  } catch {
+    return { random_time: false };
+  }
+}
+
+export async function setFeedFlagsOnBackend({ feedId, projectId, flags }) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+  const fid = String(feedId || "").trim();
+  if (!fid) return { ok: false, err: "feed_id required" };
+
+  try {
+    const body = {
+      action: "set_feed_flags",
+      app: APP,
+      admin_token,
+      feed_id: fid,
+      flags: flags || {},
+    };
+    const pid = projectId || getProjectId();
+    if (pid) body.project_id = String(pid);
+
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+    return { ok: true, flags: data.flags || flags || {} };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
 /* ------------------------- Video preload helpers -------------------------- */
 const DRIVE_RE = /(?:^|\/\/)(?:drive\.google\.com|drive\.usercontent\.google\.com)/i;
 const __videoPreloadSet = new Set();
@@ -793,20 +855,28 @@ export function invalidatePostsCache(feedId = null) {
 /**
  * loadPostsFromBackend(feedId?, opts?)
  *  - loadPostsFromBackend("feed_a")
- *  - loadPostsFromBackend("feed_a", { force: true })
- *  - loadPostsFromBackend({ force: true })
+ *  - loadPostsFromBackend("feed_a", { force: true, signal, projectId })
+ *  - loadPostsFromBackend({ force: true, signal, projectId })
  *
- * Now also preloads streamable video URLs (non-Drive) for faster playback.
+ * Applies per-feed flags (e.g., randomize times) and preloads streamable video URLs.
  */
 export async function loadPostsFromBackend(arg1, arg2) {
   let feedId = null;
   let force = false;
+  let signal;
+  let projectId;
 
   if (typeof arg1 === "string") {
     feedId = arg1 || null;
-    if (arg2 && typeof arg2 === "object") force = !!arg2.force;
+    if (arg2 && typeof arg2 === "object") {
+      force = !!arg2.force;
+      signal = arg2.signal;
+      projectId = arg2.projectId;
+    }
   } else if (arg1 && typeof arg1 === "object") {
     force = !!arg1.force;
+    signal = arg1.signal;
+    projectId = arg1.projectId;
   }
 
   if (!feedId) {
@@ -824,11 +894,16 @@ export async function loadPostsFromBackend(arg1, arg2) {
       (feedId ? `&feed_id=${encodeURIComponent(feedId)}` : "") +
       "&_ts=" + Date.now();
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store" },
-      { retries: 1, timeoutMs: 8000 }
-    );
+    // Fetch posts & flags in parallel
+    const [data, flags] = await Promise.all([
+      getJsonWithRetry(
+        url,
+        { method: "GET", mode: "cors", cache: "no-store", signal },
+        { retries: 1, timeoutMs: 8000 }
+      ),
+      getFeedFlagsFromBackend({ feedId, projectId })
+    ]);
+
     const arr = Array.isArray(data) ? data : [];
     seedNamesFromPosts(arr, { feedId });
 
@@ -839,6 +914,25 @@ export async function loadPostsFromBackend(arg1, arg2) {
         injectVideoPreload(p.video.url, p.video?.mime || "video/mp4");
         primeVideoCache(p.video.url);
       });
+
+    // ---- apply per-feed RANDOM TIME flag deterministically (doesn't mutate saved time)
+    if (flags?.random_time) {
+      const buckets = ["Just now","2m","8m","23m","1h","2h","3h","Yesterday","2d","3d"];
+      const pickFor = (postId) => {
+        const seed = hashStrToInt_(`${getProjectId() || projectId || "global"}::${feedId}::${postId}::rand_time_v1`);
+        const rnd = mulberry32_(seed);
+        return buckets[Math.floor(rnd() * buckets.length)];
+      };
+      for (const p of arr) {
+        if (!p) continue;
+        const id = p.id || JSON.stringify(p).slice(0,64);
+        p.showTime = pickFor(id);
+      }
+    } else {
+      // ensure we don't leak a stale showTime if the flag was turned off
+      for (const p of arr) { if (p && "showTime" in p) delete p.showTime; }
+    }
+    // ------------------------------------------------------------------------
 
     __setCachedPosts(feedId, arr);
     return arr;
