@@ -14,10 +14,6 @@ import {
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   setFeedIdInUrl,
-  // ⬇️ NEW: random-time flag + view-model helpers
-  fetchFeedRandomizeTime,
-  applyRandomizedTimes,
-  restoreOriginalTimes,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -292,12 +288,7 @@ export default function App() {
       } catch {}
 
       if (cached) {
-        // View-model derivation: randomize times client-side per load if flag is ON
-        const wantRandom = await fetchFeedRandomizeTime({ projectId, feedId: chosen.feed_id });
-        const final = wantRandom
-          ? applyRandomizedTimes(cached, { projectId, feedId: chosen.feed_id })
-          : restoreOriginalTimes(cached);
-        setPosts(final);
+        setPosts(cached);
         setFeedPhase("ready");
         return;
       }
@@ -307,17 +298,10 @@ export default function App() {
       if (ctrl.signal.aborted) return;
 
       const arr = Array.isArray(fresh) ? fresh : [];
-
-      // Compute view-model per flag (new random each session/tab)
-      const wantRandom = await fetchFeedRandomizeTime({ projectId, feedId: chosen.feed_id });
-      const final = wantRandom
-        ? applyRandomizedTimes(arr, { projectId, feedId: chosen.feed_id })
-        : restoreOriginalTimes(arr);
-      setPosts(final);
+      setPosts(arr);
 
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
-        // Cache the canonical posts, not the randomized view
         localStorage.setItem(k, JSON.stringify(arr));
         localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum: chosen.checksum, t: Date.now() }));
       } catch {}
@@ -606,7 +590,7 @@ export default function App() {
                     };
                     const eventsWithSubmit = [...events, submitEvent];
                     const feed_id = activeFeedId || null;
-                    const feed_checksum = computeFeedId(restoreOriginalTimes(posts));
+                    const feed_checksum = computeFeedId(posts);
                     const row = buildParticipantRow({
                       session_id: sessionIdRef.current,
                       participant_id: participantId,

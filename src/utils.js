@@ -62,25 +62,6 @@ export function getProjectId() {
   } catch { return ""; }
 }
 
-const RAND_TIME_SALT_KEY = (pid, fid) =>
-  `${APP}::${pid || "global"}::${fid || ""}::rand_time_salt_v1`;
-
-export function getFeedRandomTimeSalt({ projectId = getProjectId(), feedId, persist = "session" } = {}) {
-  const key = RAND_TIME_SALT_KEY(projectId, feedId);
-  // session-scoped: stable across route changes, changes on new tab/refresh
-  if (persist === "session") {
-    try {
-      const prev = sessionStorage.getItem(key);
-      if (prev) return prev;
-      const next = Math.random().toString(36).slice(2);
-      sessionStorage.setItem(key, next);
-      return next;
-    } catch {}
-  }
-  // fallback: new salt every call
-  return Math.random().toString(36).slice(2);
-}
-
 /** Set current project_id and optionally reflect it in the URL. */
 export function setProjectId(projectId, { persist = true, updateUrl = true } = {}) {
   const pid = String(projectId || "");
@@ -208,7 +189,6 @@ export async function adminDeleteUser(email) {
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify({
         action: "admin_delete_user",
-        app: APP,
         admin_token,
         email,
       }),
@@ -339,7 +319,7 @@ export function neutralAvatarDataUrl(seed = "") {
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y1="0" y2="1">
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="${bg}" />
       <stop offset="100%" stop-color="#111827" stop-opacity=".25" />
     </linearGradient>
@@ -744,120 +724,6 @@ export async function deleteFeedOnBackend(feedId) {
   }
 }
 
-/* ------------------------- NEW: per-feed flags (random time) -------------- */
-/**
- * GET:  path=get_feed_flags → { ok:true, flags:{ random_time:boolean } }
- * POST: action=set_feed_flags → { ok:true, flags:{ random_time:boolean } }
- */
-export async function getFeedFlagsFromBackend({ feedId, projectId } = {}) {
-  const fid = String(feedId || "").trim();
-  if (!fid) return { random_time: false };
-  try {
-    const params = new URLSearchParams();
-    params.set("path", "get_feed_flags");
-    params.set("app", APP);
-    params.set("feed_id", fid);
-    const pid = projectId || getProjectId();
-    if (pid) params.set("project_id", String(pid));
-    params.set("_ts", String(Date.now()));
-    const data = await getJsonWithRetry(
-      `${GS_ENDPOINT}?${params.toString()}`,
-      { method: "GET", mode: "cors", cache: "no-store" },
-      { retries: 1, timeoutMs: 8000 }
-    );
-    const flags = (data && data.flags) || {};
-    return { random_time: !!flags.random_time };
-  } catch {
-    return { random_time: false };
-  }
-}
-
-export async function setFeedFlagsOnBackend({ feedId, projectId, flags }) {
-  const admin_token = getAdminToken();
-  if (!admin_token) return { ok: false, err: "admin auth required" };
-  const fid = String(feedId || "").trim();
-  if (!fid) return { ok: false, err: "feed_id required" };
-
-  try {
-    const body = {
-      action: "set_feed_flags",
-      app: APP,
-      admin_token,
-      feed_id: fid,
-      flags: flags || {},
-    };
-    const pid = projectId || getProjectId();
-    if (pid) body.project_id = String(pid);
-
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) {
-      return { ok: false, err: data?.err || `HTTP ${res.status}` };
-    }
-    return { ok: true, flags: data.flags || flags || {} };
-  } catch (e) {
-    return { ok: false, err: String(e?.message || e) };
-  }
-}
-
-/* ---------- Convenience: flag wrappers + time randomization helpers -------- */
-export async function fetchFeedRandomizeTime({ projectId, feedId }) {
-  const { random_time } = await getFeedFlagsFromBackend({ feedId, projectId });
-  return !!random_time;
-}
-export async function setFeedRandomizeTime({ projectId, feedId, enabled }) {
-  const res = await setFeedFlagsOnBackend({
-    feedId,
-    projectId,
-    flags: { random_time: !!enabled },
-  });
-  return { ok: !!res?.ok, random_time: !!(res?.flags?.random_time ?? enabled) };
-}
-
-function toRelString_(minsAgo) {
-  if (minsAgo <= 0) return "Just now";
-  if (minsAgo < 60) return `${minsAgo}m`;
-  const h = Math.floor(minsAgo / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return "Yesterday";
-  return `${d}d`;
-}
-/** Non-mutating helper to assign randomized time strings to posts.time */
-export function applyRandomizedTimes(posts = [], { projectId, feedId, salt } = {}) {
-  const pid = projectId || getProjectId() || "global";
-  const fid = feedId || "";
-  const sessionSalt = salt || getFeedRandomTimeSalt({ projectId: pid, feedId: fid, persist: "session" });
-
-  return posts.map((p, i) => {
-    const id = p?.id ?? i;
-    // include sessionSalt so times vary per load, but are stable within the session
-    const seed = hashStrToInt_(`${pid}::${fid}::${sessionSalt}::${id}::rand_time_v2`);
-    const rnd = mulberry32_(seed)();
-    const minutes = Math.floor(rnd * (72 * 60 + 1)); // 0..72h
-    return { ...p, _origTime: p._origTime ?? p.time ?? "", time: toRelString_(minutes) };
-  });
-}
-/** Non-mutating helper to restore original times from _origTime */
-export function restoreOriginalTimes(posts = []) {
-  return posts.map((p) => {
-    if (p && "_origTime" in p) {
-      const { _origTime, ...rest } = p;
-      return { ...rest, time: _origTime };
-    }
-    return p;
-  });
-}
-/** Strip transient fields before save */
-export function sanitizePostsForSave(posts = []) {
-  return posts.map(({ _origTime, showTime, _localMyCommentText, _tempUpload, ...rest }) => rest);
-}
-
 /* ------------------------- Video preload helpers -------------------------- */
 const DRIVE_RE = /(?:^|\/\/)(?:drive\.google\.com|drive\.usercontent\.google\.com)/i;
 const __videoPreloadSet = new Set();
@@ -927,28 +793,20 @@ export function invalidatePostsCache(feedId = null) {
 /**
  * loadPostsFromBackend(feedId?, opts?)
  *  - loadPostsFromBackend("feed_a")
- *  - loadPostsFromBackend("feed_a", { force: true, signal, projectId })
- *  - loadPostsFromBackend({ force: true, signal, projectId })
+ *  - loadPostsFromBackend("feed_a", { force: true })
+ *  - loadPostsFromBackend({ force: true })
  *
- * Applies per-feed flags (e.g., randomize times) and preloads streamable video URLs.
+ * Now also preloads streamable video URLs (non-Drive) for faster playback.
  */
 export async function loadPostsFromBackend(arg1, arg2) {
   let feedId = null;
   let force = false;
-  let signal;
-  let projectId;
 
   if (typeof arg1 === "string") {
     feedId = arg1 || null;
-    if (arg2 && typeof arg2 === "object") {
-      force = !!arg2.force;
-      signal = arg2.signal;
-      projectId = arg2.projectId;
-    }
+    if (arg2 && typeof arg2 === "object") force = !!arg2.force;
   } else if (arg1 && typeof arg1 === "object") {
     force = !!arg1.force;
-    signal = arg1.signal;
-    projectId = arg1.projectId;
   }
 
   if (!feedId) {
@@ -966,16 +824,11 @@ export async function loadPostsFromBackend(arg1, arg2) {
       (feedId ? `&feed_id=${encodeURIComponent(feedId)}` : "") +
       "&_ts=" + Date.now();
 
-    // Fetch posts & flags in parallel
-    const [data, flags] = await Promise.all([
-      getJsonWithRetry(
-        url,
-        { method: "GET", mode: "cors", cache: "no-store", signal },
-        { retries: 1, timeoutMs: 8000 }
-      ),
-      getFeedFlagsFromBackend({ feedId, projectId })
-    ]);
-
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store" },
+      { retries: 1, timeoutMs: 8000 }
+    );
     const arr = Array.isArray(data) ? data : [];
     seedNamesFromPosts(arr, { feedId });
 
@@ -1004,7 +857,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
   const admin_token = getAdminToken();
   if (!admin_token) { console.warn("savePostsToBackend: missing admin_token"); return false; }
   // Pull friendly name map so we can inject names even if post objects lack them
-  const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
+ const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
 
   // Optional but recommended: block data: URLs to avoid huge payloads & CORS issues
   const offenders = [];
@@ -1024,14 +877,10 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     return false;
   }
 
-  // 🔧 sanitize & inject .name where applicable
   const posts = (rawPosts || []).map((p) => {
     const q = { ...p };
-    // remove transient fields
     delete q._localMyCommentText;
     delete q._tempUpload;
-    delete q._origTime;
-    delete q.showTime;
     if (q.image && q.image.svg && q.image.url) delete q.image.svg;
     const nm = (q.postName ?? nameMap[q.id] ?? q.name ?? "").trim();
     if (nm) q.name = nm;
