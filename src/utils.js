@@ -62,6 +62,25 @@ export function getProjectId() {
   } catch { return ""; }
 }
 
+const RAND_TIME_SALT_KEY = (pid, fid) =>
+  `${APP}::${pid || "global"}::${fid || ""}::rand_time_salt_v1`;
+
+export function getFeedRandomTimeSalt({ projectId = getProjectId(), feedId, persist = "session" } = {}) {
+  const key = RAND_TIME_SALT_KEY(projectId, feedId);
+  // session-scoped: stable across route changes, changes on new tab/refresh
+  if (persist === "session") {
+    try {
+      const prev = sessionStorage.getItem(key);
+      if (prev) return prev;
+      const next = Math.random().toString(36).slice(2);
+      sessionStorage.setItem(key, next);
+      return next;
+    } catch {}
+  }
+  // fallback: new salt every call
+  return Math.random().toString(36).slice(2);
+}
+
 /** Set current project_id and optionally reflect it in the URL. */
 export function setProjectId(projectId, { persist = true, updateUrl = true } = {}) {
   const pid = String(projectId || "");
@@ -810,11 +829,15 @@ function toRelString_(minsAgo) {
   return `${d}d`;
 }
 /** Non-mutating helper to assign randomized time strings to posts.time */
-export function applyRandomizedTimes(posts = [], { projectId, feedId } = {}) {
-  const scope = `${projectId || getProjectId() || "global"}::${feedId || ""}`;
+export function applyRandomizedTimes(posts = [], { projectId, feedId, salt } = {}) {
+  const pid = projectId || getProjectId() || "global";
+  const fid = feedId || "";
+  const sessionSalt = salt || getFeedRandomTimeSalt({ projectId: pid, feedId: fid, persist: "session" });
+
   return posts.map((p, i) => {
     const id = p?.id ?? i;
-    const seed = hashStrToInt_(`${scope}::${id}::rand_time_v1`);
+    // include sessionSalt so times vary per load, but are stable within the session
+    const seed = hashStrToInt_(`${pid}::${fid}::${sessionSalt}::${id}::rand_time_v2`);
     const rnd = mulberry32_(seed)();
     const minutes = Math.floor(rnd * (72 * 60 + 1)); // 0..72h
     return { ...p, _origTime: p._origTime ?? p.time ?? "", time: toRelString_(minutes) };
@@ -963,25 +986,6 @@ export async function loadPostsFromBackend(arg1, arg2) {
         injectVideoPreload(p.video.url, p.video?.mime || "video/mp4");
         primeVideoCache(p.video.url);
       });
-
-    // ---- apply per-feed RANDOM TIME flag deterministically (doesn't mutate saved time)
-    if (flags?.random_time) {
-      const buckets = ["Just now","2m","8m","23m","1h","2h","3h","Yesterday","2d","3d"];
-      const pickFor = (postId) => {
-        const seed = hashStrToInt_(`${getProjectId() || projectId || "global"}::${feedId}::${postId}::rand_time_v1`);
-        const rnd = mulberry32_(seed);
-        return buckets[Math.floor(rnd() * buckets.length)];
-      };
-      for (const p of arr) {
-        if (!p) continue;
-        const id = p.id || JSON.stringify(p).slice(0,64);
-        p.showTime = pickFor(id);
-      }
-    } else {
-      // ensure we don't leak a stale showTime if the flag was turned off
-      for (const p of arr) { if (p && "showTime" in p) delete p.showTime; }
-    }
-    // ------------------------------------------------------------------------
 
     __setCachedPosts(feedId, arr);
     return arr;
