@@ -31,6 +31,20 @@ import AdminLogin from "./components-admin-login";
    iOS viewport + input zoom guards
    ============================================ */
 
+
+function normalizeFlags(raw) {
+  // Accept {}, '{"randomize_times":true}', '', null, or {randomize_time:true}
+  let f = raw;
+  if (!f) f = {};
+  if (typeof f === "string") {
+    try { f = f.trim() ? JSON.parse(f) : {}; } catch { f = {}; }
+  }
+  // tolerate old key + several truthy shapes
+  const v = f.randomize_times ?? f.randomize_time ?? f.random_time ?? false;
+  const on = (v === true) || (v === "true") || (v === 1) || (v === "1");
+  return { randomize_times: !!on };
+}
+
 /** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
 function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
   useEffect(() => {
@@ -213,19 +227,19 @@ export default function App() {
   (async () => {
     try {
       const res = await fetchFeedFlags({
-        app: APP,
-        projectId: projectId || undefined,
-        feedId: activeFeedId || undefined,
-        endpoint: GS_ENDPOINT,
-      });
+  app: APP,
+
+ projectId: projectId || undefined, // keep for the util
+ feedId: activeFeedId || undefined, // keep for the util
+ project_id: projectId || undefined, // explicit fallback for backend
+ feed_id: activeFeedId || undefined, // explicit fallback for backend
+  endpoint: GS_ENDPOINT,
+});
       if (cancelled) return;
 
       // Flags can arrive as an object OR a JSON string
-      const raw = res?.flags;
-      const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
-      const next = {
-        randomize_times: !!(parsed.randomize_times ?? parsed.random_time),
-      };
+             const raw = res?.flags;
+       const next = normalizeFlags(raw);
 
       setFlags(next);
 
