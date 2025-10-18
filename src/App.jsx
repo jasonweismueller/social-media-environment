@@ -200,6 +200,17 @@ export default function App() {
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
+const [flags, setFlags] = useState({ random_time: false });
+
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    const f = await fetchFeedFlags();
+    if (alive) setFlags(f);
+  })();
+  return () => { alive = false; };
+}, [projectId, feedId]);
+
   // Debug viewport flag
   useEffect(() => {
     const apply = () => {

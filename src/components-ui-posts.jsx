@@ -1,7 +1,8 @@
 // components-ui-posts.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor
+  REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor,
+  displayTimeForPost
 } from "./utils";
 
 import { BottomSheet } from "./components-ui-mobile";
@@ -112,7 +113,7 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
 }
 
 /* ----------------------------- Post Card ---------------------------------- */
-export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false }) {
+export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { random_time:false }, app, projectId, feedId }) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
@@ -829,7 +830,12 @@ const isMobile = useIsMobile();  // ⟵ add this
   ) : (
     hasTime ? (
       <>
-        <span className="subtle">{post.time}</span>
+                <span className="subtle">
+          {displayTimeForPost(post, {
+            randomize: !!flags.random_time,
+            seedParts: [app || "fb", projectId || "global", feedId || ""],
+          })}
+        </span>
         <span className="sep" aria-hidden="true">·</span>
         <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
       </>
@@ -1457,7 +1463,7 @@ function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
 }
 
 /* ------------------------------- Feed ------------------------------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
+export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId }) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
@@ -1520,8 +1526,14 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit }) {
             onAction={log}
             disabled={disabled}
             registerViewRef={registerViewRef}
+            flags={flags}
+           app={app}
+           projectId={projectId}
+           feedId={feedId}
           />
         ))}
+
+  
         <div ref={sentinelRef} aria-hidden="true" />
         {visibleCount >= posts.length && <div className="end">End of Feed</div>}
         <div className="submit-wrap">

@@ -201,6 +201,56 @@ export async function adminDeleteUser(email) {
   }
 }
 
+
+
+
+
+// Feed rnadom time helper
+const FEED_FLAGS_GET_URL = () =>
+  `${GS_ENDPOINT}?path=get_feed_flags&app=${APP}${qProject()}${qFeed()}`;
+
+export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
+  const qp = new URLSearchParams({ path: "get_feed_flags", app });
+  if (projectId) qp.append("project_id", projectId);
+  if (feedId) qp.append("feed_id", feedId);
+  const res = await fetch(`${endpoint}?${qp.toString()}`, { credentials: "omit" });
+  const j = await res.json().catch(() => ({}));
+  return (j && j.flags) ? j.flags : { random_time: false };
+}
+
+// utils.js
+function hashToInt(s) {
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return (h >>> 0); // unsigned
+}
+
+
+export function displayTimeForPost(post, {
+  randomize = false,
+  feedId = getFeedIdFromUrl(),
+  windowMinutes = 600, // randomize within ±3h
+} = {}) {
+  const t = (post?.time || "").trim();
+  if (!t) return ""; // nothing to show
+
+  let base = new Date(t);
+  if (isNaN(base.getTime())) {
+    // If your posts carry relative times like "3h", handle that separately or fall back:
+    return t;
+  }
+
+  if (!randomize) {
+    return base.toLocaleString(); // or your existing formatter
+  }
+
+  const seed = `${APP}|${getProjectId() || "global"}|${feedId || ""}|${post?.id || ""}`;
+  const h = hashToInt(seed);
+  // map hash → [-windowMinutes, +windowMinutes]
+  const shiftMin = (h % (2 * windowMinutes + 1)) - windowMinutes;
+  const shifted = new Date(base.getTime() + shiftMin * 60 * 1000);
+  return shifted.toLocaleString(); // or your relative-time formatter
+}
+
 /* --------------------- Reactions helpers ---------------------------------- */
 export const REACTION_META = {
   like:  { emoji: "👍", label: "Like"  },
