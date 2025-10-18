@@ -215,6 +215,27 @@ export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
   return (j && j.flags) ? j.flags : { random_time: false };
 }
 
+export function normalizeFlagsForStore(flags) {
+  const out = { ...(flags || {}) };
+  if (typeof out.random_time !== "undefined") {
+    out.randomize_times = !!out.random_time;
+    delete out.random_time;
+  }
+  return out;
+}
+
+export function normalizeFlagsForRead(flags) {
+  const out = { ...(flags || {}) };
+  if (
+    typeof out.randomize_times === "undefined" &&
+    typeof out.random_time !== "undefined"
+  ) {
+    out.randomize_times = !!out.random_time;
+  }
+  delete out.random_time;
+  return out;
+}
+
 // utils.js
 function hashToInt(s) {
   let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;

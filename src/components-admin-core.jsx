@@ -34,6 +34,7 @@ import {
   GS_ENDPOINT, APP, getAdminToken,
   readPostNames,
   writePostNames,
+  normalizeFlagsForStore, normalizeFlagsForRead,
   postDisplayName
 } from "./utils";
 
@@ -131,7 +132,7 @@ async function fetchParticipantsStats(projectId, feedId) {
 /* ------------------------ Feed flags helpers (random_time) ------------------ */
 async function getFeedFlagsFromBackend({ projectId, feedId }) {
   try {
-    if (!feedId) return { random_time: false };
+    if (!feedId) return { randomize_times: false };
     const params = new URLSearchParams({
       path: "get_feed_flags",
       app: APP,
@@ -140,11 +141,15 @@ async function getFeedFlagsFromBackend({ projectId, feedId }) {
     const effPid = projectId && projectId !== "global" ? String(projectId) : "";
     if (effPid) params.set("project_id", effPid);
 
-    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, { mode: "cors", cache: "no-store" });
+    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, {
+      mode: "cors",
+      cache: "no-store",
+    });
     const json = await res.json().catch(() => ({}));
-    return (json && json.flags) ? json.flags : { random_time: false };
+    const raw = (json && json.flags) ? json.flags : {};
+    return normalizeFlagsForRead(raw); // ✅ normalized to { randomize_times }
   } catch {
-    return { random_time: false };
+    return { randomize_times: false };
   }
 }
 
@@ -157,11 +162,10 @@ async function setFeedFlagsOnBackend({ projectId, feedId, randomTime }) {
     app: APP,
     project_id: projectId || "",
     feed_id: String(feedId),
-    flags: { random_time: !!randomTime },
+    flags: normalizeFlagsForStore({ random_time: !!randomTime }), // ✅ normalized before sending
     admin_token: admin,
   };
 
-  // POST as text/plain (matches your other admin POSTs and avoids preflight)
   const doPost = async (body) => {
     const res = await fetch(GS_ENDPOINT, {
       method: "POST",
@@ -172,10 +176,8 @@ async function setFeedFlagsOnBackend({ projectId, feedId, randomTime }) {
     return res ? res.json().catch(() => ({ ok: false })) : { ok: false };
   };
 
-  // primary attempt
   let out = await doPost(payload);
 
-  // backward-compat retry if the backend uses a slightly different action name
   if (!out?.ok && /unknown action/i.test(String(out?.err || ""))) {
     out = await doPost({ ...payload, action: "set_flags" });
   }
@@ -336,14 +338,14 @@ export function AdminDashboard({
   };
 
   // ---- flags loader
-  const loadFlagsFor = async (fid) => {
-    if (!fid) return;
-    const k = keyFor(projectId, fid);
-    if (feedFlags[k]?.loaded || feedFlags[k]?.loading) return;
-    setFeedFlags(m => ({ ...m, [k]: { ...(m[k] || {}), loading: true } }));
-    const f = await getFeedFlagsFromBackend({ projectId, feedId: fid });
-    setFeedFlags(m => ({ ...m, [k]: { ...f, loaded: true, loading: false } }));
-  };
+ const loadFlagsFor = async (fid) => {
+  if (!fid) return;
+  const k = keyFor(projectId, fid);
+  if (feedFlags[k]?.loaded || feedFlags[k]?.loading) return;
+  setFeedFlags((m) => ({ ...m, [k]: { ...(m[k] || {}), loading: true } }));
+  const f = await getFeedFlagsFromBackend({ projectId, feedId: fid });
+  setFeedFlags((m) => ({ ...m, [k]: { ...f, loaded: true, loading: false } }));
+};
 
   useEffect(() => {
     const syncFromUrl = () => {
@@ -972,8 +974,8 @@ export function AdminDashboard({
                       const stats = feedStats[keyFor(projectId, f.feed_id)];
                       const fk = keyFor(projectId, f.feed_id);
                       const ff = feedFlags[fk] || {};
-                      const randomTimeActive = !!ff.random_time;
-                      const randomTimeBusy = !!ff.saving || !!ff.loading;
+                      const randomTimeActive = !!(ff.randomize_times ?? ff.random_time);
+const curVal = !!(feedFlags[k2]?.randomize_times ?? feedFlags[k2]?.random_time);
 
                       return (
                         <tr
@@ -1041,11 +1043,17 @@ export function AdminDashboard({
                                       randomTime: !curVal,
                                     });
                                     if (res?.ok) {
-                                      setFeedFlags(m => ({ ...m, [k2]: { random_time: !curVal, loaded: true, saving: false } }));
-                                    } else {
-                                      setFeedFlags(m => ({ ...m, [k2]: { ...(m[k2] || {}), saving: false } }));
-                                      alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
-                                    }
+  setFeedFlags((m) => ({
+    ...m,
+    [k2]: { randomize_times: !curVal, loaded: true, saving: false },
+  }));
+} else {
+  setFeedFlags((m) => ({
+    ...m,
+    [k2]: { ...(m[k2] || {}), saving: false },
+  }));
+  alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
+}
                                   }}
                                 >
                                   {randomTimeBusy ? "Random time…" : (randomTimeActive ? "Random time: ON" : "Random time: OFF")}
