@@ -970,12 +970,18 @@ export function AdminDashboard({
 
                     return visible.map((f) => {
                       const isDefault = f.feed_id === defaultFeedId;
-                      const isLoaded = f.feed_id === feedId;
-                      const stats = feedStats[keyFor(projectId, f.feed_id)];
-                      const fk = keyFor(projectId, f.feed_id);
-                      const ff = feedFlags[fk] || {};
-                      const randomTimeActive = !!(ff.randomize_times ?? ff.random_time);
-const curVal = !!(feedFlags[k2]?.randomize_times ?? feedFlags[k2]?.random_time);
+const isLoaded  = f.feed_id === feedId;
+const stats     = feedStats[keyFor(projectId, f.feed_id)];
+
+// ✅ single, consistent key for this row
+const rowKey = keyFor(projectId, f.feed_id);
+
+// ✅ read current flags (normalized to prefer `randomize_times` but still accept `random_time`)
+const ff = feedFlags[rowKey] || {};
+const randomTimeActive = !!(ff.randomize_times ?? ff.random_time);
+
+// ✅ used to disable the button while loading/saving
+const randomTimeBusy = !!ff.saving || !!ff.loading;
 
                       return (
                         <tr
@@ -1031,27 +1037,36 @@ const curVal = !!(feedFlags[k2]?.randomize_times ?? feedFlags[k2]?.random_time);
                                   title="When ON, this feed randomizes displayed post timestamps."
                                   disabled={randomTimeBusy}
                                   onClick={async () => {
-                                    if (!ff.loaded && !ff.loading) {
-                                      await loadFlagsFor(f.feed_id);
-                                    }
-                                    const k2 = keyFor(projectId, f.feed_id);
-                                    const curVal = !!(feedFlags[k2]?.random_time);
-                                    setFeedFlags(m => ({ ...m, [k2]: { ...(m[k2] || {}), saving: true } }));
-                                    const res = await setFeedFlagsOnBackend({
-                                      projectId,
-                                      feedId: f.feed_id,
-                                      randomTime: !curVal,
-                                    });
-                                    if (res?.ok) {
-  setFeedFlags((m) => ({
+                                   if (!ff.loaded && !ff.loading) {
+  await loadFlagsFor(f.feed_id);
+}
+
+// current value (normalized)
+const curVal = !!((feedFlags[rowKey]?.randomize_times ?? feedFlags[rowKey]?.random_time));
+
+// mark saving
+setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: true } }));
+
+const res = await setFeedFlagsOnBackend({
+  projectId,
+  feedId: f.feed_id,
+  randomTime: !curVal,
+});
+
+if (res?.ok) {
+  // update local cache (write both keys for maximum compatibility)
+  setFeedFlags(m => ({
     ...m,
-    [k2]: { randomize_times: !curVal, loaded: true, saving: false },
+    [rowKey]: {
+      ...(m[rowKey] || {}),
+      randomize_times: !curVal,
+      random_time: !curVal,
+      loaded: true,
+      saving: false,
+    },
   }));
 } else {
-  setFeedFlags((m) => ({
-    ...m,
-    [k2]: { ...(m[k2] || {}), saving: false },
-  }));
+  setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: false } }));
   alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
 }
                                   }}
