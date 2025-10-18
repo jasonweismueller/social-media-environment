@@ -205,25 +205,44 @@ export default function App() {
   const [flags, setFlags] = useState({ randomize_times: false }); // was random_time
 
   useEffect(() => {
-    let cancelled = false;
-    if (!activeFeedId) { setFlags({ randomize_times:false }); return; }
+  let cancelled = false;
 
-    (async () => {
-      try {
-        const res = await fetchFeedFlags({
-          app: APP,
-          projectId: projectId || undefined,
-          feedId: activeFeedId || undefined,
-          endpoint: GS_ENDPOINT,
-        });
-        if (!cancelled) setFlags(res?.flags || { randomize_times:false });
-      } catch {
-        if (!cancelled) setFlags({ randomize_times: false });
-      }
-    })();
+  // tiny normalizer so we tolerate legacy keys
+  const canon = (f) => ({
+    randomize_times: !!(f?.randomize_times ?? f?.random_time),
+  });
 
-    return () => { cancelled = true; };
-  }, [projectId, activeFeedId]);
+  // dev override: ?forcerand=1 to force the UI path
+  const forceRand =
+    new URLSearchParams(location.search).get("forcerand") === "1";
+
+  if (!activeFeedId) {
+    setFlags({ randomize_times: forceRand || false });
+    return;
+  }
+
+  (async () => {
+    try {
+      const res = await fetchFeedFlags({
+        app: APP,
+        projectId: projectId || undefined,
+        feedId: activeFeedId || undefined,
+        endpoint: GS_ENDPOINT,
+      });
+      if (cancelled) return;
+      const next = canon(res?.flags || {});
+      setFlags(forceRand ? { ...next, randomize_times: true } : next);
+      // optional: quick probe
+      console.debug("[flags]", next, "(forced?", forceRand, ")");
+    } catch (e) {
+      if (!cancelled) setFlags({ randomize_times: forceRand || false });
+    }
+  })();
+
+  // ✅ proper cleanup so setState isn’t called after unmount
+  return () => { cancelled = true; };
+  // ✅ re-run when these change
+}, [APP, GS_ENDPOINT, projectId, activeFeedId]);
 
   // Debug viewport flag
   useEffect(() => {
