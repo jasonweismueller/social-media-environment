@@ -207,19 +207,8 @@ export default function App() {
   useEffect(() => {
   let cancelled = false;
 
-  // tiny normalizer so we tolerate legacy keys
-  const canon = (f) => ({
-    randomize_times: !!(f?.randomize_times ?? f?.random_time),
-  });
-
-  // dev override: ?forcerand=1 to force the UI path
-  const forceRand =
-    new URLSearchParams(location.search).get("forcerand") === "1";
-
-  if (!activeFeedId) {
-    setFlags({ randomize_times: forceRand || false });
-    return;
-  }
+  // Wait until the feed has been chosen; don't clobber to false early
+  if (!activeFeedId) return;
 
   (async () => {
     try {
@@ -230,19 +219,35 @@ export default function App() {
         endpoint: GS_ENDPOINT,
       });
       if (cancelled) return;
-      const next = canon(res?.flags || {});
-      setFlags(forceRand ? { ...next, randomize_times: true } : next);
-      // optional: quick probe
-      console.debug("[flags]", next, "(forced?", forceRand, ")");
-    } catch (e) {
-      if (!cancelled) setFlags({ randomize_times: forceRand || false });
+
+      // Flags can arrive as an object OR a JSON string
+      const raw = res?.flags;
+      const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
+      const next = {
+        randomize_times: !!(parsed.randomize_times ?? parsed.random_time),
+      };
+
+      setFlags(next);
+
+      // one-time helpful debug (fires when inputs change)
+      console.debug("[flags fetched]", {
+        activeFeedId,
+        projectId,
+        fromServer: raw,
+        parsed,
+        next,
+      });
+    } catch (err) {
+      if (!cancelled) {
+        console.debug("[flags fetch error]", err);
+        // keep previous flags; or, if you prefer, set an explicit fallback:
+        // setFlags(prev => ({ ...prev, randomize_times: false }));
+      }
     }
   })();
 
-  // ✅ proper cleanup so setState isn’t called after unmount
   return () => { cancelled = true; };
-  // ✅ re-run when these change
-}, [APP, GS_ENDPOINT, projectId, activeFeedId]);
+}, [projectId, activeFeedId]);
 
   // Debug viewport flag
   useEffect(() => {
