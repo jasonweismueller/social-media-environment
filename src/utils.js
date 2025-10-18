@@ -237,37 +237,25 @@ export function normalizeFlagsForRead(flags) {
 }
 
 // utils.js
-function hashToInt(s) {
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return (h >>> 0); // unsigned
+function seedToInt(s){
+  let h = 2166136261 >>> 0; // FNV-ish
+  const str = String(s||"");
+  for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+function rng(seed){
+  let x = (seedToInt(seed) || 1) >>> 0;
+  return () => { x ^= x<<13; x ^= x>>>17; x ^= x<<5; return (x>>>0)/4294967296; };
 }
 
-
-export function displayTimeForPost(post, {
-  randomize = false,
-  feedId = getFeedIdFromUrl(),
-  windowMinutes = 600, // randomize within ±3h
-} = {}) {
-  const t = (post?.time || "").trim();
-  if (!t) return ""; // nothing to show
-
-  let base = new Date(t);
-  if (isNaN(base.getTime())) {
-    // If your posts carry relative times like "3h", handle that separately or fall back:
-    return t;
-  }
-
-  if (!randomize) {
-    return base.toLocaleString(); // or your existing formatter
-  }
-
-  const seed = `${APP}|${getProjectId() || "global"}|${feedId || ""}|${post?.id || ""}`;
-  const h = hashToInt(seed);
-  // map hash → [-windowMinutes, +windowMinutes]
-  const shiftMin = (h % (2 * windowMinutes + 1)) - windowMinutes;
-  const shifted = new Date(base.getTime() + shiftMin * 60 * 1000);
-  return shifted.toLocaleString(); // or your relative-time formatter
+export function displayTimeForPost(post, { randomize, seedParts=[] } = {}){
+  if (!randomize) return post?.time || "";
+  const seed = [...seedParts, post?.id ?? ""].join("::");
+  const r = rng(seed);
+  const hours = 1 + Math.floor(r() * 23); // 1..23
+  return `${hours}h`;
 }
+
 
 /* --------------------- Reactions helpers ---------------------------------- */
 export const REACTION_META = {

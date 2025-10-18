@@ -113,14 +113,16 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
 }
 
 /* ----------------------------- Post Card ---------------------------------- */
-export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { random_time:false }, app, projectId, feedId }) {
+export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { randomize_times:false }, app, projectId, feedId }) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
   // right before the meta markup, derive once:
-const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
-const hasTime = shouldShowTime && !!post?.time;
+
+ const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
+
+const hasTime = shouldShowTime && (!!post?.time || (flags?.randomize_times ?? flags?.random_time) === true);
 const isMobile = useIsMobile();  // ⟵ add this
 
   // FB-like video settings UI
@@ -831,11 +833,11 @@ const isMobile = useIsMobile();  // ⟵ add this
     hasTime ? (
       <>
                 <span className="subtle">
-           {displayTimeForPost(post, {
-   randomize: !!(flags?.random_time || flags?.randomize_times),
+   {displayTimeForPost(post, {
+   randomize: (flags?.randomize_times ?? flags?.random_time) === true,
    seedParts: [app || "fb", projectId || "global", feedId || ""],
  })}
-        </span>
+</span>
         <span className="sep" aria-hidden="true">·</span>
         <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
       </>

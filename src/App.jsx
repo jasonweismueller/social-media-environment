@@ -202,22 +202,23 @@ export default function App() {
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
-  const [flags, setFlags] = useState({ random_time: false });
+  const [flags, setFlags] = useState({ randomize_times: false }); // was random_time
 
   useEffect(() => {
     let cancelled = false;
+    if (!activeFeedId) { setFlags({ randomize_times:false }); return; }
 
     (async () => {
       try {
-        const f = await fetchFeedFlags({
+        const res = await fetchFeedFlags({
           app: APP,
           projectId: projectId || undefined,
           feedId: activeFeedId || undefined,
           endpoint: GS_ENDPOINT,
         });
-        if (!cancelled) setFlags(f);
+        if (!cancelled) setFlags(res?.flags || { randomize_times:false });
       } catch {
-        if (!cancelled) setFlags({ random_time: false });
+        if (!cancelled) setFlags({ randomize_times: false });
       }
     })();
 
