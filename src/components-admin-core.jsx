@@ -151,22 +151,36 @@ async function getFeedFlagsFromBackend({ projectId, feedId }) {
 async function setFeedFlagsOnBackend({ projectId, feedId, randomTime }) {
   const admin = getAdminToken?.();
   if (!admin) return { ok: false, err: "admin token missing" };
-  const effPid = projectId && projectId !== "global" ? String(projectId) : "";
-  const body = {
+
+  const payload = {
     action: "set_feed_flags",
     app: APP,
-    project_id: effPid || "",
+    project_id: projectId || "",
     feed_id: String(feedId),
     flags: { random_time: !!randomTime },
     admin_token: admin,
   };
-  const res = await fetch(GS_ENDPOINT, {
-    method: "POST",
-    mode: "cors",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then(r => r.json()).catch(() => ({ ok: false }));
-  return res || { ok: false };
+
+  // POST as text/plain (matches your other admin POSTs and avoids preflight)
+  const doPost = async (body) => {
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    return res ? res.json().catch(() => ({ ok: false })) : { ok: false };
+  };
+
+  // primary attempt
+  let out = await doPost(payload);
+
+  // backward-compat retry if the backend uses a slightly different action name
+  if (!out?.ok && /unknown action/i.test(String(out?.err || ""))) {
+    out = await doPost({ ...payload, action: "set_flags" });
+  }
+
+  return out || { ok: false, err: "no response" };
 }
 
 function msToMinSec(n) {
