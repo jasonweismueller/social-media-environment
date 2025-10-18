@@ -206,9 +206,6 @@ export async function adminDeleteUser(email) {
 
 
 // Feed rnadom time helper
-const FEED_FLAGS_GET_URL = () =>
-  `${GS_ENDPOINT}?path=get_feed_flags&app=${APP}${qProject()}${qFeed()}`;
-
 export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
   const qp = new URLSearchParams({ path: "get_feed_flags", app });
   if (projectId) qp.append("project_id", projectId);
