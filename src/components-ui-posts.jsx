@@ -120,9 +120,16 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   const [commentText, setCommentText] = useState("");
   // right before the meta markup, derive once:
 
+
  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
 
-const randomizeOn = (flags?.randomize_times ?? flags?.random_time) === true;
+ // allow manual override via ?forcerand=1
+ const forcedRand =
+   typeof window !== "undefined" &&
+   new URLSearchParams(window.location.search).get("forcerand") === "1";
+
+ const randomizeOn = forcedRand || (flags?.randomize_times ?? flags?.random_time) === true;
+
 const timeLabel = shouldShowTime
   ? (displayTimeForPost(post, {
       randomize: randomizeOn,
