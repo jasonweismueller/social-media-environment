@@ -14,6 +14,8 @@ import {
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   setFeedIdInUrl,
+  // ⬇️ added for flags fetch
+  APP, GS_ENDPOINT, fetchFeedFlags,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -200,27 +202,28 @@ export default function App() {
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
-const [flags, setFlags] = useState({ random_time: false });
+  const [flags, setFlags] = useState({ random_time: false });
 
-useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-  (async () => {
-    try {
-      const f = await fetchFeedFlags({
-        app: APP,
-        projectId: projectId || undefined,
-        feedId: feedId || undefined,
-        endpoint: GS_ENDPOINT,
-      });
-      if (!cancelled) setFlags(f);
-    } catch {
-      if (!cancelled) setFlags({ random_time: false });
-    }
-  })();
+    (async () => {
+      try {
+        const f = await fetchFeedFlags({
+          app: APP,
+          projectId: projectId || undefined,
+          feedId: activeFeedId || undefined,
+          endpoint: GS_ENDPOINT,
+        });
+        if (!cancelled) setFlags(f);
+      } catch {
+        if (!cancelled) setFlags({ random_time: false });
+      }
+    })();
 
-  return () => { cancelled = true; };
-}, [projectId, feedId]);
+    return () => { cancelled = true; };
+  }, [projectId, activeFeedId]);
+
   // Debug viewport flag
   useEffect(() => {
     const apply = () => {
