@@ -1881,7 +1881,7 @@ function makeRandomPost() {
   const willHaveImage = chance(0.55);
   const interventionType = chance(0.20) ? randPick(["label", "note"]) : "none";
   const noteText = interventionType === "note" ? randPick(NOTE_SNIPPETS) : "";
-  the: const showReactions = chance(0.85);
+const showReactions = chance(0.85);
   const rxKeys = Object.keys(REACTION_META);
   const selectedReactions = showReactions
     ? rxKeys.sort(() => 0.5 - Math.random()).slice(0, randInt(1, 3))
