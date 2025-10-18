@@ -203,14 +203,24 @@ export default function App() {
 const [flags, setFlags] = useState({ random_time: false });
 
 useEffect(() => {
-  let alive = true;
-  (async () => {
-    const f = await fetchFeedFlags();
-    if (alive) setFlags(f);
-  })();
-  return () => { alive = false; };
-}, [projectId, feedId]);
+  let cancelled = false;
 
+  (async () => {
+    try {
+      const f = await fetchFeedFlags({
+        app: APP,
+        projectId: projectId || undefined,
+        feedId: feedId || undefined,
+        endpoint: GS_ENDPOINT,
+      });
+      if (!cancelled) setFlags(f);
+    } catch {
+      if (!cancelled) setFlags({ random_time: false });
+    }
+  })();
+
+  return () => { cancelled = true; };
+}, [projectId, feedId]);
   // Debug viewport flag
   useEffect(() => {
     const apply = () => {
