@@ -207,6 +207,13 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
 
+  // near other refs/state
+const [runSeed] = useState(() =>
+  (crypto?.getRandomValues
+    ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
+    : String(Date.now()) + "-" + Math.random().toString(36).slice(2))
+);
+
   const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
   const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedIdFromUrl() : null);
@@ -608,6 +615,7 @@ export default function App() {
                   showComposer={showComposer}
                   loading={false}
                       flags={flags}
+                      runSeed={runSeed}
     app={APP}
     projectId={projectId}
     feedId={activeFeedId}

@@ -113,7 +113,7 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
 }
 
 /* ----------------------------- Post Card ---------------------------------- */
-export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { randomize_times:false }, app, projectId, feedId }) {
+export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { randomize_times:false }, app, projectId, feedId, runSeed }) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
@@ -132,8 +132,8 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
 const timeLabel = shouldShowTime
   ? (displayTimeForPost(post, {
-      randomize: randomizeOn,
-      seedParts: [app || "fb", projectId || "global", feedId || ""],
+      randomize: randomizeOn,      
+      seedParts: [runSeed || "run", app || "fb", projectId || "global", feedId || ""],
     }) || "")
   : "";
   // ✅ move the debug into an effect
@@ -1477,7 +1477,7 @@ function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
 }
 
 /* ------------------------------- Feed ------------------------------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId }) {
+export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed }) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
@@ -1541,6 +1541,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
             disabled={disabled}
             registerViewRef={registerViewRef}
             flags={flags}
+            runSeed={runSeed}
            app={app}
            projectId={projectId}
            feedId={feedId}
