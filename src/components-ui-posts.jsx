@@ -129,7 +129,10 @@ const timeLabel = shouldShowTime
       seedParts: [app || "fb", projectId || "global", feedId || ""],
     }) || "")
   : "";
+  // ✅ move the debug into an effect
+useEffect(() => {
   console.debug('flags:', flags, 'randomizeOn:', randomizeOn, 'timeLabel:', timeLabel, 'post.time:', post?.time);
+}, [post.id, randomizeOn, timeLabel]); // fires only when these change
 const isMobile = useIsMobile();  // ⟵ add this
 
   // FB-like video settings UI
