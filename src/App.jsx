@@ -238,7 +238,7 @@ export default function App() {
       if (cancelled) return;
 
       // Flags can arrive as an object OR a JSON string
-             const raw = res?.flags;
+       const raw = res; // fetchFeedFlags already returns the flags object (or a string)
        const next = normalizeFlags(raw);
 
       setFlags(next);
