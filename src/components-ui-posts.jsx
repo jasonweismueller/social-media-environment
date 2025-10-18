@@ -831,10 +831,10 @@ const isMobile = useIsMobile();  // ⟵ add this
     hasTime ? (
       <>
                 <span className="subtle">
-          {displayTimeForPost(post, {
-            randomize: !!flags.random_time,
-            seedParts: [app || "fb", projectId || "global", feedId || ""],
-          })}
+           {displayTimeForPost(post, {
+   randomize: !!(flags?.random_time || flags?.randomize_times),
+   seedParts: [app || "fb", projectId || "global", feedId || ""],
+ })}
         </span>
         <span className="sep" aria-hidden="true">·</span>
         <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />

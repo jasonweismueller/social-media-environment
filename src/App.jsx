@@ -569,6 +569,10 @@ export default function App() {
                   log={log}
                   showComposer={showComposer}
                   loading={false}
+                      flags={flags}
+    app={APP}
+    projectId={projectId}
+    feedId={activeFeedId}
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
