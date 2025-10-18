@@ -122,7 +122,13 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
 
-const hasTime = shouldShowTime && (!!post?.time || (flags?.randomize_times ?? flags?.random_time) === true);
+const randomizeOn = (flags?.randomize_times ?? flags?.random_time) === true;
+const timeLabel = shouldShowTime
+  ? (displayTimeForPost(post, {
+      randomize: randomizeOn,
+      seedParts: [app || "fb", projectId || "global", feedId || ""],
+    }) || "")
+  : "";
 const isMobile = useIsMobile();  // ⟵ add this
 
   // FB-like video settings UI
@@ -823,26 +829,21 @@ const isMobile = useIsMobile();  // ⟵ add this
 
    {/* Sponsored for ads; otherwise time + globe (both hidden if showTime is false) */}
 <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-  {post.adType === "ad" ? (
+{post.adType === "ad" ? (
+  <>
+    <span className="subtle">Sponsored</span>
+    <span className="sep" aria-hidden="true">·</span>
+    <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+  </>
+) : (
+  timeLabel ? (
     <>
-      <span className="subtle">Sponsored</span>
+      <span className="subtle">{timeLabel}</span>
       <span className="sep" aria-hidden="true">·</span>
       <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
     </>
-  ) : (
-    hasTime ? (
-      <>
-                <span className="subtle">
-   {displayTimeForPost(post, {
-   randomize: (flags?.randomize_times ?? flags?.random_time) === true,
-   seedParts: [app || "fb", projectId || "global", feedId || ""],
- })}
-</span>
-        <span className="sep" aria-hidden="true">·</span>
-        <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-      </>
-    ) : null
-  )}
+  ) : null
+)}
 </div>
   </div>
 
