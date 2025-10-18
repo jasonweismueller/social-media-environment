@@ -245,12 +245,11 @@ export default function App() {
 
       // one-time helpful debug (fires when inputs change)
       console.debug("[flags fetched]", {
-        activeFeedId,
-        projectId,
-        fromServer: raw,
-        parsed,
-        next,
-      });
+  activeFeedId,
+  projectId,
+  fromServer: raw,
+  next,
+});
     } catch (err) {
       if (!cancelled) {
         console.debug("[flags fetch error]", err);
