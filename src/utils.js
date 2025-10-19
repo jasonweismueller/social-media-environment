@@ -1839,7 +1839,10 @@ export async function getAvatarPool(kind = "female") {
     try {
       const res = await fetch(url, { mode: "cors", cache: "force-cache" });
       const list = await res.json().catch(() => []);
-      return Array.isArray(list) ? list.filter(Boolean) : [];
+      const base = CF_BASE.replace(/\/+$/,'');
+      return (Array.isArray(list) ? list : [])
+        .filter(Boolean)
+        .map(u => u.startsWith("http") ? u : `${base}/${String(u).replace(/^\/+/, "")}`);
     } catch { return []; }
   })();
   __avatarPoolCache.set(k, p);
