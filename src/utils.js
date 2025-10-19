@@ -44,6 +44,11 @@ export const toggleInSet = (setObj, id) => {
   return next;
 };
 
+
+export const CF_BASE =
+  (window.CONFIG && window.CONFIG.CF_BASE) ||
+  "https://d2bihrgvtn9bga.cloudfront.net";
+
 /* ============================ Project helpers ============================= */
 const PROJECT_KEY = "current_project_id";
 
@@ -1856,9 +1861,7 @@ export function pickDeterministic(array, seedParts = []) {
 /* ========================= S3 Upload via Presigner ========================= */
 // ---- S3 Upload via Presigner (GET, no preflight) ----
 
-export const CF_BASE =
-  (window.CONFIG && window.CONFIG.CF_BASE) ||
-  "https://d2bihrgvtn9bga.cloudfront.net";
+
 
 export const SIGNER_BASE =
   (window.CONFIG && window.CONFIG.SIGNER_BASE) ||
