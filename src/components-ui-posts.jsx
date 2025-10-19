@@ -129,6 +129,8 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   company: COMPANY_NAMES,
 };
 
+const randNamesOn  = !!flags?.randomize_names;
+const randAvatarOn = !!flags?.randomize_avatars;
 
  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
 
@@ -511,7 +513,7 @@ const authorType =
   post.authorType === "male" || post.authorType === "company" ? post.authorType : "female";
 
 // Deterministic seed parts: changes per hard refresh (runSeed), stable in-session
-const baseSeed = [
+const seedParts = [
   runSeed || "run",
   app || "app",
   projectId || "proj",
@@ -527,7 +529,7 @@ const poolNames =
 
 const displayAuthor = React.useMemo(() => {
   if (!randNamesOn && post.author) return post.author;
-  const picked = pickDeterministic(poolNames, [...baseSeed, "name"]);
+  const picked = pickDeterministic(poolNames, [...seedParts, "name"]);
   return picked || post.author || (authorType === "company" ? "Sponsored" : "User");
   // deps intentionally include identifiers that change the seed
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -545,7 +547,7 @@ React.useEffect(() => {
     if (cancelled) return;
 
     // list items can be either full URLs or filenames — support both
-    const pick = pickDeterministic(list, [...baseSeed, "avatar"]);
+    const pick = pickDeterministic(list, [...seedParts, "avatar"]);
     if (!pick) { setRandAvatarUrl(null); return; }
 
     const looksAbsolute = /^https?:\/\//i.test(pick);

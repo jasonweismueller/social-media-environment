@@ -1655,16 +1655,17 @@ if (res?.ok) {
                     Leave blank to hide time.
                   </div>
                 </label>
+
                 <label className="label">Author Type</label>
 <div className="row">
   {["female","male","company"].map(opt => (
     <label key={opt} style={{ marginRight: 12 }}>
       <input
         type="radio"
-        name={`authorType-${post.id}`}
+        name={`authorType-${editing.id}`}
         value={opt}
-        checked={(post.authorType || "female") === opt}
-        onChange={e => setPostField("authorType", e.target.value)}
+        checked={(editing.authorType || "female") === opt}
+        onChange={e => setEditing(ed => ({ ...ed, authorType: e.target.value }))}
       />
       <span style={{ marginLeft: 6, textTransform: "capitalize" }}>{opt}</span>
     </label>

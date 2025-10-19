@@ -211,8 +211,9 @@ export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
   if (projectId) qp.append("project_id", projectId);
   if (feedId) qp.append("feed_id", feedId);
   const res = await fetch(`${endpoint}?${qp.toString()}`, { credentials: "omit" });
-  const j = await res.json().catch(() => ({}));
-  return (j && j.flags) ? j.flags : { random_time: false };
+ const j = await res.json().catch(() => ({}));
+ const raw = (j && j.flags) ? j.flags : { random_time: false };
+ return normalizeFlagsForRead(raw);
 }
 
 export function normalizeFlagsForStore(flags) {
