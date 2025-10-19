@@ -33,18 +33,15 @@ import AdminLogin from "./components-admin-login";
 
 
 function normalizeFlags(raw) {
-  let f = raw;
-  if (!f) f = {};
-  if (typeof f === "string") {
-    try { f = f.trim() ? JSON.parse(f) : {}; } catch { f = {}; }
-  }
+  let f = raw || {};
+  if (typeof f === "string") { try { f = f.trim() ? JSON.parse(f) : {}; } catch { f = {}; } }
   const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
 
-  const randomize_times  = truthy(f.randomize_times ?? f.randomize_time ?? f.random_time ?? false);
-  const randomize_avatar = truthy(f.randomize_avatar ?? f.rand_avatar ?? false);
-  const randomize_names  = truthy(f.randomize_names  ?? f.rand_names  ?? false);
+  const randomize_times    = truthy(f.randomize_times ?? f.randomize_time ?? f.random_time ?? false);
+  const randomize_avatars  = truthy(f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false); // 👈 plural out
+  const randomize_names    = truthy(f.randomize_names   ?? f.rand_names      ?? false);
 
-  return { randomize_times, randomize_avatar, randomize_names };
+  return { randomize_times, randomize_avatars, randomize_names }; // 👈 plural key matches UI
 }
 
 /** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */

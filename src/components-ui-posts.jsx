@@ -130,8 +130,8 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   company: COMPANY_NAMES,
 };
 
-const randNamesOn  = !!flags?.randomize_names;
-const randAvatarOn = !!flags?.randomize_avatars;
+const randNamesOn  = !!(flags?.randomize_names);
+const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar); // 👈 accept both
 
  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
 
