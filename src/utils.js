@@ -216,23 +216,36 @@ export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
 }
 
 export function normalizeFlagsForStore(flags) {
-  const out = { ...(flags || {}) };
-  if (typeof out.random_time !== "undefined") {
-    out.randomize_times = !!out.random_time;
-    delete out.random_time;
+  const out = {};
+
+  if (!flags) return out;
+
+  // Accept both old and new keys, but always output the short ones for storage
+  if (typeof flags.randomize_times !== "undefined" || typeof flags.random_time !== "undefined") {
+    out.random_time = !!(flags.randomize_times ?? flags.random_time);
   }
+  if (typeof flags.randomize_avatars !== "undefined" || typeof flags.random_avatar !== "undefined") {
+    out.random_avatar = !!(flags.randomize_avatars ?? flags.random_avatar);
+  }
+  if (typeof flags.randomize_names !== "undefined" || typeof flags.random_name !== "undefined") {
+    out.random_name = !!(flags.randomize_names ?? flags.random_name);
+  }
+
   return out;
 }
 
 export function normalizeFlagsForRead(flags) {
   const out = { ...(flags || {}) };
-  if (
-    typeof out.randomize_times === "undefined" &&
-    typeof out.random_time !== "undefined"
-  ) {
-    out.randomize_times = !!out.random_time;
-  }
+
+  // Normalize short keys → long form used by frontend
+  out.randomize_times   = !!(out.randomize_times   ?? out.random_time);
+  out.randomize_avatars = !!(out.randomize_avatars ?? out.random_avatar);
+  out.randomize_names   = !!(out.randomize_names   ?? out.random_name);
+
   delete out.random_time;
+  delete out.random_avatar;
+  delete out.random_name;
+
   return out;
 }
 
@@ -1799,6 +1812,45 @@ export function summarizeRoster(rows) {
     perPost,
   };
 }
+
+
+// ------- Avatar Randomization ----- //
+// ---- Avatar pools (from S3 manifests) ----
+export const AVATAR_POOLS_ENDPOINTS = {
+  female: `${CF_BASE.replace(/\/+$/,'')}/avatars/female/index.json`,
+  male:   `${CF_BASE.replace(/\/+$/,'')}/avatars/male/index.json`,
+  company:`${CF_BASE.replace(/\/+$/,'')}/avatars/company/index.json`,
+};
+
+const __avatarPoolCache = new Map(); // kind -> Promise<string[]>
+
+export async function getAvatarPool(kind = "female") {
+  const k = String(kind);
+  if (__avatarPoolCache.has(k)) return __avatarPoolCache.get(k);
+  const p = (async () => {
+    const url = AVATAR_POOLS_ENDPOINTS[k];
+    if (!url) return [];
+    try {
+      const res = await fetch(url, { mode: "cors", cache: "force-cache" });
+      const list = await res.json().catch(() => []);
+      return Array.isArray(list) ? list.filter(Boolean) : [];
+    } catch { return []; }
+  })();
+  __avatarPoolCache.set(k, p);
+  return p;
+}
+
+// ---- Random pick helpers (deterministic to a seed) ----
+export function pickDeterministic(array, seedParts = []) {
+  const arr = Array.isArray(array) ? array : [];
+  if (!arr.length) return null;
+  const seed = String(seedParts.join("::"));
+  const r = rng(seed);
+  const idx = Math.floor(r() * arr.length);
+  return arr[idx];
+}
+
+
 
 /* ========================= S3 Upload via Presigner ========================= */
 // ---- S3 Upload via Presigner (GET, no preflight) ----

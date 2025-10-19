@@ -1,9 +1,12 @@
 // components-ui-posts.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+
 import {
   REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor,
-  displayTimeForPost
+  displayTimeForPost, getAvatarPool, pickDeterministic
 } from "./utils";
+
+import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 
 import { BottomSheet } from "./components-ui-mobile";
 import { createPortal } from "react-dom";
@@ -119,6 +122,12 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
   // right before the meta markup, derive once:
+
+  const NAME_POOLS = {
+  female: FEMALE_NAMES,
+  male: MALE_NAMES,
+  company: COMPANY_NAMES,
+};
 
 
  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
@@ -497,6 +506,69 @@ const isMobile = useIsMobile();  // ⟵ add this
   const [current, setCurrent] = useState(0);
   const [bufferedEnd, setBufferedEnd] = useState(0);
 
+  // Determine kind from post (default "female" if unset/unknown)
+const authorType =
+  post.authorType === "male" || post.authorType === "company" ? post.authorType : "female";
+
+// Deterministic seed parts: changes per hard refresh (runSeed), stable in-session
+const baseSeed = [
+  runSeed || "run",
+  app || "app",
+  projectId || "proj",
+  feedId || "feed",
+  String(post.id ?? "")
+];
+
+// NAME
+const poolNames =
+  authorType === "female" ? FEMALE_NAMES :
+  authorType === "male"   ? MALE_NAMES   :
+                            COMPANY_NAMES;
+
+const displayAuthor = React.useMemo(() => {
+  if (!randNamesOn && post.author) return post.author;
+  const picked = pickDeterministic(poolNames, [...baseSeed, "name"]);
+  return picked || post.author || (authorType === "company" ? "Sponsored" : "User");
+  // deps intentionally include identifiers that change the seed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [randNamesOn, authorType, post.author, runSeed, app, projectId, feedId, post.id]);
+
+// AVATAR (async pool from S3 via utils)
+const [randAvatarUrl, setRandAvatarUrl] = React.useState(null);
+
+React.useEffect(() => {
+  let cancelled = false;
+  if (!randAvatarOn) { setRandAvatarUrl(null); return; }
+
+  (async () => {
+    const list = await getAvatarPool(authorType); // returns array from index.json
+    if (cancelled) return;
+
+    // list items can be either full URLs or filenames — support both
+    const pick = pickDeterministic(list, [...baseSeed, "avatar"]);
+    if (!pick) { setRandAvatarUrl(null); return; }
+
+    const looksAbsolute = /^https?:\/\//i.test(pick);
+    if (looksAbsolute) {
+      setRandAvatarUrl(pick);
+    } else {
+      // Derive folder base from the endpoint you exported
+      // e.g. https://cf/avatars/female/index.json -> https://cf/avatars/female
+      const endpoint = AVATAR_POOLS_ENDPOINTS?.[authorType] || "";
+      const folderBase = endpoint.replace(/\/index\.json$/i, "");
+      setRandAvatarUrl(`${folderBase}/${pick}`); // filename -> full URL
+    }
+  })();
+
+  return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [randAvatarOn, authorType, runSeed, app, projectId, feedId, post.id]);
+
+// Final avatar used in UI
+const displayAvatar = randAvatarOn
+  ? (randAvatarUrl || post.avatarUrl || null)
+  : (post.avatarUrl || null);
+
   // time formatter
   const fmtTime = (s) => {
     if (!Number.isFinite(s)) return "0:00";
@@ -812,9 +884,9 @@ const isMobile = useIsMobile();  // ⟵ add this
     >
       <header className="card-head">
   <div className="avatar">
-    {post.avatarUrl ? (
+    {displayAvatar ? (
       <img
-        src={post.avatarUrl}
+        src={displayAvatar}
         alt=""
         className="avatar-img"
         loading="lazy"
@@ -827,7 +899,7 @@ const isMobile = useIsMobile();  // ⟵ add this
 
   <div style={{ flex: 1, minWidth:0 }}>
     <div className="name-row">
-      <div className="name">{post.author}</div>
+      <div className="name">{displayAuthor}</div>
       {post.badge && (
         <span className="badge">
           <IconBadge />

@@ -147,13 +147,18 @@ async function getFeedFlagsFromBackend({ projectId, feedId }) {
     });
     const json = await res.json().catch(() => ({}));
     const raw = (json && json.flags) ? json.flags : {};
-    return normalizeFlagsForRead(raw); // ✅ normalized to { randomize_times }
-  } catch {
-    return { randomize_times: false };
-  }
+    const norm = normalizeFlagsForRead(raw); // ✅ normalize aliases → prefer `randomize_*`
+    return {
+      randomize_times:   !!(norm.randomize_times   ?? norm.random_time),
+      randomize_avatars: !!(norm.randomize_avatars ?? norm.random_avatar),
+      randomize_names:   !!(norm.randomize_names   ?? norm.random_name),
+    };
+   } catch {
+    return { randomize_times: false, randomize_avatars: false, randomize_names: false };
+   }
 }
 
-async function setFeedFlagsOnBackend({ projectId, feedId, randomTime }) {
+async function setFeedFlagsOnBackend({ projectId, feedId, patch }) {
   const admin = getAdminToken?.();
   if (!admin) return { ok: false, err: "admin token missing" };
 
@@ -162,7 +167,7 @@ async function setFeedFlagsOnBackend({ projectId, feedId, randomTime }) {
     app: APP,
     project_id: projectId || "",
     feed_id: String(feedId),
-    flags: normalizeFlagsForStore({ random_time: !!randomTime }), // ✅ normalized before sending
+    flags: normalizeFlagsForStore(patch || {}),
     admin_token: admin,
   };
 
@@ -979,9 +984,13 @@ const rowKey = keyFor(projectId, f.feed_id);
 // ✅ read current flags (normalized to prefer `randomize_times` but still accept `random_time`)
 const ff = feedFlags[rowKey] || {};
 const randomTimeActive = !!(ff.randomize_times ?? ff.random_time);
+const randomAvatarActive = !!(ff.randomize_avatars ?? ff.random_avatar);
+const randomNameActive   = !!(ff.randomize_names   ?? ff.random_name);
 
 // ✅ used to disable the button while loading/saving
 const randomTimeBusy = !!ff.saving || !!ff.loading;
+const randomAvatarBusy = !!ff.savingAv || !!ff.loading;
+const randomNameBusy   = !!ff.savingNm || !!ff.loading;
 
                       return (
                         <tr
@@ -1042,16 +1051,13 @@ const randomTimeBusy = !!ff.saving || !!ff.loading;
 }
 
 // current value (normalized)
-const curVal = !!((feedFlags[rowKey]?.randomize_times ?? feedFlags[rowKey]?.random_time));
-
-// mark saving
-setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: true } }));
-
-const res = await setFeedFlagsOnBackend({
-  projectId,
-  feedId: f.feed_id,
-  randomTime: !curVal,
-});
+      const curVal = !!((feedFlags[rowKey]?.randomize_times ?? feedFlags[rowKey]?.random_time));
+      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: true } }));
+      const res = await setFeedFlagsOnBackend({
+        projectId,
+        feedId: f.feed_id,
+        patch: { random_time: !curVal },
+      });
 
 if (res?.ok) {
   // update local cache (write both keys for maximum compatibility)
@@ -1073,6 +1079,73 @@ if (res?.ok) {
                                 >
                                   {randomTimeBusy ? "Random time…" : (randomTimeActive ? "Random time: ON" : "Random time: OFF")}
                                 </button>
+
+
+  <button
+    className={`btn ghost ${randomAvatarActive ? "active" : ""}`}
+    title="When ON, this feed randomizes author avatars (deterministic per session)."
+    disabled={randomAvatarBusy}
+    onClick={async () => {
+      if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+      const cur = !!((feedFlags[rowKey]?.randomize_avatars ?? feedFlags[rowKey]?.random_avatar));
+      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: true } }));
+      const res = await setFeedFlagsOnBackend({
+        projectId,
+        feedId: f.feed_id,
+        patch: { random_avatar: !cur },
+      });
+      if (res?.ok) {
+        setFeedFlags(m => ({
+          ...m,
+          [rowKey]: {
+            ...(m[rowKey] || {}),
+            randomize_avatars: !cur,
+            random_avatar: !cur,
+            loaded: true,
+            savingAv: false,
+          },
+        }));
+      } else {
+        setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: false } }));
+        alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
+      }
+    }}
+  >
+    {randomAvatarBusy ? "Random avatar…" : (randomAvatarActive ? "Random avatar: ON" : "Random avatar: OFF")}
+  </button>
+
+  <button
+    className={`btn ghost ${randomNameActive ? "active" : ""}`}
+    title="When ON, this feed randomizes author display names (deterministic per session)."
+    disabled={randomNameBusy}
+    onClick={async () => {
+      if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+      const cur = !!((feedFlags[rowKey]?.randomize_names ?? feedFlags[rowKey]?.random_name));
+      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: true } }));
+      const res = await setFeedFlagsOnBackend({
+        projectId,
+        feedId: f.feed_id,
+        patch: { random_name: !cur },
+      });
+      if (res?.ok) {
+        setFeedFlags(m => ({
+          ...m,
+          [rowKey]: {
+            ...(m[rowKey] || {}),
+            randomize_names: !cur,
+            random_name: !cur,
+            loaded: true,
+            savingNm: false,
+          },
+        }));
+      } else {
+        setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: false } }));
+        alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
+      }
+    }}
+  >
+    {randomNameBusy ? "Random name…" : (randomNameActive ? "Random name: ON" : "Random name: OFF")}
+  </button>
 
                                 <button
                                   className="btn"
@@ -1582,6 +1655,21 @@ if (res?.ok) {
                     Leave blank to hide time.
                   </div>
                 </label>
+                <label className="label">Author Type</label>
+<div className="row">
+  {["female","male","company"].map(opt => (
+    <label key={opt} style={{ marginRight: 12 }}>
+      <input
+        type="radio"
+        name={`authorType-${post.id}`}
+        value={opt}
+        checked={(post.authorType || "female") === opt}
+        onChange={e => setPostField("authorType", e.target.value)}
+      />
+      <span style={{ marginLeft: 6, textTransform: "capitalize" }}>{opt}</span>
+    </label>
+  ))}
+</div>
               </div>
               <label>Post text
                 <textarea className="textarea" rows={5} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} />

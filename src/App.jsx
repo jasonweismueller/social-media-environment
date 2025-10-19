@@ -33,16 +33,18 @@ import AdminLogin from "./components-admin-login";
 
 
 function normalizeFlags(raw) {
-  // Accept {}, '{"randomize_times":true}', '', null, or {randomize_time:true}
   let f = raw;
   if (!f) f = {};
   if (typeof f === "string") {
     try { f = f.trim() ? JSON.parse(f) : {}; } catch { f = {}; }
   }
-  // tolerate old key + several truthy shapes
-  const v = f.randomize_times ?? f.randomize_time ?? f.random_time ?? false;
-  const on = (v === true) || (v === "true") || (v === 1) || (v === "1");
-  return { randomize_times: !!on };
+  const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
+
+  const randomize_times  = truthy(f.randomize_times ?? f.randomize_time ?? f.random_time ?? false);
+  const randomize_avatar = truthy(f.randomize_avatar ?? f.rand_avatar ?? false);
+  const randomize_names  = truthy(f.randomize_names  ?? f.rand_names  ?? false);
+
+  return { randomize_times, randomize_avatar, randomize_names };
 }
 
 /** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
