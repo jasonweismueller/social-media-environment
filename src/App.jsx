@@ -31,17 +31,16 @@ import AdminLogin from "./components-admin-login";
    iOS viewport + input zoom guards
    ============================================ */
 
-
 function normalizeFlags(raw) {
   let f = raw || {};
   if (typeof f === "string") { try { f = f.trim() ? JSON.parse(f) : {}; } catch { f = {}; } }
   const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
 
   const randomize_times    = truthy(f.randomize_times ?? f.randomize_time ?? f.random_time ?? false);
-  const randomize_avatars  = truthy(f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false); // 👈 plural out
+  const randomize_avatars  = truthy(f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false);
   const randomize_names    = truthy(f.randomize_names   ?? f.rand_names      ?? false);
 
-  return { randomize_times, randomize_avatars, randomize_names }; // 👈 plural key matches UI
+  return { randomize_times, randomize_avatars, randomize_names };
 }
 
 /** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
@@ -207,11 +206,11 @@ export default function App() {
   const [adminAuthed, setAdminAuthed] = useState(false);
 
   // near other refs/state
-const [runSeed] = useState(() =>
-  (crypto?.getRandomValues
-    ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
-    : String(Date.now()) + "-" + Math.random().toString(36).slice(2))
-);
+  const [runSeed] = useState(() =>
+    (crypto?.getRandomValues
+      ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
+      : String(Date.now()) + "-" + Math.random().toString(36).slice(2))
+  );
 
   const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
@@ -222,51 +221,9 @@ const [runSeed] = useState(() =>
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
-  const [flags, setFlags] = useState({ randomize_times: false }); // was random_time
-
-  useEffect(() => {
-  let cancelled = false;
-
-  // Wait until the feed has been chosen; don't clobber to false early
-  if (!activeFeedId) return;
-
-  (async () => {
-    try {
-      const res = await fetchFeedFlags({
-  app: APP,
-
- projectId: projectId || undefined, // keep for the util
- feedId: activeFeedId || undefined, // keep for the util
- project_id: projectId || undefined, // explicit fallback for backend
- feed_id: activeFeedId || undefined, // explicit fallback for backend
-  endpoint: GS_ENDPOINT,
-});
-      if (cancelled) return;
-
-      // Flags can arrive as an object OR a JSON string
-       const raw = res; // fetchFeedFlags already returns the flags object (or a string)
-       const next = normalizeFlags(raw);
-
-      setFlags(next);
-
-      // one-time helpful debug (fires when inputs change)
-      console.debug("[flags fetched]", {
-  activeFeedId,
-  projectId,
-  fromServer: raw,
-  next,
-});
-    } catch (err) {
-      if (!cancelled) {
-        console.debug("[flags fetch error]", err);
-        // keep previous flags; or, if you prefer, set an explicit fallback:
-        // setFlags(prev => ({ ...prev, randomize_times: false }));
-      }
-    }
-  })();
-
-  return () => { cancelled = true; };
-}, [projectId, activeFeedId]);
+  // ---------- flags + readiness ----------
+  const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false });
+  const [flagsReady, setFlagsReady] = useState(false);
 
   // Debug viewport flag
   useEffect(() => {
@@ -324,6 +281,7 @@ const [runSeed] = useState(() =>
 
     setFeedPhase("loading");
     setFeedError("");
+    setFlagsReady(false);
 
     try {
       // list/default use utils → utils reads current project from its own store
@@ -355,17 +313,39 @@ const [runSeed] = useState(() =>
         }
       } catch {}
 
+      // Always fetch flags before rendering (even if posts are cached)
+      const flagsPromise = fetchFeedFlags({
+        app: APP,
+        projectId: projectId || undefined,
+        feedId: chosen.feed_id || undefined,
+        project_id: projectId || undefined,
+        feed_id: chosen.feed_id || undefined,
+        endpoint: GS_ENDPOINT,
+        signal: ctrl.signal,
+      }).catch(() => ({}));
+
       if (cached) {
+        const resFlags = await flagsPromise;
+        if (ctrl.signal.aborted) return;
+        const nextFlags = normalizeFlags(resFlags);
+        setFlags(nextFlags);
+        setFlagsReady(true);
         setPosts(cached);
         setFeedPhase("ready");
         return;
       }
 
-      // load posts (utils will include ?project_id automatically)
-      const fresh = await loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal });
+      // load posts + flags in parallel
+      const [fresh, resFlags] = await Promise.all([
+        loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal }),
+        flagsPromise,
+      ]);
       if (ctrl.signal.aborted) return;
 
       const arr = Array.isArray(fresh) ? fresh : [];
+      const nextFlags = normalizeFlags(resFlags);
+      setFlags(nextFlags);
+      setFlagsReady(true);
       setPosts(arr);
 
       try {
@@ -431,10 +411,10 @@ const [runSeed] = useState(() =>
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
-    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted);
+    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady);
     el.style.overflow = shouldLock ? "hidden" : "";
     return () => { el.style.overflow = prev; };
-  }, [hasEntered, feedPhase, submitted, onAdmin]);
+  }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady]);
 
   // ---- iOS zoom fixes ----
   const overlayActive = !onAdmin && !hasEntered;
@@ -598,14 +578,14 @@ const [runSeed] = useState(() =>
   return (
     <Router>
       <div
-        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted)) ? "blurred" : ""}`}
+        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady)) ? "blurred" : ""}`}
       >
         <RouteAwareTopbar />
         <Routes>
           <Route
             path="/"
             element={
-              hasEntered && feedPhase === "ready" ? (
+              hasEntered && feedPhase === "ready" && flagsReady ? (
                 <FeedComponent
                   posts={orderedPosts}
                   registerViewRef={registerViewRef}
@@ -613,11 +593,11 @@ const [runSeed] = useState(() =>
                   log={log}
                   showComposer={showComposer}
                   loading={false}
-                      flags={flags}
-                      runSeed={runSeed}
-    app={APP}
-    projectId={projectId}
-    feedId={activeFeedId}
+                  flags={flags}
+                  runSeed={runSeed}
+                  app={APP}
+                  projectId={projectId}
+                  feedId={activeFeedId}
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
@@ -747,7 +727,7 @@ const [runSeed] = useState(() =>
         />
       )}
 
-      {!onAdmin && hasEntered && !submitted && feedPhase === "loading" && (
+      {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady) && (
         <LoadingOverlay title="Preparing your feed…" subtitle="Fetching posts and setting things up." />
       )}
 
