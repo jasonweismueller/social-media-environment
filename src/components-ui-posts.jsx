@@ -546,6 +546,7 @@ React.useEffect(() => {
     const list = await getAvatarPool(authorType); // returns ABSOLUTE URLs
     if (cancelled) return;
     const pick = pickDeterministic(list, [...seedParts, "avatar"]);
+    console.debug("avatar pick", { authorType, pick, flags }); 
    setRandAvatarUrl(pick || null);
   })();
   return () => { cancelled = true; };
