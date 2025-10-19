@@ -16,6 +16,7 @@ import {
   setFeedIdInUrl,
   // ⬇️ added for flags fetch
   APP, GS_ENDPOINT, fetchFeedFlags,
+  getAvatarPool,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -223,6 +224,8 @@ export default function App() {
 
   // ---------- flags + readiness ----------
   const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false });
+  const [avatarPools, setAvatarPools] = useState(null);
+  const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
 
   // Debug viewport flag
@@ -282,6 +285,7 @@ export default function App() {
     setFeedPhase("loading");
     setFeedError("");
     setFlagsReady(false);
+    setAssetsReady(false);
 
     try {
       // list/default use utils → utils reads current project from its own store
@@ -411,15 +415,49 @@ export default function App() {
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
-    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady);
+    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady);
     el.style.overflow = shouldLock ? "hidden" : "";
     return () => { el.style.overflow = prev; };
-  }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady]);
+  }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady]);
 
   // ---- iOS zoom fixes ----
   const overlayActive = !onAdmin && !hasEntered;
   useIOSInputZoomFix();
   useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
+
+  // ===== Preload avatar pools (to avoid late avatar pop-in) =====
+  useEffect(() => {
+    if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
+
+    // If avatar randomization is off, we consider assets ready immediately.
+    const randAvOn = !!(flags?.randomize_avatars);
+    if (!randAvOn) { setAvatarPools(null); setAssetsReady(true); return; }
+
+    // Figure out which author types appear in the current feed.
+    const types = new Set(
+      posts.map(p => (p?.authorType === "male" || p?.authorType === "company") ? p.authorType : "female")
+    );
+    if (types.size === 0) { setAvatarPools(null); setAssetsReady(true); return; }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const entries = await Promise.all(Array.from(types).map(async (t) => [t, await getAvatarPool(t)]));
+        if (cancelled) return;
+        const map = Object.fromEntries(entries);
+        setAvatarPools(map);
+        setAssetsReady(true);
+      } catch (err) {
+        if (!cancelled) {
+          console.debug("[avatar pool preload error]", err);
+          setAvatarPools(null);
+          setAssetsReady(true); // do not block UI even if pools fail
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
 
   // ===== IO infrastructure =====
   const ioRef = useRef(null);
@@ -571,21 +609,20 @@ export default function App() {
       window.removeEventListener("beforeunload", onHide);
     };
   }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom, activeFeedId]);
-  // ===================================================================
 
   const FeedComponent = FBFeed;
 
   return (
     <Router>
       <div
-        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady)) ? "blurred" : ""}`}
+        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady)) ? "blurred" : ""}`}
       >
         <RouteAwareTopbar />
         <Routes>
           <Route
             path="/"
             element={
-              hasEntered && feedPhase === "ready" && flagsReady ? (
+              hasEntered && feedPhase === "ready" && flagsReady && assetsReady ? (
                 <FeedComponent
                   posts={orderedPosts}
                   registerViewRef={registerViewRef}
@@ -598,6 +635,7 @@ export default function App() {
                   app={APP}
                   projectId={projectId}
                   feedId={activeFeedId}
+                  avatarPools={avatarPools}
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
@@ -727,7 +765,7 @@ export default function App() {
         />
       )}
 
-      {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady) && (
+      {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady || !assetsReady) && (
         <LoadingOverlay title="Preparing your feed…" subtitle="Fetching posts and setting things up." />
       )}
 
