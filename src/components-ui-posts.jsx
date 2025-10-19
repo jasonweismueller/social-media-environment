@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor,
-  displayTimeForPost, getAvatarPool, pickDeterministic
+  displayTimeForPost, getAvatarPool, pickDeterministic,
+  AVATAR_POOLS_ENDPOINTS,             
 } from "./utils";
 
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
@@ -551,15 +552,17 @@ React.useEffect(() => {
     if (!pick) { setRandAvatarUrl(null); return; }
 
     const looksAbsolute = /^https?:\/\//i.test(pick);
-    if (looksAbsolute) {
-      setRandAvatarUrl(pick);
-    } else {
-      // Derive folder base from the endpoint you exported
-      // e.g. https://cf/avatars/female/index.json -> https://cf/avatars/female
-      const endpoint = AVATAR_POOLS_ENDPOINTS?.[authorType] || "";
-      const folderBase = endpoint.replace(/\/index\.json$/i, "");
-      setRandAvatarUrl(`${folderBase}/${pick}`); // filename -> full URL
-    }
+  if (looksAbsolute) {
+    setRandAvatarUrl(pick);
+  } else {
+
+   // Derive base from the endpoint for this pool; if missing, do nothing.
+   const endpoint = AVATAR_POOLS_ENDPOINTS?.[authorType];
+   if (!endpoint) { setRandAvatarUrl(null); return; }
+   const folderBase = endpoint.replace(/\/index\.json$/i, "");
+   const slash = pick.startsWith("/") ? "" : "/";
+   setRandAvatarUrl(`${folderBase}${slash}${pick}`);
+  }
   })();
 
   return () => { cancelled = true; };
