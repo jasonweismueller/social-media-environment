@@ -165,11 +165,11 @@ async function setFeedFlagsOnBackend({ projectId, feedId, patch }) {
   const payload = {
     action: "set_feed_flags",
     app: APP,
-    project_id: projectId || "",
     feed_id: String(feedId),
     flags: normalizeFlagsForStore(patch || {}),
     admin_token: admin,
   };
+  if (projectId && projectId !== "global") payload.project_id = projectId;
 
   const doPost = async (body) => {
     const res = await fetch(GS_ENDPOINT, {
@@ -343,10 +343,10 @@ export function AdminDashboard({
   };
 
   // ---- flags loader
- const loadFlagsFor = async (fid) => {
+ const loadFlagsFor = async (fid, { force = false } = {}) => {
   if (!fid) return;
   const k = keyFor(projectId, fid);
-  if (feedFlags[k]?.loaded || feedFlags[k]?.loading) return;
+  if (!force && (feedFlags[k]?.loaded || feedFlags[k]?.loading)) return;
   setFeedFlags((m) => ({ ...m, [k]: { ...(m[k] || {}), loading: true } }));
   const f = await getFeedFlagsFromBackend({ projectId, feedId: fid });
   setFeedFlags((m) => ({ ...m, [k]: { ...f, loaded: true, loading: false } }));
@@ -1063,7 +1063,7 @@ const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm);
     if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
 
     // ✅ Always re-read from backend after a successful write
-    await loadFlagsFor(f.feed_id);
+    await loadFlagsFor(f.feed_id, { force: true });
   } catch (e) {
     alert(e.message || "Failed to update feed flag. Please re-login and try again.");
   } finally {
@@ -1094,7 +1094,7 @@ const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm);
     });
     if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
 
-    await loadFlagsFor(f.feed_id);
+    await loadFlagsFor(f.feed_id, { force: true });
   } catch (e) {
     alert(e.message || "Failed to update feed flag. Please re-login and try again.");
   } finally {
@@ -1124,7 +1124,7 @@ const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm);
     });
     if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
 
-    await loadFlagsFor(f.feed_id);
+    await loadFlagsFor(f.feed_id, { force: true });
   } catch (e) {
     alert(e.message || "Failed to update feed flag. Please re-login and try again.");
   } finally {
