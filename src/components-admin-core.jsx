@@ -637,6 +637,7 @@ export function AdminDashboard({
       text: "",
       links: [],
       badge: false,
+      authorType: "female",   
 
       avatarMode: "random",
       avatarRandomKind,
@@ -672,6 +673,8 @@ export function AdminDashboard({
       ...p,
       // prefer previously-saved backend name if postName not set
       postName: p.postName ?? p.name ?? "",
+      authorType: p.authorType ?? (p.adType === "ad" ? "company" : "female"),
+      
     });
   };
 
@@ -691,10 +694,18 @@ export function AdminDashboard({
     if (!editing.author?.trim()) { alert("Author is required."); return; }
     if (!editing.text?.trim()) { alert("Post text is required."); return; }
 
+  
+
     setPosts((arr) => {
       const idx = arr.findIndex((p) => p.id === editing.id);
       const clean = { ...editing };
       if ("showTime" in clean) delete clean.showTime; // normalize legacy posts
+
+         // Ensure authorType is present, but DON'T derive it from avatarRandomKind.
+   if (!clean.authorType) {
+     clean.authorType = clean.adType === "ad" ? "company" : "female";
+   }
+   console.debug("[admin saveEditing] authorType", clean.id, "→", clean.authorType);
 
       // persist friendly name on the post object itself
       if (clean.postName && !clean.name) clean.name = clean.postName;
@@ -1165,7 +1176,10 @@ const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm);
                                         if (row) {
                                           const fresh = await loadPostsFromBackend(f.feed_id, { projectId: pidForBackend(projectId), force: true });
                                           const arr = Array.isArray(fresh) ? fresh : [];
-                                          arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
+                                          arr.forEach(p => {
+  if ("showTime" in p) delete p.showTime;
+ if (!p.authorType) p.authorType = p.adType === "ad" ? "company" : "female";
+});
                                           setPosts(arr);
                                           setCachedPosts(projectId, f.feed_id, row.checksum, arr);
                                         }
@@ -1358,7 +1372,12 @@ const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm);
                       onClick={async () => {
                         const fresh = await loadPostsFromBackend(feedId, { projectId: pidForBackend(projectId), force: true });
                         const arr = Array.isArray(fresh) ? fresh : [];
-                        arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
+                        arr.forEach(p => { if ("showTime" in p) delete p.showTime; 
+  if (!p.authorType) {
+    p.authorType = p.adType === "ad" ? "company" : "female";
+  }
+
+                        });
                         setPosts(arr);
                         const row = feeds.find(f => f.feed_id === feedId);
                         if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
@@ -2024,6 +2043,7 @@ const showReactions = chance(0.85);
     postName: "",
     author, time, text, links: [],
     badge: chance(0.15),
+    authorType: "female",
     avatarMode: "random",
     avatarRandomKind,
     avatarUrl: randomAvatarByKind(avatarRandomKind, author, author, randomAvatarUrl),
