@@ -541,33 +541,15 @@ const [randAvatarUrl, setRandAvatarUrl] = React.useState(null);
 
 React.useEffect(() => {
   let cancelled = false;
-  if (!randAvatarOn) { setRandAvatarUrl(null); return; }
-
+ if (!randAvatarOn || post.avatarMode === "neutral") { setRandAvatarUrl(null); return; }
   (async () => {
-    const list = await getAvatarPool(authorType); // returns array from index.json
+    const list = await getAvatarPool(authorType); // returns ABSOLUTE URLs
     if (cancelled) return;
-
-    // list items can be either full URLs or filenames — support both
     const pick = pickDeterministic(list, [...seedParts, "avatar"]);
-    if (!pick) { setRandAvatarUrl(null); return; }
-
-    const looksAbsolute = /^https?:\/\//i.test(pick);
-  if (looksAbsolute) {
-    setRandAvatarUrl(pick);
-  } else {
-
-   // Derive base from the endpoint for this pool; if missing, do nothing.
-   const endpoint = AVATAR_POOLS_ENDPOINTS?.[authorType];
-   if (!endpoint) { setRandAvatarUrl(null); return; }
-   const folderBase = endpoint.replace(/\/index\.json$/i, "");
-   const slash = pick.startsWith("/") ? "" : "/";
-   setRandAvatarUrl(`${folderBase}${slash}${pick}`);
-  }
+   setRandAvatarUrl(pick || null);
   })();
-
   return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [randAvatarOn, authorType, runSeed, app, projectId, feedId, post.id]);
+}, [randAvatarOn, post.avatarMode, authorType, runSeed, app, projectId, feedId, post.id]);
 
 // Final avatar used in UI
 const displayAvatar = randAvatarOn
