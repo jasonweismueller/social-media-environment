@@ -991,6 +991,7 @@ const randomNameActive   = !!(ff.randomize_names   ?? ff.random_name);
 const randomTimeBusy = !!ff.saving || !!ff.loading;
 const randomAvatarBusy = !!ff.savingAv || !!ff.loading;
 const randomNameBusy   = !!ff.savingNm || !!ff.loading;
+const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm);
 
                       return (
                         <tr
@@ -1044,38 +1045,31 @@ const randomNameBusy   = !!ff.savingNm || !!ff.loading;
                                 <button
                                   className={`btn ghost ${randomTimeActive ? "active" : ""}`}
                                   title="When ON, this feed randomizes displayed post timestamps."
-                                  disabled={randomTimeBusy}
+                                  disabled={randomTimeBusy || (anySaving && !ff.saving)}
                                   onClick={async () => {
-                                   if (!ff.loaded && !ff.loading) {
-  await loadFlagsFor(f.feed_id);
-}
+  if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+  // prevent a race if any toggle is already saving
+  if (ff.saving || ff.savingAv || ff.savingNm) return;
 
-// current value (normalized)
-      const curVal = !!((feedFlags[rowKey]?.randomize_times ?? feedFlags[rowKey]?.random_time));
-      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: true } }));
-      const res = await setFeedFlagsOnBackend({
-        projectId,
-        feedId: f.feed_id,
-        patch: { random_time: !curVal },
-      });
+  const curVal = !!((feedFlags[rowKey]?.randomize_times ?? feedFlags[rowKey]?.random_time));
+  setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: true } }));
 
-if (res?.ok) {
-  // update local cache (write both keys for maximum compatibility)
-  setFeedFlags(m => ({
-    ...m,
-    [rowKey]: {
-      ...(m[rowKey] || {}),
-      randomize_times: !curVal,
-      random_time: !curVal,
-      loaded: true,
-      saving: false,
-    },
-  }));
-} else {
-  setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: false } }));
-  alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
-}
-                                  }}
+  try {
+    const res = await setFeedFlagsOnBackend({
+      projectId,
+      feedId: f.feed_id,
+      patch: { random_time: !curVal },
+    });
+    if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+
+    // ✅ Always re-read from backend after a successful write
+    await loadFlagsFor(f.feed_id);
+  } catch (e) {
+    alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+  } finally {
+    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: false } }));
+  }
+}}
                                 >
                                   {randomTimeBusy ? "Random time…" : (randomTimeActive ? "Random time: ON" : "Random time: OFF")}
                                 </button>
@@ -1084,32 +1078,29 @@ if (res?.ok) {
   <button
     className={`btn ghost ${randomAvatarActive ? "active" : ""}`}
     title="When ON, this feed randomizes author avatars (deterministic per session)."
-    disabled={randomAvatarBusy}
-    onClick={async () => {
-      if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
-      const cur = !!((feedFlags[rowKey]?.randomize_avatars ?? feedFlags[rowKey]?.random_avatar));
-      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: true } }));
-      const res = await setFeedFlagsOnBackend({
-        projectId,
-        feedId: f.feed_id,
-        patch: { random_avatar: !cur },
-      });
-      if (res?.ok) {
-        setFeedFlags(m => ({
-          ...m,
-          [rowKey]: {
-            ...(m[rowKey] || {}),
-            randomize_avatars: !cur,
-            random_avatar: !cur,
-            loaded: true,
-            savingAv: false,
-          },
-        }));
-      } else {
-        setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: false } }));
-        alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
-      }
-    }}
+    disabled={randomAvatarBusy || (anySaving && !ff.savingAv)}
+   onClick={async () => {
+  if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+  if (ff.saving || ff.savingAv || ff.savingNm) return;
+
+  const cur = !!((feedFlags[rowKey]?.randomize_avatars ?? feedFlags[rowKey]?.random_avatar));
+  setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: true } }));
+
+  try {
+    const res = await setFeedFlagsOnBackend({
+      projectId,
+      feedId: f.feed_id,
+      patch: { random_avatar: !cur },
+    });
+    if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+
+    await loadFlagsFor(f.feed_id);
+  } catch (e) {
+    alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+  } finally {
+    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: false } }));
+  }
+}}
   >
     {randomAvatarBusy ? "Random avatar…" : (randomAvatarActive ? "Random avatar: ON" : "Random avatar: OFF")}
   </button>
@@ -1117,32 +1108,29 @@ if (res?.ok) {
   <button
     className={`btn ghost ${randomNameActive ? "active" : ""}`}
     title="When ON, this feed randomizes author display names (deterministic per session)."
-    disabled={randomNameBusy}
+    disabled={randomNameBusy || (anySaving && !ff.savingNm)}
     onClick={async () => {
-      if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
-      const cur = !!((feedFlags[rowKey]?.randomize_names ?? feedFlags[rowKey]?.random_name));
-      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: true } }));
-      const res = await setFeedFlagsOnBackend({
-        projectId,
-        feedId: f.feed_id,
-        patch: { random_name: !cur },
-      });
-      if (res?.ok) {
-        setFeedFlags(m => ({
-          ...m,
-          [rowKey]: {
-            ...(m[rowKey] || {}),
-            randomize_names: !cur,
-            random_name: !cur,
-            loaded: true,
-            savingNm: false,
-          },
-        }));
-      } else {
-        setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: false } }));
-        alert(res?.err || "Failed to update feed flag. Please re-login and try again.");
-      }
-    }}
+  if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+  if (ff.saving || ff.savingAv || ff.savingNm) return;
+
+  const cur = !!((feedFlags[rowKey]?.randomize_names ?? feedFlags[rowKey]?.random_name));
+  setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: true } }));
+
+  try {
+    const res = await setFeedFlagsOnBackend({
+      projectId,
+      feedId: f.feed_id,
+      patch: { random_name: !cur },
+    });
+    if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+
+    await loadFlagsFor(f.feed_id);
+  } catch (e) {
+    alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+  } finally {
+    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: false } }));
+  }
+}}
   >
     {randomNameBusy ? "Random name…" : (randomNameActive ? "Random name: ON" : "Random name: OFF")}
   </button>
