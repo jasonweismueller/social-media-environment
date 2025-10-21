@@ -1,0 +1,935 @@
+/* ------------------------------ Basics ------------------------------------ */
+export const uid = () =>
+  Math.random().toString(36).slice(2) + Date.now().toString(36);
+export const now = () => Date.now();
+export const fmtTime = (ms) => new Date(ms).toISOString();
+export const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+export const abbr =
+  (n) =>
+    n >= 1e6 ? (n / 1e6).toFixed(1) + "M"
+    : n >= 1e3 ? (n / 1e3).toFixed(1) + "K"
+    : String(n || 0);
+
+export const nfCompact = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+export function toCSV(rows, header, headerLabels) {
+  const esc = (v) => {
+    if (v == null) return "";
+    const s = typeof v === "string" ? v : JSON.stringify(v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+
+  const lines = [];
+  if (header) {
+    const firstRow = Array.isArray(headerLabels) && headerLabels.length === header.length
+      ? headerLabels
+      : header;
+    lines.push(firstRow.map(esc).join(","));
+  }
+  for (const r of rows) lines.push(header.map((h) => esc(r[h])).join(","));
+  return lines.join("\n");
+}
+
+export const toggleInSet = (setObj, id) => {
+  const next = new Set(setObj || []);
+  next.has(id) ? next.delete(id) : next.add(id);
+  return next;
+};
+
+export const CF_BASE =
+  (window.CONFIG && window.CONFIG.CF_BASE) ||
+  "https://d2bihrgvtn9bga.cloudfront.net";
+
+/* ============================ Project + URL helpers ============================= */
+const PROJECT_KEY = "current_project_id";
+
+function getCombinedSearchParams() {
+  try {
+    const real = new URLSearchParams(window.location.search);
+    const hash = window.location.hash || "";
+    const q = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const fromHash = new URLSearchParams(q);
+
+    const merged = new URLSearchParams();
+    for (const [k, v] of real) merged.set(k, v);
+    for (const [k, v] of fromHash) merged.set(k, v);
+    return merged;
+  } catch {
+    return new URLSearchParams();
+  }
+}
+
+export const getUrlParam = (key = "") => getCombinedSearchParams().get(key);
+
+/** Get current project_id from URL (?project / ?project_id) or localStorage. */
+export function getProjectId() {
+  try {
+    const sp = getCombinedSearchParams();
+    const fromUrl = sp.get("project") || sp.get("project_id");
+    if (fromUrl) {
+      localStorage.setItem(PROJECT_KEY, fromUrl);
+      return fromUrl;
+    }
+  } catch {}
+  try {
+    return localStorage.getItem(PROJECT_KEY) || "";
+  } catch { return ""; }
+}
+
+/** Set current project_id and optionally reflect it in the URL. */
+export function setProjectId(projectId, { persist = true, updateUrl = true } = {}) {
+  const pid = String(projectId || "");
+  if (persist) {
+    try { pid ? localStorage.setItem(PROJECT_KEY, pid) : localStorage.removeItem(PROJECT_KEY); } catch {}
+  }
+  if (updateUrl) {
+    try {
+      const url = new URL(window.location.href);
+      if (pid) url.searchParams.set("project", pid);
+      else url.searchParams.delete("project");
+      history.replaceState({}, "", url.toString());
+    } catch {}
+  }
+  return pid;
+}
+
+/** Query-string fragment for project; empty string if none. */
+export const qProject = () => {
+  const pid = getProjectId();
+  return pid ? `&project_id=${encodeURIComponent(pid)}` : "";
+};
+
+export function getFeedIdFromUrl() {
+  try {
+    const sp = getCombinedSearchParams();
+    return sp.get("feed") || sp.get("feed_id") || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setFeedIdInUrl(feedId, { replace = false } = {}) {
+  try {
+    const url = new URL(window.location.href);
+    const sp = url.searchParams;
+    if (!feedId) sp.delete("feed");
+    else sp.set("feed", String(feedId));
+    url.search = sp.toString();
+    const next = url.toString();
+    replace ? history.replaceState({}, "", next) : history.pushState({}, "", next);
+  } catch {}
+}
+
+export function buildFeedShareUrl(feedOrId) {
+  const origin = "https://studyfeed.org"; // fixed base
+  const fid = typeof feedOrId === "string" ? feedOrId : feedOrId?.feed_id || "";
+  const pid = getProjectId();
+  const qp = new URLSearchParams();
+  if (fid) qp.set("feed", fid);
+  if (pid) qp.set("project", pid);
+  return `${origin}/?${qp.toString()}`;
+}
+
+/* ============================ RNG + time display ============================ */
+function seedToInt(s){
+  let h = 2166136261 >>> 0; // FNV-ish
+  const str = String(s||"");
+  for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+function rng(seed){
+  let x = (seedToInt(seed) || 1) >>> 0;
+  return () => { x ^= x<<13; x ^= x>>>17; x ^= x<<5; return (x>>>0)/4294967296; };
+}
+export function displayTimeForPost(post, { randomize, seedParts=[] } = {}){
+  if (!randomize) return post?.time || "";
+  const seed = [...seedParts, post?.id ?? ""].join("::");
+  const r = rng(seed);
+  const hours = 1 + Math.floor(r() * 23); // 1..23
+  return `${hours}h`;
+}
+
+/* --------------------- Reactions helpers ---------------------------------- */
+export const REACTION_META = {
+  like:  { emoji: "👍", label: "Like"  },
+  love:  { emoji: "❤️", label: "Love"  },
+  care:  { emoji: "🤗", label: "Care"  },
+  haha:  { emoji: "😆", label: "Haha"  },
+  wow:   { emoji: "😮", label: "Wow"   },
+  sad:   { emoji: "😢", label: "Sad"   },
+  angry: { emoji: "😡", label: "Angry" },
+};
+
+export const sumSelectedReactions = (reactions = {}, selected = []) =>
+  selected.reduce((acc, k) => acc + (Number(reactions[k]) || 0), 0);
+
+export function topReactions(reactions = {}, selected = [], N = 3) {
+  return selected
+    .map((k) => ({ key: k, count: Number(reactions[k]) || 0 }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, N);
+}
+
+/* ---- Fake names + deterministic picker (for hover peeks) ---- */
+const NAME_POOL = [
+  "Alex Chen","Maya Patel","Jordan Li","Samir Khan","Nora Williams","Diego Santos","Hana Suzuki","Ava Johnson",
+  "Ethan Brown","Isabella Garcia","Leo Müller","Zoe Martin","Ibrahim Ali","Priya Nair","Luca Rossi","Omar Haddad",
+  "Fatima Noor","Sofia Ribeiro","Jin Park","Amara Okafor","Kai Nguyen","Elena Petrova","Noah Wilson","Aria Thompson",
+  "Mateo Alvarez","Yara Hassan","Oliver Smith","Mila Novak","Theo Laurent","Liam O'Connor","Mina Rahman","Ravi Gupta",
+  "Sara Lindström","Jonas Becker","Chloe Evans","Giulia Bianchi","Kenji Watanabe","Tariq Aziz","Aline Costa","Rhea Singh",
+];
+
+function mulberry32_(seed) {
+  let t = seed >>> 0;
+  return function () {
+    t += 0x6D2B79F5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStrToInt_(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function fakeNamesFor(postId, a, b, maxShow = 5) {
+  let kind = "comments";
+  let count = 0;
+  if (typeof a === "string") {
+    kind = a;
+    count = Number(b) || 0;
+  } else {
+    count = Number(a) || 0;
+    if (typeof b === "string") kind = b;
+  }
+
+  const n = Math.max(0, count);
+  if (n === 0) return { names: [], remaining: 0 };
+
+  const seed = hashStrToInt_(`${postId}::${kind}::v1`);
+  const rnd = mulberry32_(seed);
+
+  const idx = NAME_POOL.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+
+  const uniqueCount = Math.min(n, NAME_POOL.length);
+  const chosen = idx.slice(0, uniqueCount).map(i => NAME_POOL[i]);
+  const names = chosen.slice(0, Math.min(maxShow, chosen.length));
+  const remaining = Math.max(0, n - names.length);
+  return { names, remaining };
+}
+
+export function fakeNamesList(postId, kindOrCount, countMaybe, maxShow = 5) {
+  let kind = "comments";
+  let count = 0;
+  if (typeof kindOrCount === "string") {
+    kind = kindOrCount;
+    count = Number(countMaybe) || 0;
+  } else {
+    count = Number(kindOrCount) || 0;
+  }
+  const { names, remaining } = fakeNamesFor(postId, kind, count, maxShow);
+  if (remaining > 0) return [...names, `and ${remaining} more`];
+  return names;
+}
+
+export function neutralAvatarDataUrl(seed = "") {
+  const s = String(seed || "");
+  const palette = ["#0ea5e9","#22c55e","#a855f7","#f59e0b","#ef4444","#06b6d4","#84cc16","#6366f1"];
+  let h = 0; for (let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i))|0;
+  const bg = palette[Math.abs(h) % palette.length];
+
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${bg}" />
+      <stop offset="100%" stop-color="#111827" stop-opacity=".25" />
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="32" fill="url(#g)"/>
+  <circle cx="32" cy="26.5" r="10" fill="#f3f4f6"/>
+  <path d="M16 54c3-10 10-15 16-15s13 5 16 15" fill="#e5e7eb"/>
+</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/* ---------------------------- Media helpers -------------------------------- */
+export const pravatar = (n) => `https://i.pravatar.cc/64?img=${n}`;
+export const randomAvatarUrl = () => pravatar(10 + Math.floor(Math.random() * 70));
+export const randomSVG = (title = "Image") => {
+  const c1 = ["#fde68a", "#a7f3d0", "#e2f3e6", "#bfdbfe", "#fca5a5"][Math.floor(Math.random()*5)];
+  const c2 = ["#fca5a5", "#60a5fa", "#34d399", "#fbbf24", "#a78bfa"][Math.floor(Math.random()*5)];
+  return {
+    alt: title,
+    svg: `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 420'>
+      <defs><linearGradient id='g' x1='0' x2='1'>
+        <stop offset='0' stop-color='${c1}'/><stop offset='1' stop-color='${c2}'/>
+      </linearGradient></defs>
+      <rect width='800' height='420' fill='url(#g)'/>
+      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle'
+        font-size='28' fill='#1f2937' font-family='system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'>${title}</text>
+    </svg>`
+  };
+};
+
+export function fileToDataURL(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+/* ------------------------- Video preload helpers -------------------------- */
+export const DRIVE_RE = /(?:^|\/\/)(?:drive\.google\.com|drive\.usercontent\.google\.com)/i;
+const __videoPreloadSet = new Set();
+
+export function injectVideoPreload(url, mime = "video/mp4") {
+  if (!url || DRIVE_RE.test(url)) return;
+  if (__videoPreloadSet.has(url)) return;
+
+  const exists = Array.from(document.querySelectorAll('link[rel="preload"][as="video"]'))
+    .some(l => l.href === url);
+  if (exists) { __videoPreloadSet.add(url); return; }
+
+  const link = document.createElement("link");
+  link.rel = "preload";
+  link.as = "video";
+  link.href = url;
+  link.crossOrigin = "anonymous";
+  if (mime) link.type = mime;
+  document.head.appendChild(link);
+  __videoPreloadSet.add(url);
+}
+
+export function primeVideoCache(url) {
+  if (!url || DRIVE_RE.test(url)) return;
+  if (__videoPreloadSet.has(`prime:${url}`)) return;
+
+  const v = document.createElement("video");
+  v.src = url;
+  v.preload = "auto";
+  v.muted = true;
+  v.playsInline = true;
+  v.crossOrigin = "anonymous";
+  try { v.load(); } catch {}
+  __videoPreloadSet.add(`prime:${url}`);
+
+  setTimeout(() => { try { v.src = ""; } catch {} }, 30000);
+}
+
+/* --------------------------- Feed ID helper -------------------------------- */
+export function computeFeedId(posts = []) {
+  const src = posts.map(p =>
+    `${p.id}|${(p.text || '').length}|${p.imageMode || ''}|${p.interventionType || ''}`
+  ).join('~');
+  let h = 0;
+  for (let i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) | 0;
+  return 'feed_' + (h >>> 0).toString(36);
+}
+
+/* --------- Viewport tracker (DICE-style enter/exit with threshold) --------- */
+export const VIEWPORT_ENTER_FRACTION = 0.8;
+export const VIEWPORT_ENTER_FRACTION_IMAGE = 0.6;
+
+export function startViewportTracker({
+  root = null,
+  postSelector = "[data-post-id]",
+  threshold = VIEWPORT_ENTER_FRACTION,
+  thresholdImage = VIEWPORT_ENTER_FRACTION_IMAGE,
+  getPostId = (el) => el?.dataset?.postId || null,
+  hasImage,
+  thresholdFor,
+  onEvent,
+} = {}) {
+  if (typeof IntersectionObserver !== "function") {
+    console.warn("IntersectionObserver not supported; dwell tracking disabled.");
+    return () => {};
+  }
+
+  const TH_BASE = clamp(Number(threshold) || VIEWPORT_ENTER_FRACTION, 0, 1);
+  const TH_IMG  = clamp(Number(thresholdImage) || VIEWPORT_ENTER_FRACTION_IMAGE, 0, 1);
+
+  const defaultHasImage = (el) => {
+    if (!el) return false;
+    if (el.dataset && el.dataset.hasImage === "1") return true;
+    return !!el.querySelector?.(
+      ".image-btn img, .image-btn svg, [data-kind='image'], .media img, .media svg"
+    );
+  };
+  const isImagePost = (el) => (typeof hasImage === "function" ? !!hasImage(el) : defaultHasImage(el));
+
+  const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
+  const live = new Map();
+
+  const emit = (action, post_id, entry) => {
+    if (!post_id) return;
+    const el = entry?.target || document.querySelector(`${postSelector}[data-post-id="${post_id}"]`);
+    const rect = el ? el.getBoundingClientRect() : null;
+    const post_h_px = Math.max(0, Math.round(rect?.height || 0));
+    const viewport_h_px = window.innerHeight || (document.documentElement?.clientHeight || 0);
+    const vis_frac = entry ? entry.intersectionRatio : 0;
+    const ts_ms = Date.now();
+
+    onEvent?.({
+      action,
+      post_id,
+      ts_ms,
+      timestamp_iso: new Date(ts_ms).toISOString(),
+      vis_frac: Number((vis_frac || 0).toFixed(4)),
+      post_h_px,
+      viewport_h_px,
+      scroll_y: window.scrollY || window.pageYOffset || 0,
+    });
+  };
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const el = e.target;
+        const id = getPostId(el);
+        if (!id) continue;
+
+        const th =
+          typeof thresholdFor === "function"
+            ? clamp(Number(thresholdFor(el, id)) || TH_BASE, 0, 1)
+            : (isImagePost(el) ? TH_IMG : TH_BASE);
+
+        const wasIn = !!live.get(id)?.entered;
+        const nowIn = (e.intersectionRatio || 0) >= th;
+
+        if (!wasIn && nowIn) {
+          live.set(id, { entered: true });
+          emit("vp_enter", id, e);
+        } else if (wasIn && !nowIn) {
+          live.delete(id);
+          emit("vp_exit", id, e);
+        }
+      }
+    },
+    { root, rootMargin: "0px", threshold: thresholds }
+  );
+
+  const observeAll = () => {
+    document.querySelectorAll(postSelector).forEach((el) => io.observe(el));
+  };
+  observeAll();
+
+  const onHide = () => {
+    for (const [post_id] of live) emit("vp_exit", post_id, null);
+    live.clear();
+  };
+  document.addEventListener("visibilitychange", onHide, { passive: true });
+  window.addEventListener("beforeunload", onHide, { passive: true });
+  window.addEventListener("pagehide", onHide, { passive: true });
+
+  const cleanup = () => {
+    try { io.disconnect(); } catch {}
+    onHide();
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("beforeunload", onHide);
+    window.removeEventListener("pagehide", onHide);
+  };
+
+  return Object.assign(cleanup, { observeNew: observeAll });
+}
+
+/* -------- participant row/header builders (client) ------------------------ */
+export function buildMinimalHeader(posts) {
+  const base = [
+    "session_id",
+    "participant_id",
+    "entered_at_iso",
+    "submitted_at_iso",
+    "ms_enter_to_submit",
+    "ms_enter_to_last_interaction",
+    "feed_id",
+  ];
+
+  const perPost = [];
+  posts.forEach((p) => {
+    const id = p.id || "unknown";
+    perPost.push(
+      `${id}_reacted`,
+      `${id}_reaction_type`,
+      `${id}_expandable`,
+      `${id}_expanded`,
+      `${id}_commented`,
+      `${id}_comment_texts`,
+      `${id}_shared`,
+      `${id}_reported_misinfo`,
+      `${id}_dwell_s`,
+    );
+  });
+
+  return [...base, ...perPost];
+}
+
+/* ---- DICE-style dwell aggregation (multi-visit + height-normalized) ------ */
+export function computePostDwellFromEvents(events = []) {
+  const open = new Map();
+  const total = new Map();
+  const maxH = new Map();
+
+  const isEnter = (a) => a === "vp_enter" || a === "view_start";
+  const isExit  = (a) => a === "vp_exit"  || a === "view_end";
+
+  const flush = (post_id, t1) => {
+    const rec = open.get(post_id);
+    if (!rec) return;
+    const dur = Math.max(0, (t1 ?? Date.now()) - rec.t0);
+    total.set(post_id, (total.get(post_id) || 0) + dur);
+    open.delete(post_id);
+  };
+
+  for (const e of events) {
+    if (!e || !e.action || !e.post_id) continue;
+    const { action, post_id } = e;
+    const ts = Number(e.ts_ms ?? Date.now());
+    const h  = Number(e.post_h_px ?? 0);
+    if (Number.isFinite(h) && h > 0) {
+      maxH.set(post_id, Math.max(h, maxH.get(post_id) || 0));
+    }
+
+    if (isEnter(action)) {
+      if (!open.has(post_id)) open.set(post_id, { t0: ts });
+    } else if (isExit(action)) {
+      flush(post_id, ts);
+    }
+  }
+
+  const lastTs = events.length ? Number(events[events.length - 1].ts_ms) || Date.now() : Date.now();
+  for (const [post_id] of open) flush(post_id, lastTs);
+
+  const out = new Map();
+  for (const [post_id, ms] of total) {
+    const h_px = Math.max(0, Number(maxH.get(post_id) || 0));
+    const dwell_ms = Math.max(0, Math.round(ms));
+    out.set(post_id, {
+      dwell_ms,
+      dwell_s: Math.round(dwell_ms / 1000),
+      post_h_px_max: h_px,
+      dwell_ms_per_px: h_px > 0 ? dwell_ms / h_px : null,
+    });
+  }
+  return out;
+}
+
+function isoToMs(iso) { try { return new Date(iso).getTime(); } catch { return null; } }
+
+export function buildParticipantRow({
+  session_id,
+  participant_id,
+  events,
+  posts,
+  feed_id,
+  feed_checksum,
+}) {
+  const entered   = events.find(e => e.action === "participant_id_entered");
+  const submitted = events.find(e => e.action === "feed_submit");
+
+  const entered_at_iso   = entered?.timestamp_iso || null;
+  const submitted_at_iso = submitted?.timestamp_iso || null;
+
+  const ms_enter_to_submit =
+    entered && submitted ? Math.max(0, submitted.ts_ms - entered.ts_ms) : null;
+
+  const nonScroll = events.filter(
+    e => e.action !== "scroll" && e.action !== "session_start" && e.action !== "session_end"
+  );
+  const lastInteractionAfterEnter = entered
+    ? nonScroll.filter(e => e.ts_ms >= entered.ts_ms).at(-1)
+    : nonScroll.at(-1);
+
+  const ms_enter_to_last_interaction =
+    entered && lastInteractionAfterEnter
+      ? Math.max(0, lastInteractionAfterEnter.ts_ms - entered.ts_ms)
+      : null;
+
+  const dwellAgg = computePostDwellFromEvents(events);
+
+  const per = new Map();
+  const ensure = (id) => {
+    if (!per.has(id)) {
+      per.set(id, {
+        reaction_type: "",
+        expandable: false,
+        expanded: false,
+        commented: false,
+        comment_texts: [],
+        shared: false,
+        reported_misinfo: false,
+      });
+    }
+    return per.get(id);
+  };
+
+  for (const e of events) {
+    const { action, post_id } = e || {};
+    if (!post_id) continue;
+    const p = ensure(post_id);
+
+    switch (action) {
+      case "react_pick":
+        p.reaction_type = (e.type || "").trim() || "like";
+        break;
+      case "react_clear":
+        if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
+          p.reaction_type = "";
+        }
+        break;
+      case "text_clamped":
+        p.expandable = true;
+        break;
+      case "expand_text":
+        p.expanded = true;
+        break;
+      case "comment_submit":
+        p.commented = true;
+        if (e.text) p.comment_texts = [String(e.text)];
+        break;
+      case "share":
+        p.shared = true;
+        break;
+      case "report_misinformation_click":
+        p.reported_misinfo = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const row = {
+    session_id,
+    participant_id: participant_id || null,
+    entered_at_iso,
+    submitted_at_iso,
+    ms_enter_to_submit,
+    ms_enter_to_last_interaction,
+    feed_id: feed_id || null,
+    feed_checksum: feed_checksum || null,
+  };
+
+  for (const p of posts) {
+    const id = p.id || "unknown";
+    const agg = per.get(id) || {
+      reaction_type: "",
+      expandable: false,
+      expanded: false,
+      commented: false,
+      comment_texts: [],
+      shared: false,
+      reported_misinfo: false,
+    };
+
+    const reactedFlag = agg.reaction_type ? 1 : 0;
+    row[`${id}_reacted`]       = reactedFlag ? 1 : "";
+    row[`${id}_reaction_type`] = agg.reaction_type;
+
+    row[`${id}_expandable`] = agg.expandable ? 1 : "";
+    row[`${id}_expanded`]   = agg.expanded ? 1 : "";
+    row[`${id}_commented`] = agg.commented ? 1 : "";
+    row[`${id}_comment_texts`] = agg.comment_texts.length
+      ? agg.comment_texts.join(" | ")
+      : "";
+
+    row[`${id}_shared`]            = agg.shared ? 1 : "";
+    row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
+
+    const aggD = dwellAgg.get(id);
+    row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
+  }
+
+  return row;
+}
+
+/* ---------------------- Participants (admin panels) ----------------------- */
+export function extractPerPostFromRosterRow(row) {
+  if (!row || typeof row !== "object") return {};
+
+  const blob = row.per_post_json || row.per_post || row.perPostJson || null;
+  if (blob) {
+    try {
+      const parsed = typeof blob === "string" ? JSON.parse(blob) : blob;
+      const clean = {};
+      for (const [id, agg] of Object.entries(parsed || {})) {
+        const rx = agg?.reactions || agg?.reaction_types || [];
+        const rxArr = Array.isArray(rx)
+          ? rx
+          : typeof rx === "string"
+          ? rx.split(",").map(s => s.trim()).filter(Boolean)
+          : [];
+
+        const cTextRaw = (() => {
+          const t = agg?.comment_text ?? agg?.comment ?? null;
+          const arr = agg?.comment_texts;
+          if (typeof t === "string") return t;
+          if (Array.isArray(arr)) return arr.map(String).join(" | ");
+          if (typeof arr === "string") return arr;
+          return "";
+        })();
+        const cText = (() => {
+          const s = String(cTextRaw || "").trim();
+          return (!s || s === "—" || s === "-" || /^[-—\s]+$/.test(s)) ? "" : s;
+        })();
+
+        const dwell_s = Number.isFinite(agg?.dwell_s)
+          ? Number(agg.dwell_s)
+          : Number.isFinite(agg?.dwell_ms)
+          ? Math.round(Number(agg.dwell_ms) / 1000)
+          : 0;
+
+        clean[id] = {
+          reacted: Number(agg?.reacted || (rxArr.length ? 1 : 0)),
+          commented: Number(agg?.commented || (cText ? 1 : 0) || (Number(agg?.comment_count) > 0 ? 1 : 0)),
+          shared: Number(agg?.shared || 0),
+          reported: Number(agg?.reported ?? agg?.reported_misinfo ?? 0),
+          expandable: Number(agg?.expandable || 0),
+          expanded: Number(agg?.expanded || 0),
+
+          reactions: rxArr,
+          reaction_types: rxArr,
+          reaction_type: (agg?.reaction_type || rxArr[0] || "").trim(),
+
+          comment_text: cText,
+          comment_count: Number(agg?.comment_count || (cText ? 1 : 0)),
+
+          dwell_s,
+        };
+      }
+
+      for (const [key, val] of Object.entries(row)) {
+        let m = /^(.+?)_commented$/.exec(key);
+        if (m) {
+          const id = m[1];
+          if (!clean[id]) clean[id] = {};
+          clean[id].commented = Number(val || 0);
+          continue;
+        }
+        m = /^(.+?)_comment_texts$/.exec(key);
+        if (m) {
+          const id = m[1];
+          if (!clean[id]) clean[id] = {};
+          const text = String(val || "").trim();
+          clean[id].comment_text = text;
+          if (text) {
+            clean[id].commented = 1;
+            clean[id].comment_count = clean[id].comment_count || 1;
+          }
+        }
+        m = /^(.+?)_reaction_type$/.exec(key);
+        if (m) {
+          const id = m[1];
+          if (!clean[id]) clean[id] = {};
+          const t = String(val || "").trim();
+          clean[id].reaction_type = t;
+          clean[id].reactions = t ? [t] : [];
+          clean[id].reaction_types = clean[id].reactions;
+          if (t) clean[id].reacted = 1;
+        }
+      }
+
+      return clean;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const out = {};
+  const ensure = (id) => {
+    if (!out[id]) {
+      out[id] = {
+        reacted: 0, commented: 0, shared: 0, reported: 0,
+        expandable: 0, expanded: 0,
+        reactions: [], reaction_types: [], reaction_type: "",
+        comment_text: "", comment_count: 0,
+        dwell_s: 0,
+      };
+    }
+    return out[id];
+  };
+
+  for (const [key, val] of Object.entries(row)) {
+    {
+      const m = /^(.+?)_(reacted|commented|shared|reported_misinfo|expanded|expandable)$/.exec(key);
+      if (m) {
+        const [, postId, metric] = m;
+        const obj = ensure(postId);
+        const num = Number(val || 0);
+        if (metric === "reported_misinfo") obj.reported = num;
+        else if (metric === "expanded")    obj.expanded = num;
+        else if (metric === "expandable")  obj.expandable = num;
+        else obj[metric] = num;
+        continue;
+      }
+    }
+
+    {
+      const r1 = /^(.+?)_reaction_type$/.exec(key);
+      if (r1) {
+        const [, postId] = r1;
+        const obj = ensure(postId);
+        const t = String(val || "").trim();
+        obj.reaction_type = t;
+        obj.reactions = t ? [t] : [];
+        obj.reaction_types = obj.reactions;
+        obj.reacted = obj.reacted || (t ? 1 : 0);
+        continue;
+      }
+    }
+
+    {
+      const r2 = /^(.+?)_(reactions|reaction_types)$/.exec(key);
+      if (r2) {
+        const [, postId] = r2;
+        const obj = ensure(postId);
+        const arr = String(val || "")
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean);
+        obj.reactions = arr;
+        obj.reaction_types = arr;
+        obj.reaction_type = obj.reaction_type || (arr[0] || "");
+        obj.reacted = obj.reacted || (arr.length ? 1 : 0);
+        continue;
+      }
+    }
+
+    {
+      const ct = /^(.+?)_comment_texts$/.exec(key);
+      if (ct) {
+        const [, postId] = ct;
+        const obj = ensure(postId);
+        const raw = String(val || "").trim();
+        const text = (!raw || raw === "—" || raw === "-" || /^[-—\s]+$/.test(raw)) ? "" : raw;
+        obj.comment_text = text;
+        obj.commented = obj.commented || (text ? 1 : 0);
+        obj.comment_count = obj.comment_count || (text ? 1 : 0);
+        continue;
+      }
+    }
+
+    {
+      const ds = /^(.+?)_dwell_s$/.exec(key);
+      if (ds) { const [, postId] = ds; ensure(postId).dwell_s = Number(val || 0); continue; }
+      const dm = /^(.+?)_dwell_ms$/.exec(key);
+      if (dm) { const [, postId] = dm; const o = ensure(postId); if (!o.dwell_s) o.dwell_s = Math.round(Number(val || 0) / 1000); continue; }
+    }
+  }
+  return out;
+}
+
+/* ---- dashboard math helpers ---- */
+const median = (arr) => {
+  if (!arr.length) return null;
+  const a = [...arr].sort((x, y) => x - y);
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+};
+const avg = (arr) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : null);
+
+export function summarizeRoster(rows) {
+  const total = rows.length;
+  const completedRows = rows.filter(r => r.submitted_at_iso && String(r.submitted_at_iso).trim());
+  const completed = completedRows.length;
+
+  const toNum = (v) => (v === "" || v == null ? null : Number(v));
+  const submitTimes = completedRows.map(r => toNum(r.ms_enter_to_submit)).filter(Number.isFinite);
+  const lastInteractionTimes = completedRows.map(r => toNum(r.ms_enter_to_last_interaction)).filter(Number.isFinite);
+
+  const postKeys = new Set();
+  rows.forEach(r => {
+    Object.keys(r).forEach(k => {
+      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_reported_misinfo$/.test(k)) {
+        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|reported_misinfo)$/, "");
+        postKeys.add(base);
+      }
+    });
+  });
+
+  const perPost = {};
+  for (const base of postKeys) {
+    const reacted    = rows.reduce((acc, r) => acc + (Number(r[`${base}_reacted`]) || 0), 0);
+    const expandable = rows.reduce((a, r)   => a + (Number(r[`${base}_expandable`]) || 0), 0);
+    const expanded   = rows.reduce((acc, r) => acc + (Number(r[`${base}_expanded`]) || 0), 0);
+    const commented  = rows.reduce((acc, r) => acc + (Number(r[`${base}_commented`]) || 0), 0);
+    const shared     = rows.reduce((acc, r) => acc + (Number(r[`${base}_shared`]) || 0), 0);
+    const reported   = rows.reduce((acc, r) => acc + (Number(r[`${base}_reported_misinfo`]) || 0), 0);
+    const expandRate = expandable > 0 ? expanded / expandable : null;
+    const dwellSArr = rows
+      .map(r => {
+        const s = Number(r[`${base}_dwell_s`]);
+        if (Number.isFinite(s)) return s;
+        const ms = Number(r[`${base}_dwell_ms`]);
+        return Number.isFinite(ms) ? Math.round(ms / 1000) : null;
+      })
+      .filter(n => Number.isFinite(n));
+    const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
+
+    perPost[base] = { reacted, expandable, expanded, expandRate, commented, shared, reported, avgDwellS };
+  }
+
+  return {
+    counts: { total, completed, completionRate: total ? completed / total : 0 },
+    timing: {
+      avgEnterToSubmit: avg(submitTimes),
+      medEnterToSubmit: median(submitTimes),
+      avgEnterToLastInteraction: avg(lastInteractionTimes),
+      medEnterToLastInteraction: median(lastInteractionTimes),
+    },
+    perPost,
+  };
+}
+
+/* ------- Avatar pools (from S3 manifests) ------- */
+export const AVATAR_POOLS_ENDPOINTS = {
+  female: `${CF_BASE.replace(/\/+$/,'')}/avatars/female/index.json`,
+  male:   `${CF_BASE.replace(/\/+$/,'')}/avatars/male/index.json`,
+  company:`${CF_BASE.replace(/\/+$/,'')}/avatars/company/index.json`,
+};
+
+const __avatarPoolCache = new Map(); // kind -> Promise<string[]>
+
+export async function getAvatarPool(kind = "female") {
+  const k = String(kind);
+  if (__avatarPoolCache.has(k)) return __avatarPoolCache.get(k);
+  const p = (async () => {
+    const url = AVATAR_POOLS_ENDPOINTS[k];
+    if (!url) return [];
+    try {
+      const res = await fetch(url, { mode: "cors", cache: "force-cache" });
+      const list = await res.json().catch(() => []);
+      const base = CF_BASE.replace(/\/+$/,'');
+      return (Array.isArray(list) ? list : [])
+        .filter(Boolean)
+        .map(u => u.startsWith("http") ? u : `${base}/${String(u).replace(/^\/+/, "")}`);
+    } catch { return []; }
+  })();
+  __avatarPoolCache.set(k, p);
+  return p;
+}
+
+export function pickDeterministic(array, seedParts = []) {
+  const arr = Array.isArray(array) ? array : [];
+  if (!arr.length) return null;
+  const seed = String(seedParts.join("::"));
+  const r = rng(seed);
+  const idx = Math.floor(r() * arr.length);
+  return arr[idx];
+}
