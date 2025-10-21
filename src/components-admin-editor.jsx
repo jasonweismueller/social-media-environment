@@ -93,6 +93,7 @@ export function makeRandomPost() {
     author, time, text, links: [],
     badge: chance(0.15),
     authorType: "female",
+    topic: "",
     avatarMode: "random",
     avatarRandomKind,
     avatarUrl: randomAvatarByKind(avatarRandomKind, author, author, randomAvatarUrl),
@@ -189,6 +190,22 @@ export function AdminPostEditor({
             ))}
           </div>
         </div>
+
+        {/* Topic (used for image-by-topic randomization, exports with the post) */}
+        <label>Topic
+          <input
+            className="input"
+            placeholder='e.g. "climate_change" or "education"'
+            value={editing.topic || ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEditing(ed => ({ ...ed, topic: v }));
+            }}
+          />
+          <div className="subtle" style={{ marginTop: 6 }}>
+            Saved with the post and included in feed JSON. The media randomizer can use this to pick images from your S3 topic folder.
+          </div>
+        </label>
 
         <label>Post text
           <textarea className="textarea" rows={5} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
