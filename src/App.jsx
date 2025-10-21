@@ -17,6 +17,7 @@ import {
   // ⬇️ added for flags fetch
   APP, GS_ENDPOINT, fetchFeedFlags,
   getAvatarPool,
+  getImagePool,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -40,8 +41,9 @@ function normalizeFlags(raw) {
   const randomize_times    = truthy(f.randomize_times ?? f.randomize_time ?? f.random_time ?? false);
   const randomize_avatars  = truthy(f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false);
   const randomize_names    = truthy(f.randomize_names   ?? f.rand_names      ?? false);
+  const randomize_images   = truthy(f.randomize_images  ?? f.randomize_image ?? f.rand_images ?? false);
 
-  return { randomize_times, randomize_avatars, randomize_names };
+  return { randomize_times, randomize_avatars, randomize_names, randomize_images };
 }
 
 /** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
@@ -430,8 +432,14 @@ export default function App() {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
     // If avatar randomization is off, we consider assets ready immediately.
-    const randAvOn = !!(flags?.randomize_avatars);
-    if (!randAvOn) { setAvatarPools(null); setAssetsReady(true); return; }
+        const randAvOn  = !!(flags?.randomize_avatars);
+    const randImgOn = !!(flags?.randomize_images);
+    // If neither is on, we're good to go.
+    if (!randAvOn && !randImgOn) {
+      setAvatarPools(null);
+      setAssetsReady(true);
+      return;
+    }
 
     // Figure out which author types appear in the current feed.
     const types = new Set(
@@ -442,11 +450,39 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const entries = await Promise.all(Array.from(types).map(async (t) => [t, await getAvatarPool(t)]));
-        if (cancelled) return;
-        const map = Object.fromEntries(entries);
-        setAvatarPools(map);
-        setAssetsReady(true);
+       const jobs = [];
+
+        if (randAvOn) {
+         // Which author types appear in this feed?
+          const types = Array.from(new Set(
+            posts.map(p => (p?.authorType === "male" || p?.authorType === "company") ? p.authorType : "female")
+         ));
+         jobs.push(
+            Promise.all(types.map(async (t) => [t, await getAvatarPool(t)])).then((entries) => {
+              if (cancelled) return;
+              setAvatarPools(Object.fromEntries(entries));
+            })
+          );
+        } else {
+          setAvatarPools(null);
+        }
+
+        if (randImgOn) {
+          // Unique topics for posts that actually show an image
+          const topics = Array.from(new Set(
+            posts
+              .filter(p => p?.image && p?.imageMode !== "none")
+              .map(p => String(p?.topic || p?.imageTopic || "").trim())
+              .filter(Boolean)
+             .map(t => t.toLowerCase())
+          ));
+          if (topics.length) {
+            jobs.push(Promise.allSettled(topics.map((t) => getImagePool(t))));
+          }
+        }
+        await Promise.allSettled(jobs);
+        if (!cancelled) setAssetsReady(true);
+
       } catch (err) {
         if (!cancelled) {
           console.debug("[avatar pool preload error]", err);
@@ -457,7 +493,7 @@ export default function App() {
     })();
 
     return () => { cancelled = true; };
-  }, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
+}, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
 
   // ===== IO infrastructure =====
   const ioRef = useRef(null);
