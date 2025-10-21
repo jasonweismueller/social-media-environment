@@ -910,7 +910,7 @@ const displayImage = React.useMemo(() => {
     <article
       ref={registerViewRef(post.id)}
       data-post-id={post.id}
-      data-has-image={post.image && post.imageMode !== "none" ? "1" : undefined}
+      data-has-image={displayImage ? "1" : undefined}
       className="card post-card"
     >
       <header className="card-head">
@@ -1261,9 +1261,9 @@ const displayImage = React.useMemo(() => {
             </div>
           );
         })()
-      ) : post.image && post.imageMode !== "none" ? (
+      ) : displayImage ? (
         <button className="image-btn" onClick={onImageOpen} disabled={disabled} aria-label="Open image">
-          {post.image.svg ? (
+          {displayImage.svg ? (
             <div
               dangerouslySetInnerHTML={{
                 __html: post.image.svg.replace(
@@ -1272,10 +1272,10 @@ const displayImage = React.useMemo(() => {
                 ),
               }}
             />
-          ) : post.image.url ? (
+          ) : displayImage.url ? (
             <img
-              src={post.image.url}
-              alt={post.image.alt || ""}
+              src={displayImage.url}
+              alt={displayImage.alt || ""}
               style={{
                 display: "block",
                 width: "100%",
