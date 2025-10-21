@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles.css";
@@ -10,14 +11,14 @@ import {
   hasAdminSession, adminLogout, listFeedsFromBackend,
   getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION,
   VIEWPORT_ENTER_FRACTION_IMAGE,
-  // ⬇️ use the project helpers from utils so URLs include ?project_id
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   setFeedIdInUrl,
-  // ⬇️ added for flags fetch
   APP, GS_ENDPOINT, fetchFeedFlags,
   getAvatarPool,
   getImagePool,
+  // ⬇️ add deterministic picker so we can compute *final* assets in App
+  pickDeterministic,
 } from "./utils";
 
 import { Feed as FBFeed } from "./components-ui-posts";
@@ -46,20 +47,15 @@ function normalizeFlags(raw) {
   return { randomize_times, randomize_avatars, randomize_names, randomize_images };
 }
 
-/** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
 function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
   useEffect(() => {
     const ua = navigator.userAgent || "";
     const isIOS = /iP(hone|ad|od)/.test(ua);
     if (!isIOS) return;
-
-    // Ensure -webkit-text-size-adjust doesn't mess with base sizing
     const htmlStyle = document.documentElement.style;
     const prevAdj = htmlStyle.webkitTextSizeAdjust || htmlStyle.textSizeAdjust || "";
     htmlStyle.webkitTextSizeAdjust = "100%";
     htmlStyle.textSizeAdjust = "100%";
-
-    // Inject a minimal stylesheet to force 16px controls just on the participant overlay
     const style = document.createElement("style");
     style.setAttribute("data-ios-input-zoom-fix", "1");
     style.textContent =
@@ -71,7 +67,6 @@ function useIOSInputZoomFix(selector = ".participant-overlay input, .participant
         }
       }`;
     document.head.appendChild(style);
-
     return () => {
       if (style.parentNode) style.parentNode.removeChild(style);
       htmlStyle.webkitTextSizeAdjust = prevAdj;
@@ -80,7 +75,6 @@ function useIOSInputZoomFix(selector = ".participant-overlay input, .participant
   }, [selector]);
 }
 
-/** Lock viewport scale while the PID overlay / input is focused; restore on blur/after entry. */
 function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-overlay input" } = {}) {
   useEffect(() => {
     const ua = navigator.userAgent || "";
@@ -96,35 +90,21 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
 
     const BASE = "width=device-width, initial-scale=1, viewport-fit=cover";
     const LOCK = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
-
     const set = (content) => vp && vp.setAttribute("content", content);
 
     const nudgeLayout = () => {
-      // Encourage Safari to recompute after zoom state change
       requestAnimationFrame(() => {
         window.scrollTo(0, 0);
         window.dispatchEvent(new Event("resize"));
       });
     };
 
-    const onFocus = (e) => {
-      if (e.target && e.target.matches && e.target.matches(fieldSelector)) {
-        set(LOCK);
-      }
-    };
-    const onBlur = (e) => {
-      if (e.target && e.target.matches && e.target.matches(fieldSelector)) {
-        set(BASE);
-        nudgeLayout();
-      }
-    };
+    const onFocus = (e) => { if (e.target?.matches?.(fieldSelector)) set(LOCK); };
+    const onBlur  = (e) => { if (e.target?.matches?.(fieldSelector)) { set(BASE); nudgeLayout(); } };
 
     document.addEventListener("focusin", onFocus, true);
     document.addEventListener("focusout", onBlur, true);
-
-    // Pre-lock when overlay is active to avoid initial zoom jump
-    if (overlayActive) set(LOCK);
-    else set(BASE);
+    if (overlayActive) set(LOCK); else set(BASE);
 
     return () => {
       document.removeEventListener("focusin", onFocus, true);
@@ -134,13 +114,11 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
   }, [overlayActive, fieldSelector]);
 }
 
-// ---- Mode flag ----
 const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
 
-/* ===== unified URL flag reader (search + hash query) ===== */
 function getUrlFlag(key) {
   try {
     const searchVal = new URLSearchParams(window.location.search).get(key);
@@ -150,7 +128,6 @@ function getUrlFlag(key) {
   } catch { return null; }
 }
 
-/* Helper: inline image detection */
 function elementHasImage(el) {
   if (!el) return false;
   if (el.dataset?.hasImage === "1") return true;
@@ -168,6 +145,59 @@ function elementHasImage(el) {
   );
 }
 
+/* ============================
+   Deterministic shuffle (no reordering on re-renders)
+   ============================ */
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function seededShuffle(items, seedStr) {
+  const a = items.slice();
+  const rand = mulberry32(hashStr(seedStr));
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ============================
+   Bitmap preloader (decode before showing feed)
+   ============================ */
+async function preloadBitmaps(urls, { timeoutMs = 10000 } = {}) {
+  const u = Array.from(new Set(urls.filter(Boolean)));
+  const tasks = u.map((src) => new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => {
+      if (img.decode) {
+        img.decode().then(() => resolve(true)).catch(() => resolve(true));
+      } else {
+        resolve(true);
+      }
+    };
+    img.onerror = () => resolve(true); // don't block on errors
+    img.src = src;
+  }));
+
+  // global timeout safeguard
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(true), timeoutMs));
+  await Promise.race([Promise.allSettled(tasks), timeout]);
+}
+
 export default function App() {
   const sessionIdRef = useRef(uid());
   const t0Ref = useRef(now());
@@ -175,15 +205,8 @@ export default function App() {
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
 
-  // === Project ID: source of truth comes from utils (reads URL/localStorage)
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
-
-  // keep utils' project in sync (so utils adds ?project_id to requests)
-  useEffect(() => {
-    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
-  }, [projectId]);
-
-  // also watch URL for changes to ?project / ?project_id and reflect in state
+  useEffect(() => { setProjectIdUtil(projectId, { persist: true, updateUrl: false }); }, [projectId]);
   useEffect(() => {
     const syncFromUrl = () => {
       const p = getUrlFlag("project_id") || getUrlFlag("project");
@@ -208,7 +231,6 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
 
-  // near other refs/state
   const [runSeed] = useState(() =>
     (crypto?.getRandomValues
       ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
@@ -224,14 +246,14 @@ export default function App() {
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
-  // ---------- flags + readiness ----------
+  // flags + asset pools
   const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false });
   const [avatarPools, setAvatarPools] = useState(null);
   const [imagePools, setImagePools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
 
-  // Debug viewport flag
+  // debug VP class
   useEffect(() => {
     const apply = () => {
       const on = getUrlFlag("debugvp") === "1";
@@ -246,24 +268,20 @@ export default function App() {
     };
   }, []);
 
-  // ===== Effective viewport offsets (sticky rails) =====
+  // sticky offsets
   const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
-
   useEffect(() => {
     const readOffsets = () => {
       const topEl =
         document.querySelector(".top-rail-placeholder") ||
         document.querySelector(".topbar") || null;
       const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
-
       const bottomEl = null;
       const bottom = bottomEl ? Math.ceil(bottomEl.getBoundingClientRect().height || bottomEl.offsetHeight || 0) : 0;
-
       setVpOff({ top, bottom });
       document.documentElement.style.setProperty("--vp-top", `${top}px`);
       document.documentElement.style.setProperty("--vp-bottom", `${bottom}px`);
     };
-
     readOffsets();
     window.addEventListener("resize", readOffsets);
     window.addEventListener("orientationchange", readOffsets);
@@ -277,7 +295,7 @@ export default function App() {
     };
   }, []);
 
-  // ---------- Centralized, abortable feed loader with retry ----------
+  // loader
   const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
 
@@ -291,7 +309,6 @@ export default function App() {
     setAssetsReady(false);
 
     try {
-      // list/default use utils → utils reads current project from its own store
       const [feedsList, backendDefault] = await Promise.all([
         listFeedsFromBackend({ signal: ctrl.signal }),
         getDefaultFeedFromBackend({ signal: ctrl.signal }),
@@ -309,7 +326,7 @@ export default function App() {
       setActiveFeedId(chosen.feed_id);
       try { setFeedIdInUrl(chosen.feed_id, { replace: true }); } catch {}
 
-      // cache BY PROJECT + FEED to avoid collisions across projects
+      // cache BY PROJECT + FEED
       let cached = null;
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
@@ -320,15 +337,10 @@ export default function App() {
         }
       } catch {}
 
-      // Always fetch flags before rendering (even if posts are cached)
       const flagsPromise = fetchFeedFlags({
-        app: APP,
-        projectId: projectId || undefined,
-        feedId: chosen.feed_id || undefined,
-        project_id: projectId || undefined,
-        feed_id: chosen.feed_id || undefined,
-        endpoint: GS_ENDPOINT,
-        signal: ctrl.signal,
+        app: APP, projectId: projectId || undefined, feedId: chosen.feed_id || undefined,
+        project_id: projectId || undefined, feed_id: chosen.feed_id || undefined,
+        endpoint: GS_ENDPOINT, signal: ctrl.signal,
       }).catch(() => ({}));
 
       if (cached) {
@@ -342,7 +354,6 @@ export default function App() {
         return;
       }
 
-      // load posts + flags in parallel
       const [fresh, resFlags] = await Promise.all([
         loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal }),
         flagsPromise,
@@ -372,7 +383,6 @@ export default function App() {
     }
   }, [onAdmin, projectId]);
 
-  // ⬇️ Watch URL for feed/project changes and react (deep-link friendly)
   useEffect(() => {
     const onUrlChange = () => {
       const pid = getProjectIdUtil();
@@ -384,7 +394,7 @@ export default function App() {
         startLoadFeed();
       }
     };
-    onUrlChange(); // run once on mount for pasted links
+    onUrlChange();
     window.addEventListener("hashchange", onUrlChange);
     window.addEventListener("popstate", onUrlChange);
     return () => {
@@ -393,13 +403,11 @@ export default function App() {
     };
   }, [activeFeedId, startLoadFeed]);
 
-  // Initial load + cleanup (reload when projectId changes)
   useEffect(() => {
     if (!onAdmin) startLoadFeed();
     return () => feedAbortRef.current?.abort?.();
   }, [onAdmin, startLoadFeed, projectId]);
 
-  // --- Auto-login for admin
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
@@ -408,11 +416,14 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [events, setEvents] = useState([]);
 
+  /* ============================
+     Stable order with seeded shuffle
+     ============================ */
   const orderedPosts = useMemo(() => {
-    const arr = posts.map(p => ({ ...p }));
-    if (randomize) arr.sort(() => Math.random() - 0.5);
-    return arr;
-  }, [posts, randomize]);
+    if (!randomize) return posts;
+    const seed = `order::${runSeed}::${projectId || ""}::${activeFeedId || ""}`;
+    return seededShuffle(posts, seed);
+  }, [posts, randomize, runSeed, projectId, activeFeedId]);
 
   // Lock scroll during overlays
   useEffect(() => {
@@ -423,19 +434,19 @@ export default function App() {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady]);
 
-  // ---- iOS zoom fixes ----
   const overlayActive = !onAdmin && !hasEntered;
   useIOSInputZoomFix();
   useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
 
-  // ===== Preload avatar & image pools (to avoid pop-in) =====
+  /* ============================
+     Preload pools (URLs) first
+     ============================ */
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
     const randAvOn  = !!(flags?.randomize_avatars);
     const randImgOn = !!(flags?.randomize_images);
 
-    // If neither is on, we're good to go immediately.
     if (!randAvOn && !randImgOn) {
       setAvatarPools(null);
       setImagePools(null);
@@ -446,7 +457,6 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        // --- avatars ---
         let avatarPoolsObj = null;
         if (randAvOn) {
           const authorTypesInFeed = Array.from(new Set(
@@ -458,7 +468,6 @@ export default function App() {
           avatarPoolsObj = Object.fromEntries(avatarEntries);
         }
 
-        // --- images ---
         let imagePoolsObj = null;
         if (randImgOn) {
           const topics = Array.from(new Set(
@@ -474,28 +483,85 @@ export default function App() {
             );
             imagePoolsObj = Object.fromEntries(imageEntries);
           } else {
-            imagePoolsObj = {}; // no topics, but considered ready
+            imagePoolsObj = {};
           }
         }
 
         if (!cancelled) {
           setAvatarPools(avatarPoolsObj);
           setImagePools(imagePoolsObj);
-          setAssetsReady(true);
+          // do NOT set assetsReady here — we decode bitmaps next
         }
       } catch (err) {
         if (!cancelled) {
           console.debug("[asset pool preload error]", err);
-          // Don't block UI if pools fail
           setAvatarPools(null);
           setImagePools(null);
-          setAssetsReady(true);
+          // we'll still mark ready after decode step below (there'll be nothing to preload)
         }
       }
     })();
 
     return () => { cancelled = true; };
   }, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
+
+  /* ============================
+     Decode the *final* images before showing feed
+     ============================ */
+  useEffect(() => {
+    if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted || !flagsReady) return;
+
+    const randAvOn  = !!(flags?.randomize_avatars);
+    const randImgOn = !!(flags?.randomize_images);
+
+    // Build the list of final URLs per post given flags + pools + seed
+    const collectFinalUrls = () => {
+      const urls = [];
+
+      for (const p of posts) {
+        const authorType = (p.authorType === "male" || p.authorType === "company") ? p.authorType : "female";
+        const seedParts = [runSeed || "run", APP || "app", projectId || "proj", activeFeedId || "feed", String(p.id ?? ""),];
+
+        // avatar
+        if (randAvOn && avatarPools && avatarPools[authorType]?.length) {
+          const pick = pickDeterministic(avatarPools[authorType], [...seedParts, "avatar"]);
+          if (pick) urls.push(pick);
+        } else if (p.avatarUrl) {
+          urls.push(p.avatarUrl);
+        }
+
+        // image
+        const hasImage = !!(p?.image && p?.imageMode !== "none");
+        if (hasImage) {
+          if (randImgOn) {
+            const topic = String(p?.topic || p?.imageTopic || "").trim().toLowerCase();
+            const list = topic && imagePools ? imagePools[topic] : null;
+            if (list?.length) {
+              const pick = pickDeterministic(list, [...seedParts, "image"]);
+              if (pick) urls.push(pick);
+            } else if (p.image?.url) {
+              urls.push(p.image.url);
+            }
+          } else if (p.image?.url) {
+            urls.push(p.image.url);
+          }
+        }
+      }
+      return urls;
+    };
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const urls = collectFinalUrls();
+        await preloadBitmaps(urls, { timeoutMs: 10000 });
+      } finally {
+        if (!cancelled) setAssetsReady(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [onAdmin, hasEntered, feedPhase, submitted, posts, flagsReady, flags, avatarPools, imagePools, runSeed, projectId, activeFeedId]);
 
   // ===== IO infrastructure =====
   const ioRef = useRef(null);
@@ -504,15 +570,11 @@ export default function App() {
 
   const registerViewRef = (postId) => (el) => {
     const prev = viewRefs.current.get(postId);
-    if (prev && ioRef.current) {
-      try { ioRef.current.unobserve(prev); } catch {}
-    }
+    if (prev && ioRef.current) { try { ioRef.current.unobserve(prev); } catch {} }
     if (el) {
       viewRefs.current.set(postId, el);
       elToId.current.set(el, postId);
-      if (ioRef.current) {
-        try { ioRef.current.observe(el); } catch {}
-      }
+      if (ioRef.current) { try { ioRef.current.observe(el); } catch {} }
     } else {
       viewRefs.current.delete(postId);
     }
@@ -520,7 +582,6 @@ export default function App() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
 
-  // Respect sticky rails in the visibility math so it matches IO
   const measureVis = (post_id) => {
     const el = viewRefs.current.get(post_id);
     if (!el) return null;
@@ -553,7 +614,6 @@ export default function App() {
     ]);
   };
 
-  // scroll + session tracking
   useEffect(() => {
     log("session_start", { user_agent: navigator.userAgent, feed_id: activeFeedId || null, project_id: projectId || null });
     const onEnd = () => log("session_end", { total_events: events.length });
@@ -575,7 +635,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ===================== VIEWPORT TRACKING =====================
+  // viewport tracking
   useEffect(() => {
     if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
 
@@ -652,9 +712,7 @@ export default function App() {
 
   return (
     <Router>
-      <div
-        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady)) ? "blurred" : ""}`}
-      >
+      <div className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady)) ? "blurred" : ""}`}>
         <RouteAwareTopbar />
         <Routes>
           <Route
@@ -679,12 +737,8 @@ export default function App() {
                     if (submitted || disabled) return;
                     setDisabled(true);
 
-                    const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
-                      ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
-                      : 0.5;
-                    const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
-                      ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
-                      : ENTER_FRAC;
+                    const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION)) ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1) : 0.5;
+                    const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE)) ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1) : ENTER_FRAC;
                     const DEBUG_VP = getUrlFlag("debugvp") === "1";
 
                     for (const [post_id, elNode] of viewRefs.current) {
@@ -693,7 +747,6 @@ export default function App() {
                       const { vis_frac, el } = m;
                       const isImg = elementHasImage(elNode || el);
                       const TH = isImg ? IMG_FRAC : ENTER_FRAC;
-
                       if (vis_frac >= TH) {
                         if (DEBUG_VP && el) {
                           el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
@@ -732,7 +785,6 @@ export default function App() {
                     const header = buildMinimalHeader(posts);
                     const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
                     if (ok) setSubmitted(true);
-                    showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
                     setDisabled(false);
                   }}
                 />
@@ -752,20 +804,19 @@ export default function App() {
                   setRandomize={setRandomize}
                   showComposer={showComposer}
                   setShowComposer={setShowComposer}
-                  resetLog={() => { setEvents([]); showToast("Event log cleared"); }}
+                  resetLog={() => { setEvents([]); setToast("Event log cleared"); }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {
                     try {
-                      // utils uses current project from its own store; we already synced it
                       const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
                         const fresh = await loadPostsFromBackend(ctx?.feedId);
                         setPosts(fresh || []);
-                        showToast("Feed saved to backend");
+                        setToast("Feed saved to backend");
                       } else {
-                        showToast("Publish failed");
+                        setToast("Publish failed");
                       }
                     } catch {
-                      showToast("Publish failed");
+                      setToast("Publish failed");
                     }
                   }}
                   onLogout={async () => {
@@ -791,9 +842,7 @@ export default function App() {
             setHasEntered(true);
             enterTsRef.current = ts;
             lastNonScrollTsRef.current = null;
-            log("participant_id_entered", { id, feed_id: activeFeedId || null, project_id: projectId || null });
-
-            // Hard reset viewport + layout so feed starts perfectly framed on iOS
+            // hard reset viewport sizing
             const vp = document.querySelector('meta[name="viewport"]');
             if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
             requestAnimationFrame(() => {
@@ -805,13 +854,12 @@ export default function App() {
       )}
 
       {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady || !assetsReady) && (
-        <LoadingOverlay title="Preparing your feed…" subtitle="Fetching posts and setting things up." />
+        <LoadingOverlay title="Preparing your feed…" subtitle="Fetching posts and warming images…" />
       )}
 
       {!onAdmin && hasEntered && !submitted && feedPhase === "error" && (
         <div className="modal-backdrop modal-backdrop-dim" role="dialog" aria-modal="true" aria-live="assertive">
           <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
-            <div className="spinner-ring" aria-hidden="true" style={{ display: "none" }} />
             <h3 style={{ margin: "0 0 6px" }}>Couldn’t load your feed</h3>
             <div style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 12 }}>
               {feedError || "Network error or service unavailable."}

@@ -116,20 +116,7 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
 }
 
 /* ----------------------------- Post Card ---------------------------------- */
-export function PostCard({
-  post,
-  onAction,
-  disabled,
-  registerViewRef,
-  respectShowReactions = false,
-  flags = { randomize_times:false },
-  app,
-  projectId,
-  feedId,
-  runSeed,
-  avatarPools,
-  imagePools,
-}) {
+export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { randomize_times:false }, app, projectId, feedId, runSeed, avatarPools, imagePools }) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
