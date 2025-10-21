@@ -936,7 +936,6 @@ export function pickDeterministic(array, seedParts = []) {
 
 
 
-
 /* ------- Image pools by topic (from S3 manifests) ------- */
 // topic → folder: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
 export function topicToFolder(topic = "") {
@@ -948,6 +947,15 @@ export function topicToFolder(topic = "") {
     .replace(/[^a-z0-9._-]/g, "");
 }
 
+// same as above but preserves original case (so "Animals" stays "Animals")
+function sanitizeFolderCasePreserving(topic = "") {
+  return String(topic || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[()]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "");
+}
+
 // Build the index.json URL for a given topic folder
 export function imagePoolIndexUrl(folder) {
   const base = CF_BASE.replace(/\/+$/, "");
@@ -955,16 +963,17 @@ export function imagePoolIndexUrl(folder) {
 }
 
 // Normalize index entries (strings or {url}) to absolute URLs
-function normalizeImageIndex(list) {
+function normalizeImageIndex(list, folder) {
   const base = CF_BASE.replace(/\/+$/, "");
+  const prefix = `${base}/images/${encodeURIComponent(folder)}/`;
   const arr = Array.isArray(list) ? list : [];
   return arr
     .map((item) => {
       const u = typeof item === "string" ? item : item && item.url;
       if (!u) return null;
-      return u.startsWith("http")
-        ? u
-        : `${base}/${String(u).replace(/^\/+/, "")}`;
+      // allow bare filenames inside index.json like "cat.jpg"
+      if (!/^https?:\/\//i.test(u) && !u.startsWith("/")) return prefix + u;
+      return /^https?:\/\//i.test(u) ? u : `${base}/${String(u).replace(/^\/+/, "")}`;
     })
     .filter(Boolean);
 }
@@ -973,30 +982,34 @@ const __imagePoolCache = new Map(); // key: folder -> Promise<string[]>
 
 /**
  * getImagePool(topic)
- * - looks for /images/<topicToFolder(topic)>/index.json
- * - caches per folder
- * - returns string[] of absolute URLs (or [])
+ * Tries lowercase folder first, then case-preserving sanitized folder.
  */
 export async function getImagePool(topic = "") {
-  const folder = topicToFolder(topic);
-  if (!folder) return [];
+  const lc = topicToFolder(topic);
+  const cp = sanitizeFolderCasePreserving(topic);
+  const candidates = Array.from(new Set([lc, cp].filter(Boolean))); // de-dupe if equal
 
-  const key = `img::${folder}`;
-  if (__imagePoolCache.has(key)) return __imagePoolCache.get(key);
-
-  const p = (async () => {
-    try {
-      const url = imagePoolIndexUrl(folder);
-      const res = await fetch(url, { mode: "cors", cache: "force-cache" });
-      if (!res.ok) return [];
-      const list = await res.json().catch(() => []);
-      return normalizeImageIndex(list);
-    } catch {
-      return [];
+  for (const folder of candidates) {
+    const key = `img::${folder}`;
+    if (!__imagePoolCache.has(key)) {
+      __imagePoolCache.set(
+        key,
+        (async () => {
+          try {
+            const url = imagePoolIndexUrl(folder);
+            const res = await fetch(url, { mode: "cors", cache: "force-cache" });
+            if (!res.ok) return [];
+            const list = await res.json().catch(() => []);
+            return normalizeImageIndex(list, folder);
+          } catch {
+            return [];
+          }
+        })()
+      );
     }
-  })();
+    const list = await __imagePoolCache.get(key).catch(() => []);
+    if (Array.isArray(list) && list.length) return list; // stop at first hit
+  }
 
-  __imagePoolCache.set(key, p);
-  return p;
+  return [];
 }
-
