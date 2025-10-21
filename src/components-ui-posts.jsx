@@ -3,9 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor,
-  displayTimeForPost, getAvatarPool, pickDeterministic,
-  AVATAR_POOLS_ENDPOINTS,
-  getImagePool,            
+  displayTimeForPost, pickDeterministic,
 } from "./utils";
 
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
@@ -118,42 +116,46 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
 }
 
 /* ----------------------------- Post Card ---------------------------------- */
-export function PostCard({ post, onAction, disabled, registerViewRef, respectShowReactions = false, flags = { randomize_times:false }, app, projectId, feedId, runSeed }) {
+export function PostCard({
+  post,
+  onAction,
+  disabled,
+  registerViewRef,
+  respectShowReactions = false,
+  flags = { randomize_times:false },
+  app,
+  projectId,
+  feedId,
+  runSeed,
+  avatarPools,
+  imagePools,
+}) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [commentText, setCommentText] = useState("");
-  // right before the meta markup, derive once:
 
-  const NAME_POOLS = {
-  female: FEMALE_NAMES,
-  male: MALE_NAMES,
-  company: COMPANY_NAMES,
-};
+  const randNamesOn  = !!(flags?.randomize_names);
+  const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar);
+  const randImagesOn = !!(flags?.randomize_images);
 
-const randNamesOn  = !!(flags?.randomize_names);
-const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar); // 👈 accept both
-const randImagesOn = !!(flags?.randomize_images);
-const [randImageUrl, setRandImageUrl] = React.useState(null);
+  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
 
+  // allow manual override via ?forcerand=1
+  const forcedRand =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("forcerand") === "1";
 
- const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
+  const randomizeOn = forcedRand || (flags?.randomize_times ?? flags?.random_time) === true;
 
- // allow manual override via ?forcerand=1
- const forcedRand =
-   typeof window !== "undefined" &&
-   new URLSearchParams(window.location.search).get("forcerand") === "1";
+  const timeLabel = shouldShowTime
+    ? (displayTimeForPost(post, {
+        randomize: randomizeOn,
+        seedParts: [runSeed || "run", app || "fb", projectId || "global", feedId || ""],
+      }) || "")
+    : "";
 
- const randomizeOn = forcedRand || (flags?.randomize_times ?? flags?.random_time) === true;
-
-const timeLabel = shouldShowTime
-  ? (displayTimeForPost(post, {
-      randomize: randomizeOn,      
-      seedParts: [runSeed || "run", app || "fb", projectId || "global", feedId || ""],
-    }) || "")
-  : "";
-
-const isMobile = useIsMobile();  // ⟵ add this
+  const isMobile = useIsMobile();
 
   // FB-like video settings UI
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -188,124 +190,124 @@ const isMobile = useIsMobile();  // ⟵ add this
   const dotsRef = useRef(null);
 
   const menuItems = (
-      <div ref={menuRef}>
-        <button
-          className="menu-item disabled"
-          role="menuitem"
-          aria-disabled="true"
-          tabIndex={-1}
-          title="Unavailable in this study"
-        >
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
-              <path d="M12 7v10M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </span>
-          <span className="mi-text">
-            <span className="mi-title">Interested</span>
-            <span className="mi-sub">More of your posts will be like this.</span>
-          </span>
-        </button>
+    <div ref={menuRef}>
+      <button
+        className="menu-item disabled"
+        role="menuitem"
+        aria-disabled="true"
+        tabIndex={-1}
+        title="Unavailable in this study"
+      >
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
+            <path d="M12 7v10M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span className="mi-text">
+          <span className="mi-title">Interested</span>
+          <span className="mi-sub">More of your posts will be like this.</span>
+        </span>
+      </button>
 
-        <button
-          className="menu-item disabled"
-          role="menuitem"
-          aria-disabled="true"
-          tabIndex={-1}
-          title="Unavailable in this study"
-        >
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
-              <path d="M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </span>
-          <span className="mi-text">
-            <span className="mi-title">Not interested</span>
-            <span className="mi-sub">Less of your posts will be like this.</span>
-          </span>
-        </button>
+      <button
+        className="menu-item disabled"
+        role="menuitem"
+        aria-disabled="true"
+        tabIndex={-1}
+        title="Unavailable in this study"
+      >
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <circle cx="12" cy="12" r="10" fill="currentColor" opacity=".12" />
+            <path d="M7 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span className="mi-text">
+          <span className="mi-title">Not interested</span>
+          <span className="mi-sub">Less of your posts will be like this.</span>
+        </span>
+      </button>
 
-        <div className="menu-divider" />
+      <div className="menu-divider" />
 
-        <button
-          className="menu-item"
-          role="menuitem"
-          tabIndex={0}
-          onClick={() => {
-            setMenuOpen(false);
-            onAction("report_misinformation_click", { post_id: post.id });
-            setReportAck(true);
-          }}
-        >
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-              <line x1="7" y1="3" x2="7" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <path d="M7 4h10l-2 4 2 4H7z" fill="currentColor" />
-            </svg>
-          </span>
-          <span className="mi-text">
-            <span className="mi-title">Report post</span>
-            <span className="mi-sub">Tell us if it is misinformation.</span>
-          </span>
-        </button>
+      <button
+        className="menu-item"
+        role="menuitem"
+        tabIndex={0}
+        onClick={() => {
+          setMenuOpen(false);
+          onAction("report_misinformation_click", { post_id: post.id });
+          setReportAck(true);
+        }}
+      >
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <line x1="7" y1="3" x2="7" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7 4h10l-2 4 2 4H7z" fill="currentColor" />
+          </svg>
+        </span>
+        <span className="mi-text">
+          <span className="mi-title">Report post</span>
+          <span className="mi-sub">Tell us if it is misinformation.</span>
+        </span>
+      </button>
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v16l-6-4-6 4V4z" fill="currentColor"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Save post</span><span className="mi-sub">Add this to your saved items.</span></span>
-        </button>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 4h12v16l-6-4-6 4V4z" fill="currentColor"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Save post</span><span className="mi-sub">Add this to your saved items.</span></span>
+      </button>
 
-        <div className="menu-divider" />
+      <div className="menu-divider" />
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 8a6 6 0 10-12 0v5l-2 2h16l-2-2V8zM9 19a3 3 0 006 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Turn on notifications for this post</span></span>
-        </button>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 8a6 6 0 10-12 0v5l-2 2h16l-2-2V8zM9 19a3 3 0 006 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Turn on notifications for this post</span></span>
+      </button>
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5L3 12l5 7M16 5l5 7-5 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Embed</span></span>
-        </button>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5L3 12l5 7M16 5l5 7-5 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Embed</span></span>
+      </button>
 
-        <div className="menu-divider" />
+      <div className="menu-divider" />
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="5" width="16" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Hide post</span><span className="mi-sub">See fewer posts like this.</span></span>
-        </button>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><rect x="4" y="5" width="16" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Hide post</span><span className="mi-sub">See fewer posts like this.</span></span>
+      </button>
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Snooze {post.author} for 30 days</span><span className="mi-sub">Temporarily stop seeing posts.</span></span>
-        </button>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Snooze {post.author} for 30 days</span><span className="mi-sub">Temporarily stop seeing posts.</span></span>
+      </button>
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Hide all from {post.author}</span><span className="mi-sub">Stop seeing posts from this Page.</span></span>
-        </button>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M3 12h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Hide all from {post.author}</span><span className="mi-sub">Stop seeing posts from this Page.</span></span>
+      </button>
 
-        <div className="menu-divider" />
+      <div className="menu-divider" />
 
-        <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
-          <span className="mi-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-          </span>
-          <span className="mi-text"><span className="mi-title">Dismiss</span></span>
-        </button>
-      </div>
+      <button className="menu-item disabled" role="menuitem" aria-disabled="true" tabIndex={-1}>
+        <span className="mi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        </span>
+        <span className="mi-text"><span className="mi-title">Dismiss</span></span>
+      </button>
+    </div>
   );
 
   const ALL_REACTIONS = { like:"👍", love:"❤️", care:"🤗", haha:"😆", wow:"😮", sad:"😢", angry:"😡" };
@@ -514,91 +516,63 @@ const isMobile = useIsMobile();  // ⟵ add this
   const [bufferedEnd, setBufferedEnd] = useState(0);
 
   // Determine kind from post (default "female" if unset/unknown)
-const authorType =
-  post.authorType === "male" || post.authorType === "company" ? post.authorType : "female";
+  const authorType =
+    post.authorType === "male" || post.authorType === "company" ? post.authorType : "female";
 
-// Deterministic seed parts: changes per hard refresh (runSeed), stable in-session
-const seedParts = [
-  runSeed || "run",
-  app || "app",
-  projectId || "proj",
-  feedId || "feed",
-  String(post.id ?? "")
-];
+  // Deterministic seed parts: changes per hard refresh (runSeed), stable in-session
+  const seedParts = [
+    runSeed || "run",
+    app || "app",
+    projectId || "proj",
+    feedId || "feed",
+    String(post.id ?? "")
+  ];
 
-// NAME
-const poolNames =
-  authorType === "female" ? FEMALE_NAMES :
-  authorType === "male"   ? MALE_NAMES   :
-                            COMPANY_NAMES;
+  // NAME
+  const poolNames =
+    authorType === "female" ? FEMALE_NAMES :
+    authorType === "male"   ? MALE_NAMES   :
+                              COMPANY_NAMES;
 
-const displayAuthor = React.useMemo(() => {
-  if (!randNamesOn && post.author) return post.author;
-  const picked = pickDeterministic(poolNames, [...seedParts, "name"]);
-  return picked || post.author || (authorType === "company" ? "Sponsored" : "User");
-  // deps intentionally include identifiers that change the seed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [randNamesOn, authorType, post.author, runSeed, app, projectId, feedId, post.id]);
+  const displayAuthor = React.useMemo(() => {
+    if (!randNamesOn && post.author) return post.author;
+    const picked = pickDeterministic(poolNames, [...seedParts, "name"]);
+    return picked || post.author || (authorType === "company" ? "Sponsored" : "User");
+    // deps intentionally include identifiers that change the seed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [randNamesOn, authorType, post.author, runSeed, app, projectId, feedId, post.id]);
 
-// AVATAR (async pool from S3 via utils)
-const [randAvatarUrl, setRandAvatarUrl] = React.useState(null);
+  // AVATAR: synchronous deterministic pick from provided pools
+  const avatarList = randAvatarOn && post.avatarMode !== "neutral"
+    ? (avatarPools?.[authorType] || [])
+    : [];
+  const randAvatarUrl = randAvatarOn
+    ? (pickDeterministic(avatarList, [...seedParts, "avatar"]) || null)
+    : null;
 
-React.useEffect(() => {
-  let cancelled = false;
- if (!randAvatarOn || post.avatarMode === "neutral") { setRandAvatarUrl(null); return; }
-  (async () => {
-    const list = await getAvatarPool(authorType); // returns ABSOLUTE URLs
-    if (cancelled) return;
-    const pick = pickDeterministic(list, [...seedParts, "avatar"]);
-    console.debug("avatar pick", { authorType, pick, flags }); 
-   setRandAvatarUrl(pick || null);
-  })();
-  return () => { cancelled = true; };
-}, [randAvatarOn, post.avatarMode, authorType, runSeed, app, projectId, feedId, post.id]);
+  // Final avatar used in UI
+  const displayAvatar = randAvatarOn
+    ? (randAvatarUrl || post.avatarUrl || null)
+    : (post.avatarUrl || null);
 
-// Final avatar used in UI
-const displayAvatar = randAvatarOn
-  ? (randAvatarUrl || post.avatarUrl || null)
-  : (post.avatarUrl || null);
-
-
-
-// Topic-based image randomization (no aliases; deterministic pick happens here)
-React.useEffect(() => {
-  let cancelled = false;
-  // must have flag on AND an image field intended for display
+  // IMAGE: synchronous deterministic pick from provided pools
   const hasImage = !!(post?.image && post?.imageMode !== "none");
-  if (!randImagesOn || !hasImage) { setRandImageUrl(null); return; }
+  const topicRaw = String(post?.topic || post?.imageTopic || "").trim();
+  const poolForTopic = randImagesOn && hasImage && topicRaw
+    ? (imagePools?.[topicRaw] || imagePools?.[topicRaw.toLowerCase()] || [])
+    : [];
+  const randImageUrl = (randImagesOn && poolForTopic.length)
+    ? (pickDeterministic(poolForTopic, [...seedParts, "image"]) || null)
+    : null;
 
-  // topic determines folder; accept post.topic or post.imageTopic
-  const topic = String(post?.topic || post?.imageTopic || "").trim();
-  if (!topic) { setRandImageUrl(null); return; }
-
-  (async () => {
-    try {
-      const list = await getImagePool(topic); // absolute URLs from /images/<topic>/index.json
-      if (cancelled) return;
-      const pick = pickDeterministic(list, [...seedParts, "image"]);
-      setRandImageUrl(pick || null);
-    } catch {
-      if (!cancelled) setRandImageUrl(null);
+  // Final image object used in UI
+  const displayImage = React.useMemo(() => {
+    if (!hasImage) return null;
+    if (randImagesOn && randImageUrl) {
+      return { url: randImageUrl, alt: post.image?.alt || "" };
     }
-  })();
-
-  return () => { cancelled = true; };
-// seed parts ensure stability per (run/app/project/feed/post)
-}, [randImagesOn, post?.image, post?.imageMode, post?.topic, post?.imageTopic, runSeed, app, projectId, feedId, post?.id]);
-
-// Final image object used in UI
-const displayImage = React.useMemo(() => {
-  const hasImage = !!(post?.image && post?.imageMode !== "none");
-  if (!hasImage) return null;
-  // when flag is on and we have a picked URL, override the image URL only
-  if (randImagesOn && randImageUrl) {
-    return { url: randImageUrl, alt: post.image?.alt || "" };
-  }
-  return post.image || null;
-}, [post?.image, post?.imageMode, randImagesOn, randImageUrl]);
+    return post.image || null;
+  }, [hasImage, randImagesOn, randImageUrl, post.image]);
 
   // time formatter
   const fmtTime = (s) => {
@@ -748,20 +722,20 @@ const displayImage = React.useMemo(() => {
   }, [reportAck]);
 
   useEffect(() => {
-  if (!menuOpen || isMobile) return; // ⟵ only for desktop portal
-  const onDocClick = (e) => {
-    const insideMenu = menuRef.current && menuRef.current.contains(e.target);
-    const insideBtn  = dotsRef.current && dotsRef.current.contains(e.target);
-    if (!insideMenu && !insideBtn) setMenuOpen(false);
-  };
-  const onKey = (e) => { if (e.key === "Escape") setMenuOpen(false); };
-  document.addEventListener("mousedown", onDocClick);
-  document.addEventListener("keydown", onKey);
-  return () => {
-    document.removeEventListener("mousedown", onDocClick);
-    document.removeEventListener("keydown", onKey);
-  };
-}, [menuOpen, isMobile]);
+    if (!menuOpen || isMobile) return; // ⟵ only for desktop portal
+    const onDocClick = (e) => {
+      const insideMenu = menuRef.current && menuRef.current.contains(e.target);
+      const insideBtn  = dotsRef.current && dotsRef.current.contains(e.target);
+      if (!insideMenu && !insideBtn) setMenuOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen, isMobile]);
 
   const LikeIcon = (p) =>
     myReaction ? <span style={{ fontSize: 18, lineHeight: 1 }} {...p}>{ALL_REACTIONS[myReaction]}</span> : <IconThumb {...p}/>;
@@ -777,8 +751,6 @@ const displayImage = React.useMemo(() => {
     const [open, setOpen] = React.useState(false);
     const label = REACTION_META[rxKey]?.label || rxKey;
     const { names, remaining } = fakeNamesFor(post.id, count, rxKey, 4);
-
-  
 
     return (
       <span
@@ -914,87 +886,87 @@ const displayImage = React.useMemo(() => {
       className="card post-card"
     >
       <header className="card-head">
-  <div className="avatar">
-    {displayAvatar ? (
-      <img
-        src={displayAvatar}
-        alt=""
-        className="avatar-img"
-        loading="lazy"
-        decoding="async"
-        onLoad={() => click("avatar_load")}
-        onError={() => click("avatar_error")}
-      />
-    ) : null}
-  </div>
+        <div className="avatar">
+          {displayAvatar ? (
+            <img
+              src={displayAvatar}
+              alt=""
+              className="avatar-img"
+              loading="lazy"
+              decoding="async"
+              onLoad={() => click("avatar_load")}
+              onError={() => click("avatar_error")}
+            />
+          ) : null}
+        </div>
 
-  <div style={{ flex: 1, minWidth:0 }}>
-    <div className="name-row">
-      <div className="name">{displayAuthor}</div>
-      {post.badge && (
-        <span className="badge">
-          <IconBadge />
-        </span>
-      )}
-    </div>
+        <div style={{ flex: 1, minWidth:0 }}>
+          <div className="name-row">
+            <div className="name">{displayAuthor}</div>
+            {post.badge && (
+              <span className="badge">
+                <IconBadge />
+              </span>
+            )}
+          </div>
 
-   {/* Sponsored for ads; otherwise time + globe (both hidden if showTime is false) */}
-<div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-{post.adType === "ad" ? (
-  <>
-    <span className="subtle">Sponsored</span>
-    <span className="sep" aria-hidden="true">·</span>
-    <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-  </>
-) : (
-  timeLabel ? (
-    <>
-      <span className="subtle">{timeLabel}</span>
-      <span className="sep" aria-hidden="true">·</span>
-      <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
-    </>
-  ) : null
-)}
-</div>
-  </div>
+          {/* Sponsored for ads; otherwise time + globe (both hidden if showTime is false) */}
+          <div className="meta" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            {post.adType === "ad" ? (
+              <>
+                <span className="subtle">Sponsored</span>
+                <span className="sep" aria-hidden="true">·</span>
+                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+              </>
+            ) : (
+              timeLabel ? (
+                <>
+                  <span className="subtle">{timeLabel}</span>
+                  <span className="sep" aria-hidden="true">·</span>
+                  <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+                </>
+              ) : null
+            )}
+          </div>
+        </div>
 
-  <div className="menu-wrap">
-    <button
-      ref={dotsRef}
-      className="dots"
-      onClick={() => {
-        if (!disabled) {
-          setMenuOpen(v => !v);
-          onAction("post_menu_toggle", { post_id: post.id });
-        }
-      }}
-      aria-haspopup="menu"
-      aria-expanded={menuOpen}
-      aria-label="Post menu"
-      disabled={disabled}
-    >
-      <IconDots />
-    </button>
-{isMobile ? (
-  <BottomSheet
-    open={menuOpen}
-    onClose={() => setMenuOpen(false)}
-    title="Post options"
-    height="75vh"
-  >
-    {menuItems}
-    <div style={{ height: 8 }} />
-    <button className="btn ghost" onClick={() => setMenuOpen(false)} style={{ width: "100%" }}>
-      Cancel
-    </button>
-  </BottomSheet>
-) : (
-  <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
-    {menuItems}
-  </MenuPortal>
-)}
-  </div>
-</header>
+        <div className="menu-wrap">
+          <button
+            ref={dotsRef}
+            className="dots"
+            onClick={() => {
+              if (!disabled) {
+                setMenuOpen(v => !v);
+                onAction("post_menu_toggle", { post_id: post.id });
+              }
+            }}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label="Post menu"
+            disabled={disabled}
+          >
+            <IconDots />
+          </button>
+          {isMobile ? (
+            <BottomSheet
+              open={menuOpen}
+              onClose={() => setMenuOpen(false)}
+              title="Post options"
+              height="75vh"
+            >
+              {menuItems}
+              <div style={{ height: 8 }} />
+              <button className="btn ghost" onClick={() => setMenuOpen(false)} style={{ width: "100%" }}>
+                Cancel
+              </button>
+            </BottomSheet>
+          ) : (
+            <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
+              {menuItems}
+            </MenuPortal>
+          )}
+        </div>
+      </header>
 
       <div className="card-body">
         <PostText text={post.text || ""} expanded={expanded} onExpand={onExpand} onClamp={() => click("text_clamped")} />
@@ -1577,7 +1549,20 @@ function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
 }
 
 /* ------------------------------- Feed ------------------------------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed }) {
+export function Feed({
+  posts,
+  registerViewRef,
+  disabled,
+  log,
+  onSubmit,
+  flags,
+  app,
+  projectId,
+  feedId,
+  runSeed,
+  avatarPools,
+  imagePools,
+}) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
@@ -1642,13 +1627,14 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
             registerViewRef={registerViewRef}
             flags={flags}
             runSeed={runSeed}
-           app={app}
-           projectId={projectId}
-           feedId={feedId}
+            app={app}
+            projectId={projectId}
+            feedId={feedId}
+            avatarPools={avatarPools}
+            imagePools={imagePools}
           />
         ))}
 
-  
         <div ref={sentinelRef} aria-hidden="true" />
         {visibleCount >= posts.length && <div className="end">End of Feed</div>}
         <div className="submit-wrap">
