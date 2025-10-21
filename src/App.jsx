@@ -225,8 +225,9 @@ export default function App() {
   const feedAbortRef = useRef(null);
 
   // ---------- flags + readiness ----------
-  const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false });
+  const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false });
   const [avatarPools, setAvatarPools] = useState(null);
+  const [imagePools, setImagePools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
 
@@ -427,73 +428,74 @@ export default function App() {
   useIOSInputZoomFix();
   useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
 
-  // ===== Preload avatar pools (to avoid late avatar pop-in) =====
+  // ===== Preload avatar & image pools (to avoid pop-in) =====
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
-    // If avatar randomization is off, we consider assets ready immediately.
-        const randAvOn  = !!(flags?.randomize_avatars);
+    const randAvOn  = !!(flags?.randomize_avatars);
     const randImgOn = !!(flags?.randomize_images);
-    // If neither is on, we're good to go.
+
+    // If neither is on, we're good to go immediately.
     if (!randAvOn && !randImgOn) {
       setAvatarPools(null);
+      setImagePools(null);
       setAssetsReady(true);
       return;
     }
 
-    // Figure out which author types appear in the current feed.
-    const types = new Set(
-      posts.map(p => (p?.authorType === "male" || p?.authorType === "company") ? p.authorType : "female")
-    );
-    if (types.size === 0) { setAvatarPools(null); setAssetsReady(true); return; }
-
     let cancelled = false;
     (async () => {
       try {
-       const jobs = [];
-
+        // --- avatars ---
+        let avatarPoolsObj = null;
         if (randAvOn) {
-         // Which author types appear in this feed?
-          const types = Array.from(new Set(
+          const authorTypesInFeed = Array.from(new Set(
             posts.map(p => (p?.authorType === "male" || p?.authorType === "company") ? p.authorType : "female")
-         ));
-         jobs.push(
-            Promise.all(types.map(async (t) => [t, await getAvatarPool(t)])).then((entries) => {
-              if (cancelled) return;
-              setAvatarPools(Object.fromEntries(entries));
-            })
+          ));
+          const avatarEntries = await Promise.all(
+            authorTypesInFeed.map(async (t) => [t, await getAvatarPool(t)])
           );
-        } else {
-          setAvatarPools(null);
+          avatarPoolsObj = Object.fromEntries(avatarEntries);
         }
 
+        // --- images ---
+        let imagePoolsObj = null;
         if (randImgOn) {
-          // Unique topics for posts that actually show an image
           const topics = Array.from(new Set(
             posts
               .filter(p => p?.image && p?.imageMode !== "none")
               .map(p => String(p?.topic || p?.imageTopic || "").trim())
               .filter(Boolean)
-             .map(t => t.toLowerCase())
+              .map(t => t.toLowerCase())
           ));
           if (topics.length) {
-            jobs.push(Promise.allSettled(topics.map((t) => getImagePool(t))));
+            const imageEntries = await Promise.all(
+              topics.map(async (t) => [t, await getImagePool(t)])
+            );
+            imagePoolsObj = Object.fromEntries(imageEntries);
+          } else {
+            imagePoolsObj = {}; // no topics, but considered ready
           }
         }
-        await Promise.allSettled(jobs);
-        if (!cancelled) setAssetsReady(true);
 
+        if (!cancelled) {
+          setAvatarPools(avatarPoolsObj);
+          setImagePools(imagePoolsObj);
+          setAssetsReady(true);
+        }
       } catch (err) {
         if (!cancelled) {
-          console.debug("[avatar pool preload error]", err);
+          console.debug("[asset pool preload error]", err);
+          // Don't block UI if pools fail
           setAvatarPools(null);
-          setAssetsReady(true); // do not block UI even if pools fail
+          setImagePools(null);
+          setAssetsReady(true);
         }
       }
     })();
 
     return () => { cancelled = true; };
-}, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
+  }, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
 
   // ===== IO infrastructure =====
   const ioRef = useRef(null);
@@ -672,6 +674,7 @@ export default function App() {
                   projectId={projectId}
                   feedId={activeFeedId}
                   avatarPools={avatarPools}
+                  imagePools={imagePools}
                   onSubmit={async () => {
                     if (submitted || disabled) return;
                     setDisabled(true);
