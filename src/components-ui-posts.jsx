@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor,
   displayTimeForPost, getAvatarPool, pickDeterministic,
-  AVATAR_POOLS_ENDPOINTS,             
+  AVATAR_POOLS_ENDPOINTS,
+  getImagePool,            
 } from "./utils";
 
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
@@ -132,6 +133,9 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
 
 const randNamesOn  = !!(flags?.randomize_names);
 const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar); // 👈 accept both
+const randImagesOn = !!(flags?.randomize_images);
+const [randImageUrl, setRandImageUrl] = React.useState(null);
+
 
  const shouldShowTime = post?.showTime === false ? false : true; // default to true if missing
 
@@ -556,6 +560,45 @@ React.useEffect(() => {
 const displayAvatar = randAvatarOn
   ? (randAvatarUrl || post.avatarUrl || null)
   : (post.avatarUrl || null);
+
+
+
+// Topic-based image randomization (no aliases; deterministic pick happens here)
+React.useEffect(() => {
+  let cancelled = false;
+  // must have flag on AND an image field intended for display
+  const hasImage = !!(post?.image && post?.imageMode !== "none");
+  if (!randImagesOn || !hasImage) { setRandImageUrl(null); return; }
+
+  // topic determines folder; accept post.topic or post.imageTopic
+  const topic = String(post?.topic || post?.imageTopic || "").trim();
+  if (!topic) { setRandImageUrl(null); return; }
+
+  (async () => {
+    try {
+      const list = await getImagePool(topic); // absolute URLs from /images/<topic>/index.json
+      if (cancelled) return;
+      const pick = pickDeterministic(list, [...seedParts, "image"]);
+      setRandImageUrl(pick || null);
+    } catch {
+      if (!cancelled) setRandImageUrl(null);
+    }
+  })();
+
+  return () => { cancelled = true; };
+// seed parts ensure stability per (run/app/project/feed/post)
+}, [randImagesOn, post?.image, post?.imageMode, post?.topic, post?.imageTopic, runSeed, app, projectId, feedId, post?.id]);
+
+// Final image object used in UI
+const displayImage = React.useMemo(() => {
+  const hasImage = !!(post?.image && post?.imageMode !== "none");
+  if (!hasImage) return null;
+  // when flag is on and we have a picked URL, override the image URL only
+  if (randImagesOn && randImageUrl) {
+    return { url: randImageUrl, alt: post.image?.alt || "" };
+  }
+  return post.image || null;
+}, [post?.image, post?.imageMode, randImagesOn, randImageUrl]);
 
   // time formatter
   const fmtTime = (s) => {

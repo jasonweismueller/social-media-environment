@@ -933,3 +933,69 @@ export function pickDeterministic(array, seedParts = []) {
   const idx = Math.floor(r() * arr.length);
   return arr[idx];
 }
+
+
+
+/* ------- Image pools by topic (from S3 manifests) ------- */
+// topic → folder: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
+export function topicToFolder(topic = "") {
+  return String(topic || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9._-]/g, "");
+}
+
+// Build the index.json URL for a given topic folder
+export function imagePoolIndexUrl(folder) {
+  const base = CF_BASE.replace(/\/+$/, "");
+  return `${base}/images/${encodeURIComponent(folder)}/index.json`;
+}
+
+// Normalize index entries (strings or {url}) to absolute URLs
+function normalizeImageIndex(list) {
+  const base = CF_BASE.replace(/\/+$/, "");
+  const arr = Array.isArray(list) ? list : [];
+  return arr
+    .map((item) => {
+      const u = typeof item === "string" ? item : item && item.url;
+      if (!u) return null;
+      return u.startsWith("http")
+        ? u
+        : `${base}/${String(u).replace(/^\/+/, "")}`;
+    })
+    .filter(Boolean);
+}
+
+const __imagePoolCache = new Map(); // key: folder -> Promise<string[]>
+
+/**
+ * getImagePool(topic)
+ * - looks for /images/<topicToFolder(topic)>/index.json
+ * - caches per folder
+ * - returns string[] of absolute URLs (or [])
+ */
+export async function getImagePool(topic = "") {
+  const folder = topicToFolder(topic);
+  if (!folder) return [];
+
+  const key = `img::${folder}`;
+  if (__imagePoolCache.has(key)) return __imagePoolCache.get(key);
+
+  const p = (async () => {
+    try {
+      const url = imagePoolIndexUrl(folder);
+      const res = await fetch(url, { mode: "cors", cache: "force-cache" });
+      if (!res.ok) return [];
+      const list = await res.json().catch(() => []);
+      return normalizeImageIndex(list);
+    } catch {
+      return [];
+    }
+  })();
+
+  __imagePoolCache.set(key, p);
+  return p;
+}
+
