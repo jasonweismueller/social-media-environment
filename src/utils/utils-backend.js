@@ -187,6 +187,10 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.randomize_names !== "undefined" || typeof flags.random_name !== "undefined") {
     out.random_name = !!(flags.randomize_names ?? flags.random_name);
   }
+  if (typeof flags.randomize_images !== "undefined" || typeof flags.random_image !== "undefined") {
+    out.random_image = !!(flags.randomize_images ?? flags.random_image);
+  }
+
   return out;
 }
 
@@ -195,9 +199,11 @@ export function normalizeFlagsForRead(flags) {
   out.randomize_times   = !!(out.randomize_times   ?? out.random_time);
   out.randomize_avatars = !!(out.randomize_avatars ?? out.random_avatar);
   out.randomize_names   = !!(out.randomize_names   ?? out.random_name);
+  out.randomize_images  = !!(out.randomize_images  ?? out.random_image);
   delete out.random_time;
   delete out.random_avatar;
   delete out.random_name;
+  delete out.random_image;
   return out;
 }
 
