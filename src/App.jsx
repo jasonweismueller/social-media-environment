@@ -25,7 +25,7 @@ import {
   RouteAwareTopbar, SkeletonFeed, LoadingOverlay,
 } from "./components-ui-core";
 
-import { AdminDashboard } from "./components-admin-core";
+import { AdminDashboard } from "./components-admin-dashboard";
 import AdminLogin from "./components-admin-login";
 
 /* ============================================
