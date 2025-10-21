@@ -935,7 +935,6 @@ export function pickDeterministic(array, seedParts = []) {
 }
 
 
-
 /* ------- Image pools by topic (from S3 manifests) ------- */
 // topic → folder: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
 export function topicToFolder(topic = "") {
