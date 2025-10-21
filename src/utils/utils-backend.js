@@ -9,7 +9,7 @@ import {
   DRIVE_RE,
 } from "./utils-core";
 
-/* --------------------- App + endpoints --------------------- */
+/* --------------------- App + endpoints ---------------------- */
 export const getApp = () => {
   const q = new URLSearchParams(window.location.search);
   const fromUrl = (q.get("app") || "").toLowerCase();

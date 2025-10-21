@@ -115,7 +115,7 @@ export function makeRandomPost() {
   };
 }
 
-/* ----------------------------- Editor Component ----------------------------- */
+/* ----------------------------- Editor Component ------------------------------ */
 export function AdminPostEditor({
   editing,
   setEditing,
