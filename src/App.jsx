@@ -450,7 +450,7 @@ export default function App() {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
-      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 10000);
+      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 5000);
     }
 
     // if not randomized, ensure gate is open
