@@ -1012,3 +1012,34 @@ export async function getImagePool(topic = "") {
 
   return [];
 }
+
+
+export function preloadAndDecodeImages(urls, { concurrency = 6, timeoutMs = 12000 } = {}) {
+  const uniq = Array.from(new Set(urls.filter(Boolean)));
+  if (!uniq.length) return Promise.resolve();
+
+  let i = 0, inflight = 0, resolved = 0;
+  return new Promise((resolve) => {
+    const next = () => {
+      if (resolved === uniq.length) return resolve();
+      while (inflight < concurrency && i < uniq.length) {
+        const url = uniq[i++]; inflight++;
+        const img = new Image();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true; inflight--; resolved++; next();
+        };
+        const t = setTimeout(finish, timeoutMs); // don’t block forever
+        img.onload = async () => { try { await img.decode?.(); } catch {} clearTimeout(t); finish(); };
+        img.onerror = () => { clearTimeout(t); finish(); };
+        // important for CDNs
+        img.decoding = "async";
+        img.loading = "eager";
+        img.referrerPolicy = "no-referrer";
+        img.src = url;
+      }
+    };
+    next();
+  });
+}

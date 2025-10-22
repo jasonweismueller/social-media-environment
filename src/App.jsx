@@ -225,10 +225,14 @@ export default function App() {
   const feedAbortRef = useRef(null);
 
   // ---------- flags + readiness ----------
-  const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false });
+  const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false });
   const [avatarPools, setAvatarPools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
+
+  // NEW: 10s minimum delay control when randomization is on
+  const [minDelayDone, setMinDelayDone] = useState(true);
+  const minDelayStartedRef = useRef(false);
 
   // Debug viewport flag
   useEffect(() => {
@@ -288,6 +292,9 @@ export default function App() {
     setFeedError("");
     setFlagsReady(false);
     setAssetsReady(false);
+    // reset min-delay gating for a fresh load
+    minDelayStartedRef.current = false;
+    setMinDelayDone(true);
 
     try {
       // list/default use utils → utils reads current project from its own store
@@ -413,14 +420,14 @@ export default function App() {
     return arr;
   }, [posts, randomize]);
 
-  // Lock scroll during overlays
+  // Lock scroll during overlays (include minDelayDone gate)
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
-    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady);
+    const shouldLock = !onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone);
     el.style.overflow = shouldLock ? "hidden" : "";
     return () => { el.style.overflow = prev; };
-  }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady]);
+  }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
 
   // ---- iOS zoom fixes ----
   const overlayActive = !onAdmin && !hasEntered;
@@ -431,9 +438,18 @@ export default function App() {
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
-    // If avatar randomization is off, we consider assets ready immediately.
-        const randAvOn  = !!(flags?.randomize_avatars);
+    const randAvOn  = !!(flags?.randomize_avatars);
     const randImgOn = !!(flags?.randomize_images);
+
+    // Start 10s minimum delay once per session if randomization is on
+    if ((randAvOn || randImgOn) && !minDelayStartedRef.current) {
+      minDelayStartedRef.current = true;
+      setMinDelayDone(false);
+      const t = setTimeout(() => setMinDelayDone(true), 10000);
+      // Clear on unmount to avoid leaks
+      return () => clearTimeout(t);
+    }
+
     // If neither is on, we're good to go.
     if (!randAvOn && !randImgOn) {
       setAvatarPools(null);
@@ -450,15 +466,12 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-       const jobs = [];
+        const jobs = [];
 
         if (randAvOn) {
-         // Which author types appear in this feed?
-          const types = Array.from(new Set(
-            posts.map(p => (p?.authorType === "male" || p?.authorType === "company") ? p.authorType : "female")
-         ));
-         jobs.push(
-            Promise.all(types.map(async (t) => [t, await getAvatarPool(t)])).then((entries) => {
+          const typesArr = Array.from(types);
+          jobs.push(
+            Promise.all(typesArr.map(async (t) => [t, await getAvatarPool(t)])).then((entries) => {
               if (cancelled) return;
               setAvatarPools(Object.fromEntries(entries));
             })
@@ -468,18 +481,18 @@ export default function App() {
         }
 
         if (randImgOn) {
-          // Unique topics for posts that actually show an image
           const topics = Array.from(new Set(
             posts
               .filter(p => p?.image && p?.imageMode !== "none")
               .map(p => String(p?.topic || p?.imageTopic || "").trim())
               .filter(Boolean)
-             .map(t => t.toLowerCase())
+              .map(t => t.toLowerCase())
           ));
           if (topics.length) {
             jobs.push(Promise.allSettled(topics.map((t) => getImagePool(t))));
           }
         }
+
         await Promise.allSettled(jobs);
         if (!cancelled) setAssetsReady(true);
 
@@ -493,7 +506,7 @@ export default function App() {
     })();
 
     return () => { cancelled = true; };
-}, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
+  }, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
 
   // ===== IO infrastructure =====
   const ioRef = useRef(null);
@@ -651,14 +664,14 @@ export default function App() {
   return (
     <Router>
       <div
-        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady)) ? "blurred" : ""}`}
+        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)) ? "blurred" : ""}`}
       >
         <RouteAwareTopbar />
         <Routes>
           <Route
             path="/"
             element={
-              hasEntered && feedPhase === "ready" && flagsReady && assetsReady ? (
+              hasEntered && feedPhase === "ready" && flagsReady && assetsReady && minDelayDone ? (
                 <FeedComponent
                   posts={orderedPosts}
                   registerViewRef={registerViewRef}
@@ -801,8 +814,13 @@ export default function App() {
         />
       )}
 
-      {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady || !assetsReady) && (
-        <LoadingOverlay title="Preparing your feed…" subtitle="Fetching posts and setting things up." />
+      {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
+        <LoadingOverlay
+          title="Preparing your feed…"
+          subtitle={(flags.randomize_avatars || flags.randomize_images)
+            ? "Randomizing avatars/images and fetching posts."
+            : "Fetching posts and setting things up."}
+        />
       )}
 
       {!onAdmin && hasEntered && !submitted && feedPhase === "error" && (
