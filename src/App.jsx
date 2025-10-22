@@ -421,7 +421,7 @@ export default function App() {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
-      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 3000);
+      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 1500);
     }
     if (!randOn) {
       clearTimeout(minDelayTimerRef.current);
@@ -860,7 +860,7 @@ export default function App() {
         <LoadingOverlay
           title="Preparing your feed…"
           subtitle={(flags.randomize_avatars || flags.randomize_images)
-            ? "Randomizing avatars/images and fetching posts."
+            ? "Almost ready..."
             : "Fetching posts and setting things up."}
         />
       )}
