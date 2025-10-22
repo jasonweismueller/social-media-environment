@@ -233,6 +233,8 @@ export default function App() {
   // NEW: 10s minimum delay control when randomization is on
   const [minDelayDone, setMinDelayDone] = useState(true);
   const minDelayStartedRef = useRef(false);
+  const minDelayTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(minDelayTimerRef.current), []); // cleanup
 
   // Debug viewport flag
   useEffect(() => {
@@ -293,6 +295,7 @@ export default function App() {
     setFlagsReady(false);
     setAssetsReady(false);
     // reset min-delay gating for a fresh load
+    clearTimeout(minDelayTimerRef.current);
     minDelayStartedRef.current = false;
     setMinDelayDone(true);
 
@@ -434,21 +437,35 @@ export default function App() {
   useIOSInputZoomFix();
   useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
 
-  // ===== Preload avatar pools (to avoid late avatar pop-in) =====
+  /* =========================
+     10s minimum delay effect
+     ========================= */
+  useEffect(() => {
+    if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
+
+    const randOn = !!flags?.randomize_avatars || !!flags?.randomize_images;
+
+    // start once per session if needed
+    if (randOn && !minDelayStartedRef.current) {
+      minDelayStartedRef.current = true;
+      setMinDelayDone(false);
+      clearTimeout(minDelayTimerRef.current);
+      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 10000);
+    }
+
+    // if not randomized, ensure gate is open
+    if (!randOn) {
+      clearTimeout(minDelayTimerRef.current);
+      setMinDelayDone(true);
+    }
+  }, [onAdmin, hasEntered, feedPhase, submitted, flags?.randomize_avatars, flags?.randomize_images]);
+
+  // ===== Preload avatar/image pools (to avoid late pop-in) =====
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
     const randAvOn  = !!(flags?.randomize_avatars);
     const randImgOn = !!(flags?.randomize_images);
-
-    // Start 10s minimum delay once per session if randomization is on
-    if ((randAvOn || randImgOn) && !minDelayStartedRef.current) {
-      minDelayStartedRef.current = true;
-      setMinDelayDone(false);
-      const t = setTimeout(() => setMinDelayDone(true), 10000);
-      // Clear on unmount to avoid leaks
-      return () => clearTimeout(t);
-    }
 
     // If neither is on, we're good to go.
     if (!randAvOn && !randImgOn) {
@@ -489,6 +506,7 @@ export default function App() {
               .map(t => t.toLowerCase())
           ));
           if (topics.length) {
+            // warm the pools/cdn
             jobs.push(Promise.allSettled(topics.map((t) => getImagePool(t))));
           }
         }
@@ -498,7 +516,7 @@ export default function App() {
 
       } catch (err) {
         if (!cancelled) {
-          console.debug("[avatar pool preload error]", err);
+          console.debug("[asset preload error]", err);
           setAvatarPools(null);
           setAssetsReady(true); // do not block UI even if pools fail
         }
