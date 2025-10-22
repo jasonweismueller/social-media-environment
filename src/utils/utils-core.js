@@ -934,9 +934,8 @@ export function pickDeterministic(array, seedParts = []) {
   return arr[idx];
 }
 
-
 /* ------- Image pools by topic (from S3 manifests) ------- */
-// topic → folder: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
+// Legacy: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
 export function topicToFolder(topic = "") {
   return String(topic || "")
     .trim()
@@ -946,13 +945,30 @@ export function topicToFolder(topic = "") {
     .replace(/[^a-z0-9._-]/g, "");
 }
 
-// same as above but preserves original case (so "Animals" stays "Animals")
+// Case-preserving, spaces→_ variant (legacy fallback)
 function sanitizeFolderCasePreserving(topic = "") {
   return String(topic || "")
     .trim()
     .replace(/\s+/g, "_")
     .replace(/[()]/g, "")
     .replace(/[^a-zA-Z0-9._-]/g, "");
+}
+
+// New: keep spaces & case; strip parens; allow spaces and [-_.A-Za-z0-9]
+function sanitizeKeepSpacesCaseful(topic = "") {
+  return String(topic || "")
+    .trim()
+    .replace(/[()]/g, "")
+    .replace(/[^A-Za-z0-9._\-\s]/g, "");
+}
+
+// New: Title Case with spaces (preferred)
+function titleCaseKeepSpaces(topic = "") {
+  const cleaned = sanitizeKeepSpacesCaseful(topic);
+  return cleaned
+    .split(/\s+/)
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w))
+    .join(" ");
 }
 
 // Build the index.json URL for a given topic folder
@@ -970,7 +986,6 @@ function normalizeImageIndex(list, folder) {
     .map((item) => {
       const u = typeof item === "string" ? item : item && item.url;
       if (!u) return null;
-      // allow bare filenames inside index.json like "cat.jpg"
       if (!/^https?:\/\//i.test(u) && !u.startsWith("/")) return prefix + u;
       return /^https?:\/\//i.test(u) ? u : `${base}/${String(u).replace(/^\/+/, "")}`;
     })
@@ -981,12 +996,20 @@ const __imagePoolCache = new Map(); // key: folder -> Promise<string[]>
 
 /**
  * getImagePool(topic)
- * Tries lowercase folder first, then case-preserving sanitized folder.
+ * Order of attempts:
+ *   1) Title Case with spaces (preferred):  "animals" → "Animals", "social media" → "Social Media"
+ *   2) As-typed, spaces kept, case preserved
+ *   3) Case-preserving with underscores      "Social Media" → "Social_Media"
+ *   4) Lowercase with underscores (legacy)   "social_media"
  */
 export async function getImagePool(topic = "") {
-  const lc = topicToFolder(topic);
-  const cp = sanitizeFolderCasePreserving(topic);
-  const candidates = Array.from(new Set([lc, cp].filter(Boolean))); // de-dupe if equal
+  const preferred = titleCaseKeepSpaces(topic);
+  const asTyped  = sanitizeKeepSpacesCaseful(topic);
+  const caseUnd  = sanitizeFolderCasePreserving(topic);
+  const lowerUnd = topicToFolder(topic);
+
+  // De-dup while preserving order
+  const candidates = Array.from(new Set([preferred, asTyped, caseUnd, lowerUnd].filter(Boolean)));
 
   for (const folder of candidates) {
     const key = `img::${folder}`;
@@ -1011,35 +1034,4 @@ export async function getImagePool(topic = "") {
   }
 
   return [];
-}
-
-
-export function preloadAndDecodeImages(urls, { concurrency = 6, timeoutMs = 12000 } = {}) {
-  const uniq = Array.from(new Set(urls.filter(Boolean)));
-  if (!uniq.length) return Promise.resolve();
-
-  let i = 0, inflight = 0, resolved = 0;
-  return new Promise((resolve) => {
-    const next = () => {
-      if (resolved === uniq.length) return resolve();
-      while (inflight < concurrency && i < uniq.length) {
-        const url = uniq[i++]; inflight++;
-        const img = new Image();
-        let done = false;
-        const finish = () => {
-          if (done) return;
-          done = true; inflight--; resolved++; next();
-        };
-        const t = setTimeout(finish, timeoutMs); // don’t block forever
-        img.onload = async () => { try { await img.decode?.(); } catch {} clearTimeout(t); finish(); };
-        img.onerror = () => { clearTimeout(t); finish(); };
-        // important for CDNs
-        img.decoding = "async";
-        img.loading = "eager";
-        img.referrerPolicy = "no-referrer";
-        img.src = url;
-      }
-    };
-    next();
-  });
 }
