@@ -95,36 +95,24 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
     }
 
     const BASE = "width=device-width, initial-scale=1, viewport-fit=cover";
-    const LOCK = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
+    the const LOCK = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
 
     const set = (content) => vp && vp.setAttribute("content", content);
 
     const nudgeLayout = () => {
-      // Encourage Safari to recompute after zoom state change
       requestAnimationFrame(() => {
         window.scrollTo(0, 0);
         window.dispatchEvent(new Event("resize"));
       });
     };
 
-    const onFocus = (e) => {
-      if (e.target && e.target.matches && e.target.matches(fieldSelector)) {
-        set(LOCK);
-      }
-    };
-    const onBlur = (e) => {
-      if (e.target && e.target.matches && e.target.matches(fieldSelector)) {
-        set(BASE);
-        nudgeLayout();
-      }
-    };
+    const onFocus = (e) => { if (e.target?.matches?.(fieldSelector)) set(LOCK); };
+    const onBlur  = (e) => { if (e.target?.matches?.(fieldSelector)) { set(BASE); nudgeLayout(); } };
 
     document.addEventListener("focusin", onFocus, true);
     document.addEventListener("focusout", onBlur, true);
 
-    // Pre-lock when overlay is active to avoid initial zoom jump
-    if (overlayActive) set(LOCK);
-    else set(BASE);
+    set(overlayActive ? LOCK : BASE);
 
     return () => {
       document.removeEventListener("focusin", onFocus, true);
@@ -178,12 +166,8 @@ export default function App() {
   // === Project ID: source of truth comes from utils (reads URL/localStorage)
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
 
-  // keep utils' project in sync (so utils adds ?project_id to requests)
-  useEffect(() => {
-    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
-  }, [projectId]);
+  useEffect(() => { setProjectIdUtil(projectId, { persist: true, updateUrl: false }); }, [projectId]);
 
-  // also watch URL for changes to ?project / ?project_id and reflect in state
   useEffect(() => {
     const syncFromUrl = () => {
       const p = getUrlFlag("project_id") || getUrlFlag("project");
@@ -208,7 +192,6 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
   const [adminAuthed, setAdminAuthed] = useState(false);
 
-  // near other refs/state
   const [runSeed] = useState(() =>
     (crypto?.getRandomValues
       ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
@@ -234,7 +217,7 @@ export default function App() {
   const [minDelayDone, setMinDelayDone] = useState(true);
   const minDelayStartedRef = useRef(false);
   const minDelayTimerRef = useRef(null);
-  useEffect(() => () => clearTimeout(minDelayTimerRef.current), []); // cleanup
+  useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
   // Debug viewport flag
   useEffect(() => {
@@ -260,9 +243,7 @@ export default function App() {
         document.querySelector(".top-rail-placeholder") ||
         document.querySelector(".topbar") || null;
       const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
-
-      const bottomEl = null;
-      const bottom = bottomEl ? Math.ceil(bottomEl.getBoundingClientRect().height || bottomEl.offsetHeight || 0) : 0;
+      const bottom = 0;
 
       setVpOff({ top, bottom });
       document.documentElement.style.setProperty("--vp-top", `${top}px`);
@@ -294,13 +275,11 @@ export default function App() {
     setFeedError("");
     setFlagsReady(false);
     setAssetsReady(false);
-    // reset min-delay gating for a fresh load
     clearTimeout(minDelayTimerRef.current);
     minDelayStartedRef.current = false;
     setMinDelayDone(true);
 
     try {
-      // list/default use utils → utils reads current project from its own store
       const [feedsList, backendDefault] = await Promise.all([
         listFeedsFromBackend({ signal: ctrl.signal }),
         getDefaultFeedFromBackend({ signal: ctrl.signal }),
@@ -318,7 +297,7 @@ export default function App() {
       setActiveFeedId(chosen.feed_id);
       try { setFeedIdInUrl(chosen.feed_id, { replace: true }); } catch {}
 
-      // cache BY PROJECT + FEED to avoid collisions across projects
+      // cache BY PROJECT + FEED
       let cached = null;
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
@@ -329,7 +308,6 @@ export default function App() {
         }
       } catch {}
 
-      // Always fetch flags before rendering (even if posts are cached)
       const flagsPromise = fetchFeedFlags({
         app: APP,
         projectId: projectId || undefined,
@@ -351,7 +329,6 @@ export default function App() {
         return;
       }
 
-      // load posts + flags in parallel
       const [fresh, resFlags] = await Promise.all([
         loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal }),
         flagsPromise,
@@ -393,7 +370,7 @@ export default function App() {
         startLoadFeed();
       }
     };
-    onUrlChange(); // run once on mount for pasted links
+    onUrlChange();
     window.addEventListener("hashchange", onUrlChange);
     window.addEventListener("popstate", onUrlChange);
     return () => {
@@ -402,13 +379,11 @@ export default function App() {
     };
   }, [activeFeedId, startLoadFeed]);
 
-  // Initial load + cleanup (reload when projectId changes)
   useEffect(() => {
     if (!onAdmin) startLoadFeed();
     return () => feedAbortRef.current?.abort?.();
   }, [onAdmin, startLoadFeed, projectId]);
 
-  // --- Auto-login for admin
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
@@ -432,7 +407,6 @@ export default function App() {
     return () => { el.style.overflow = prev; };
   }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
 
-  // ---- iOS zoom fixes ----
   const overlayActive = !onAdmin && !hasEntered;
   useIOSInputZoomFix();
   useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
@@ -442,39 +416,32 @@ export default function App() {
      ========================= */
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
-
     const randOn = !!flags?.randomize_avatars || !!flags?.randomize_images;
-
-    // start once per session if needed
     if (randOn && !minDelayStartedRef.current) {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
       minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 10000);
     }
-
-    // if not randomized, ensure gate is open
     if (!randOn) {
       clearTimeout(minDelayTimerRef.current);
       setMinDelayDone(true);
     }
   }, [onAdmin, hasEntered, feedPhase, submitted, flags?.randomize_avatars, flags?.randomize_images]);
 
-  // ===== Preload avatar/image pools (to avoid late pop-in) =====
+  // ===== Preload avatar/image pools =====
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
     const randAvOn  = !!(flags?.randomize_avatars);
     const randImgOn = !!(flags?.randomize_images);
 
-    // If neither is on, we're good to go.
     if (!randAvOn && !randImgOn) {
       setAvatarPools(null);
       setAssetsReady(true);
       return;
     }
 
-    // Figure out which author types appear in the current feed.
     const types = new Set(
       posts.map(p => (p?.authorType === "male" || p?.authorType === "company") ? p.authorType : "female")
     );
@@ -506,7 +473,6 @@ export default function App() {
               .map(t => t.toLowerCase())
           ));
           if (topics.length) {
-            // warm the pools/cdn
             jobs.push(Promise.allSettled(topics.map((t) => getImagePool(t))));
           }
         }
@@ -518,7 +484,7 @@ export default function App() {
         if (!cancelled) {
           console.debug("[asset preload error]", err);
           setAvatarPools(null);
-          setAssetsReady(true); // do not block UI even if pools fail
+          setAssetsReady(true);
         }
       }
     })();
@@ -549,17 +515,14 @@ export default function App() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1500); };
 
-  // Respect sticky rails in the visibility math so it matches IO
   const measureVis = (post_id) => {
     const el = viewRefs.current.get(post_id);
     if (!el) return null;
     const r = el.getBoundingClientRect();
     const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-
     const topBound = vpOff.top;
     const bottomBound = vh - vpOff.bottom;
     const effectiveVH = Math.max(0, bottomBound - topBound);
-
     const post_h_px = Math.max(0, Math.round(r.height || 0));
     const visH = Math.max(0, Math.min(r.bottom, bottomBound) - Math.max(r.top, topBound));
     const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
@@ -582,7 +545,6 @@ export default function App() {
     ]);
   };
 
-  // scroll + session tracking
   useEffect(() => {
     log("session_start", { user_agent: navigator.userAgent, feed_id: activeFeedId || null, project_id: projectId || null });
     const onEnd = () => log("session_end", { total_events: events.length });
@@ -679,99 +641,157 @@ export default function App() {
 
   const FeedComponent = FBFeed;
 
+  /* ========= Cross-fade state between Skeleton and Feed ========= */
+  const canShowFeed = hasEntered && feedPhase === "ready";
+  const gateOpen    = canShowFeed && flagsReady && assetsReady && minDelayDone;
+  const [showSkeletonLayer, setShowSkeletonLayer] = useState(true);
+
+  // Keep the skeleton for a short time while the feed fades in.
+  useEffect(() => {
+    if (canShowFeed) {
+      // When feed first becomes mountable, keep skeleton visible initially.
+      setShowSkeletonLayer(true);
+    }
+  }, [canShowFeed]);
+
+  useEffect(() => {
+    if (gateOpen) {
+      const t = setTimeout(() => setShowSkeletonLayer(false), 320); // match CSS transition
+      return () => clearTimeout(t);
+    } else {
+      // Gate closed again (navigating, reload, etc.) → show skeleton
+      setShowSkeletonLayer(true);
+    }
+  }, [gateOpen]);
+
   return (
     <Router>
       <div
         className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)) ? "blurred" : ""}`}
       >
         <RouteAwareTopbar />
+
         <Routes>
           <Route
             path="/"
             element={
-              // ⬇️ Mount the real feed as soon as the feed itself is ready,
-              // even if the overlay is still showing. This lets images/avatars
-              // start loading behind the overlay.
-              hasEntered && feedPhase === "ready" ? (
-                <FeedComponent
-                  posts={orderedPosts}
-                  registerViewRef={registerViewRef}
-                  disabled={disabled}
-                  log={log}
-                  showComposer={showComposer}
-                  loading={false}
-                  flags={flags}
-                  runSeed={runSeed}
-                  app={APP}
-                  projectId={projectId}
-                  feedId={activeFeedId}
-                  avatarPools={avatarPools}
-                  onSubmit={async () => {
-                    if (submitted || disabled) return;
-                    setDisabled(true);
-
-                    const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
-                      ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
-                      : 0.5;
-                    const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
-                      ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
-                      : ENTER_FRAC;
-                    const DEBUG_VP = getUrlFlag("debugvp") === "1";
-
-                    for (const [post_id, elNode] of viewRefs.current) {
-                      const m = measureVis(post_id);
-                      if (!m) continue;
-                      const { vis_frac, el } = m;
-                      const isImg = elementHasImage(elNode || el);
-                      const TH = isImg ? IMG_FRAC : ENTER_FRAC;
-
-                      if (vis_frac >= TH) {
-                        if (DEBUG_VP && el) {
-                          el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
-                          el.dataset.state = "OUT";
-                          el.dataset.th = `${Math.round(TH * 100)}%`;
-                          el.classList.remove("__vp-in");
-                          el.classList.add("__vp-out");
-                        }
-                        log("vp_exit", { post_id, vis_frac, reason: "submit", feed_id: activeFeedId || null });
-                      }
-                    }
-
-                    const ts = now();
-                    submitTsRef.current = ts;
-                    const submitEvent = {
-                      session_id: sessionIdRef.current,
-                      participant_id: participantId || null,
-                      timestamp_iso: fmtTime(ts),
-                      elapsed_ms: ts - t0Ref.current,
-                      ts_ms: ts,
-                      action: "feed_submit",
-                      feed_id: activeFeedId || null,
-                      project_id: projectId || null,
-                    };
-                    const eventsWithSubmit = [...events, submitEvent];
-                    const feed_id = activeFeedId || null;
-                    const feed_checksum = computeFeedId(posts);
-                    const row = buildParticipantRow({
-                      session_id: sessionIdRef.current,
-                      participant_id: participantId,
-                      events: eventsWithSubmit,
-                      posts,
-                      feed_id,
-                      feed_checksum,
-                    });
-                    const header = buildMinimalHeader(posts);
-                    const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
-                    if (ok) setSubmitted(true);
-                    showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
-                    setDisabled(false);
+              <div
+                // Layered container: skeleton + feed cross-fade under the overlay
+                style={{
+                  position: "relative",
+                  minHeight: "calc(100vh - var(--vp-top, 0px))",
+                  // Keep layout from jumping vertically during fade
+                }}
+              >
+                {/* Feed layer: mounted as soon as feedPhase === "ready" so assets start loading */}
+                <div
+                  aria-hidden={!canShowFeed}
+                  style={{
+                    opacity: canShowFeed ? (gateOpen ? 1 : 0) : 0,
+                    pointerEvents: gateOpen ? "auto" : "none",
+                    transition: "opacity 320ms ease",
+                    // Stack below skeleton until it fades
+                    position: showSkeletonLayer ? "absolute" : "relative",
+                    inset: showSkeletonLayer ? 0 : "auto",
+                    zIndex: 1,
                   }}
-                />
-              ) : (
-                <SkeletonFeed />
-              )
+                >
+                  {canShowFeed ? (
+                    <FeedComponent
+                      posts={orderedPosts}
+                      registerViewRef={registerViewRef}
+                      disabled={disabled}
+                      log={log}
+                      showComposer={showComposer}
+                      loading={false}
+                      flags={flags}
+                      runSeed={runSeed}
+                      app={APP}
+                      projectId={projectId}
+                      feedId={activeFeedId}
+                      avatarPools={avatarPools}
+                      onSubmit={async () => {
+                        if (submitted || disabled) return;
+                        setDisabled(true);
+
+                        const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                          ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+                          : 0.5;
+                        const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                          ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                          : ENTER_FRAC;
+                        const DEBUG_VP = getUrlFlag("debugvp") === "1";
+
+                        for (const [post_id, elNode] of viewRefs.current) {
+                          const m = measureVis(post_id);
+                          if (!m) continue;
+                          const { vis_frac, el } = m;
+                          const isImg = elementHasImage(elNode || el);
+                          const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+
+                          if (vis_frac >= TH) {
+                            if (DEBUG_VP && el) {
+                              el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+                              el.dataset.state = "OUT";
+                              el.dataset.th = `${Math.round(TH * 100)}%`;
+                              el.classList.remove("__vp-in");
+                              el.classList.add("__vp-out");
+                            }
+                            log("vp_exit", { post_id, vis_frac, reason: "submit", feed_id: activeFeedId || null });
+                          }
+                        }
+
+                        const ts = now();
+                        submitTsRef.current = ts;
+                        const submitEvent = {
+                          session_id: sessionIdRef.current,
+                          participant_id: participantId || null,
+                          timestamp_iso: fmtTime(ts),
+                          elapsed_ms: ts - t0Ref.current,
+                          ts_ms: ts,
+                          action: "feed_submit",
+                          feed_id: activeFeedId || null,
+                          project_id: projectId || null,
+                        };
+                        const eventsWithSubmit = [...events, submitEvent];
+                        const feed_id = activeFeedId || null;
+                        const feed_checksum = computeFeedId(posts);
+                        const row = buildParticipantRow({
+                          session_id: sessionIdRef.current,
+                          participant_id: participantId,
+                          events: eventsWithSubmit,
+                          posts,
+                          feed_id,
+                          feed_checksum,
+                        });
+                        const header = buildMinimalHeader(posts);
+                        const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+                        if (ok) setSubmitted(true);
+                        showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
+                        setDisabled(false);
+                      }}
+                    />
+                  ) : null}
+                </div>
+
+                {/* Skeleton layer: shows until feed is mountable, and fades out once gate opens */}
+                {showSkeletonLayer && (
+                  <div
+                    aria-hidden={gateOpen}
+                    style={{
+                      position: "relative",
+                      zIndex: 2,
+                      opacity: gateOpen ? 0 : 1,
+                      transition: "opacity 320ms ease",
+                    }}
+                  >
+                    <SkeletonFeed />
+                  </div>
+                )}
+              </div>
             }
           />
+
           <Route
             path="/admin"
             element={
@@ -786,7 +806,6 @@ export default function App() {
                   resetLog={() => { setEvents([]); showToast("Event log cleared"); }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {
                     try {
-                      // utils uses current project from its own store; we already synced it
                       const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
                         const fresh = await loadPostsFromBackend(ctx?.feedId);
@@ -811,9 +830,11 @@ export default function App() {
             }
           />
         </Routes>
+
         {toast && <div className="toast">{toast}</div>}
       </div>
 
+      {/* Participant overlay */}
       {!onAdmin && !hasEntered && (
         <ParticipantOverlay
           onSubmit={(id) => {
@@ -824,7 +845,6 @@ export default function App() {
             lastNonScrollTsRef.current = null;
             log("participant_id_entered", { id, feed_id: activeFeedId || null, project_id: projectId || null });
 
-            // Hard reset viewport + layout so feed starts perfectly framed on iOS
             const vp = document.querySelector('meta[name="viewport"]');
             if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
             requestAnimationFrame(() => {
@@ -835,6 +855,7 @@ export default function App() {
         />
       )}
 
+      {/* Loading overlays remain the same; fade will happen under them */}
       {!onAdmin && hasEntered && !submitted && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
         <LoadingOverlay
           title="Preparing your feed…"
