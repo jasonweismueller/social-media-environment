@@ -412,7 +412,7 @@ export default function App() {
   useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
 
   /* =========================
-     10s minimum delay effect
+     3s minimum delay effect
      ========================= */
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
@@ -421,7 +421,7 @@ export default function App() {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
-      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 10000);
+      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 3000);
     }
     if (!randOn) {
       clearTimeout(minDelayTimerRef.current);
