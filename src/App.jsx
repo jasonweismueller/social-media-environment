@@ -450,7 +450,7 @@ export default function App() {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
-      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 5000);
+      minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 10000);
     }
 
     // if not randomized, ensure gate is open
@@ -689,7 +689,10 @@ export default function App() {
           <Route
             path="/"
             element={
-              hasEntered && feedPhase === "ready" && flagsReady && assetsReady && minDelayDone ? (
+              // ⬇️ Mount the real feed as soon as the feed itself is ready,
+              // even if the overlay is still showing. This lets images/avatars
+              // start loading behind the overlay.
+              hasEntered && feedPhase === "ready" ? (
                 <FeedComponent
                   posts={orderedPosts}
                   registerViewRef={registerViewRef}
