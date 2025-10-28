@@ -7,6 +7,7 @@ import {
   injectVideoPreload,
   primeVideoCache,
   DRIVE_RE,
+  CF_BASE
 } from "./utils-core";
 
 /* --------------------- App + endpoints ---------------------- */
@@ -804,7 +805,9 @@ export async function uploadFileToS3ViaSigner({
 
   // CF_BASE is defined in utils-core; we avoid importing it to keep backend small.
   // If your presigner returns a CDN URL, use that; otherwise use the fileUrl it returns.
-  const cdnUrl = fileUrl;
+  const cdnUrl =
+    fileUrl ||
+    `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
 
   try { console.log("[S3] uploaded", { key, cdnUrl }); } catch {}
 
