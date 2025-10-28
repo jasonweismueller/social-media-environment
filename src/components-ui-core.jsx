@@ -1,7 +1,7 @@
 // components-ui-core.jsx
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { fakeNamesFor as utilsFakeNamesFor } from "./utils";
+import { fakeNamesFor as utilsFakeNamesFor,uid } from "./utils";
 
 /* ------------------------------- Icons ------------------------------------- */
 export const IconLike = (p) => (
@@ -397,13 +397,33 @@ export function LoadingOverlay({
   );
 }
 
+
 export function ThankYouOverlay() {
+  const [sessionId, setSessionId] = React.useState("");
+
+  React.useEffect(() => {
+    // Only retrieve the session ID, do not generate a new one
+    const existingId = localStorage.getItem("session_id");
+    setSessionId(existingId || "12345");
+  }, []);
+
   return (
     <div className="modal-backdrop" style={{ zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>
         <div className="modal-body">
           <h2 style={{ marginTop: 0 }}>Thank you for your response</h2>
-          <p>Please go back to the survey and enter the following code: G777D</p>
+          <p>Please go back to the survey and enter the following code:</p>
+          <p
+            style={{
+              fontSize: "1.25rem",
+              fontWeight: "bold",
+              marginTop: "0.5rem",
+              fontFamily: "monospace",
+              letterSpacing: "0.5px",
+            }}
+          >
+            {sessionId}
+          </p>
         </div>
       </div>
     </div>
