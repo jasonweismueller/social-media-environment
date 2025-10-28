@@ -403,7 +403,7 @@ export function ThankYouOverlay() {
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>
         <div className="modal-body">
           <h2 style={{ marginTop: 0 }}>Thank you for your response</h2>
-          <p>You may now close this window.</p>
+          <p>Please go back to the survey and enter the following code: G777D</p>
         </div>
       </div>
     </div>
