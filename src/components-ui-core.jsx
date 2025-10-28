@@ -402,9 +402,8 @@ export function ThankYouOverlay() {
   const [sessionId, setSessionId] = React.useState("");
 
   React.useEffect(() => {
-    // Only retrieve the session ID, do not generate a new one
-    const existingId = localStorage.getItem("session_id");
-    setSessionId(existingId || "12345");
+    // Retrieve the UID stored earlier via localStorage or internal logic
+    setSessionId(uid());
   }, []);
 
   return (
