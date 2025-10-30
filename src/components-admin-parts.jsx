@@ -107,6 +107,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--line)" }}>
                     <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Post ID</th>
+                    <th style={{ textAlign: "left", padding: ".4rem .25rem" }}>Name</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Reacted</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expandable</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Expanded</th>
@@ -128,6 +129,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     return (
                       <tr key={p.post_id} style={{ borderBottom: "1px solid var(--line)" }}>
                         <td style={{ padding: ".35rem .25rem", fontFamily: "monospace" }}>{p.post_id}</td>
+                          <td style={{ textAlign: "left", padding: ".4rem .25rem" }}>{p.name || "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reacted ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expandable ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expanded ? "✓" : "—"}</td>
@@ -555,6 +557,7 @@ export function ParticipantsPanel({
 
                             return {
                               post_id,
+                              name: postMeta.name || "",
                               reacted: Number(agg.reacted) === 1,
                               expandable: Number(agg.expandable) === 1,
                               expanded: Number(agg.expanded) === 1,
