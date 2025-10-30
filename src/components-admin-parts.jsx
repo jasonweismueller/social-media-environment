@@ -543,46 +543,53 @@ export function ParticipantsPanel({
                       className="btn ghost"
                       style={{ padding: compact ? ".25rem .6rem" : undefined }}
                       onClick={() => {
-                        try {
-                          const perPostHash = extractPerPostFromRosterRow(r) || {};
-                          const perPost = Object.entries(perPostHash).map(([post_id, agg]) => {
-                            const dwell_s = Number.isFinite(agg?.dwell_s)
-                              ? Number(agg.dwell_s)
-                              : Number.isFinite(agg?.dwell_ms)
-                                ? Number(agg.dwell_ms) / 1000
-                                : 0;
+  try {
+    const perPostHash = extractPerPostFromRosterRow(r) || {};
 
-                            const rawComment = String(agg.comment_text || "").trim();
-                            const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
+    // 👇 Load post names from your map or store
+    const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
 
-                            return {
-                              post_id,
-                              name: postMeta.name || "",
-                              reacted: Number(agg.reacted) === 1,
-                              expandable: Number(agg.expandable) === 1,
-                              expanded: Number(agg.expanded) === 1,
-                              reaction_types: agg.reactions || agg.reaction_types || [],
-                              commented: Number(agg.commented) === 1 ? true : hasRealComment,
-                              comment_text: rawComment,
-                              shared: Number(agg.shared) === 1,
-                              reported: Number(agg.reported) === 1,
-                              dwell_s,
-                            };
-                          });
+    const perPost = Object.entries(perPostHash).map(([post_id, agg]) => {
+      const dwell_s = Number.isFinite(agg?.dwell_s)
+        ? Number(agg.dwell_s)
+        : Number.isFinite(agg?.dwell_ms)
+          ? Number(agg.dwell_ms) / 1000
+          : 0;
 
-                          setDetailSubmission({
-                            session_id: r.session_id,
-                            participant_id: r.participant_id ?? null,
-                            submitted_at_iso: r.submitted_at_iso ?? null,
-                            ms_enter_to_submit: r.ms_enter_to_submit ?? null,
-                            perPost,
-                          });
-                          setDetailOpen(true);
-                        } catch (err) {
-                          console.error("Participant Details build failed:", err, r);
-                          alert("Failed to open details (see console for error).");
-                        }
-                      }}
+      const rawComment = String(agg.comment_text || "").trim();
+      const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
+
+      // 👇 This replaces the missing postMeta lookup
+      const postName = nameStore[post_id] || ""; // may come from stored mapping or empty
+
+      return {
+        post_id,
+        name: postName, // ✅ now defined safely
+        reacted: Number(agg.reacted) === 1,
+        expandable: Number(agg.expandable) === 1,
+        expanded: Number(agg.expanded) === 1,
+        reaction_types: agg.reactions || agg.reaction_types || [],
+        commented: Number(agg.commented) === 1 ? true : hasRealComment,
+        comment_text: rawComment,
+        shared: Number(agg.shared) === 1,
+        reported: Number(agg.reported) === 1,
+        dwell_s,
+      };
+    });
+
+    setDetailSubmission({
+      session_id: r.session_id,
+      participant_id: r.participant_id ?? null,
+      submitted_at_iso: r.submitted_at_iso ?? null,
+      ms_enter_to_submit: r.ms_enter_to_submit ?? null,
+      perPost,
+    });
+    setDetailOpen(true);
+  } catch (err) {
+    console.error("Participant Details build failed:", err, r);
+    alert("Failed to open details (see console for error).");
+  }
+}}
                     >
                       Details
                     </button>
