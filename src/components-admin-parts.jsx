@@ -180,6 +180,7 @@ export function ParticipantsPanel({
   const [error, setError] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [showPerPost, setShowPerPost] = useState(false);
+  const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailSubmission, setDetailSubmission] = useState(null);
@@ -335,23 +336,24 @@ export function ParticipantsPanel({
   }, [rows]);
 
   const perPostList = useMemo(() => {
-    if (!showPerPost || !summary?.perPost) return [];
-    return Object.entries(summary.perPost).map(([id, agg]) => {
-      const dwellAcc = avgDwellSByPost.get(id);
-      const avgDwellS = dwellAcc && dwellAcc.count > 0 ? dwellAcc.sum / dwellAcc.count : null;
-      return {
-        id,
-        reacted: agg.reacted,
-        expandable: agg.expandable ?? 0,
-        expanded: agg.expanded ?? 0,
-        expandRate: agg.expandRate,
-        commented: agg.commented,
-        shared: agg.shared,
-        reported: agg.reported,
-        avgDwellS,
-      };
-    });
-  }, [showPerPost, summary, avgDwellSByPost]);
+  if (!showPerPost || !summary?.perPost) return [];
+  return Object.entries(summary.perPost).map(([id, agg]) => {
+    const dwellAcc = avgDwellSByPost.get(id);
+    const avgDwellS = dwellAcc && dwellAcc.count > 0 ? dwellAcc.sum / dwellAcc.count : null;
+    return {
+      id,
+      name: nameStore[id] || "", // ✅ Add this line
+      reacted: agg.reacted,
+      expandable: agg.expandable ?? 0,
+      expanded: agg.expanded ?? 0,
+      expandRate: agg.expandRate,
+      commented: agg.commented,
+      shared: agg.shared,
+      reported: agg.reported,
+      avgDwellS,
+    };
+  });
+}, [showPerPost, summary, avgDwellSByPost, nameStore]);
 
   // ----- compact toggles (spacing/typography) -----
   const padCell = compact ? ".3rem .25rem" : ".4rem .25rem";
