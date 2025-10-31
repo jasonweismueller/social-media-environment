@@ -459,7 +459,7 @@ export function ParticipantsPanel({
         <StatCard compact={compact} title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
       </div>
 
-      {/* per-post aggregate toggle */}
+      {/* aggregate toggle */}
       <div style={{ marginTop: compact ? ".6rem" : "1rem" }}>
         <button className="btn ghost" onClick={() => setShowPerPost(v => !v)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
           {showPerPost ? "Hide per-post interactions" : "Show per-post interactions"}
@@ -472,6 +472,7 @@ export function ParticipantsPanel({
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
                 <th style={{ textAlign: "left",  padding: padCell }}>Post ID</th>
+                <th style={{ textAlign: "left", padding: padCell }}>Name</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Reacted</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
@@ -486,6 +487,7 @@ export function ParticipantsPanel({
               {perPostList.map((p) => (
                 <tr key={p.id} style={{ borderBottom: "1px solid var(--line)" }}>
                   <td style={{ padding: padCell, fontFamily: "monospace" }}>{p.id}</td>
+                  <td style={{ padding: padCell }}>{p.name || "—"}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reacted)}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
