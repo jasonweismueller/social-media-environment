@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
-import "./styles.css";
+import "./styles-instagram.css";
 
 import {
   uid, now, fmtTime, clamp,
