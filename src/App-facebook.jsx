@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
-import "./styles.css";
+import "./styles-facebook.css";
 
 import {
   uid, now, fmtTime, clamp,
@@ -20,14 +20,14 @@ import {
   getImagePool,
 } from "./utils";
 
-import { Feed as FBFeed } from "./components-ui-posts";
+import { Feed as FBFeed } from "./ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
   RouteAwareTopbar, SkeletonFeed, LoadingOverlay,
-} from "./components-ui-core";
+} from "./ui-core";
 
-import { AdminDashboard } from "./components-admin-dashboard";
-import AdminLogin from "./components-admin-login";
+import { AdminDashboard } from "./admin/components-admin-dashboard";
+import AdminLogin from "./admin/components-admin-login";
 
 /* ============================================
    iOS viewport + input zoom guards
