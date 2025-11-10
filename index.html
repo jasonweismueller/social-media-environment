@@ -25,15 +25,15 @@
   <body>
     <div id="root"></div>
 
-    <script type="module">
+<script type="module">
   const params = new URLSearchParams(window.location.search);
   const app = (params.get("app") || "facebook").toLowerCase();
 
   const entryMap = {
-    facebook: () => import("./main-facebook"),
-    fb: () => import("./main-facebook"),
-    instagram: () => import("./main-instagram"),
-    ig: () => import("./main-instagram"),
+    facebook: () => import("./src/main-facebook.jsx"),
+    fb: () => import("./src/main-facebook.jsx"),
+    instagram: () => import("./src/main-instagram.jsx"),
+    ig: () => import("./src/main-instagram.jsx"),
   };
 
   (entryMap[app] || entryMap.facebook)();
