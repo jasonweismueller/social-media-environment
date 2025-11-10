@@ -4,26 +4,41 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Social Media Environment</title>
-    
+
     <script>
-  window.CONFIG = {
-    /// GAS proxy (Lambda/API Gateway)
-    GAS_PROXY_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
-    GAS_PROXY_PATH: "/default/gas",
+      window.CONFIG = {
+        // GAS proxy (Lambda/API Gateway)
+        GAS_PROXY_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
+        GAS_PROXY_PATH: "/default/gas",
 
-    // Convenience: some helpers use API_BASE directly
-    API_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com/default/gas",
+        // Convenience: some helpers use API_BASE directly
+        API_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com/default/gas",
 
-    // S3 presigner/CDN
-    SIGNER_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
-    SIGNER_PATH: "/default/presign-upload",
-    CF_BASE: "https://d2bihrgvtn9bga.cloudfront.net"
-  };
-</script>
-
+        // S3 presigner/CDN
+        SIGNER_BASE: "https://qkbi313c2i.execute-api.us-west-1.amazonaws.com",
+        SIGNER_PATH: "/default/presign-upload",
+        CF_BASE: "https://d2bihrgvtn9bga.cloudfront.net"
+      };
+    </script>
   </head>
+
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+
+    <script type="module">
+      // Pick which platform to load: Facebook (default) or Instagram
+      const params = new URLSearchParams(window.location.search);
+      const app = (params.get("app") || "facebook").toLowerCase();
+
+      const entryMap = {
+        facebook: "/src/main-facebook.jsx",
+        fb: "/src/main-facebook.jsx",
+        instagram: "/src/main-instagram.jsx",
+        ig: "/src/main-instagram.jsx"
+      };
+
+      const entry = entryMap[app] || entryMap.facebook;
+      import(entry);
+    </script>
   </body>
 </html>
