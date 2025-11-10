@@ -10,7 +10,7 @@ import {
 
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 
-import { BottomSheet } from "./components-ui-mobile";
+import { BottomSheet } from "./ui-core/ui-mobile-facebook";
 import { createPortal } from "react-dom";
 
 import {
