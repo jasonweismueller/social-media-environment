@@ -15,7 +15,11 @@ export const getApp = () => {
   const q = new URLSearchParams(window.location.search);
   const fromUrl = (q.get("app") || "").toLowerCase();
   const fromWin = (window.APP || "").toLowerCase();
-  return fromUrl === "fb" || fromWin === "fb" ? "fb" : "fb"; // hard default FB
+
+  // Normalize: support both ?app=instagram and ?app=ig
+  if (["instagram", "ig"].includes(fromUrl) || ["instagram", "ig"].includes(fromWin)) return "ig";
+  if (["facebook", "fb"].includes(fromUrl) || ["facebook", "fb"].includes(fromWin)) return "fb";
+  return "fb"; // default fallback
 };
 export const APP = getApp();
 
@@ -44,11 +48,11 @@ export const GS_ENDPOINT =
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
 /* ---------------------- Dynamic GET URL builders -------------------------- */
-const FEEDS_GET_URL        = () => `${GS_ENDPOINT}?path=feeds&app=${APP}${qProject()}`;
-const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${APP}${qProject()}`;
-const POSTS_GET_URL        = () => `${GS_ENDPOINT}?path=posts&app=${APP}${qProject()}`;
-const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${APP}${qProject()}`;
-const WIPE_POLICY_GET_URL  = `${GS_ENDPOINT}?path=wipe_policy`;
+const FEEDS_GET_URL        = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}${qProject()}`;
+const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}${qProject()}`;
+const POSTS_GET_URL        = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}${qProject()}`;
+const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}${qProject()}`;
+const WIPE_POLICY_GET_URL  = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}${qProject()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -897,7 +901,7 @@ export async function getWipePolicyFromBackend() {
   const admin_token = getAdminToken();
   if (!admin_token) return null;
   try {
-    const url = `${WIPE_POLICY_GET_URL}&admin_token=${encodeURIComponent(admin_token)}&_ts=${Date.now()}`;
+    const url = `${WIPE_POLICY_GET_URL()}&admin_token=${encodeURIComponent(admin_token)}&_ts=${Date.now()}`;
     const data = await getJsonWithRetry(
       url,
       { method: "GET", mode: "cors", cache: "no-store" },
