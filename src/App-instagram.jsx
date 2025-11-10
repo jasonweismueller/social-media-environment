@@ -15,14 +15,14 @@ import {
   setFeedIdInUrl,
 } from "./utils";
 
-import { Feed as FBFeed } from "./components-ui-posts";
+import { Feed as FBFeed } from "./ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
   RouteAwareTopbar, SkeletonFeed, LoadingOverlay,
-} from "./components-ui-core";
+} from "./ui-core";
 
-import { AdminDashboard } from "./components-admin-core";
-import AdminLogin from "./components-admin-login";
+import { AdminDashboard } from "./admin/components-admin-core";
+import AdminLogin from "./admin/components-admin-login";
 
 // ---- Mode flag ----
 const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
