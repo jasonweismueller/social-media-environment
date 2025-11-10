@@ -6,7 +6,7 @@ import {
   adminLoginUser,    // email + password
   getAdminEmail,
   getAdminRole
-} from "./utils";
+} from "../utils";
 
 export default function AdminLogin({ onAuth }) {
   const [mode, setMode] = useState("admin"); // "admin" | "owner"
