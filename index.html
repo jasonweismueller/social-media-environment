@@ -26,20 +26,17 @@
     <div id="root"></div>
 
     <script type="module">
-      // Determine which app (facebook or instagram)
-      const params = new URLSearchParams(window.location.search);
-      const app = (params.get("app") || "facebook").toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  const app = (params.get("app") || "facebook").toLowerCase();
 
-      // ✅ Use relative imports (so Vite or bundlers resolve correctly)
-      const entryMap = {
-        facebook: "./main-facebook.jsx",
-        fb: "./main-facebook.jsx",
-        instagram: "./main-instagram.jsx",
-        ig: "./main-instagram.jsx"
-      };
+  const entryMap = {
+    facebook: () => import("./main-facebook"),
+    fb: () => import("./main-facebook"),
+    instagram: () => import("./main-instagram"),
+    ig: () => import("./main-instagram"),
+  };
 
-      const entry = entryMap[app] || entryMap.facebook;
-      import(entry);
-    </script>
+  (entryMap[app] || entryMap.facebook)();
+</script>
   </body>
 </html>
