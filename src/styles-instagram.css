@@ -1006,6 +1006,97 @@ body.admin-mode {
 }
 
 
+/* --- HARDEN LAYOUT MAPPING --- */
+/* Make sure we always have three tracks on desktop */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+  grid-auto-flow: row; /* stack children vertically within their column */
+}
+
+/* Explicitly map children to columns */
+.rail-left{ grid-column: 1 !important; }
+.container.feed, .feed{ grid-column: 2 !important; }  /* your main feed wrapper */
+.rail-right{ grid-column: 3 !important; }
+
+/* If you don’t render a left rail, still keep the feed visible */
+.page > .container.feed:first-child,
+.page > .feed:first-child{
+  grid-column: 2 !important;
+}
+
+/* Prevent “zoomed” feeling from a too-large min on phones */
+@media (max-width: 700px){
+  :root{
+    --feed-min: 0px !important;
+    --feed-max: 100vw !important;
+  }
+  .page{
+    grid-template-columns: 1fr !important;
+    padding-inline: 0 !important;
+  }
+  /* everything stacks in one column */
+  .rail-left,
+  .rail-right,
+  .container.feed,
+  .feed{ grid-column: 1 !important; }
+}
+
+/* Make sure the feed can actually shrink inside the track */
+.page, .feed, .container.feed,
+.card, .card-head, .card-body, .link-row { min-width: 0 !important; }
+
+/* Guard against accidental invisibility */
+.container.feed, .feed{ display:block !important; opacity:1 !important; visibility:visible !important; }
+
+/* iOS text auto-zoom sometimes looks like an initial “zoomed in” feed */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
+
+
+/* --- iPhone fix: let the feed shrink on small screens --- */
+@media (max-width: 820px){
+  :root{
+    --feed-min: 0 !important;                 /* kill the 640px minimum */
+    --feed-max: min(700px, 100vw) !important; /* keep your cap, but allow <= viewport */
+  }
+
+  /* One-column grid so nothing forces horizontal scaling */
+  .page{
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding-inline: 12px !important;          /* small gutter; no overflow */
+  }
+
+  /* Make the top rail match the single-column layout */
+  .top-rail-placeholder .trp-inner{
+    grid-template-columns: 1fr !important;
+    padding: 0 12px !important;
+  }
+
+  /* Ensure the feed column can actually shrink */
+  .container.feed{
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+  }
+
+  /* Safety: nothing inside should insist on extra width */
+  .card, .card-head, .card-body, .link-row{ min-width: 0 !important; }
+}
+
+/* Also stop iOS from doing any “helpful” zooming behavior */
+html{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+input, select, textarea{ font-size:16px; } /* prevent focus-zoom later */
+
+
 /* iOS: stop focus-zoom on the participant overlay */
 @supports (-webkit-touch-callout: none) {
   .participant-overlay input,
