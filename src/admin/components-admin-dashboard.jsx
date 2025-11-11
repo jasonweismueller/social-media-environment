@@ -35,7 +35,7 @@ import {
   normalizeFlagsForStore, normalizeFlagsForRead,
 } from "../utils";
 
-import { Modal, LoadingOverlay } from "./ui-core";
+import { Modal, LoadingOverlay } from "../ui-core";
 import { ParticipantsPanel } from "./components-admin-parts";
 import { AdminUsersPanel } from "./components-admin-users";
 import { randomAvatarByKind } from "../avatar-utils";
