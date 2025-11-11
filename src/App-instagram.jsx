@@ -155,11 +155,32 @@ function PageWithRails({ children }) {
 }
 
 /* =============================== MAIN APP ================================ */
+
+// Helper: inline image detection (parity with FB)
+function elementHasImage(el) {
+  if (!el) return false;
+  if (el.dataset?.hasImage === "1") return true;
+  const root = el.matches?.("[data-post-id]") ? el : el.closest?.("[data-post-id]") || el;
+  return !!root.querySelector?.(
+    [
+      ":scope .image-btn img:not(.avatar-img)",
+      ":scope .image-btn svg",
+      ":scope [data-kind='image']",
+      ":scope .media img:not(.avatar-img)",
+      ":scope .media picture",
+      ":scope .card-body img:not(.avatar-img)",
+      ":scope [data-has-image='1']",
+      ":scope video"
+    ].join(", ")
+  );
+}
+
 export default function App() {
   const sessionIdRef = useRef(uid());
   const t0Ref = useRef(now());
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
+  const lastNonScrollTsRef = useRef(null);
 
   // === Project ID: source of truth from utils (URL/localStorage)
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
@@ -208,6 +229,34 @@ export default function App() {
     };
     apply(); window.addEventListener("popstate", apply); window.addEventListener("hashchange", apply);
     return () => { window.removeEventListener("popstate", apply); window.removeEventListener("hashchange", apply); };
+  }, []);
+
+  // ===== Effective viewport offsets (sticky rails/topbar) — same as FB =====
+  const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
+  useEffect(() => {
+    const readOffsets = () => {
+      const topEl =
+        document.querySelector(".top-rail-placeholder") ||
+        document.querySelector(".topbar") || null;
+      const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
+      const bottom = 0;
+
+      setVpOff({ top, bottom });
+      document.documentElement.style.setProperty("--vp-top", `${top}px`);
+      document.documentElement.style.setProperty("--vp-bottom", `${bottom}px`);
+    };
+
+    readOffsets();
+    window.addEventListener("resize", readOffsets);
+    window.addEventListener("orientationchange", readOffsets);
+    window.addEventListener("load", readOffsets);
+    const id = setInterval(readOffsets, 300);
+    return () => {
+      window.removeEventListener("resize", readOffsets);
+      window.removeEventListener("orientationchange", readOffsets);
+      window.removeEventListener("load", readOffsets);
+      clearInterval(id);
+    };
   }, []);
 
   // ---------- Centralized, abortable feed loader with caching + flags ----------
@@ -362,7 +411,6 @@ export default function App() {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
-      // keep slightly shorter than FB if desired; align to 1500ms for parity
       minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 1500);
     }
     if (!randOn) { clearTimeout(minDelayTimerRef.current); setMinDelayDone(true); }
@@ -430,6 +478,43 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* =========================
+     Viewport ref wiring
+     ========================= */
+  const ioRef = useRef(null);
+  const viewRefs = useRef(new Map());
+  const elToId = useRef(new WeakMap());
+
+  const registerViewRef = (postId) => (el) => {
+    const prev = viewRefs.current.get(postId);
+    if (prev && ioRef.current) {
+      try { ioRef.current.unobserve(prev); } catch {}
+    }
+    if (el) {
+      viewRefs.current.set(postId, el);
+      elToId.current.set(el, postId);
+      if (ioRef.current) {
+        try { ioRef.current.observe(el); } catch {}
+      }
+    } else {
+      viewRefs.current.delete(postId);
+    }
+  };
+
+  const measureVis = (post_id) => {
+    const el = viewRefs.current.get(post_id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const topBound = vpOff.top;
+    const bottomBound = vh - vpOff.bottom;
+    const effectiveVH = Math.max(0, bottomBound - topBound);
+    const post_h_px = Math.max(0, Math.round(r.height || 0));
+    const visH = Math.max(0, Math.min(r.bottom, bottomBound) - Math.max(r.top, topBound));
+    const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
+    return { vis_frac, post_h_px, viewport_h_px: effectiveVH, el };
+  };
+
   // ===== Feed mount & cross-fade gate (parity with FB) =====
   const canShowFeed = hasEntered && feedPhase === "ready";
   const gateOpen    = canShowFeed && flagsReady && assetsReady && minDelayDone;
@@ -440,71 +525,85 @@ export default function App() {
   // ===== Admin login state =====
   useEffect(() => { if (onAdmin && hasAdminSession()) setAdminAuthed(true); }, [onAdmin]);
 
-  // ✅ Viewport tracking (copy this block here)
-useEffect(() => {
-  if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
+  /* =====================
+     VIEWPORT TRACKING
+     ===================== */
+  useEffect(() => {
+    if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
 
-  const DEBUG_VP = new URLSearchParams(window.location.search).get("debugvp") === "1";
-  const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
-    ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
-    : 0.5;
-  const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
-    ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
-    : ENTER_FRAC;
+    const DEBUG_VP = new URLSearchParams(window.location.search).get("debugvp") === "1"
+      || (window.location.hash.split("?")[1] && new URLSearchParams(window.location.hash.split("?")[1]).get("debugvp") === "1");
 
-  const enteredSet = new Set();
-  const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
-  const rootMargin = "0px 0px 0px 0px";
+    const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+      ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+      : 0.5;
+    const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+      ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+      : ENTER_FRAC;
 
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const e of entries) {
-        const postId = e.target.dataset.postId;
-        if (!postId) continue;
-        const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
-        const isImg = e.target.querySelector("img, video");
-        const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+    const enteredSet = new Set();
+    const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
 
-        const nowIn = e.isIntersecting && vis_frac >= TH;
-        const wasIn = enteredSet.has(postId);
+    // IMPORTANT: account for sticky top rail
+    const rootMargin = `${-vpOff.top}px 0px ${-vpOff.bottom}px 0px`;
 
-        if (DEBUG_VP) {
-          e.target.dataset.vis = `${Math.round(vis_frac * 100)}%`;
-          e.target.dataset.state = nowIn ? "IN" : "OUT";
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const postId = elToId.current.get(e.target);
+          if (!postId) continue;
+          const el = e.target;
+
+          // Use our measurement (accounts for vp offsets)
+          const m = measureVis(postId);
+          const vis_frac = m ? m.vis_frac : Number((e.intersectionRatio || 0).toFixed(4));
+
+          const isImg = elementHasImage(el);
+          const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+
+          const nowIn = e.isIntersecting && vis_frac >= TH;
+          const wasIn = enteredSet.has(postId);
+
+          if (DEBUG_VP) {
+            el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+            el.dataset.state = nowIn ? "IN" : "OUT";
+            el.dataset.th = `${Math.round(TH * 100)}%`;
+            el.classList.toggle("__vp-in", nowIn);
+            el.classList.toggle("__vp-out", !nowIn);
+          }
+
+          if (nowIn && !wasIn) {
+            enteredSet.add(postId);
+            log("vp_enter", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
+          } else if (!nowIn && wasIn) {
+            enteredSet.delete(postId);
+            log("vp_exit", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
+          }
         }
-
-        if (nowIn && !wasIn) {
-          enteredSet.add(postId);
-          log("vp_enter", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
-        } else if (!nowIn && wasIn) {
-          enteredSet.delete(postId);
-          log("vp_exit", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
-        }
-      }
-    },
-    { threshold: thresholds, rootMargin }
-  );
-
-  document.querySelectorAll("[data-post-id]").forEach((el) => io.observe(el));
-
-  const onHide = () => {
-    enteredSet.forEach((id) =>
-      log("vp_exit", { post_id: id, reason: "page_hide", feed_id: activeFeedId || null })
+      },
+      { root: null, rootMargin, threshold: thresholds }
     );
-    enteredSet.clear();
-  };
 
-  document.addEventListener("visibilitychange", onHide);
-  window.addEventListener("pagehide", onHide);
-  window.addEventListener("beforeunload", onHide);
+    ioRef.current = io;
+    for (const [, el] of viewRefs.current) if (el) io.observe(el);
 
-  return () => {
-    try { io.disconnect(); } catch {}
-    document.removeEventListener("visibilitychange", onHide);
-    window.removeEventListener("pagehide", onHide);
-    window.removeEventListener("beforeunload", onHide);
-  };
-}, [hasEntered, feedPhase, submitted, onAdmin, activeFeedId, log]);
+    const onHide = () => {
+      enteredSet.forEach((id) => log("vp_exit", { post_id: id, reason: "page_hide", feed_id: activeFeedId || null }));
+      enteredSet.clear();
+    };
+
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+
+    return () => {
+      try { io.disconnect(); } catch {}
+      ioRef.current = null;
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
+    };
+  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom, activeFeedId]);
 
   return (
     <Router>
@@ -533,7 +632,7 @@ useEffect(() => {
                     {canShowFeed ? (
                       <IGFeed
                         posts={orderedPosts}
-                        registerViewRef={() => () => {}}
+                        registerViewRef={registerViewRef}
                         disabled={disabled}
                         log={log}
                         showComposer={false}
@@ -549,11 +648,24 @@ useEffect(() => {
                           if (submitted || disabled) return;
                           setDisabled(true);
 
-                          // viewport exit logging parity
-                          const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION)) ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1) : 0.5;
-                          const IMG_FRAC   = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE)) ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1) : ENTER_FRAC;
-                          const DEBUG_VP   = (new URLSearchParams(window.location.search).get("debugvp") === "1") || (window.location.hash.split("?")[1] && new URLSearchParams(window.location.hash.split("?")[1]).get("debugvp") === "1");
-                          // (IG layout uses lazy registerViewRef noop; if you wire it later, mirror FB submit exits)
+                          // On submit, emit vp_exit for any currently "in" posts (parity with FB)
+                          const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                            ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+                            : 0.5;
+                          const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                            ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                            : ENTER_FRAC;
+
+                          for (const [post_id, elNode] of viewRefs.current) {
+                            const m = measureVis(post_id);
+                            if (!m) continue;
+                            const { vis_frac } = m;
+                            const isImg = elementHasImage(elNode);
+                            const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+                            if (vis_frac >= TH) {
+                              log("vp_exit", { post_id, vis_frac, reason: "submit", feed_id: activeFeedId || null });
+                            }
+                          }
 
                           const ts = now();
                           submitTsRef.current = ts;
@@ -636,7 +748,16 @@ useEffect(() => {
             setParticipantId(id);
             setHasEntered(true);
             enterTsRef.current = ts;
+            lastNonScrollTsRef.current = null;
             log("participant_id_entered", { id, feed_id: activeFeedId || null, project_id: projectId || null });
+
+            // iOS nudge (match FB)
+            const vp = document.querySelector('meta[name="viewport"]');
+            if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
+            requestAnimationFrame(() => {
+              window.scrollTo(0, 0);
+              window.dispatchEvent(new Event("resize"));
+            });
           }}
         />
       )}
