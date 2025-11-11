@@ -311,8 +311,8 @@ export function PostCard({
   authorType, showTime, flags: postFlags = {}
 } = post || {};
 
-// ✅ Add this fallback immediately after destructuring:
-const mergedFlags = postFlags || flags || {};
+// ✅ Add this line directly after:
+const flags = postFlags || flags || {};
 
   // Deterministic seed for consistent randomization across sessions
   const seedParts = [
