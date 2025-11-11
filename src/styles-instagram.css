@@ -734,3 +734,41 @@ body.admin-mode .ig-topbar { display:none !important; }
 @media (max-width:700px){
   .ig-caption-row .text.clamp.needs{ padding-right:3.25ch; }
 }
+
+
+/* --- Expand/Collapse Chevron & Section Animation (from Facebook) --- */
+
+/* Smooth expand/collapse for section bodies */
+.section-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .22s ease, opacity .22s ease;
+}
+.section-collapse:not(.is-collapsed) {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.section-collapse-inner {
+  overflow: hidden;
+}
+
+/* Chevron button: stable hit area + rotation */
+.section-chev {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 8px;
+}
+.section-chev svg {
+  width: 16px;
+  height: 16px;
+  transition: transform .18s ease;
+  color: var(--text, #111827); /* ensure visible on light background */
+}
+.section-chev[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}

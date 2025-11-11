@@ -46,7 +46,7 @@ import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
 
 // Pick based on current app (set in main-facebook.jsx or main-instagram.jsx)
-const app = (window.APP || "fb").toLowerCase();
+const app = (window.APP || new URLSearchParams(window.location.search).get("app") || "fb").toLowerCase();
 const AdminPostEditor = app === "ig" ? AdminPostEditorIG : AdminPostEditorFB;
 
 /* ---------- small access gate ---------------- */
