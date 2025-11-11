@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
 
 /* ---------------- Small utils ---------------- */
 function useIsMobile(breakpointPx = 640) {
@@ -306,24 +306,134 @@ export function PostCard({
   runSeed
 }) {
   const {
-    id, author = "", avatarUrl = "", text = "", image, imageMode, video, videoMode,
-    videoPosterUrl, reactions, metrics, time,
+    id, author = "", avatarUrl = "", text = "", image, imageMode, images,
+    video, videoMode, videoPosterUrl, reactions, metrics, time,
+    authorType, showTime, flags: postFlags = {}
   } = post || {};
 
   // Deterministic seed for consistent randomization across sessions
-const seedParts = [
-  runSeed || "run",
-  app || "ig",
-  projectId || "global",
-  feedId || "",
-  String(id ?? "")
-];
+  const seedParts = [
+    runSeed || "run",
+    (app || "ig"),
+    (projectId || "global"),
+    (feedId || ""),
+    String(id ?? "")
+  ];
 
-  const images = Array.isArray(post?.images) ? post.images : [];
-  const hasCarousel = imageMode === "multi" && images.length > 1;
+  // ---- Randomization flags (per-post) ----
+  const forcedRand =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("forcerand") === "1";
 
+  const randNamesOn  = forcedRand || !!postFlags.randomize_names;
+  const randAvatarOn = forcedRand || !!(postFlags.randomize_avatars || postFlags.randomize_avatar);
+  const randImagesOn = forcedRand || !!postFlags.randomize_images;
+  const randTimesOn  = forcedRand || !!postFlags.randomize_times;
+
+  // ---- IG username randomizer (deterministic) ----
+  function pickIGUsername(postId, parts, fallback = "username") {
+    try {
+      // Use reaction-name generator as a stable pool source, then sanitize to IG-style handle
+      const pool = fakeNamesFor(postId, 16, "like", 16).names || [];
+      const picked = pickDeterministic(pool, [...parts, "author"]) || fallback;
+      const handle = String(picked).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      return handle || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  // ---- Author name & avatar (deterministic) ----
+  const displayAuthor = useMemo(() => {
+    if (!randNamesOn) return author || "username";
+    return pickIGUsername(id, seedParts, author || "username");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [randNamesOn, author, id, runSeed, app, projectId, feedId]);
+
+  const [randAvatarUrl, setRandAvatarUrl] = useState(null);
+  const inferredAuthorType =
+    authorType === "male" || authorType === "company" ? authorType : "female";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!randAvatarOn) { setRandAvatarUrl(null); return; }
+    (async () => {
+      try {
+        const list = await getAvatarPool(inferredAuthorType); // absolute URLs
+        if (cancelled) return;
+        const pick = pickDeterministic(list, [...seedParts, "avatar"]);
+        setRandAvatarUrl(pick || null);
+      } catch {
+        if (!cancelled) setRandAvatarUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [randAvatarOn, inferredAuthorType, runSeed, app, projectId, feedId, id]);
+
+  const effectiveAvatarUrl = randAvatarOn ? (randAvatarUrl || avatarUrl || "") : (avatarUrl || "");
+
+  // ---- Image randomization (topic-based; when available) ----
+  const [randImageUrl, setRandImageUrl] = useState(null);
+  const topic = String(post?.topic || post?.imageTopic || "").trim();
+
+  useEffect(() => {
+    let cancelled = false;
+    const hasSingleImage = !!(image && imageMode !== "none");
+    const shouldTry = randImagesOn && !!topic && hasSingleImage;
+    if (!shouldTry) { setRandImageUrl(null); return; }
+
+    (async () => {
+      try {
+        const list = await getImagePool(topic); // absolute URLs
+        if (cancelled) return;
+        const pick = pickDeterministic(list, [...seedParts, "image"]);
+        setRandImageUrl(pick || null);
+      } catch {
+        if (!cancelled) setRandImageUrl(null);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [randImagesOn, topic, image, imageMode, runSeed, app, projectId, feedId, id]);
+
+  const displayImageObj = useMemo(() => {
+    const hasImage = !!(image && imageMode && imageMode !== "none");
+    if (!hasImage) return null;
+    if (randImagesOn && randImageUrl) {
+      return { url: randImageUrl, alt: image?.alt || "" };
+    }
+    return image || null;
+  }, [image, imageMode, randImagesOn, randImageUrl]);
+
+  const imgs = Array.isArray(images) ? images : [];
+  const hasCarousel = imageMode === "multi" && imgs.length > 1;
   const isMobile = useIsMobile(700);
 
+  // ---- Time randomization (label) ----
+  const timeLabel = useMemo(() => {
+    const shouldShow = showTime === false ? false : true; // default true
+    if (!shouldShow) return "";
+
+    // Prefer shared util if available
+    try {
+      const maybe = displayTimeForPost?.(post, {
+        randomize: !!randTimesOn,
+        seedParts,
+      });
+      if (typeof maybe === "string" && maybe.length) return maybe;
+    } catch { /* fall through */ }
+
+    // Fallback: use provided time, or a deterministic pseudo-label if flags demand randomization
+    if (!time && randTimesOn) {
+      // simple deterministic fallback windows: "2h", "6h", "12h", "1d"
+      const opts = ["2h", "3h", "6h", "12h", "1d", "2d"];
+      return pickDeterministic(opts, [...seedParts, "time"]) || "2h";
+    }
+    return time || "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [time, showTime, randTimesOn, id, runSeed, app, projectId, feedId]);
+
+  // ---- Metrics and state ----
   const baseLikes = useMemo(() => sumReactions(reactions), [reactions]);
   const baseComments = Number(metrics?.comments || 0);
   const baseShares = Number(metrics?.shares || 0);
@@ -355,7 +465,7 @@ const seedParts = [
     "Participant";
 
   const hasVideo = videoMode && videoMode !== "none" && !!video;
-  const hasImage = imageMode && imageMode !== "none" && !!image;
+  const hasImage = imageMode && imageMode !== "none" && !!(displayImageObj || image);
   const refFromTracker = typeof registerViewRef === "function" ? registerViewRef(id) : undefined;
 
   // Autoplay in view (keeps native controls)
@@ -439,13 +549,13 @@ const seedParts = [
       {/* Header */}
       <header className="insta-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="" style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover" }} />
+          {effectiveAvatarUrl ? (
+            <img src={effectiveAvatarUrl} alt="" style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover" }} />
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
           <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {author || "username"}
+            {displayAuthor}
           </div>
         </div>
 
@@ -475,88 +585,91 @@ const seedParts = [
       )}
 
       {/* Media */}
-{(hasVideo || hasCarousel || hasImage) && (
-  <div className="insta-media" style={{ position: "relative", background: "#000" }}>
-    <div
-      style={{
-        width: "100%",
-        aspectRatio: hasVideo ? "4 / 5" : "1 / 1",
-        maxHeight: "80vh",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {hasVideo ? (
-        <video
-          ref={videoRef}
-          data-ig-video="1"
-          src={video?.url || video}
-          poster={videoPosterUrl || undefined}
-          controls
-          playsInline
-          muted
-          autoPlay
-          loop
-          preload="auto"
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-          onPlay={handlePlay}
-          onPause={() => onAction("video_pause", { id })}
-          onEnded={() => onAction("video_ended", { id })}
-        />
-      ) : hasCarousel ? (
-        <IGCarousel items={images} />
-      ) : imageMode === "multi" && images.length === 1 ? (
-        <img
-          src={images[0].url}
-          alt={images[0].alt || ""}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-          loading="lazy"
-          decoding="async"
-        />
-      ) : image?.svg ? (
-        <div
-          dangerouslySetInnerHTML={{
-            __html: image.svg.replace(
-              "<svg ",
-              "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-            ),
-          }}
-        />
-      ) : image?.url ? (
-        <img
-          src={image.url}
-          alt={image.alt || ""}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-            // honor focal point if provided
-            objectPosition: `${image.focalX ?? 50}% ${image.focalY ?? 50}%`,
-          }}
-          loading="lazy"
-          decoding="async"
-        />
-      ) : null}
-    </div>
-  </div>
-)}
+      {(hasVideo || hasCarousel || hasImage) && (
+        <div className="insta-media" style={{ position: "relative", background: "#000" }}>
+          <div
+            style={{
+              width: "100%",
+              aspectRatio: hasVideo ? "4 / 5" : "1 / 1",
+              maxHeight: "80vh",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            {hasVideo ? (
+              <video
+                ref={videoRef}
+                data-ig-video="1"
+                src={video?.url || video}
+                poster={videoPosterUrl || undefined}
+                controls
+                playsInline
+                muted
+                autoPlay
+                loop
+                preload="auto"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+                onPlay={handlePlay}
+                onPause={() => onAction("video_pause", { id })}
+                onEnded={() => onAction("video_ended", { id })}
+              />
+            ) : hasCarousel ? (
+              <IGCarousel items={imgs} />
+            ) : imageMode === "multi" && imgs.length === 1 ? (
+              <img
+                src={imgs[0].url}
+                alt={imgs[0].alt || ""}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+                loading="lazy"
+                decoding="async"
+              />
+            ) : displayImageObj?.svg ? (
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: displayImageObj.svg.replace(
+                    "<svg ",
+                    "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+                  ),
+                }}
+              />
+            ) : (displayImageObj?.url || image?.url) ? (
+              <img
+                src={displayImageObj?.url || image?.url}
+                alt={(displayImageObj?.alt || image?.alt) || ""}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  objectPosition: `${
+                    (image?.focalX ?? 50)
+                  }% ${
+                    (image?.focalY ?? 50)
+                  }%`,
+                }}
+                loading="lazy"
+                decoding="async"
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Actions row */}
       <div
@@ -637,21 +750,23 @@ const seedParts = [
         </div>
       )}
 
-{/* Caption with IG PostText (username floats for first line) */}
-{text?.trim() && (
-  <div className="ig-caption-row">
-    <PostText
-      prefix={<span className="ig-username">{author || "username"}</span>}
-      text={text}
-      expanded={expanded}
-      onExpand={() => setExpanded(true)}
-      onClamp={() => onAction("text_clamped", { id })}
-    />
-  </div>
-)}
-      {time && (
+      {/* Caption with IG PostText (username floats for first line) */}
+      {text?.trim() && (
+        <div className="ig-caption-row">
+          <PostText
+            prefix={<span className="ig-username">{displayAuthor}</span>}
+            text={text}
+            expanded={expanded}
+            onExpand={() => setExpanded(true)}
+            onClamp={() => onAction("text_clamped", { id })}
+          />
+        </div>
+      )}
+
+      {/* Time (randomized if flag on) */}
+      {timeLabel && (
         <div style={{ padding: "6px 12px 12px 12px", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".02em" }}>
-          {time}
+          {timeLabel}
         </div>
       )}
 
@@ -755,16 +870,16 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, app, pro
       <main className="insta-feed">
         {renderPosts.map((p) => (
           <PostCard
-  key={p.id}
-  post={p}
-  onAction={log}
-  disabled={disabled}
-  registerViewRef={registerViewRef}
-  app={app}
-  projectId={projectId}
-  feedId={feedId}
-  runSeed={runSeed}
-/>
+            key={p.id}
+            post={p}
+            onAction={log}
+            disabled={disabled}
+            registerViewRef={registerViewRef}
+            app={app}
+            projectId={projectId}
+            feedId={feedId}
+            runSeed={runSeed}
+          />
         ))}
         <div ref={sentinelRef} aria-hidden="true" />
 
