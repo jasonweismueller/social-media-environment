@@ -7,7 +7,7 @@ import {
   // ⬇️ post name helpers (see utils.js additions)
   readPostNames,
   writePostNames,
-} from "./utils";
+} from "../utils";
 
 export function MediaFieldset({
   editing,

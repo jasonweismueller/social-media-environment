@@ -8,7 +8,7 @@ import {
   hasAdminRole,
   getAdminEmail,
   getAdminRole,
-} from "./utils";
+} from "../utils";
 
 export function AdminUsersPanel({ embed = false, onCountChange }) {
   const [users, setUsers] = useState([]);

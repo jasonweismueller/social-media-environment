@@ -33,12 +33,12 @@ import {
   readPostNames,
   writePostNames,
   normalizeFlagsForStore, normalizeFlagsForRead,
-} from "./utils";
+} from "../utils";
 
-import { Modal, LoadingOverlay } from "./components-ui-core";
+import { Modal, LoadingOverlay } from "./ui-core";
 import { ParticipantsPanel } from "./components-admin-parts";
 import { AdminUsersPanel } from "./components-admin-users";
-import { randomAvatarByKind } from "./avatar-utils";
+import { randomAvatarByKind } from "../avatar-utils";
 
 // ✂️ pulled into its own file:
 import { AdminPostEditor, genNeutralAvatarDataUrl, makeRandomPost } from "./components-admin-editor";

@@ -10,7 +10,7 @@ import {
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   readPostNames,                 // { [postId]: "Pretty Name" }
-} from "./utils";
+} from "../utils";
 
 /* ----------------------------- helpers ----------------------------- */
 const ms = (n) => {

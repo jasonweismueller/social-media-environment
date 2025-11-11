@@ -7,11 +7,11 @@ import {
   randomAvatarUrl,
   randomSVG,
   uploadFileToS3ViaSigner,
-} from "./utils";
+} from "../utils";
 
-import { PostCard } from "./components-ui-posts";
-import { MediaFieldset } from "./components-admin-media";
-import { randomAvatarByKind } from "./avatar-utils";
+import { PostCard } from "../ui-posts";
+import { MediaFieldset } from "./components-admin-media-facebook";
+import { randomAvatarByKind } from "../avatar-utils";
 
 /* ---------- gender-neutral comic avatar (64px) ---------------- */
 export function genNeutralAvatarDataUrl(size = 64) {

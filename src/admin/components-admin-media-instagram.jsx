@@ -1,6 +1,6 @@
 // components-admin-media.jsx
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { randomSVG, uploadFileToS3ViaSigner } from "./utils";
+import { randomSVG, uploadFileToS3ViaSigner } from "../utils";
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 

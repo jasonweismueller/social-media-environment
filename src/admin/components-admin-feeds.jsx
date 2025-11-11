@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { APP, getProjectId as getProjectIdUtil, setProjectId as setProjectIdUtil } from "./utils";
+import { APP, getProjectId as getProjectIdUtil, setProjectId as setProjectIdUtil } from "../utils";
 
 /**
  * AdminFeedsPanel
