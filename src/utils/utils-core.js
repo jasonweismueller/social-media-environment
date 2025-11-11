@@ -897,47 +897,6 @@ export function summarizeRoster(rows) {
   };
 }
 
-
-export async function tryEnterFullscreen(target) {
-  const el = target || document.documentElement;
-  try {
-    if (document.fullscreenElement) return true;
-
-    if (el.requestFullscreen) {
-      await el.requestFullscreen();
-      return true;
-    }
-    // Safari prefixes
-    const anyEl = /** @type {*} */ (el);
-    if (anyEl.webkitRequestFullscreen) {
-      anyEl.webkitRequestFullscreen();
-      return true;
-    }
-  } catch (_) {}
-
-  // iOS <= 15: only <video> can go fullscreen programmatically
-  try {
-    const v = document.querySelector('video');
-    const anyVid = /** @type {*} */ (v);
-    if (v && anyVid?.webkitEnterFullscreen) {
-      anyVid.webkitEnterFullscreen();
-      return true;
-    }
-  } catch (_) {}
-
-  return false;
-}
-
-export async function exitFullscreen() {
-  try {
-    if (document.fullscreenElement && document.exitFullscreen) {
-      await document.exitFullscreen();
-    }
-    const anyDoc = /** @type {*} */ (document);
-    if (anyDoc.webkitExitFullscreen) anyDoc.webkitExitFullscreen();
-  } catch (_) {}
-}
-
 /* ------- Avatar pools (from S3 manifests) ------- */
 export const AVATAR_POOLS_ENDPOINTS = {
   female: `${CF_BASE.replace(/\/+$/,'')}/avatars/female/index.json`,
