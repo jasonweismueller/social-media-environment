@@ -1,8 +1,8 @@
 // components-ui-core.jsx (Instagram variant - rails + top placeholder, no floating icons)
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { fakeNamesFor as utilsFakeNamesFor } from "./utils";
-import { tryEnterFullscreen, exitFullscreen } from "./utils";
+import { fakeNamesFor as utilsFakeNamesFor } from "../utils";
+import { tryEnterFullscreen, exitFullscreen } from "../utils";
 
 /* ------------------------------- Tiny helper ------------------------------- */
 function useIsMobile(breakpointPx = 700) {

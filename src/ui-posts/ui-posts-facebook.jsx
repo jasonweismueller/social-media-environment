@@ -6,18 +6,18 @@ import {
   displayTimeForPost, getAvatarPool, pickDeterministic,
   AVATAR_POOLS_ENDPOINTS,
   getImagePool,            
-} from "./utils";
+} from "../utils";
 
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 
-import { BottomSheet } from "./ui-core/ui-mobile-facebook";
+import { BottomSheet } from "../ui-core/ui-mobile-facebook";
 import { createPortal } from "react-dom";
 
 import {
   IconBadge, IconDots, IconGlobe, IconInfo, IconUsers,
   IconThumb, IconComment, IconShare,
   ActionBtn, PostText, Modal, NamesPeek, neutralAvatarDataUrl, IconVolume, IconVolumeMute,
-} from "./components-ui-core";
+} from "../ui-core";
 
 /* --- In-view autoplay hook --- */
 function useInViewAutoplay(threshold = 0.6) {

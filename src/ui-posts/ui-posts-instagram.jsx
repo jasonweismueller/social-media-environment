@@ -1,9 +1,9 @@
 // components-ui-posts.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
-import { Modal, neutralAvatarDataUrl, PostText } from "./components-ui-core";
-import { IGCarousel } from "./ui-core/ui-ig-carousel";
-import { useInViewAutoplay } from "./utils";
+import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
+import { IGCarousel } from "../ui-core/ui-ig-carousel";
+import { useInViewAutoplay } from "../utils";
 
 /* ---------------- Small utils ---------------- */
 function useIsMobile(breakpointPx = 640) {
