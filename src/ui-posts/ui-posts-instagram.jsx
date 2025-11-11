@@ -312,7 +312,7 @@ export function PostCard({
 } = post || {};
 
 // ✅ Add this line directly after:
-const flags = postFlags || flags || {};
+const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
   // Deterministic seed for consistent randomization across sessions
   const seedParts = [
@@ -328,10 +328,10 @@ const flags = postFlags || flags || {};
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("forcerand") === "1";
 
-  const randNamesOn  = forcedRand || !!postFlags.randomize_names;
-  const randAvatarOn = forcedRand || !!(postFlags.randomize_avatars || postFlags.randomize_avatar);
-  const randImagesOn = forcedRand || !!postFlags.randomize_images;
-  const randTimesOn  = forcedRand || !!postFlags.randomize_times;
+  const randNamesOn  = forcedRand || !!effectiveFlags.randomize_names;
+const randAvatarOn = forcedRand || !!(effectiveFlags.randomize_avatars || effectiveFlags.randomize_avatar);
+const randImagesOn = forcedRand || !!effectiveFlags.randomize_images;
+const randTimesOn  = forcedRand || !!effectiveFlags.randomize_times;
 
   // ---- IG username randomizer (deterministic) ----
   function pickIGUsername(postId, parts, fallback = "username") {
