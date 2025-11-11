@@ -221,15 +221,46 @@ export default function App() {
   const minDelayTimerRef = useRef(null);
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
-  // Debug viewport overlay support
-  useEffect(() => {
-    const apply = () => {
-      const on = new URLSearchParams(window.location.search).get("debugvp") === "1" || (window.location.hash.split("?")[1] && new URLSearchParams(window.location.hash.split("?")[1]).get("debugvp") === "1");
-      document.body.classList.toggle("debug-vp", on);
-    };
-    apply(); window.addEventListener("popstate", apply); window.addEventListener("hashchange", apply);
-    return () => { window.removeEventListener("popstate", apply); window.removeEventListener("hashchange", apply); };
-  }, []);
+  // Force clear any debug viewport leftovers at startup
+if (typeof document !== "undefined") {
+  document.body.classList.remove("debug-vp");
+}
+
+// Debug viewport overlay support — explicit opt-in only
+useEffect(() => {
+  const apply = () => {
+    // 🔒 Guard: never allow debug in admin mode
+    const isAdmin = window.location.hash.startsWith("#/admin");
+    if (isAdmin) {
+      document.body.classList.remove("debug-vp");
+      return;
+    }
+
+    // Check both query strings (?debugvp=1 or ?udebug=vp)
+    const q = new URLSearchParams(window.location.search);
+    const hashQ = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    const debugParam = q.get("debugvp") || hashQ.get("debugvp");
+    const udebugParam = q.get("udebug") || hashQ.get("udebug");
+
+    const shouldEnable = debugParam === "1" || udebugParam === "vp";
+    if (shouldEnable) {
+      document.body.classList.add("debug-vp");
+    } else {
+      document.body.classList.remove("debug-vp");
+    }
+  };
+
+  // Apply immediately and on navigation changes
+  apply();
+  window.addEventListener("popstate", apply);
+  window.addEventListener("hashchange", apply);
+  window.addEventListener("load", apply);
+  return () => {
+    window.removeEventListener("popstate", apply);
+    window.removeEventListener("hashchange", apply);
+    window.removeEventListener("load", apply);
+  };
+}, []);
 
   // ===== Effective viewport offsets (sticky rails/topbar) — same as FB =====
   const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
