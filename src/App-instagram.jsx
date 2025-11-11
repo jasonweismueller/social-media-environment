@@ -349,6 +349,9 @@ useEffect(() => {
         const nextFlags = normalizeFlags(resFlags);
         setFlags(nextFlags);
         setFlagsReady(true);
+window.__DEBUG_FLAGS = nextFlags;
+console.log("[IG FLAGS]", nextFlags);
+
         setPosts(cached);
         setFeedPhase("ready");
         return;
