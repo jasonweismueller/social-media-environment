@@ -52,7 +52,10 @@ export function makeRandomPost() {
   const base = randInt(10, 300);
   return {
     id: uid(),
+    postName: "",
     author,
+    authorType: "female",
+    topic: "",
     time: randPick(RAND_TIMES),
     text: randPick(LOREM_SNIPS),
     avatarMode: "random",
@@ -87,6 +90,21 @@ export function AdminPostEditor({
     <div className="editor-grid">
       <div className="editor-form">
         <h4 className="section-title">Basics</h4>
+
+        {/* Post name (for CSV mapping) */}
+        <label>Post name (for CSV)
+          <input
+            className="input"
+            placeholder="e.g. Lifestyle Post A"
+            value={editing.postName || ""}
+            onChange={(e) =>
+              setEditing((ed) => ({ ...ed, postName: e.target.value }))
+            }
+          />
+          <div className="subtle" style={{ marginTop: 4 }}>
+            Used in CSV export headers (e.g. <code>{(editing.postName || "Name")}_liked</code>).
+          </div>
+        </label>
 
         <label>Author
           <input
@@ -129,6 +147,42 @@ export function AdminPostEditor({
             />
           </label>
         </div>
+
+        {/* Author Type (female / male / company) */}
+        <label className="label">Author Type</label>
+        <div className="row">
+          {["female", "male", "company"].map((opt) => (
+            <label key={opt} style={{ marginRight: 12 }}>
+              <input
+                type="radio"
+                name={`authorType-${editing.id}`}
+                value={opt}
+                checked={(editing.authorType || "female") === opt}
+                onChange={(e) =>
+                  setEditing((ed) => ({ ...ed, authorType: e.target.value }))
+                }
+              />
+              <span style={{ marginLeft: 6, textTransform: "capitalize" }}>
+                {opt}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {/* Topic (for image pool randomization) */}
+        <label>Topic
+          <input
+            className="input"
+            placeholder='e.g. "travel" or "fitness"'
+            value={editing.topic || ""}
+            onChange={(e) =>
+              setEditing((ed) => ({ ...ed, topic: e.target.value }))
+            }
+          />
+          <div className="subtle" style={{ marginTop: 6 }}>
+            Used to randomize images from S3 by topic and exported in feed JSON.
+          </div>
+        </label>
 
         <label>Post text
           <textarea
