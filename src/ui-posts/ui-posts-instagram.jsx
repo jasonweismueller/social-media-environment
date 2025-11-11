@@ -543,6 +543,7 @@ export function PostCard({
   return (
     <article
       ref={refFromTracker}
+      data-post-id={id}  
       className="insta-card"
       style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 12, overflow: "visible" }}
     >
