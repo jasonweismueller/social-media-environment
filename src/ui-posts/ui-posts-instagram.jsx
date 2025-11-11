@@ -5,6 +5,8 @@ import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
 import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
 
+import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
+
 /* ---------------- Small utils ---------------- */
 function useIsMobile(breakpointPx = 640) {
   const isBrowser = typeof window !== "undefined";
@@ -315,6 +317,7 @@ export function PostCard({
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
+
   // Deterministic seed for consistent randomization across sessions
   const seedParts = [
     runSeed || "run",
@@ -347,12 +350,21 @@ const randTimesOn  = forcedRand || !!effectiveFlags.randomize_times;
     }
   }
 
+// NAME
+const poolNames =
+  authorType === "female" ? FEMALE_NAMES :
+  authorType === "male"   ? MALE_NAMES   :
+                            COMPANY_NAMES;
+
   // ---- Author name & avatar (deterministic) ----
-  const displayAuthor = useMemo(() => {
-    if (!randNamesOn) return author || "username";
-    return pickIGUsername(id, seedParts, author || "username");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [randNamesOn, author, id, runSeed, app, projectId, feedId]);
+ const displayAuthor = React.useMemo(() => {
+   if (!randNamesOn && post.author) return post.author;
+   const picked = pickDeterministic(poolNames, [...seedParts, "name"]);
+   return picked || post.author || (authorType === "company" ? "Sponsored" : "User");
+   // deps intentionally include identifiers that change the seed
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [randNamesOn, authorType, post.author, runSeed, app, projectId, feedId, post.id]);
+ 
 
   const [randAvatarUrl, setRandAvatarUrl] = useState(null);
   const inferredAuthorType =
