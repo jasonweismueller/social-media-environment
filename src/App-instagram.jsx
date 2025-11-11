@@ -565,12 +565,14 @@ export default function App() {
           const wasIn = enteredSet.has(postId);
 
           if (DEBUG_VP) {
-            el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
-            el.dataset.state = nowIn ? "IN" : "OUT";
-            el.dataset.th = `${Math.round(TH * 100)}%`;
-            el.classList.toggle("__vp-in", nowIn);
-            el.classList.toggle("__vp-out", !nowIn);
-          }
+  el.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+  el.dataset.state = nowIn ? "IN" : "OUT";
+  el.dataset.th = `${Math.round(TH * 100)}%`;
+
+  const wrap = el.closest?.("[data-post-id]") || el;
+  wrap.classList.toggle("__vp-in", nowIn);
+  wrap.classList.toggle("__vp-out", !nowIn);
+}
 
           if (nowIn && !wasIn) {
             enteredSet.add(postId);
