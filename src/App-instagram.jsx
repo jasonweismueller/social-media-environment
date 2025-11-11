@@ -25,12 +25,91 @@ import { AdminDashboard } from "./admin/components-admin-dashboard";
 import AdminLogin from "./admin/components-admin-login";
 
 // ---- Mode flag ----
-const MODE = (new URLSearchParams(location.search).get("style") || window.CONFIG?.STYLE || "fb").toLowerCase();
+const MODE = (new URLSearchParams(window.location.search).get("style") || window.CONFIG?.STYLE || "ig").toLowerCase();
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
 
-/* ---------- Rail placeholders (kept compact to avoid rail overflow) ---------- */
+/* ============================================
+   iOS viewport + input zoom guards
+   ============================================ */
+
+/** Prevent iOS auto-zoom on small inputs by injecting a rule on the PID overlay. */
+function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isIOS = /iP(hone|ad|od)/.test(ua);
+    if (!isIOS) return;
+
+    // Prevent Safari text zoom
+    const htmlStyle = document.documentElement.style;
+    const prevAdj = htmlStyle.webkitTextSizeAdjust || htmlStyle.textSizeAdjust || "";
+    htmlStyle.webkitTextSizeAdjust = "100%";
+    htmlStyle.textSizeAdjust = "100%";
+
+    // Inject a minimal stylesheet to force 16px controls
+    const style = document.createElement("style");
+    style.setAttribute("data-ios-input-zoom-fix", "1");
+    style.textContent = `
+      @supports(-webkit-touch-callout:none){
+        ${selector}{
+          font-size:16px !important;
+          line-height:1.2;
+          min-height:40px;
+        }
+      }`;
+    document.head.appendChild(style);
+
+    return () => {
+      if (style.parentNode) style.parentNode.removeChild(style);
+      htmlStyle.webkitTextSizeAdjust = prevAdj;
+      htmlStyle.textSizeAdjust = prevAdj;
+    };
+  }, [selector]);
+}
+
+/** Lock viewport scale while input is focused; restore on blur */
+function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-overlay input" } = {}) {
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const isIOS = /iP(hone|ad|od)/.test(ua);
+    if (!isIOS) return;
+
+    let vp = document.querySelector('meta[name="viewport"]');
+    if (!vp) {
+      vp = document.createElement("meta");
+      vp.setAttribute("name", "viewport");
+      document.head.appendChild(vp);
+    }
+
+    const BASE = "width=device-width, initial-scale=1, viewport-fit=cover";
+    const LOCK = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
+    const set = (content) => vp && vp.setAttribute("content", content);
+
+    const nudgeLayout = () => {
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        window.dispatchEvent(new Event("resize"));
+      });
+    };
+
+    const onFocus = (e) => { if (e.target?.matches?.(fieldSelector)) set(LOCK); };
+    const onBlur  = (e) => { if (e.target?.matches?.(fieldSelector)) { set(BASE); nudgeLayout(); } };
+
+    document.addEventListener("focusin", onFocus, true);
+    document.addEventListener("focusout", onBlur, true);
+
+    set(overlayActive ? LOCK : BASE);
+
+    return () => {
+      document.removeEventListener("focusin", onFocus, true);
+      document.removeEventListener("focusout", onBlur, true);
+      set(BASE);
+    };
+  }, [overlayActive, fieldSelector]);
+}
+
+/* ---------- Rail placeholders ---------- */
 function RailBox({ largeAvatar = false }) {
   return (
     <div className="ghost-card box" style={{ padding: ".8rem", borderRadius: 14 }}>
@@ -134,11 +213,9 @@ export default function App() {
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
 
-  // ✅ project ID (from URL or local storage)
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
   useEffect(() => { setProjectIdUtil(projectId, { persist: true, updateUrl: false }); }, [projectId]);
 
-  // ✅ runSeed (deterministic for this session)
   const [runSeed] = useState(() =>
     (crypto?.getRandomValues
       ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
@@ -151,7 +228,6 @@ export default function App() {
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
 
-  // ✅ Load default feed if none in URL
   useEffect(() => {
     if (onAdmin || activeFeedId) return;
     let alive = true;
@@ -205,6 +281,11 @@ export default function App() {
     el.style.overflow = shouldLock ? "hidden" : "";
     return () => { el.style.overflow = prev; };
   }, [hasEntered, loadingPosts, submitted, onAdmin]);
+
+  // ✅ NEW: iOS zoom + viewport guards
+  const overlayActive = !onAdmin && !hasEntered;
+  useIOSInputZoomFix();
+  useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input" });
 
   const dwell = useRef(new Map());
   const viewRefs = useRef(new Map());
