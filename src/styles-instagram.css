@@ -928,3 +928,79 @@ body.admin-mode .editor-form > * + *{
 }
 
 /* End of theme improvements */
+
+
+
+/* ======================================================
+   Enhanced Instagram Admin Theme (Colorful Header)
+   ====================================================== */
+
+/* Gradient header bar across top of admin dashboard */
+body.admin-mode .nav {
+  background: linear-gradient(90deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5);
+  color: #fff;
+  border-bottom: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+body.admin-mode .nav a,
+body.admin-mode .nav .btn,
+body.admin-mode .nav button {
+  color: #fff !important;
+}
+body.admin-mode .nav a:hover,
+body.admin-mode .nav .btn:hover {
+  opacity: .85;
+}
+
+/* Gradient accent line or header for each admin card */
+body.admin-mode .card-head {
+  background: linear-gradient(90deg, rgba(250,126,30,0.15), rgba(150,47,191,0.15));
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+/* If your admin has a top-level header (e.g., h1 or h2 at top) */
+body.admin-mode .admin-shell h1,
+body.admin-mode .admin-shell h2 {
+  background: linear-gradient(90deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+
+/* Optional: gradient rim on main admin cards for a subtle IG halo */
+body.admin-mode .card {
+  position: relative;
+}
+body.admin-mode .card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  padding: 1px;
+  background: linear-gradient(135deg, #fa7e1e, #d62976, #962fbf, #4f5bd5);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; 
+  mask-composite: exclude;
+  opacity: .08;
+  pointer-events: none;
+}
+
+/* Accent buttons get stronger IG feel */
+body.admin-mode .btn.primary {
+  background: linear-gradient(135deg, #fa7e1e, #d62976, #962fbf);
+  border: none;
+  color: #fff;
+}
+body.admin-mode .btn.primary:hover {
+  background: linear-gradient(135deg, #feda75, #fa7e1e, #d62976);
+  color: #fff;
+}
+
+/* Keep background gradient slightly stronger overall */
+body.admin-mode {
+  background:
+    radial-gradient(1200px 600px at 10% -20%, rgba(237,73,86,.15), transparent 60%),
+    radial-gradient(1200px 600px at 110% 120%, rgba(79,91,213,.15), transparent 60%),
+    linear-gradient(#fafbfc, #f4f5f7);
+}
