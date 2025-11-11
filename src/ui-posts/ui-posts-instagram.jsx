@@ -303,7 +303,8 @@ export function PostCard({
   app,
   projectId,
   feedId,
-  runSeed
+  runSeed,
+  flags
 }) {
   const {
   id, author = "", avatarUrl = "", text = "", image, imageMode, images,
