@@ -306,10 +306,13 @@ export function PostCard({
   runSeed
 }) {
   const {
-    id, author = "", avatarUrl = "", text = "", image, imageMode, images,
-    video, videoMode, videoPosterUrl, reactions, metrics, time,
-    authorType, showTime, flags: postFlags = {}
-  } = post || {};
+  id, author = "", avatarUrl = "", text = "", image, imageMode, images,
+  video, videoMode, videoPosterUrl, reactions, metrics, time,
+  authorType, showTime, flags: postFlags = {}
+} = post || {};
+
+// ✅ Add this fallback immediately after destructuring:
+const mergedFlags = postFlags || flags || {};
 
   // Deterministic seed for consistent randomization across sessions
   const seedParts = [
