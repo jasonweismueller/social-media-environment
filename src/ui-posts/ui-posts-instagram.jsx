@@ -837,7 +837,7 @@ export function PostCard({
 }
 
 /* ---------------- Feed (IG) ---------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit, app, projectId, feedId, runSeed }) {
+export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed }) {
   const STEP = 6;
   const FIRST = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST);
@@ -870,17 +870,18 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, app, pro
 
       <main className="insta-feed">
         {renderPosts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            onAction={log}
-            disabled={disabled}
-            registerViewRef={registerViewRef}
-            app={app}
-            projectId={projectId}
-            feedId={feedId}
-            runSeed={runSeed}
-          />
+         <PostCard
+  key={p.id}
+  post={p}
+  onAction={log}
+  disabled={disabled}
+  registerViewRef={registerViewRef}
+  flags={flags}            // ✅ keep this
+  runSeed={runSeed}
+  app={app}
+  projectId={projectId}
+  feedId={feedId}
+/>
         ))}
         <div ref={sentinelRef} aria-hidden="true" />
 
