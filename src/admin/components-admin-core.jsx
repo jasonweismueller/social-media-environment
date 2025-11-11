@@ -18,14 +18,14 @@ import {
   hasAdminRole,       // viewer|editor|owner checks
   getAdminEmail,
   getAdminRole,
-} from "./utils";
+} from "../utils";
 
 // ⬇️ updated imports after UI split
-import { PostCard } from "./components-ui-posts";
-import { Modal } from "./components-ui-core";
+import { PostCard } from "../ui-posts";
+import { Modal } from "../ui-core";
 import { ParticipantsPanel } from "./components-admin-parts";
-import { randomAvatarByKind } from "./avatar-utils";
-import { MediaFieldset } from "./components-admin-media";
+import { randomAvatarByKind } from "../avatar-utils";
+import { MediaFieldset } from "./components-admin-media-facebook";
 import { AdminUsersPanel } from "./components-admin-users";
 
 // 🔒 Hard-force Instagram namespace everywhere in this file
