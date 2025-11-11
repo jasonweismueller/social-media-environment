@@ -40,8 +40,14 @@ import { ParticipantsPanel } from "./components-admin-parts";
 import { AdminUsersPanel } from "./components-admin-users";
 import { randomAvatarByKind } from "../avatar-utils";
 
-// ✂️ pulled into its own file:
-import { AdminPostEditor, genNeutralAvatarDataUrl, makeRandomPost } from "./components-admin-editor";
+// Dynamically choose correct editor (FB or IG)
+import { genNeutralAvatarDataUrl, makeRandomPost } from "./components-admin-editor-facebook";
+import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
+import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
+
+// Pick based on current app (set in main-facebook.jsx or main-instagram.jsx)
+const app = (window.APP || "fb").toLowerCase();
+const AdminPostEditor = app === "ig" ? AdminPostEditorIG : AdminPostEditorFB;
 
 /* ---------- small access gate ---------------- */
 function RoleGate({ min = "viewer", children, elseRender = null }) {
@@ -746,8 +752,8 @@ export function AdminDashboard({
       >
 
         <Section
-          title="Admin Dashboard"
-          subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
+  title={app === "ig" ? "Instagram Admin Dashboard" : "Facebook Admin Dashboard"}
+  subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
           right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
         />
 
