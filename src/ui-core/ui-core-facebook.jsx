@@ -1,7 +1,7 @@
 // components-ui-core.jsx
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { fakeNamesFor as utilsFakeNamesFor,uid } from "./utils";
+import { fakeNamesFor as utilsFakeNamesFor,uid } from "../utils";
 
 /* ------------------------------- Icons ------------------------------------- */
 export const IconLike = (p) => (
