@@ -440,6 +440,72 @@ export default function App() {
   // ===== Admin login state =====
   useEffect(() => { if (onAdmin && hasAdminSession()) setAdminAuthed(true); }, [onAdmin]);
 
+  // ✅ Viewport tracking (copy this block here)
+useEffect(() => {
+  if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin) return;
+
+  const DEBUG_VP = new URLSearchParams(window.location.search).get("debugvp") === "1";
+  const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+    ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+    : 0.5;
+  const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+    ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+    : ENTER_FRAC;
+
+  const enteredSet = new Set();
+  const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
+  const rootMargin = "0px 0px 0px 0px";
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        const postId = e.target.dataset.postId;
+        if (!postId) continue;
+        const vis_frac = Number((e.intersectionRatio || 0).toFixed(4));
+        const isImg = e.target.querySelector("img, video");
+        const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+
+        const nowIn = e.isIntersecting && vis_frac >= TH;
+        const wasIn = enteredSet.has(postId);
+
+        if (DEBUG_VP) {
+          e.target.dataset.vis = `${Math.round(vis_frac * 100)}%`;
+          e.target.dataset.state = nowIn ? "IN" : "OUT";
+        }
+
+        if (nowIn && !wasIn) {
+          enteredSet.add(postId);
+          log("vp_enter", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
+        } else if (!nowIn && wasIn) {
+          enteredSet.delete(postId);
+          log("vp_exit", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
+        }
+      }
+    },
+    { threshold: thresholds, rootMargin }
+  );
+
+  document.querySelectorAll("[data-post-id]").forEach((el) => io.observe(el));
+
+  const onHide = () => {
+    enteredSet.forEach((id) =>
+      log("vp_exit", { post_id: id, reason: "page_hide", feed_id: activeFeedId || null })
+    );
+    enteredSet.clear();
+  };
+
+  document.addEventListener("visibilitychange", onHide);
+  window.addEventListener("pagehide", onHide);
+  window.addEventListener("beforeunload", onHide);
+
+  return () => {
+    try { io.disconnect(); } catch {}
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("pagehide", onHide);
+    window.removeEventListener("beforeunload", onHide);
+  };
+}, [hasEntered, feedPhase, submitted, onAdmin, activeFeedId, log]);
+
   return (
     <Router>
       <div className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)) ? "blurred" : ""}`}>
