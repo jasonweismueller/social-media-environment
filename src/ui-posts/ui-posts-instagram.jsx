@@ -251,7 +251,6 @@ function MobileSheet({ open, onClose }) {
     </div>
   );
 }
-
 function ShareSheet({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
@@ -281,7 +280,7 @@ function ShareSheet({ open, onClose, onShare }) {
 
   return (
     <div
-    className="share-sheet"
+      className="share-sheet"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
@@ -363,41 +362,45 @@ function ShareSheet({ open, onClose, onShare }) {
                   position: "relative",
                 }}
               >
-                <img
-                  src={f.avatar}
-                  alt=""
-                  width={68}
-                  height={68}
-                  style={{
-                    borderRadius: "50%",
-                    border: selected
-                      ? "2px solid #0095f6"
-                      : "2px solid transparent",
-                    transition: "border 0.2s ease",
-                  }}
-                />
-                {selected && (
-                  <div
+                {/* Avatar wrapper for proper positioning */}
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <img
+                    src={f.avatar}
+                    alt=""
+                    width={68}
+                    height={68}
                     style={{
-                      position: "absolute",
-                      bottom: 4,
-                      right: 14,
-                      width: 18,
-                      height: 18,
                       borderRadius: "50%",
-                      background: "#0095f6",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#fff",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      boxShadow: "0 0 0 2px #fff",
+                      border: selected
+                        ? "2px solid #0095f6"
+                        : "2px solid transparent",
+                      transition: "border 0.2s ease",
                     }}
-                  >
-                    ✓
-                  </div>
-                )}
+                  />
+                  {selected && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: -3,
+                        right: -3,
+                        width: 22,
+                        height: 22,
+                        borderRadius: "50%",
+                        background: "#0095f6",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#fff",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        boxShadow: "0 0 0 3px #fff",
+                      }}
+                    >
+                      ✓
+                    </div>
+                  )}
+                </div>
+
                 <span
                   style={{
                     fontSize: 13,
@@ -413,52 +416,54 @@ function ShareSheet({ open, onClose, onShare }) {
           })}
         </div>
 
-        {/* Message input */}
-        <div
-          style={{
-            borderTop: "1px solid #e5e7eb",
-            padding: "12px 16px 16px",
-            background: "#fff",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Write a message..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+        {/* Message input - only visible when at least one friend is selected */}
+        {selectedFriends.length > 0 && (
+          <div
             style={{
-              border: "none",
-              outline: "none",
-              background: "#f3f4f6",
-              borderRadius: 10,
-              padding: "10px 14px",
-              fontSize: 15,
-              color: "#111",
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={selectedFriends.length === 0}
-            style={{
-              background:
-                selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
-              color: "#fff",
-              fontWeight: 600,
-              border: "none",
-              borderRadius: 10,
-              padding: "12px 0",
-              fontSize: 16,
-              cursor:
-                selectedFriends.length > 0 ? "pointer" : "default",
-              transition: "background 0.2s ease",
+              borderTop: "1px solid #e5e7eb",
+              padding: "12px 16px 16px",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            Send
-          </button>
-        </div>
+            <input
+              type="text"
+              placeholder="Write a message..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              style={{
+                border: "none",
+                outline: "none",
+                background: "#f3f4f6",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 15,
+                color: "#111",
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={selectedFriends.length === 0}
+              style={{
+                background:
+                  selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
+                color: "#fff",
+                fontWeight: 600,
+                border: "none",
+                borderRadius: 10,
+                padding: "12px 0",
+                fontSize: 16,
+                cursor:
+                  selectedFriends.length > 0 ? "pointer" : "default",
+                transition: "background 0.2s ease",
+              }}
+            >
+              Send
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Animation */}
