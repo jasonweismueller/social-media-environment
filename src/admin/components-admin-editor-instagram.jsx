@@ -126,17 +126,18 @@ export function AdminPostEditor({
 
         <div className="grid-2">
           <label>Verification badge
-            <select
-              className="select"
-              value={String(!!editing.badge)}
-              onChange={(e) =>
-                setEditing({ ...editing, badge: e.target.value === "true" })
-              }
-            >
-              <option value="false">Off</option>
-              <option value="true">On</option>
-            </select>
-          </label>
+  <select
+    className="select"
+    value={editing.badge ? "true" : "false"}
+    onChange={(e) => {
+      const isTrue = e.target.value === "true";
+      setEditing((ed) => ({ ...ed, badge: isTrue }));
+    }}
+  >
+    <option value="false">Off</option>
+    <option value="true">On</option>
+  </select>
+</label>
           <label>Time
             <input
               className="input"
