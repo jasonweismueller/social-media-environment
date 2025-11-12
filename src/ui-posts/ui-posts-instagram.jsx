@@ -252,6 +252,139 @@ function MobileSheet({ open, onClose }) {
   );
 }
 
+function ShareSheet({ open, onClose, onShare }) {
+  if (!open) return null;
+
+  const friends = Array.from({ length: 6 }).map((_, i) => ({
+    name: `Friend ${i + 1}`,
+    avatar: neutralAvatarDataUrl(60),
+  }));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 480,
+          background: "#fff",
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          animation: "igSheetSlideUp 0.45s cubic-bezier(0.25,1,0.5,1)",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "75vh",
+          overflowY: "auto",
+          paddingBottom: 20,
+        }}
+      >
+        {/* Drag handle */}
+        <div
+          style={{
+            width: 38,
+            height: 4,
+            background: "rgba(0,0,0,.2)",
+            borderRadius: 999,
+            margin: "8px auto 14px",
+          }}
+        />
+
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: 16,
+            textAlign: "center",
+            paddingBottom: 10,
+            borderBottom: "1px solid #eee",
+          }}
+        >
+          Share
+        </div>
+
+        {/* Friend grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 18,
+            padding: "20px",
+            justifyItems: "center",
+          }}
+        >
+          {friends.map((f, i) => (
+            <button
+              key={i}
+              onClick={() => onShare(f.name)}
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <img
+                src={f.avatar}
+                alt=""
+                width={60}
+                height={60}
+                style={{
+                  borderRadius: "50%",
+                  background: "#e5e7eb",
+                  marginBottom: 6,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 13,
+                  color: "#111",
+                  textAlign: "center",
+                }}
+              >
+                {f.name}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            display: "block",
+            width: "100%",
+            padding: "14px 0",
+            textAlign: "center",
+            borderTop: "1px solid #e5e7eb",
+            fontSize: 16,
+            fontWeight: 600,
+            background: "#fff",
+            color: "#111",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* --- Simple SVG icon set (lightweight, inline) --- */
 function QrIcon(props) {
   return (
@@ -472,6 +605,8 @@ export function PostCard({
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
+const [shareSheetOpen, setShareSheetOpen] = useState(false);
+
 const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
   ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_times: effectiveFlags.randomize_times }
@@ -660,10 +795,14 @@ const poolNames =
     onAction("comment_open", { id });
   };
   const doShare = () => {
-    if (disabled || shared) return;
+  if (disabled || shared) return;
+  if (isMobile) {
+    setShareSheetOpen(true);
+  } else {
     setShared(true);
     onAction("share", { id });
-  };
+  }
+};
   const toggleSave = () => {
     if (disabled) return;
     setSaved((prev) => {
@@ -1406,6 +1545,17 @@ marginTop: "auto",
   
 </MobileSheet>
       )}
+
+      {isMobile && (
+  <ShareSheet
+    open={shareSheetOpen}
+    onClose={() => setShareSheetOpen(false)}
+    onShare={(friendName) => {
+      onAction("share_target", { id, friend: friendName });
+      setShareSheetOpen(false);
+    }}
+  />
+)}
 
 <style>{`
   /* --- Keyframes for sheet animation --- */
