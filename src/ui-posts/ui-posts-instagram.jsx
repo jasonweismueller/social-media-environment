@@ -1111,109 +1111,120 @@ const poolNames =
         Comments
       </div>
 
-      {/* Comments area */}
-      <div
-        style={{
-          flex: 1,
-          padding: "20px",
-          textAlign: "center",
-          overflowY: "auto",
-        }}
-      >
-        {baseComments + participantComments === 0 ? (
-          <>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
-              No comments yet
-            </div>
-            <div style={{ color: "#6b7280", fontSize: 14 }}>
-              Start the conversation.
-            </div>
-          </>
-        ) : (
-          <>
-          {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
-  <div
-    key={`mobile-ghost-${i}`}
-    style={{
-      display: "flex",
-      alignItems: "flex-start",
-      gap: ".6rem",
-      marginBottom: 10,
-    }}
-  >
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: "999px",
-        background: "#e5e7eb",
-      }}
-    />
-    <div style={{ textAlign: "left" }}>
-      <div
-        style={{
-          fontWeight: 600,
-          fontSize: 14,
-          marginBottom: 2,
-        }}
-      >
-        User {i + 1}
+    {/* Comments area */}
+<div
+  style={{
+    flex: 1,
+    padding: "20px",
+    textAlign: "center",
+    overflowY: "auto",
+  }}
+>
+  {baseComments + participantComments === 0 ? (
+    <>
+      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
+        No comments yet
       </div>
-      <div
-        style={{
-          background: "#e5e7eb",
-          borderRadius: 6,
-          height: 12,
-          width: `${70 + Math.random() * 20}%`,
-          marginTop: 4,
-        }}
-      />
-    </div>
-  </div>
-))}
-            {!!mySubmittedComment && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: ".6rem",
-                  marginTop: 10,
-                  textAlign: "left",
-                }}
-              >
-                <img
-                  src={neutralAvatarDataUrl(32)}
-                  alt=""
-                  width={32}
-                  height={32}
-                  style={{ borderRadius: "999px" }}
-                />
-                <div>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 14,
-                      marginBottom: 2,
-                    }}
-                  >
-                    {String(myParticipantId)}
-                  </div>
-                  <div
-                    style={{
-                      color: "#111827",
-                      fontSize: 14,
-                      lineHeight: 1.35,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {mySubmittedComment}
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+      <div style={{ color: "#6b7280", fontSize: 14 }}>
+        Start the conversation.
       </div>
+    </>
+  ) : (
+    <>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
+          {baseComments + participantComments} comment{baseComments + participantComments > 1 ? "s" : ""}
+        </div>
+        <div style={{ color: "#6b7280", fontSize: 14 }}>
+          Join the conversation.
+        </div>
+      </div>
+
+      {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
+        <div
+          key={`mobile-ghost-${i}`}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: ".6rem",
+            marginBottom: 12,
+            textAlign: "left",
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "999px",
+              background: "#e5e7eb",
+              flexShrink: 0,
+            }}
+          />
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 14,
+                marginBottom: 4,
+              }}
+            >
+              User {i + 1}
+            </div>
+            <div
+              style={{
+                background: "#e5e7eb",
+                borderRadius: 6,
+                height: 12,
+                width: `${70 + Math.random() * 20}%`,
+              }}
+            />
+          </div>
+        </div>
+      ))}
+
+      {!!mySubmittedComment && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: ".6rem",
+            marginTop: 10,
+            textAlign: "left",
+          }}
+        >
+          <img
+            src={neutralAvatarDataUrl(32)}
+            alt=""
+            width={32}
+            height={32}
+            style={{ borderRadius: "999px" }}
+          />
+          <div>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 14,
+                marginBottom: 2,
+              }}
+            >
+              {String(myParticipantId)}
+            </div>
+            <div
+              style={{
+                color: "#111827",
+                fontSize: 14,
+                lineHeight: 1.35,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {mySubmittedComment}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )}
+</div>
 
       
      {/* Comment input */}
