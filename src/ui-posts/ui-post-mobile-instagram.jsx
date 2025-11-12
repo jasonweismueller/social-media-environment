@@ -133,18 +133,24 @@ export function MobileSheet({ open, onClose }) {
     <div
       role="dialog"
       aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 9999,
+        background: "rgba(0,0,0,0.45)",
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
+        zIndex: 9999,
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
+        animation: "igBackdropFadeIn 0.35s ease",
       }}
     >
       <div
+        className="ig-sheet"
         style={{
           width: "100%",
           maxWidth: 480,
@@ -156,9 +162,12 @@ export function MobileSheet({ open, onClose }) {
           maxHeight: "75vh",
           overflowY: "auto",
           boxShadow: "0 -8px 24px rgba(0,0,0,.25)",
-          fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+          fontFamily:
+            "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+          animation: "igSheetSlideUp 0.45s cubic-bezier(0.25,1,0.5,1)",
         }}
       >
+        {/* Drag handle */}
         <div
           style={{
             width: 38,
@@ -180,7 +189,11 @@ export function MobileSheet({ open, onClose }) {
               width: "100%",
               border: "none",
               background: "#fff",
-              color: item.danger ? "#ef4444" : item.disabled ? "#9ca3af" : "#111",
+              color: item.danger
+                ? "#ef4444"
+                : item.disabled
+                ? "#9ca3af"
+                : "#111",
               fontSize: 15,
               fontWeight: item.danger ? 600 : 500,
               padding: "14px 16px",
@@ -219,9 +232,32 @@ export function MobileSheet({ open, onClose }) {
           Cancel
         </button>
       </div>
+
+      <style>{`
+        @keyframes igSheetSlideUp {
+          from {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+
+        @keyframes igBackdropFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .ig-sheet::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </div>
   );
 }
+
 export function ShareSheet({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
