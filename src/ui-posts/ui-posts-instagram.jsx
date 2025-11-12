@@ -1175,49 +1175,50 @@ marginTop: "auto",
         <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     </button>
-    {/* LEFT: Post Image */}
+   {/* LEFT: Post Image */}
+<div
+  style={{
+    flex: 1,
+    background: "#000",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",                 // ✅ ensure full vertical fill
+    maxWidth: "calc(100% - 360px)", // keep same width rule
+  }}
+>
+  {(image?.url || displayImageObj?.url) ? (
+    <img
+      src={displayImageObj?.url || image?.url}
+      alt=""
+      style={{
+        width: "100%",              // ✅ fill horizontally
+        height: "100%",             // ✅ fill vertically
+        objectFit: "contain",       // ✅ show full image without crop
+        backgroundColor: "#000",    // ✅ remove white padding effect
+        display: "block",
+      }}
+      onLoad={(e) => {
+        const naturalRatio =
+          e.target.naturalWidth / e.target.naturalHeight;
+        // optional: update aspect ratio for perfect layout balance
+        e.target.parentElement.style.aspectRatio = naturalRatio;
+      }}
+    />
+  ) : (
     <div
       style={{
-        flex: 1,
-        background: "#000",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        maxWidth: "calc(100% - 360px)",
+        color: "#fff",
+        fontSize: 18,
+        textAlign: "center",
+        width: "100%",
+        padding: "40px 0",
       }}
     >
-      {(image?.url || displayImageObj?.url) ? (
-        <img
-          src={displayImageObj?.url || image?.url}
-          alt=""
-          style={{
-            width: "100%",
-            height: "auto",
-            aspectRatio: "1 / 1",
-            objectFit: "cover",
-            display: "block",
-          }}
-          onLoad={(e) => {
-            const naturalRatio =
-              e.target.naturalWidth / e.target.naturalHeight;
-            e.target.parentElement.style.aspectRatio = naturalRatio;
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            color: "#fff",
-            fontSize: 18,
-            textAlign: "center",
-            width: "100%",
-            padding: "40px 0",
-          }}
-        >
-          No Image
-        </div>
-      )}
+      No Image
     </div>
-
+  )}
+</div>
     {/* RIGHT: Caption + Comments */}
     <div
   style={{
