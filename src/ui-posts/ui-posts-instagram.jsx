@@ -1104,116 +1104,238 @@ marginTop: "auto",
       </div>
     </div>
   ) : (
-    <Modal
-      title="Comments"
-      onClose={() => { setOpenComments(false); onAction("comment_close", { id }); }}
-      wide={false}
+   <Modal
+  title=""
+  onClose={() => { setOpenComments(false); onAction("comment_close", { id }); }}
+  wide={true}
+>
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "row",
+      width: "min(900px, 95vw)",
+      height: "80vh",
+      background: "#fff",
+      borderRadius: 12,
+      overflow: "hidden",
+      boxShadow: "0 0 40px rgba(0,0,0,.2)",
+    }}
+  >
+    {/* LEFT: Post Image */}
+    <div
+      style={{
+        flex: 1,
+        background: "#000",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
-      {(shouldShowGhosts
-        ? Array.from({ length: Math.min(3, baseComments) })
-        : [0]
-      ).map((_, i) => (
-        <div
-          key={`ig-ghost-${i}`}
-          className="ghost-row"
+      {(image?.url || displayImageObj?.url) ? (
+        <img
+          src={displayImageObj?.url || image?.url}
+          alt=""
           style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: ".6rem",
-            marginTop: i === 0 ? 2 : 10,
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            background: "#000",
           }}
-        >
-          <div className="ghost-avatar sm" />
-          <div className="ghost-lines" style={{ flex: 1 }}>
-            <div className="ghost-line w-80" />
-            <div className="ghost-line w-50" />
-          </div>
-        </div>
-      ))}
+        />
+      ) : (
+        <div style={{ color: "#fff", fontSize: 18 }}>No Image</div>
+      )}
+    </div>
 
-      {!!mySubmittedComment && (
-        <div
-          className="ghost-row"
-          style={{
-            alignItems: "flex-start",
-            gap: ".6rem",
-            marginTop: shouldShowGhosts ? 10 : 2,
-          }}
-        >
-          <img
-            src={neutralAvatarDataUrl(28)}
-            alt=""
-            width={28}
-            height={28}
-            style={{
-              display: "block",
-              borderRadius: "999px",
-              flexShrink: 0,
-            }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: ".9rem",
-                fontWeight: 600,
-                lineHeight: 1.2,
-              }}
-            >
-              {String(myParticipantId)}
-            </div>
-            <div
-              style={{
-                marginTop: 2,
-                color: "#111827",
-                fontSize: ".95rem",
-                lineHeight: 1.35,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {mySubmittedComment}
-            </div>
-          </div>
+    {/* RIGHT: Caption + Comments */}
+    <div
+      style={{
+        width: 360,
+        display: "flex",
+        flexDirection: "column",
+        borderLeft: "1px solid #e5e7eb",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "14px 16px",
+          borderBottom: "1px solid #eee",
+        }}
+      >
+        <img
+          src={neutralAvatarDataUrl(32)}
+          alt=""
+          width={32}
+          height={32}
+          style={{ borderRadius: "999px" }}
+        />
+        <span style={{ fontWeight: 600, fontSize: 14 }}>
+          {displayAuthor}
+        </span>
+      </div>
+
+      {/* Caption */}
+      {text?.trim() && (
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid #eee" }}>
+          <span style={{ fontWeight: 600 }}>{displayAuthor}</span>{" "}
+          <span style={{ color: "#111", fontSize: 14 }}>{text}</span>
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
-        <textarea
-          className="textarea"
-          rows={4}
-          value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
-          placeholder="Write your comment..."
-          disabled={disabled}
-        />
-      </div>
-
+      {/* Comments */}
       <div
-        className="row-end"
         style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: 8,
-          marginTop: 8,
+          flex: 1,
+          overflowY: "auto",
+          padding: "14px 16px",
+          background: "#fff",
         }}
       >
-        <button
-          className="btn"
-          onClick={() => {
-            setOpenComments(false);
-            onAction("comment_close", { id });
+        {baseComments + participantComments === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "40%",
+              color: "#6b7280",
+              fontSize: 14,
+            }}
+          >
+            No comments yet.
+          </div>
+        ) : (
+          <>
+            {Array.from({ length: Math.min(5, baseComments) }).map((_, i) => (
+              <div
+                key={`ghost-${i}`}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: ".6rem",
+                  marginBottom: 14,
+                }}
+              >
+                <img
+                  src={neutralAvatarDataUrl(32)}
+                  alt=""
+                  width={32}
+                  height={32}
+                  style={{ borderRadius: "999px", flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      marginBottom: 4,
+                    }}
+                  >
+                    User {i + 1}
+                  </div>
+                  <div
+                    style={{
+                      background: "#e5e7eb",
+                      borderRadius: 6,
+                      height: 12,
+                      width: "80%",
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+
+            {!!mySubmittedComment && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: ".6rem",
+                  marginTop: 10,
+                }}
+              >
+                <img
+                  src={neutralAvatarDataUrl(32)}
+                  alt=""
+                  width={32}
+                  height={32}
+                  style={{ borderRadius: "999px" }}
+                />
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {String(myParticipantId)}
+                  </div>
+                  <div
+                    style={{
+                      color: "#111827",
+                      fontSize: 14,
+                      lineHeight: 1.35,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {mySubmittedComment}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Add Comment */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmitComment();
+        }}
+        style={{
+          borderTop: "1px solid #e5e7eb",
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: "#fff",
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Add a comment..."
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          style={{
+            flex: 1,
+            border: "none",
+            outline: "none",
+            fontSize: 14,
+            background: "transparent",
           }}
-        >
-          Close
-        </button>
+        />
         <button
-          className="btn primary"
-          onClick={onSubmitComment}
-          disabled={!commentText.trim() || disabled}
+          type="submit"
+          disabled={!commentText.trim()}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: commentText.trim() ? "#0095f6" : "#9ca3af",
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: commentText.trim() ? "pointer" : "default",
+          }}
         >
           Post
         </button>
-      </div>
-    </Modal>
+      </form>
+    </div>
+  </div>
+</Modal>
   ))
 )}
 
