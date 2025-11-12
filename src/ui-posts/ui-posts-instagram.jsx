@@ -253,12 +253,31 @@ function MobileSheet({ open, onClose }) {
 }
 
 function ShareSheet({ open, onClose, onShare }) {
+  const [selectedFriends, setSelectedFriends] = React.useState([]);
+  const [message, setMessage] = React.useState("");
+
   if (!open) return null;
 
   const friends = Array.from({ length: 6 }).map((_, i) => ({
     name: `Friend ${i + 1}`,
     avatar: neutralAvatarDataUrl(60),
   }));
+
+  const toggleSelect = (name) => {
+    setSelectedFriends((prev) =>
+      prev.includes(name)
+        ? prev.filter((n) => n !== name)
+        : [...prev, name]
+    );
+  };
+
+  const handleSend = () => {
+    if (selectedFriends.length === 0) return;
+    onShare({ friends: selectedFriends, message });
+    setSelectedFriends([]);
+    setMessage("");
+    onClose();
+  };
 
   return (
     <div
@@ -270,7 +289,7 @@ function ShareSheet({ open, onClose, onShare }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.5)",
+        background: "rgba(0,0,0,0.45)",
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
@@ -287,9 +306,10 @@ function ShareSheet({ open, onClose, onShare }) {
           animation: "igSheetSlideUp 0.45s cubic-bezier(0.25,1,0.5,1)",
           display: "flex",
           flexDirection: "column",
-          maxHeight: "75vh",
+          maxHeight: "85vh",
           overflowY: "auto",
-          paddingBottom: 20,
+          paddingBottom: 12,
+          color: "#111",
         }}
       >
         {/* Drag handle */}
@@ -297,19 +317,20 @@ function ShareSheet({ open, onClose, onShare }) {
           style={{
             width: 38,
             height: 4,
-            background: "rgba(0,0,0,.2)",
+            background: "rgba(0,0,0,.15)",
             borderRadius: 999,
             margin: "8px auto 14px",
           }}
         />
 
+        {/* Header */}
         <div
           style={{
             fontWeight: 600,
             fontSize: 16,
             textAlign: "center",
             paddingBottom: 10,
-            borderBottom: "1px solid #eee",
+            borderBottom: "1px solid #e5e7eb",
           }}
         >
           Share
@@ -320,67 +341,132 @@ function ShareSheet({ open, onClose, onShare }) {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 18,
+            gap: 20,
             padding: "20px",
             justifyItems: "center",
           }}
         >
-          {friends.map((f, i) => (
-            <button
-              key={i}
-              onClick={() => onShare(f.name)}
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-              }}
-            >
-              <img
-                src={f.avatar}
-                alt=""
-                width={60}
-                height={60}
+          {friends.map((f) => {
+            const selected = selectedFriends.includes(f.name);
+            return (
+              <button
+                key={f.name}
+                onClick={() => toggleSelect(f.name)}
                 style={{
-                  borderRadius: "50%",
-                  background: "#e5e7eb",
-                  marginBottom: 6,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 13,
-                  color: "#111",
-                  textAlign: "center",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  position: "relative",
                 }}
               >
-                {f.name}
-              </span>
-            </button>
-          ))}
+                <img
+                  src={f.avatar}
+                  alt=""
+                  width={68}
+                  height={68}
+                  style={{
+                    borderRadius: "50%",
+                    border: selected
+                      ? "2px solid #0095f6"
+                      : "2px solid transparent",
+                    transition: "border 0.2s ease",
+                  }}
+                />
+                {selected && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 4,
+                      right: 14,
+                      width: 18,
+                      height: 18,
+                      borderRadius: "50%",
+                      background: "#0095f6",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      boxShadow: "0 0 0 2px #fff",
+                    }}
+                  >
+                    ✓
+                  </div>
+                )}
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: "#111",
+                    textAlign: "center",
+                    marginTop: 6,
+                  }}
+                >
+                  {f.name}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        <button
-          onClick={onClose}
+        {/* Message input */}
+        <div
           style={{
-            display: "block",
-            width: "100%",
-            padding: "14px 0",
-            textAlign: "center",
             borderTop: "1px solid #e5e7eb",
-            fontSize: 16,
-            fontWeight: 600,
+            padding: "12px 16px 16px",
             background: "#fff",
-            color: "#111",
-            border: "none",
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
           }}
         >
-          Cancel
-        </button>
+          <input
+            type="text"
+            placeholder="Write a message..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            style={{
+              border: "none",
+              outline: "none",
+              background: "#f3f4f6",
+              borderRadius: 10,
+              padding: "10px 14px",
+              fontSize: 15,
+              color: "#111",
+            }}
+          />
+          <button
+            onClick={handleSend}
+            disabled={selectedFriends.length === 0}
+            style={{
+              background:
+                selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
+              color: "#fff",
+              fontWeight: 600,
+              border: "none",
+              borderRadius: 10,
+              padding: "12px 0",
+              fontSize: 16,
+              cursor:
+                selectedFriends.length > 0 ? "pointer" : "default",
+              transition: "background 0.2s ease",
+            }}
+          >
+            Send
+          </button>
+        </div>
       </div>
+
+      {/* Animation */}
+      <style>{`
+        @keyframes igSheetSlideUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
