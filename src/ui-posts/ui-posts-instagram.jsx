@@ -1054,124 +1054,214 @@ const poolNames =
 
    {/* Comments */}
 {openComments && (
-  (isMobile ? (
+ (isMobile ? (
+  <div
+    role="dialog"
+    aria-modal="true"
+    onClick={(e) => { if (e.target === e.currentTarget) setOpenComments(false); }}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      alignItems: "flex-end",
+      justifyContent: "center",
+      zIndex: 9999,
+    }}
+  >
     <div
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget) setOpenComments(false); }}
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
+        width: "100%",
+        maxWidth: 480,
+        background: "#fff",
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        animation: "igSheetSlideUp 0.5s cubic-bezier(0.25,1,0.5,1)",
         display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        zIndex: 9999,
+        flexDirection: "column",
+        maxHeight: "85vh",
+        minHeight: "55vh",
+        overflowY: "auto",
+        position: "relative",
       }}
     >
+      {/* Drag handle */}
       <div
         style={{
-          width: "100%",
-          maxWidth: 480,
-          background: "#fff",
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          animation: "igSheetSlideUp 0.42s cubic-bezier(0.25,1,0.5,1)",
-          display: "flex",
-          flexDirection: "column",
-          maxHeight: "80vh",
-          overflowY: "auto",
-          position: "relative",
+          width: 38,
+          height: 4,
+          background: "rgba(0,0,0,.2)",
+          borderRadius: 999,
+          margin: "8px auto 14px",
+        }}
+      />
+
+      {/* Header */}
+      <div
+        style={{
+          fontWeight: 600,
+          fontSize: 16,
+          textAlign: "center",
+          paddingBottom: 10,
+          borderBottom: "1px solid #eee",
         }}
       >
-        {/* Drag handle */}
-        <div
+        Comments
+      </div>
+
+      {/* Comments area */}
+      <div
+        style={{
+          flex: 1,
+          padding: "20px",
+          textAlign: "center",
+          overflowY: "auto",
+        }}
+      >
+        {baseComments + participantComments === 0 ? (
+          <>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
+              No comments yet
+            </div>
+            <div style={{ color: "#6b7280", fontSize: 14 }}>
+              Start the conversation.
+            </div>
+          </>
+        ) : (
+          <>
+            {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
+              <div
+                key={`mobile-ghost-${i}`}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: ".6rem",
+                  marginBottom: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "999px",
+                    background: "#e5e7eb",
+                  }}
+                />
+                <div style={{ textAlign: "left" }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      marginBottom: 2,
+                    }}
+                  >
+                    User
+                  </div>
+                  <div
+                    style={{
+                      color: "#111827",
+                      fontSize: 14,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    Nice post!
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!!mySubmittedComment && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: ".6rem",
+                  marginTop: 10,
+                  textAlign: "left",
+                }}
+              >
+                <img
+                  src={neutralAvatarDataUrl(32)}
+                  alt=""
+                  width={32}
+                  height={32}
+                  style={{ borderRadius: "999px" }}
+                />
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {String(myParticipantId)}
+                  </div>
+                  <div
+                    style={{
+                      color: "#111827",
+                      fontSize: 14,
+                      lineHeight: 1.35,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {mySubmittedComment}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Comment input */}
+      <div
+        style={{
+          borderTop: "1px solid #e5e7eb",
+          padding: "8px 12px",
+          background: "#fff",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          position: "sticky",
+          bottom: 0,
+        }}
+      >
+        <img
+          src={neutralAvatarDataUrl(32)}
+          alt=""
+          width={32}
+          height={32}
+          style={{ borderRadius: "999px" }}
+        />
+        <input
+          type="text"
+          placeholder="Start the conversation..."
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
           style={{
-            width: 38,
-            height: 4,
-            background: "rgba(0,0,0,.2)",
-            borderRadius: 999,
-            margin: "8px auto 14px",
+            flex: 1,
+            border: "none",
+            outline: "none",
+            background: "#f9fafb",
+            borderRadius: 20,
+            padding: "10px 14px",
+            fontSize: 16, // ✅ stops iOS zoom
+            lineHeight: 1.3,
           }}
         />
-
-        {/* Header */}
-        <div
+        <button
+          onClick={onSubmitComment}
+          disabled={!commentText.trim()}
           style={{
+            background: "transparent",
+            border: "none",
+            color: commentText.trim() ? "#0095f6" : "#9ca3af",
             fontWeight: 600,
-            fontSize: 16,
-            textAlign: "center",
-            paddingBottom: 10,
-            borderBottom: "1px solid #eee",
+            fontSize: 15,
           }}
         >
-          Comments
-        </div>
-
-        {/* Content */}
-        <div style={{ flex: 1, padding: "20px", textAlign: "center" }}>
-          {baseComments + participantComments > 0 ? (
-            <div>Comments will appear here</div>
-          ) : (
-            <>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
-                No comments yet
-              </div>
-              <div style={{ color: "#6b7280", fontSize: 14 }}>
-                Start the conversation.
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Comment input */}
-        <div
-          style={{
-            borderTop: "1px solid #e5e7eb",
-            padding: "8px 12px",
-            background: "#fff",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            position: "sticky",
-            bottom: 0,
-          }}
-        >
-          <img
-            src={neutralAvatarDataUrl(32)}
-            alt=""
-            width={32}
-            height={32}
-            style={{ borderRadius: "999px" }}
-          />
-          <input
-            type="text"
-            placeholder="Start the conversation..."
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            style={{
-              flex: 1,
-              border: "none",
-              outline: "none",
-              background: "#f9fafb",
-              borderRadius: 20,
-              padding: "8px 14px",
-              fontSize: 14,
-            }}
-          />
-          <button
-            onClick={onSubmitComment}
-            disabled={!commentText.trim()}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: commentText.trim() ? "#0095f6" : "#9ca3af",
-              fontWeight: 600,
-              fontSize: 14,
-            }}
-          >
-            Post
-          </button>
+          Post
+        </button>
         </div>
       </div>
     </div>
