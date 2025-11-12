@@ -1098,27 +1098,41 @@ const poolNames =
       )}
 
 <style>{`
+  /* --- Keyframes for sheet animation --- */
   @keyframes igSheetSlideUp {
-    from { transform: translateY(100%); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
   }
 
+  @keyframes igBackdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* --- Sheet (bottom modal) --- */
   .ig-sheet {
-    animation: igSheetSlideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: igSheetSlideUp 0.42s cubic-bezier(0.25, 1, 0.5, 1);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
 
   [role="dialog"] {
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+    animation: igBackdropFadeIn 0.4s ease-out;
   }
 
-  /* Hide scrollbar inside the sheet for iOS/Android look */
+  /* Hide scrollbars for clean iOS/Android look */
   .ig-sheet::-webkit-scrollbar {
     display: none;
   }
 
-  /* Optional: light bounce animation when pressing buttons */
+  /* Subtle bounce feedback when pressing menu buttons */
   .ig-sheet button:active {
     transform: scale(0.98);
     transition: transform 0.1s ease;
