@@ -281,6 +281,7 @@ function ShareSheet({ open, onClose, onShare }) {
 
   return (
     <div
+    className="share-sheet"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {

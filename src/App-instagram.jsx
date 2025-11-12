@@ -427,9 +427,15 @@ console.log("[IG FLAGS]", nextFlags);
 
   // iOS zoom + viewport guards
   const overlayActive = !onAdmin && !hasEntered;
-useIOSInputZoomFix(".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea, .comment-sheet input, .comment-sheet textarea");
-useIOSViewportGuard({ overlayActive, fieldSelector: ".participant-overlay input, .comment-sheet input, .comment-sheet textarea" });
+useIOSInputZoomFix(
+  ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea, .comment-sheet input, .comment-sheet textarea, .share-sheet input, .share-sheet textarea"
+);
 
+useIOSViewportGuard({
+  overlayActive,
+  fieldSelector:
+    ".participant-overlay input, .comment-sheet input, .comment-sheet textarea, .share-sheet input, .share-sheet textarea",
+});
   // Random order toggle affects visual sequence only (not IDs)
   const orderedPosts = useMemo(() => {
     const arr = posts.map(p => ({ ...p }));
