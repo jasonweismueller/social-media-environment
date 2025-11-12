@@ -46,13 +46,15 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
         animation: "fadeIn 0.25s ease",
       }}
     >
+      {/* White sheet box */}
       <div
         style={{
+          position: "relative",
           background: "#fff",
           borderRadius: 18,
           width: "100%",
-          maxWidth: 520,            // ⬅️ wider
-          maxHeight: "85vh",        // ⬅️ taller
+          maxWidth: 520,
+          maxHeight: "85vh",
           padding: "28px 24px 24px",
           boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
           fontFamily:
@@ -62,24 +64,25 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
           flexDirection: "column",
         }}
       >
-          {/* Close Button */}
-  <button
-    onClick={onClose}
-    aria-label="Close"
-    style={{
-      position: "absolute",
-      top: 12,
-      right: 12,
-      border: "none",
-      background: "transparent",
-      fontSize: 22,
-      cursor: "pointer",
-      color: "#737373",
-      lineHeight: 1,
-    }}
-  >
-    ×
-  </button>
+        {/* ✅ Close Button INSIDE box */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            border: "none",
+            background: "transparent",
+            fontSize: 22,
+            cursor: "pointer",
+            color: "#737373",
+            lineHeight: 1,
+          }}
+        >
+          ×
+        </button>
+
         {/* Header */}
         <div
           style={{
@@ -96,7 +99,7 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",  // ⬅️ four per row
+            gridTemplateColumns: "repeat(4, 1fr)",
             gap: 20,
             justifyItems: "center",
             marginBottom: 20,
