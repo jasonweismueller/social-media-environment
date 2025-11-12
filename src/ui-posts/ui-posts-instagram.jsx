@@ -1104,9 +1104,12 @@ marginTop: "auto",
       </div>
     </div>
   ) : (
-   <Modal
+    <Modal
   title=""
-  onClose={() => { setOpenComments(false); onAction("comment_close", { id }); }}
+  onClose={() => {
+    setOpenComments(false);
+    onAction("comment_close", { id });
+  }}
   wide={true}
 >
   <div
@@ -1114,11 +1117,11 @@ marginTop: "auto",
       display: "flex",
       flexDirection: "row",
       width: "min(900px, 95vw)",
-      height: "80vh",
+      maxHeight: "90vh",
       background: "#fff",
       borderRadius: 12,
       overflow: "hidden",
-      boxShadow: "0 0 40px rgba(0,0,0,.2)",
+      boxShadow: "0 0 40px rgba(0,0,0,.25)",
     }}
   >
     {/* LEFT: Post Image */}
@@ -1129,6 +1132,7 @@ marginTop: "auto",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        maxWidth: "calc(100% - 360px)",
       }}
     >
       {(image?.url || displayImageObj?.url) ? (
@@ -1137,13 +1141,29 @@ marginTop: "auto",
           alt=""
           style={{
             width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            background: "#000",
+            height: "auto",
+            aspectRatio: "1 / 1",
+            objectFit: "cover",
+            display: "block",
+          }}
+          onLoad={(e) => {
+            const naturalRatio =
+              e.target.naturalWidth / e.target.naturalHeight;
+            e.target.parentElement.style.aspectRatio = naturalRatio;
           }}
         />
       ) : (
-        <div style={{ color: "#fff", fontSize: 18 }}>No Image</div>
+        <div
+          style={{
+            color: "#fff",
+            fontSize: 18,
+            textAlign: "center",
+            width: "100%",
+            padding: "40px 0",
+          }}
+        >
+          No Image
+        </div>
       )}
     </div>
 
@@ -1180,9 +1200,15 @@ marginTop: "auto",
 
       {/* Caption */}
       {text?.trim() && (
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid #eee" }}>
+        <div
+          style={{
+            padding: "14px 16px",
+            borderBottom: "1px solid #eee",
+            fontSize: 14,
+          }}
+        >
           <span style={{ fontWeight: 600 }}>{displayAuthor}</span>{" "}
-          <span style={{ color: "#111", fontSize: 14 }}>{text}</span>
+          {text}
         </div>
       )}
 
