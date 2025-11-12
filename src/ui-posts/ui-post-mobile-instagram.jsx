@@ -1,7 +1,43 @@
 import React from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
 
+/* --- Swipe-to-close helper --- */
+function useSwipeToClose(onClose, threshold = 80) {
+  const startY = React.useRef(0);
+  const [translateY, setTranslateY] = React.useState(0);
+  const [dragging, setDragging] = React.useState(false);
 
+  const handleTouchStart = (e) => {
+    startY.current = e.touches[0].clientY;
+    setDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!dragging) return;
+    const diff = e.touches[0].clientY - startY.current;
+    if (diff > 0) setTranslateY(diff * 0.85); // dampen movement
+  };
+
+  const handleTouchEnd = () => {
+    if (!dragging) return;
+    if (translateY > threshold) {
+      onClose?.();
+    } else {
+      setTranslateY(0);
+    }
+    setDragging(false);
+  };
+
+  return {
+    translateY,
+    dragging,
+    bind: {
+      onTouchStart: handleTouchStart,
+      onTouchMove: handleTouchMove,
+      onTouchEnd: handleTouchEnd,
+    },
+  };
+}
 
 /* --- Simple SVG icon set (lightweight, inline) --- */
 function SaveIcon(props) {
@@ -83,39 +119,16 @@ function HideIcon(props) {
 function ReportIcon(props) {
   return (
     <svg viewBox="0 0 24 24" {...props}>
-      <path
-        d="M3 3h18v14H5l-2 4V3z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        fill="none"
-      />
-      <path
-        d="M12 8v4M12 16h.01"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
+      <path d="M3 3h18v14H5l-2 4V3z" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <path d="M12 8v4M12 16h.01" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
-function sheetBtn({ danger = false, disabled = false } = {}) {
-  return {
-    width: "100%",
-    background: disabled ? "#374151" : (danger ? "#ef4444" : "#4b5563"),
-    color: "#fff",
-    border: 0,
-    padding: "10px 12px",
-    borderRadius: 10,
-    fontWeight: 600,
-    fontSize: 15,
-    opacity: disabled ? 0.75 : 1
-  };
-}
 
-/* ---------------- Mobile sheet (Instagram-style with icons) ---------------- */
+/* ---------------- Mobile sheet (Instagram-style with icons + swipe-to-close) ---------------- */
 export function MobileSheet({ open, onClose }) {
   if (!open) return null;
-
+  const { translateY, dragging, bind } = useSwipeToClose(onClose);
   const iconStyle = { width: 20, height: 20, flexShrink: 0 };
 
   const menuItems = [
@@ -133,9 +146,7 @@ export function MobileSheet({ open, onClose }) {
     <div
       role="dialog"
       aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
+      onClick={(e) => e.target === e.currentTarget && onClose?.()}
       style={{
         position: "fixed",
         inset: 0,
@@ -150,8 +161,10 @@ export function MobileSheet({ open, onClose }) {
       }}
     >
       <div
-        className="ig-sheet"
+        {...bind}
         style={{
+          transform: `translateY(${translateY}px)`,
+          transition: dragging ? "none" : "transform 0.3s ease",
           width: "100%",
           maxWidth: 480,
           background: "#fff",
@@ -162,12 +175,9 @@ export function MobileSheet({ open, onClose }) {
           maxHeight: "75vh",
           overflowY: "auto",
           boxShadow: "0 -8px 24px rgba(0,0,0,.25)",
-          fontFamily:
-            "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
           animation: "igSheetSlideUp 0.45s cubic-bezier(0.25,1,0.5,1)",
         }}
       >
-        {/* Drag handle */}
         <div
           style={{
             width: 38,
@@ -211,7 +221,6 @@ export function MobileSheet({ open, onClose }) {
           </button>
         ))}
 
-        {/* Cancel button */}
         <button
           onClick={onClose}
           style={{
@@ -235,42 +244,30 @@ export function MobileSheet({ open, onClose }) {
 
       <style>{`
         @keyframes igSheetSlideUp {
-          from {
-            transform: translateY(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
-
         @keyframes igBackdropFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
-        }
-
-        .ig-sheet::-webkit-scrollbar {
-          display: none;
         }
       `}</style>
     </div>
   );
 }
 
+/* ---------------- Share sheet (with swipe-to-close) ---------------- */
 export function ShareSheet({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
   const [showMessageSection, setShowMessageSection] = React.useState(false);
+  const { translateY, dragging, bind } = useSwipeToClose(onClose);
 
-  // Toggle visibility with animation timing
   React.useEffect(() => {
-    if (selectedFriends.length > 0) {
-      setShowMessageSection(true);
-    } else {
-      // small delay so the slide-out animation completes before unmount
-      const timeout = setTimeout(() => setShowMessageSection(false), 300);
-      return () => clearTimeout(timeout);
+    if (selectedFriends.length > 0) setShowMessageSection(true);
+    else {
+      const t = setTimeout(() => setShowMessageSection(false), 300);
+      return () => clearTimeout(t);
     }
   }, [selectedFriends.length]);
 
@@ -290,7 +287,7 @@ export function ShareSheet({ open, onClose, onShare }) {
   };
 
   const handleSend = () => {
-    if (selectedFriends.length === 0) return;
+    if (!selectedFriends.length) return;
     onShare({ friends: selectedFriends, message });
     setSelectedFriends([]);
     setMessage("");
@@ -302,9 +299,7 @@ export function ShareSheet({ open, onClose, onShare }) {
       className="share-sheet"
       role="dialog"
       aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
+      onClick={(e) => e.target === e.currentTarget && onClose?.()}
       style={{
         position: "fixed",
         inset: 0,
@@ -316,7 +311,10 @@ export function ShareSheet({ open, onClose, onShare }) {
       }}
     >
       <div
+        {...bind}
         style={{
+          transform: `translateY(${translateY}px)`,
+          transition: dragging ? "none" : "transform 0.3s ease",
           width: "100%",
           maxWidth: 480,
           background: "#fff",
@@ -331,7 +329,6 @@ export function ShareSheet({ open, onClose, onShare }) {
           color: "#111",
         }}
       >
-        {/* Drag handle */}
         <div
           style={{
             width: 38,
@@ -341,8 +338,6 @@ export function ShareSheet({ open, onClose, onShare }) {
             margin: "8px auto 14px",
           }}
         />
-
-        {/* Header */}
         <div
           style={{
             fontWeight: 600,
@@ -355,7 +350,6 @@ export function ShareSheet({ open, onClose, onShare }) {
           Share
         </div>
 
-        {/* Friend grid */}
         <div
           style={{
             display: "grid",
@@ -435,9 +429,6 @@ export function ShareSheet({ open, onClose, onShare }) {
 
         {/* Smooth in/out message section */}
         <div
-          className={`message-section-wrapper ${
-            selectedFriends.length > 0 ? "visible" : "hidden"
-          }`}
           style={{
             overflow: "hidden",
             transition: "max-height 0.3s ease, opacity 0.3s ease",
@@ -476,7 +467,7 @@ export function ShareSheet({ open, onClose, onShare }) {
             />
             <button
               onClick={handleSend}
-              disabled={selectedFriends.length === 0}
+              disabled={!selectedFriends.length}
               style={{
                 background:
                   selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
@@ -486,8 +477,7 @@ export function ShareSheet({ open, onClose, onShare }) {
                 borderRadius: 10,
                 padding: "12px 0",
                 fontSize: 16,
-                cursor:
-                  selectedFriends.length > 0 ? "pointer" : "default",
+                cursor: selectedFriends.length ? "pointer" : "default",
                 transition: "background 0.2s ease",
               }}
             >
@@ -496,13 +486,6 @@ export function ShareSheet({ open, onClose, onShare }) {
           </div>
         </div>
       </div>
-
-      <style>{`
-        @keyframes igSheetSlideUp {
-          from { transform: translateY(100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }
