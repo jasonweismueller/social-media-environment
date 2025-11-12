@@ -254,6 +254,18 @@ function MobileSheet({ open, onClose }) {
 function ShareSheet({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
+  const [showMessageSection, setShowMessageSection] = React.useState(false);
+
+  // Toggle visibility with animation timing
+  React.useEffect(() => {
+    if (selectedFriends.length > 0) {
+      setShowMessageSection(true);
+    } else {
+      // small delay so the slide-out animation completes before unmount
+      const timeout = setTimeout(() => setShowMessageSection(false), 300);
+      return () => clearTimeout(timeout);
+    }
+  }, [selectedFriends.length]);
 
   if (!open) return null;
 
@@ -362,7 +374,6 @@ function ShareSheet({ open, onClose, onShare }) {
                   position: "relative",
                 }}
               >
-                {/* Avatar wrapper for proper positioning */}
                 <div style={{ position: "relative", display: "inline-block" }}>
                   <img
                     src={f.avatar}
@@ -400,7 +411,6 @@ function ShareSheet({ open, onClose, onShare }) {
                     </div>
                   )}
                 </div>
-
                 <span
                   style={{
                     fontSize: 13,
@@ -416,8 +426,18 @@ function ShareSheet({ open, onClose, onShare }) {
           })}
         </div>
 
-        {/* Message input - only visible when at least one friend is selected */}
-        {selectedFriends.length > 0 && (
+        {/* Smooth in/out message section */}
+        <div
+          className={`message-section-wrapper ${
+            selectedFriends.length > 0 ? "visible" : "hidden"
+          }`}
+          style={{
+            overflow: "hidden",
+            transition: "max-height 0.3s ease, opacity 0.3s ease",
+            maxHeight: showMessageSection ? "200px" : "0px",
+            opacity: showMessageSection ? 1 : 0,
+          }}
+        >
           <div
             style={{
               borderTop: "1px solid #e5e7eb",
@@ -426,6 +446,10 @@ function ShareSheet({ open, onClose, onShare }) {
               display: "flex",
               flexDirection: "column",
               gap: 8,
+              transform: showMessageSection
+                ? "translateY(0)"
+                : "translateY(20px)",
+              transition: "transform 0.35s cubic-bezier(0.25,1,0.5,1)",
             }}
           >
             <input
@@ -463,10 +487,9 @@ function ShareSheet({ open, onClose, onShare }) {
               Send
             </button>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Animation */}
       <style>{`
         @keyframes igSheetSlideUp {
           from { transform: translateY(100%); opacity: 0; }
