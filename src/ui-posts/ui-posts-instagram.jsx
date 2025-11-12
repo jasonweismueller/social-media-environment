@@ -1131,46 +1131,46 @@ const poolNames =
           </>
         ) : (
           <>
-            {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
-              <div
-                key={`mobile-ghost-${i}`}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: ".6rem",
-                  marginBottom: 10,
-                }}
-              >
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: "999px",
-                    background: "#e5e7eb",
-                  }}
-                />
-                <div style={{ textAlign: "left" }}>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 14,
-                      marginBottom: 2,
-                    }}
-                  >
-                    User
-                  </div>
-                  <div
-                    style={{
-                      color: "#111827",
-                      fontSize: 14,
-                      lineHeight: 1.35,
-                    }}
-                  >
-                    Nice post!
-                  </div>
-                </div>
-              </div>
-            ))}
+          {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
+  <div
+    key={`mobile-ghost-${i}`}
+    style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: ".6rem",
+      marginBottom: 10,
+    }}
+  >
+    <div
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: "999px",
+        background: "#e5e7eb",
+      }}
+    />
+    <div style={{ textAlign: "left" }}>
+      <div
+        style={{
+          fontWeight: 600,
+          fontSize: 14,
+          marginBottom: 2,
+        }}
+      >
+        User {i + 1}
+      </div>
+      <div
+        style={{
+          background: "#e5e7eb",
+          borderRadius: 6,
+          height: 12,
+          width: `${70 + Math.random() * 20}%`,
+          marginTop: 4,
+        }}
+      />
+    </div>
+  </div>
+))}
             {!!mySubmittedComment && (
               <div
                 style={{
