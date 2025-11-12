@@ -571,9 +571,31 @@ const poolNames =
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
-          <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {displayAuthor}
-          </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+  <span
+    style={{
+      fontWeight: 600,
+      fontSize: 14,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }}
+  >
+    {displayAuthor}
+  </span>
+  {post.adType === "ad" && (
+    <span
+      style={{
+        fontSize: 12,
+        color: "#9ca3af",
+        marginTop: 1,
+        lineHeight: 1.1
+      }}
+    >
+      Sponsored
+    </span>
+  )}
+</div>
         </div>
 
         <button
@@ -687,6 +709,53 @@ const poolNames =
           </div>
         </div>
       )}
+
+      {/* CTA bar for sponsored ads */}
+{post.adType === "ad" && post.adButtonText && (
+  <div
+    style={{
+      borderTop: "1px solid #e5e7eb",
+      borderBottom: "1px solid #e5e7eb",
+      padding: "8px 12px",
+      display: "flex",
+      justifyContent: "center",
+      background: "#fff"
+    }}
+  >
+    {post.adUrl ? (
+      <a
+        href={post.adUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          background: "#0095f6",
+          color: "#fff",
+          fontWeight: 600,
+          fontSize: 14,
+          borderRadius: 8,
+          padding: "6px 16px",
+          textDecoration: "none",
+        }}
+      >
+        {post.adButtonText}
+      </a>
+    ) : (
+      <button
+        style={{
+          background: "#0095f6",
+          color: "#fff",
+          fontWeight: 600,
+          fontSize: 14,
+          borderRadius: 8,
+          padding: "6px 16px",
+          border: 0,
+        }}
+      >
+        {post.adButtonText}
+      </button>
+    )}
+  </div>
+)}
 
       {/* Actions row */}
       <div
