@@ -721,12 +721,16 @@ const poolNames =
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "12px 14px",
-      background: "#fff",
+      padding: "12px 16px",
+      background: "#0095f6",          // full blue bar
       borderTop: "1px solid #e5e7eb",
-      borderBottom: "1px solid #e5e7eb",
-      marginTop: "-1px", // 👈 ensures it attaches directly to the image
+      marginTop: "-1px",              // attaches directly to image
       cursor: post.adUrl ? "pointer" : "default",
+      color: "#fff",
+      fontWeight: 600,
+      fontSize: 14,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
     }}
     onClick={() => {
       if (post.adUrl) window.open(post.adUrl, "_blank", "noopener,noreferrer");
@@ -734,10 +738,8 @@ const poolNames =
   >
     <span
       style={{
-        fontWeight: 600,
-        fontSize: 14,
-        color: "#0095f6",
         flex: 1,
+        color: "#fff",
       }}
     >
       {post.adButtonText}
@@ -747,7 +749,7 @@ const poolNames =
       width="18"
       height="18"
       fill="none"
-      stroke="#0095f6"
+      stroke="#fff"          // white chevron
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
