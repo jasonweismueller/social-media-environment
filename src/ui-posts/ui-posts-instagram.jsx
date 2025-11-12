@@ -172,7 +172,7 @@ function DesktopMenu({ open, onClose, onPick, id }) {
         alignItems: "center",
         justifyContent: "center",
         zIndex: 10050,
-        animation: "fadeIn 0.25s ease",
+        animation: "fadeIn 0.15s ease",
       }}
     >
       <div
