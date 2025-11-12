@@ -7,9 +7,9 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
 
   if (!open) return null;
 
-  const friends = Array.from({ length: 6 }).map((_, i) => ({
+  const friends = Array.from({ length: 8 }).map((_, i) => ({
     name: `Friend ${i + 1}`,
-    avatar: neutralAvatarDataUrl(60),
+    avatar: neutralAvatarDataUrl(64),
   }));
 
   const toggleSelect = (name) => {
@@ -36,9 +36,9 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        backdropFilter: "blur(6px)",
-        WebkitBackdropFilter: "blur(6px)",
+        background: "rgba(0,0,0,0.45)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -49,23 +49,26 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
       <div
         style={{
           background: "#fff",
-          borderRadius: 16,
+          borderRadius: 18,
           width: "100%",
-          maxWidth: 420,
-          padding: "24px 20px 20px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+          maxWidth: 520,            // ⬅️ wider
+          maxHeight: "85vh",        // ⬅️ taller
+          padding: "28px 24px 24px",
+          boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
           fontFamily:
             "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
           animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         {/* Header */}
         <div
           style={{
             fontWeight: 600,
-            fontSize: 18,
+            fontSize: 20,
             textAlign: "center",
-            marginBottom: 18,
+            marginBottom: 22,
           }}
         >
           Share
@@ -75,10 +78,12 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 18,
+            gridTemplateColumns: "repeat(4, 1fr)",  // ⬅️ four per row
+            gap: 20,
             justifyItems: "center",
-            marginBottom: 16,
+            marginBottom: 20,
+            overflowY: "auto",
+            padding: "4px 2px",
           }}
         >
           {friends.map((f) => {
@@ -140,6 +145,10 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
                     color: "#111",
                     textAlign: "center",
                     marginTop: 6,
+                    maxWidth: 80,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {f.name}
@@ -154,7 +163,7 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 10,
+            gap: 12,
           }}
         >
           <input
@@ -167,7 +176,7 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
               outline: "none",
               background: "#f9fafb",
               borderRadius: 10,
-              padding: "10px 14px",
+              padding: "12px 14px",
               fontSize: 15,
               color: "#111",
             }}
@@ -182,7 +191,7 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
               fontWeight: 600,
               border: "none",
               borderRadius: 10,
-              padding: "12px 0",
+              padding: "13px 0",
               fontSize: 16,
               cursor: selectedFriends.length ? "pointer" : "default",
               transition: "background 0.2s ease",
