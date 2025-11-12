@@ -1215,56 +1215,67 @@ const poolNames =
         )}
       </div>
 
-      {/* Comment input */}
-      <div
-        style={{
-          borderTop: "1px solid #e5e7eb",
-          padding: "8px 12px",
-          background: "#fff",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          position: "sticky",
-          bottom: 0,
-        }}
-      >
-        <img
-          src={neutralAvatarDataUrl(32)}
-          alt=""
-          width={32}
-          height={32}
-          style={{ borderRadius: "999px" }}
-        />
-        <input
-          type="text"
-          placeholder="Start the conversation..."
-          value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
-          style={{
-            flex: 1,
-            border: "none",
-            outline: "none",
-            background: "#f9fafb",
-            borderRadius: 20,
-            padding: "10px 14px",
-            fontSize: 16, // ✅ stops iOS zoom
-            lineHeight: 1.3,
-          }}
-        />
-        <button
-          onClick={onSubmitComment}
-          disabled={!commentText.trim()}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: commentText.trim() ? "#0095f6" : "#9ca3af",
-            fontWeight: 600,
-            fontSize: 15,
-          }}
-        >
-          Post
-        </button>
-        </div>
+      
+     {/* Comment input */}
+<form
+  onSubmit={(e) => {
+    e.preventDefault();
+    onSubmitComment();
+  }}
+  style={{
+    borderTop: "1px solid #e5e7eb",
+    padding: "8px 12px",
+    background: "#fff",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    position: "sticky",
+    bottom: 0,
+  }}
+>
+  <img
+    src={neutralAvatarDataUrl(32)}
+    alt=""
+    width={32}
+    height={32}
+    style={{ borderRadius: "999px" }}
+  />
+
+  <input
+    type="text"
+    placeholder="Start the conversation..."
+    value={commentText}
+    onChange={(e) => setCommentText(e.target.value)}
+    inputMode="text"
+    enterKeyHint="send"
+    autoCorrect="off"
+    autoCapitalize="sentences"
+    style={{
+      flex: 1,
+      border: "none",
+      outline: "none",
+      background: "#f9fafb",
+      borderRadius: 20,
+      padding: "10px 14px",
+      fontSize: 16, // ✅ prevents iOS zoom
+      lineHeight: 1.3,
+    }}
+  />
+
+  <button
+    type="submit"
+    disabled={!commentText.trim()}
+    style={{
+      background: "transparent",
+      border: "none",
+      color: commentText.trim() ? "#0095f6" : "#9ca3af",
+      fontWeight: 600,
+      fontSize: 15,
+    }}
+  >
+    Post
+  </button>
+</form>
       </div>
     </div>
   ) : (
