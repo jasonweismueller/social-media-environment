@@ -2,10 +2,26 @@ import React from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
 
 /* --- Swipe-to-close helper with momentum slide --- */
+/* --- Swipe-to-close helper with touch-lock and momentum slide --- */
 export function useSwipeToClose(onClose, threshold = 80) {
   const startY = React.useRef(0);
   const [translateY, setTranslateY] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
+
+  // ✅ Prevent background scroll while dragging
+  React.useEffect(() => {
+    if (dragging) {
+      document.body.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
+    } else {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+    };
+  }, [dragging]);
 
   const handleTouchStart = (e) => {
     startY.current = e.touches[0].clientY;
@@ -14,23 +30,28 @@ export function useSwipeToClose(onClose, threshold = 80) {
 
   const handleTouchMove = (e) => {
     if (!dragging) return;
+
     const diff = e.touches[0].clientY - startY.current;
-    if (diff > 0) setTranslateY(diff * 0.85); // dampen movement slightly
+
+    // ✅ Prevent background scroll (critical for iOS)
+    if (diff > 0) e.preventDefault();
+
+    if (diff > 0) setTranslateY(diff * 0.85); // dampen movement
   };
 
   const handleTouchEnd = () => {
     if (!dragging) return;
 
     if (translateY > threshold) {
-      // ✅ smooth “momentum” slide-off before closing
+      // ✅ smooth slide down before closing
       setTranslateY(window.innerHeight * 0.9);
       setDragging(false);
       setTimeout(() => {
         setTranslateY(0);
         onClose?.();
-      }, 180); // short momentum duration (~180ms)
+      }, 180);
     } else {
-      // snap back if not far enough
+      // Snap back if not far enough
       setTranslateY(0);
       setDragging(false);
     }
@@ -45,20 +66,6 @@ export function useSwipeToClose(onClose, threshold = 80) {
       onTouchEnd: handleTouchEnd,
     },
   };
-}
-
-/* --- Simple SVG icon set (lightweight, inline) --- */
-function SaveIcon(props) {
-  return (
-    <svg viewBox="0 0 24 24" {...props}>
-      <path
-        d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-    </svg>
-  );
 }
 
 function QrIcon(props) {
