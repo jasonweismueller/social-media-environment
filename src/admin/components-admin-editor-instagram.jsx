@@ -293,6 +293,48 @@ export function AdminPostEditor({
           setUploadingPoster={setUploadingPoster}
         />
 
+        <h4 className="section-title">Ad</h4>
+<fieldset className="fieldset">
+  <label>Ad type
+    <select
+      className="select"
+      value={editing.adType || "none"}
+      onChange={(e) => setEditing({ ...editing, adType: e.target.value })}
+    >
+      <option value="none">None</option>
+      <option value="ad">Sponsored Ad</option>
+    </select>
+  </label>
+
+  {editing.adType === "ad" && (
+    <>
+      <label>Call-to-Action Text
+        <input
+          className="input"
+          value={editing.adButtonText || ""}
+          onChange={(e) =>
+            setEditing({ ...editing, adButtonText: e.target.value })
+          }
+          placeholder="e.g. Learn more, Shop now"
+        />
+      </label>
+      <label>Target URL
+        <input
+          className="input"
+          value={editing.adUrl || ""}
+          onChange={(e) =>
+            setEditing({ ...editing, adUrl: e.target.value })
+          }
+          placeholder="https://example.com"
+        />
+      </label>
+      <div className="subtle" style={{ marginTop: 4 }}>
+        If a URL is provided, clicking the call-to-action button will open it.
+      </div>
+    </>
+  )}
+</fieldset>
+
         <h4 className="section-title">Reactions & Metrics</h4>
         <fieldset className="fieldset">
           <label>Show like count
