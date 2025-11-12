@@ -1059,6 +1059,7 @@ const poolNames =
     role="dialog"
     className="comment-sheet"
     aria-modal="true"
+    tabIndex="-1"
     onClick={(e) => { if (e.target === e.currentTarget) setOpenComments(false); }}
     style={{
       position: "fixed",
