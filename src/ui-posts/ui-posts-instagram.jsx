@@ -943,42 +943,50 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
     </>
   ) : (
     <>
-      {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
+      {/* Show up to 5 users as ghost placeholders */}
+      {Array.from({ length: Math.min(5, baseComments) }).map((_, i) => (
         <div
-          key={`mobile-ghost-${i}`}
+          key={`ghost-${i}`}
           style={{
             display: "flex",
             alignItems: "flex-start",
             gap: ".6rem",
-            marginBottom: 12,
+            marginBottom: 14,
             textAlign: "left",
           }}
         >
-          <div
+          {/* Neutral avatar */}
+          <img
+            src={neutralAvatarDataUrl(32)}
+            alt=""
+            width={32}
+            height={32}
             style={{
-              width: 32,
-              height: 32,
               borderRadius: "999px",
-              background: "#e5e7eb",
+              background: "#f3f4f6",
               flexShrink: 0,
             }}
           />
           <div style={{ flex: 1 }}>
             <div
               style={{
-                fontWeight: 600,
-                fontSize: 14,
-                marginBottom: 4,
+                height: 12,
+                borderRadius: 999,
+                background: "linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 37%,#e5e7eb 63%)",
+                backgroundSize: "400% 100%",
+                animation: "ghostShimmer 1.4s ease infinite",
+                width: "70%",
+                marginBottom: 6,
               }}
-            >
-              User {i + 1}
-            </div>
+            />
             <div
               style={{
-                background: "#e5e7eb",
-                borderRadius: 6,
                 height: 12,
-                width: `${70 + i * 7}%`,   // ✅ fixed deterministic width (no flicker)
+                borderRadius: 999,
+                background: "linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 37%,#e5e7eb 63%)",
+                backgroundSize: "400% 100%",
+                animation: "ghostShimmer 1.4s ease infinite",
+                width: "85%",
               }}
             />
           </div>
@@ -1028,6 +1036,14 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
     </>
   )}
 </div>
+
+{/* 👻 Ghost shimmer animation */}
+<style>{`
+@keyframes ghostShimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+`}</style>
 
       
      {/* Comment input */}
