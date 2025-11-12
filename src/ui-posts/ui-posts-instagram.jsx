@@ -1117,14 +1117,14 @@ const poolNames =
 
   /* --- Sheet (bottom modal) --- */
   .ig-sheet {
-    animation: igSheetSlideUp 0.42s cubic-bezier(0.25, 1, 0.5, 1);
+    animation: igSheetSlideUp 0.35s cubic-bezier(0.25, 1, 0.5, 1);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
 
   [role="dialog"] {
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    animation: igBackdropFadeIn 0.4s ease-out;
+    animation: igBackdropFadeIn 0.33s ease-out;
   }
 
   /* Hide scrollbars for clean iOS/Android look */
