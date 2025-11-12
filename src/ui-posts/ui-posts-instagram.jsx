@@ -517,6 +517,22 @@ const doShare = () => {
 
 const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(false));
 
+// 👇 Add these at the top of your desktop comment modal section (still inside PostCard)
+const [aspectRatio, setAspectRatio] = useState(1);
+const containerRef = useRef(null);
+
+useEffect(() => {
+  const handleResize = () => {
+    if (!containerRef.current) return;
+    const maxHeight = window.innerHeight * 0.82; // 82vh cap
+    const width = containerRef.current.offsetWidth;
+    containerRef.current.style.height = `${Math.min(maxHeight, width / aspectRatio)}px`;
+  };
+  handleResize();
+  window.addEventListener("resize", handleResize);
+  return () => window.removeEventListener("resize", handleResize);
+}, [aspectRatio]);
+
 const VerifiedBadge = (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -864,8 +880,9 @@ const VerifiedBadge = (
         </div>
       )}
 
+
+
    {/* Comments */}
-   
 {openComments && (
  (isMobile ? (
   <div
@@ -1175,16 +1192,19 @@ marginTop: "auto",
         <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     </button>
-   {/* LEFT: Post Image */}
+  {/* LEFT: Post Image */}
 <div
+  ref={containerRef}
   style={{
     flex: 1,
     background: "#000",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    height: "100%",                 // ✅ ensure full vertical fill
-    maxWidth: "calc(100% - 360px)", // keep same width rule
+    maxWidth: "calc(100% - 360px)",
+    overflow: "hidden",
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
   }}
 >
   {(image?.url || displayImageObj?.url) ? (
@@ -1192,17 +1212,20 @@ marginTop: "auto",
       src={displayImageObj?.url || image?.url}
       alt=""
       style={{
-        width: "100%",              // ✅ fill horizontally
-        height: "100%",             // ✅ fill vertically
-        objectFit: "contain",       // ✅ show full image without crop
-        backgroundColor: "#000",    // ✅ remove white padding effect
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        backgroundColor: "#000",
         display: "block",
       }}
       onLoad={(e) => {
-        const naturalRatio =
-          e.target.naturalWidth / e.target.naturalHeight;
-        // optional: update aspect ratio for perfect layout balance
-        e.target.parentElement.style.aspectRatio = naturalRatio;
+        const ratio = e.target.naturalWidth / e.target.naturalHeight;
+        setAspectRatio(ratio || 1);
+        if (containerRef.current) {
+          const maxHeight = window.innerHeight * 0.82;
+          const width = containerRef.current.offsetWidth;
+          containerRef.current.style.height = `${Math.min(maxHeight, width / ratio)}px`;
+        }
       }}
     />
   ) : (
