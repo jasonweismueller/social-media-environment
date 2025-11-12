@@ -1113,17 +1113,14 @@ marginTop: "auto",
   wide={true}
 >
   <div
-    style={{
-      display: "flex",
-      flexDirection: "row",
-      width: "min(900px, 95vw)",
-      maxHeight: "90vh",
-      background: "#fff",
-      borderRadius: 12,
-      overflow: "hidden",
-      boxShadow: "0 0 40px rgba(0,0,0,.25)",
-    }}
-  >
+  style={{
+    display: "flex",
+    flexDirection: "row",
+    width: "min(900px, 95vw)",
+    maxHeight: "90vh",
+    overflow: "hidden",
+  }}
+>
     {/* LEFT: Post Image */}
     <div
       style={{
