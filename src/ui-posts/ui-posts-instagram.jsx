@@ -1112,15 +1112,17 @@ marginTop: "auto",
   }}
   wide={true}
 >
-  <div
-  style={{
-    display: "flex",
-    flexDirection: "row",
-    width: "min(900px, 95vw)",
-    maxHeight: "90vh",
-    overflow: "hidden",
-  }}
->
+   <div
+    style={{
+      display: "flex",
+      flexDirection: "row",
+      width: "min(860px, 90vw)",
+      maxHeight: "82vh",
+      marginTop: "4vh",               // ✅ keeps modal below top rail
+      overflow: "hidden",
+      borderRadius: 12,
+    }}
+  >
     {/* LEFT: Post Image */}
     <div
       style={{
@@ -1166,13 +1168,15 @@ marginTop: "auto",
 
     {/* RIGHT: Caption + Comments */}
     <div
-      style={{
-        width: 360,
-        display: "flex",
-        flexDirection: "column",
-        borderLeft: "1px solid #e5e7eb",
-      }}
-    >
+  style={{
+    width: 340,
+    display: "flex",
+    flexDirection: "column",
+    borderLeft: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "-6px 0 8px -6px rgba(0,0,0,0.08)",
+    background: "#fff",
+  }}
+>
       {/* Header */}
       <div
         style={{
