@@ -583,9 +583,30 @@ const poolNames =
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
   }}
 >
   {displayAuthor}
+  {post.badge && (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="#0095f6"
+      style={{ flexShrink: 0 }}
+    >
+      <path
+        d="M12 2l2.39 4.85 5.36.78-3.88 3.78.92 5.35L12 14.77l-4.79 2.49.92-5.35-3.88-3.78 5.36-.78L12 2z"
+      />
+      <path
+        fill="#fff"
+        d="M10.6 12.9l-1.3-1.3 1.1-1.1 1.3 1.3 3.4-3.4 1.1 1.1-4.5 4.4z"
+      />
+    </svg>
+  )}
 </span>
 
 {/* Sponsored Ad (CTA type) */}
