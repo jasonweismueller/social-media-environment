@@ -146,37 +146,18 @@ function StoryBar() {
 
 
 /* ---------------- Desktop menu ---------------- */
-import React from "react";
-import { neutralAvatarDataUrl } from "../ui-core";
-
-export function ShareSheetDesktop({ open, onClose, onShare }) {
-  const [selectedFriends, setSelectedFriends] = React.useState([]);
-  const [message, setMessage] = React.useState("");
-
+function DesktopMenu({ open, onClose, onPick, id }) {
   if (!open) return null;
 
-  const friends = Array.from({ length: 8 }).map((_, i) => ({
-    name: `Friend ${i + 1}`,
-    avatar: neutralAvatarDataUrl(64),
-  }));
+  const items = [
+    { label: "Report", action: "report", danger: true, disabled: false },
+    { label: "Unfollow", action: "unfollow", disabled: true },
+    { label: "Go to post", action: "goto", disabled: true },
+    { label: "Copy link", action: "copy", disabled: true },
+    { label: "Cancel", action: "cancel", bold: true, disabled: false },
+  ];
 
-  const toggleSelect = (name) => {
-    setSelectedFriends((prev) =>
-      prev.includes(name)
-        ? prev.filter((n) => n !== name)
-        : [...prev, name]
-    );
-  };
-
-  const handleSend = () => {
-    if (!selectedFriends.length) return;
-    onShare({ friends: selectedFriends, message });
-    setSelectedFriends([]);
-    setMessage("");
-    onClose();
-  };
-
-  return (
+  return ReactDOM.createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -190,167 +171,69 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 9999,
+        zIndex: 10050,
         animation: "fadeIn 0.25s ease",
       }}
     >
       <div
         style={{
           background: "#fff",
-          borderRadius: 18,
+          borderRadius: 16,
           width: "100%",
-          maxWidth: 520,            // ⬅️ wider
-          maxHeight: "85vh",        // ⬅️ taller
-          padding: "28px 24px 24px",
+          maxWidth: 380,
           boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
+          overflow: "hidden",
           fontFamily:
             "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
           animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
-          display: "flex",
-          flexDirection: "column",
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            fontWeight: 600,
-            fontSize: 20,
-            textAlign: "center",
-            marginBottom: 22,
-          }}
-        >
-          Share
-        </div>
-
-        {/* Friend grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",  // ⬅️ four per row
-            gap: 20,
-            justifyItems: "center",
-            marginBottom: 20,
-            overflowY: "auto",
-            padding: "4px 2px",
-          }}
-        >
-          {friends.map((f) => {
-            const selected = selectedFriends.includes(f.name);
-            return (
-              <button
-                key={f.name}
-                onClick={() => toggleSelect(f.name)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  position: "relative",
-                }}
-              >
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <img
-                    src={f.avatar}
-                    alt=""
-                    width={68}
-                    height={68}
-                    style={{
-                      borderRadius: "50%",
-                      border: selected
-                        ? "2px solid #0095f6"
-                        : "2px solid transparent",
-                      transition: "border 0.2s ease",
-                    }}
-                  />
-                  {selected && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: -3,
-                        right: -3,
-                        width: 22,
-                        height: 22,
-                        borderRadius: "50%",
-                        background: "#0095f6",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#fff",
-                        fontSize: 13,
-                        fontWeight: 700,
-                        boxShadow: "0 0 0 3px #fff",
-                      }}
-                    >
-                      ✓
-                    </div>
-                  )}
-                </div>
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: "#111",
-                    textAlign: "center",
-                    marginTop: 6,
-                    maxWidth: 80,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {f.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Message + Send */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Write a message..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            style={{
-              border: "1px solid #e5e7eb",
-              outline: "none",
-              background: "#f9fafb",
-              borderRadius: 10,
-              padding: "12px 14px",
-              fontSize: 15,
-              color: "#111",
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!selectedFriends.length}
-            style={{
-              background:
-                selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
-              color: "#fff",
-              fontWeight: 600,
-              border: "none",
-              borderRadius: 10,
-              padding: "13px 0",
-              fontSize: 16,
-              cursor: selectedFriends.length ? "pointer" : "default",
-              transition: "background 0.2s ease",
-            }}
-          >
-            Send
-          </button>
-        </div>
+        {items.map((item, idx) => {
+          const isDisabled = !!item.disabled;
+          return (
+            <button
+              key={idx}
+              role="menuitem"
+              aria-disabled={isDisabled}
+              disabled={isDisabled}
+              tabIndex={isDisabled ? -1 : 0}
+              onClick={() => {
+                if (isDisabled) return;
+                onClose?.();
+                if (item.action !== "cancel") onPick?.(item.action, { id });
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "center",
+                padding: "14px",
+                border: "none",
+                background: "transparent",
+                fontSize: 15,
+                cursor: isDisabled ? "default" : "pointer",
+                color: isDisabled
+                  ? "#9ca3af"
+                  : item.danger
+                  ? "#ef4444"
+                  : "#111827",
+                fontWeight: item.bold ? 600 : 400,
+                borderTop: idx === 0 ? "none" : "1px solid #e5e7eb",
+                transition: "background 0.15s ease",
+              }}
+              onMouseEnter={(e) =>
+                !isDisabled &&
+                (e.currentTarget.style.background = "rgba(0,0,0,0.05)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              {item.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Animations */}
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -361,7 +244,8 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
           to { transform: scale(1); opacity: 1; }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }
 
