@@ -1097,22 +1097,31 @@ const poolNames =
 </MobileSheet>
       )}
 
-      <style>{`
-        @keyframes igSavedToast {
-          0%   { opacity: 0; transform: translateY(6px); }
-          12%  { opacity: 1; transform: translateY(0); }
-          85%  { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(6px); }
-        }
-      `}</style>
-      <style>{`
+<style>{`
+  @keyframes igSheetSlideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
   .ig-sheet {
     animation: igSheetSlideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-    
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   }
+
   [role="dialog"] {
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+  }
+
+  /* Hide scrollbar inside the sheet for iOS/Android look */
+  .ig-sheet::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Optional: light bounce animation when pressing buttons */
+  .ig-sheet button:active {
+    transform: scale(0.98);
+    transition: transform 0.1s ease;
   }
 `}</style>
 
