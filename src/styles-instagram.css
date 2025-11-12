@@ -1071,3 +1071,16 @@ body.debug-vp::before {
   pointer-events: none;
   z-index: 2;
 }
+
+/* Removes the extra inner box and padding for wide modals */
+.modal-wide .modal-body {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.modal-wide .modal-head {
+  display: none !important; /* hides the top title bar, Instagram-style */
+}
+.modal-wide .modal-footer {
+  display: none !important; /* hide if not needed */
+}
