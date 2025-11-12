@@ -141,8 +141,23 @@ function StoryBar() {
 }
 
 /* ---------------- Mobile sheet ---------------- */
-function MobileSheet({ open, onClose, children }) {
+/* ---------------- Mobile sheet (Instagram-style with icons) ---------------- */
+function MobileSheet({ open, onClose }) {
   if (!open) return null;
+
+  const iconStyle = { width: 20, height: 20, flexShrink: 0 };
+
+  const menuItems = [
+    { label: "Save", icon: SaveIcon, disabled: true },
+    { label: "QR code", icon: QrIcon, disabled: true },
+    { label: "Add to Favourites", icon: StarIcon, disabled: true },
+    { label: "Unfollow", icon: UserMinusIcon, disabled: true },
+    { label: "About this account", icon: UserCircleIcon, disabled: true },
+    { label: "Why you're seeing this post", icon: InfoIcon, disabled: true },
+    { label: "Hide", icon: HideIcon, disabled: true },
+    { label: "Report", icon: ReportIcon, danger: true },
+  ];
+
   return (
     <div
       role="dialog"
@@ -151,32 +166,172 @@ function MobileSheet({ open, onClose, children }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,.5)",
+        background: "rgba(0,0,0,0.5)",
         zIndex: 9999,
         display: "flex",
-        alignItems: "flex-end"
+        alignItems: "flex-end",
+        justifyContent: "center",
       }}
     >
       <div
         style={{
           width: "100%",
-          background: "#1f2937",
-          color: "#fff",
+          maxWidth: 480,
+          background: "#fff",
+          color: "#111",
           borderTopLeftRadius: 16,
           borderTopRightRadius: 16,
-          padding: 8,
+          paddingBottom: 12,
           maxHeight: "75vh",
           overflowY: "auto",
-          boxShadow: "0 -12px 32px rgba(0,0,0,.35)"
+          boxShadow: "0 -8px 24px rgba(0,0,0,.25)",
+          fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         }}
       >
-        <div style={{ width: 42, height: 4, background: "rgba(255,255,255,.25)", borderRadius: 999, margin: "8px auto 10px" }} />
-        {children}
-        <button className="btn" style={{ width: "100%", marginTop: 8, background: "#374151", color: "#fff" }} onClick={onClose}>
+        <div
+          style={{
+            width: 38,
+            height: 4,
+            background: "rgba(0,0,0,.2)",
+            borderRadius: 999,
+            margin: "8px auto 14px",
+          }}
+        />
+
+        {menuItems.map((item, i) => (
+          <button
+            key={i}
+            disabled={item.disabled}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              width: "100%",
+              border: "none",
+              background: "#fff",
+              color: item.danger ? "#ef4444" : item.disabled ? "#9ca3af" : "#111",
+              fontSize: 15,
+              fontWeight: item.danger ? 600 : 500,
+              padding: "14px 16px",
+              textAlign: "left",
+              borderTop: i === 0 ? "none" : "1px solid #e5e7eb",
+              cursor: item.disabled ? "default" : "pointer",
+              opacity: item.disabled ? 0.8 : 1,
+            }}
+            onClick={() => {
+              if (!item.disabled && item.label === "Report") alert("Reported!");
+            }}
+          >
+            <item.icon {...iconStyle} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+
+        {/* Cancel button */}
+        <button
+          onClick={onClose}
+          style={{
+            display: "block",
+            width: "100%",
+            marginTop: 10,
+            padding: "14px 0",
+            textAlign: "center",
+            borderTop: "1px solid #e5e7eb",
+            fontSize: 16,
+            fontWeight: 600,
+            background: "#fff",
+            color: "#111",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
           Cancel
         </button>
       </div>
     </div>
+  );
+}
+
+/* --- Simple SVG icon set (lightweight, inline) --- */
+function QrIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="3" width="6" height="6" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <rect x="15" y="3" width="6" height="6" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <rect x="3" y="15" width="6" height="6" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <path d="M15 15h2v2h2v2h-4v-4Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StarIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        d="M12 17.3l6.2 3.7-1.7-7.2L22 9.3l-7.4-.6L12 2 9.4 8.7 2 9.3l5.5 4.5-1.7 7.2L12 17.3z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function UserMinusIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path d="M5 21v-1a7 7 0 0 1 14 0v1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path d="M16 11h6" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function UserCircleIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path d="M5 21v-1a7 7 0 0 1 14 0v1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    </svg>
+  );
+}
+
+function InfoIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <path d="M12 8h.01M11 12h1v4h1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HideIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ReportIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        d="M3 3h18v14H5l-2 4V3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        fill="none"
+      />
+      <path
+        d="M12 8v4M12 16h.01"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 function sheetBtn({ danger = false, disabled = false } = {}) {
@@ -938,16 +1093,16 @@ const poolNames =
 
       {isMobile && (
         <MobileSheet open={menuOpenMobile} onClose={closeMobileMenu}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <button className="btn" style={sheetBtn({ danger: true })} onClick={() => { onAction("menu_report", { id, surface: "mobile" }); closeMobileMenu(); }}>
-              Report
-            </button>
-            <button className="btn" style={sheetBtn({ disabled: true })} disabled>Unfollow</button>
-            <button className="btn" style={sheetBtn({ disabled: true })} disabled>Go to post</button>
-            <button className="btn" style={sheetBtn({ disabled: true })} disabled>Copy link</button>
-            <button className="btn" style={sheetBtn({ disabled: true })} disabled>About this account</button>
-          </div>
-        </MobileSheet>
+  <div style={{ display: "flex", flexDirection: "column" }}>
+    <button className="btn" style={sheetBtn()} disabled>Save</button>
+    <button className="btn" style={sheetBtn()} disabled>Add to Favourites</button>
+    <button className="btn" style={sheetBtn()} disabled>Unfollow</button>
+    <button className="btn" style={sheetBtn()} disabled>About this account</button>
+    <button className="btn" style={sheetBtn()} disabled>Why you're seeing this post</button>
+    <button className="btn" style={sheetBtn()} disabled>Hide</button>
+    <button className="btn" style={sheetBtn({ danger: true })}>Report</button>
+  </div>
+</MobileSheet>
       )}
 
       <style>{`
