@@ -317,6 +317,10 @@ export function PostCard({
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
+const isSponsored = post.adType === "ad";
+const effectiveRandFlags = isSponsored
+  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_times: effectiveFlags.randomize_times }
+  : effectiveFlags;
 
   // Deterministic seed for consistent randomization across sessions
   const seedParts = [
@@ -332,10 +336,10 @@ const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlag
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("forcerand") === "1";
 
-  const randNamesOn  = forcedRand || !!effectiveFlags.randomize_names;
-const randAvatarOn = forcedRand || !!(effectiveFlags.randomize_avatars || effectiveFlags.randomize_avatar);
-const randImagesOn = forcedRand || !!effectiveFlags.randomize_images;
-const randTimesOn  = forcedRand || !!effectiveFlags.randomize_times;
+ const randNamesOn  = forcedRand || !!effectiveRandFlags.randomize_names;
+ const randAvatarOn = forcedRand || !!(effectiveRandFlags.randomize_avatars || effectiveRandFlags.randomize_avatar);
+ const randImagesOn = forcedRand || !!effectiveRandFlags.randomize_images;
+ const randTimesOn  = forcedRand || !!effectiveRandFlags.randomize_times;
 
   // ---- IG username randomizer (deterministic) ----
   function pickIGUsername(postId, parts, fallback = "username") {
@@ -572,7 +576,7 @@ const poolNames =
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
-  <span
+    <span
     style={{
       fontWeight: 600,
       fontSize: 14,
@@ -587,9 +591,9 @@ const poolNames =
     <span
       style={{
         fontSize: 12,
-        color: "#9ca3af",
+        color: "#4b5563",  // darker grey for more realistic "Sponsored"
         marginTop: 1,
-        lineHeight: 1.1
+        lineHeight: 1.1,
       }}
     >
       Sponsored
@@ -714,46 +718,43 @@ const poolNames =
 {post.adType === "ad" && post.adButtonText && (
   <div
     style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "12px 14px",
+      background: "#fff",
       borderTop: "1px solid #e5e7eb",
       borderBottom: "1px solid #e5e7eb",
-      padding: "8px 12px",
-      display: "flex",
-      justifyContent: "center",
-      background: "#fff"
+      marginTop: "-1px", // 👈 ensures it attaches directly to the image
+      cursor: post.adUrl ? "pointer" : "default",
+    }}
+    onClick={() => {
+      if (post.adUrl) window.open(post.adUrl, "_blank", "noopener,noreferrer");
     }}
   >
-    {post.adUrl ? (
-      <a
-        href={post.adUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          background: "#0095f6",
-          color: "#fff",
-          fontWeight: 600,
-          fontSize: 14,
-          borderRadius: 8,
-          padding: "6px 16px",
-          textDecoration: "none",
-        }}
-      >
-        {post.adButtonText}
-      </a>
-    ) : (
-      <button
-        style={{
-          background: "#0095f6",
-          color: "#fff",
-          fontWeight: 600,
-          fontSize: 14,
-          borderRadius: 8,
-          padding: "6px 16px",
-          border: 0,
-        }}
-      >
-        {post.adButtonText}
-      </button>
-    )}
+    <span
+      style={{
+        fontWeight: 600,
+        fontSize: 14,
+        color: "#0095f6",
+        flex: 1,
+      }}
+    >
+      {post.adButtonText}
+    </span>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="#0095f6"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      <polyline points="6 3 14 9 6 15" />
+    </svg>
   </div>
 )}
 
