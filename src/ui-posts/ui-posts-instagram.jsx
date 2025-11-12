@@ -1057,6 +1057,7 @@ const poolNames =
  (isMobile ? (
   <div
     role="dialog"
+    className="comment-sheet"
     aria-modal="true"
     onClick={(e) => { if (e.target === e.currentTarget) setOpenComments(false); }}
     style={{
