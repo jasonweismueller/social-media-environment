@@ -3,25 +3,24 @@ import { neutralAvatarDataUrl } from "../ui-core";
 
 /* --- Swipe-to-close helper with momentum slide --- */
 /* --- Swipe-to-close helper with touch-lock and momentum slide --- */
-/* --- Swipe-to-close helper with strong scroll lock and momentum slide --- */
 export function useSwipeToClose(onClose, threshold = 80) {
   const startY = React.useRef(0);
   const [translateY, setTranslateY] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
 
-  // Strong scroll lock for mobile browsers
+  // ✅ Prevent background scroll while dragging
   React.useEffect(() => {
-    const preventScroll = (e) => e.preventDefault();
     if (dragging) {
       document.body.style.overflow = "hidden";
       document.body.style.touchAction = "none";
-      document.addEventListener("touchmove", preventScroll, { passive: false });
     } else {
       document.body.style.overflow = "";
       document.body.style.touchAction = "";
-      document.removeEventListener("touchmove", preventScroll);
     }
-    return () => document.removeEventListener("touchmove", preventScroll);
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+    };
   }, [dragging]);
 
   const handleTouchStart = (e) => {
@@ -31,14 +30,20 @@ export function useSwipeToClose(onClose, threshold = 80) {
 
   const handleTouchMove = (e) => {
     if (!dragging) return;
+
     const diff = e.touches[0].clientY - startY.current;
+
+    // ✅ Prevent background scroll (critical for iOS)
     if (diff > 0) e.preventDefault();
-    if (diff > 0) setTranslateY(diff * 0.85);
+
+    if (diff > 0) setTranslateY(diff * 0.85); // dampen movement
   };
 
   const handleTouchEnd = () => {
     if (!dragging) return;
+
     if (translateY > threshold) {
+      // ✅ smooth slide down before closing
       setTranslateY(window.innerHeight * 0.9);
       setDragging(false);
       setTimeout(() => {
@@ -46,6 +51,7 @@ export function useSwipeToClose(onClose, threshold = 80) {
         onClose?.();
       }, 180);
     } else {
+      // Snap back if not far enough
       setTranslateY(0);
       setDragging(false);
     }
