@@ -1084,3 +1084,19 @@ body.debug-vp::before {
 .modal-wide .modal-footer {
   display: none !important; /* hide if not needed */
 }
+
+/* ===== Fix: Instagram comment modal fills edge-to-edge inside backdrop ===== */
+.modal.modal-wide {
+  max-width: none !important;
+  width: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+}
+
+.modal.modal-wide .modal-body {
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
