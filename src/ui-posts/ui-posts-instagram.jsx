@@ -460,12 +460,8 @@ const poolNames =
   };
 const doShare = () => {
   if (disabled) return;
-  if (isMobile) {
-    setShareSheetOpen(true);
-  } else {
-    setShared(true);
-    onAction("share", { id });
-  }
+  setShareSheetOpen(true); // ✅ open the sheet for both desktop and mobile
+  onAction("share_open", { id, surface: isMobile ? "mobile" : "desktop" });
 };
   const toggleSave = () => {
     if (disabled) return;
@@ -1226,29 +1222,29 @@ marginTop: "auto",
 </MobileSheet>
       )}
 
-      {isMobile && (
-  <ShareSheet
-  open={shareSheetOpen}
-  onClose={() => setShareSheetOpen(false)}
-  onShare={(friendName) => {
-    setShared(true);
-    onAction("share_target", { id, friend: friendName });
-    setShareSheetOpen(false);
-  }}
-/>
-)}
-
-{isMobile && (
+    {/* --- Share Sheet (mobile vs desktop) --- */}
+{isMobile ? (
   <ShareSheet
     open={shareSheetOpen}
     onClose={() => setShareSheetOpen(false)}
-    onShare={(friendName) => {
+    onShare={(data) => {
       setShared(true);
-      onAction("share_target", { id, friend: friendName });
+      onAction("share_target", { id, friend: data.friend || data.friends, message: data.message });
+      setShareSheetOpen(false);
+    }}
+  />
+) : (
+  <ShareSheetDesktop
+    open={shareSheetOpen}
+    onClose={() => setShareSheetOpen(false)}
+    onShare={(data) => {
+      setShared(true);
+      onAction("share_target", { id, friends: data.friends, message: data.message });
       setShareSheetOpen(false);
     }}
   />
 )}
+
 
 <style>{`
   /* --- Keyframes for sheet animation --- */
