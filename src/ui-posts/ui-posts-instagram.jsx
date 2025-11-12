@@ -943,7 +943,7 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
     </>
   ) : (
     <>
-      {/* Show up to 5 users as ghost placeholders */}
+      {/* Show up to 5 neutral users */}
       {Array.from({ length: Math.min(5, baseComments) }).map((_, i) => (
         <div
           key={`ghost-${i}`}
@@ -963,30 +963,28 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
             height={32}
             style={{
               borderRadius: "999px",
-              background: "#f3f4f6",
+              background: "#e5e7eb",
               flexShrink: 0,
             }}
           />
+
+          {/* Comment text placeholder */}
           <div style={{ flex: 1 }}>
             <div
               style={{
-                height: 12,
-                borderRadius: 999,
-                background: "linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 37%,#e5e7eb 63%)",
-                backgroundSize: "400% 100%",
-                animation: "ghostShimmer 1.4s ease infinite",
-                width: "70%",
-                marginBottom: 6,
+                fontWeight: 600,
+                fontSize: 14,
+                marginBottom: 4,
               }}
-            />
+            >
+              User {i + 1}
+            </div>
             <div
               style={{
+                background: "#e5e7eb",
+                borderRadius: 6,
                 height: 12,
-                borderRadius: 999,
-                background: "linear-gradient(90deg,#e5e7eb 25%,#f3f4f6 37%,#e5e7eb 63%)",
-                backgroundSize: "400% 100%",
-                animation: "ghostShimmer 1.4s ease infinite",
-                width: "85%",
+                width: "80%",
               }}
             />
           </div>
@@ -1036,14 +1034,6 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
     </>
   )}
 </div>
-
-{/* 👻 Ghost shimmer animation */}
-<style>{`
-@keyframes ghostShimmer {
-  0% { background-position: -200px 0; }
-  100% { background-position: calc(200px + 100%) 0; }
-}
-`}</style>
 
       
      {/* Comment input */}
