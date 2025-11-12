@@ -517,21 +517,6 @@ const doShare = () => {
 
 const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(false));
 
-// 👇 Add these at the top of your desktop comment modal section (still inside PostCard)
-const [aspectRatio, setAspectRatio] = useState(1);
-const containerRef = useRef(null);
-
-useEffect(() => {
-  const handleResize = () => {
-    if (!containerRef.current) return;
-    const maxHeight = window.innerHeight * 0.82; // 82vh cap
-    const width = containerRef.current.offsetWidth;
-    containerRef.current.style.height = `${Math.min(maxHeight, width / aspectRatio)}px`;
-  };
-  handleResize();
-  window.addEventListener("resize", handleResize);
-  return () => window.removeEventListener("resize", handleResize);
-}, [aspectRatio]);
 
 const VerifiedBadge = (
   <svg
@@ -1194,17 +1179,15 @@ marginTop: "auto",
     </button>
   {/* LEFT: Post Image */}
 <div
-  ref={containerRef}
   style={{
     flex: 1,
     background: "#000",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    height: "100%",
     maxWidth: "calc(100% - 360px)",
     overflow: "hidden",
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
   }}
 >
   {(image?.url || displayImageObj?.url) ? (
@@ -1214,18 +1197,14 @@ marginTop: "auto",
       style={{
         width: "100%",
         height: "100%",
-        objectFit: "contain",
+        objectFit: "cover", // ✅ match feed framing
+        objectPosition: `${
+          image?.focalX != null ? image.focalX : 50
+        }% ${
+          image?.focalY != null ? image.focalY : 50
+        }%`, // ✅ same focal point logic
         backgroundColor: "#000",
         display: "block",
-      }}
-      onLoad={(e) => {
-        const ratio = e.target.naturalWidth / e.target.naturalHeight;
-        setAspectRatio(ratio || 1);
-        if (containerRef.current) {
-          const maxHeight = window.innerHeight * 0.82;
-          const width = containerRef.current.offsetWidth;
-          containerRef.current.style.height = `${Math.min(maxHeight, width / ratio)}px`;
-        }
       }}
     />
   ) : (
