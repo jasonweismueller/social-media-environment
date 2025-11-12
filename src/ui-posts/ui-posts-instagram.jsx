@@ -1229,7 +1229,8 @@ const poolNames =
     display: "flex",
     alignItems: "center",
     gap: 8,
-    position: "sticky",
+    position: "relative",
+marginTop: "auto",
     bottom: 0,
   }}
 >
