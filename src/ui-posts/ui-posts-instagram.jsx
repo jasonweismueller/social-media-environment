@@ -1548,13 +1548,14 @@ marginTop: "auto",
 
       {isMobile && (
   <ShareSheet
-    open={shareSheetOpen}
-    onClose={() => setShareSheetOpen(false)}
-    onShare={(friendName) => {
-      onAction("share_target", { id, friend: friendName });
-      setShareSheetOpen(false);
-    }}
-  />
+  open={shareSheetOpen}
+  onClose={() => setShareSheetOpen(false)}
+  onShare={(friendName) => {
+    setShared(true);
+    onAction("share_target", { id, friend: friendName });
+    setShareSheetOpen(false);
+  }}
+/>
 )}
 
 <style>{`
