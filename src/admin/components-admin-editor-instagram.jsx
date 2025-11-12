@@ -293,7 +293,7 @@ export function AdminPostEditor({
           setUploadingPoster={setUploadingPoster}
         />
 
-        <h4 className="section-title">Ad</h4>
+       <h4 className="section-title">Ad</h4>
 <fieldset className="fieldset">
   <label>Ad type
     <select
@@ -303,9 +303,11 @@ export function AdminPostEditor({
     >
       <option value="none">None</option>
       <option value="ad">Sponsored Ad</option>
+      <option value="influencer">Influencer Partnership</option> {/* 👈 NEW */}
     </select>
   </label>
 
+  {/* Sponsored Ad (CTA type) */}
   {editing.adType === "ad" && (
     <>
       <label>Call-to-Action Text
@@ -329,7 +331,27 @@ export function AdminPostEditor({
         />
       </label>
       <div className="subtle" style={{ marginTop: 4 }}>
-        If a URL is provided, clicking the call-to-action button will open it.
+        Clicking the call-to-action button will open this URL.
+      </div>
+    </>
+  )}
+
+  {/* Influencer Partnership (disclosure only) */}
+  {editing.adType === "influencer" && (
+    <>
+      <label>Brand partner name
+        <input
+          className="input"
+          value={editing.adPartner || ""}
+          onChange={(e) =>
+            setEditing({ ...editing, adPartner: e.target.value })
+          }
+          placeholder="e.g. Nike, Samsung"
+        />
+      </label>
+      <div className="subtle" style={{ marginTop: 4 }}>
+        Appears below the username as “Paid partnership with&nbsp;
+        <strong>{editing.adPartner || "Brand"}</strong>”.
       </div>
     </>
   )}

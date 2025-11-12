@@ -317,7 +317,7 @@ export function PostCard({
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
-const isSponsored = post.adType === "ad";
+const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
   ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_times: effectiveFlags.randomize_times }
   : effectiveFlags;
@@ -577,28 +577,45 @@ const poolNames =
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
     <span
+  style={{
+    fontWeight: 600,
+    fontSize: 14,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  }}
+>
+  {displayAuthor}
+</span>
+
+{/* Sponsored Ad (CTA type) */}
+{post.adType === "ad" && (
+  <span
     style={{
-      fontWeight: 600,
-      fontSize: 14,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap"
+      fontSize: 12,
+      color: "#4b5563", // darker grey
+      marginTop: 1,
+      lineHeight: 1.1,
     }}
   >
-    {displayAuthor}
+    Sponsored
   </span>
-  {post.adType === "ad" && (
-    <span
-      style={{
-        fontSize: 12,
-        color: "#4b5563",  // darker grey for more realistic "Sponsored"
-        marginTop: 1,
-        lineHeight: 1.1,
-      }}
-    >
-      Sponsored
-    </span>
-  )}
+)}
+
+{/* Influencer Partnership Disclosure */}
+{post.adType === "influencer" && post.adPartner && (
+  <span
+    style={{
+      fontSize: 12,
+      color: "#737373", // lighter IG-style grey
+      marginTop: 1,
+      lineHeight: 1.1,
+    }}
+  >
+    Paid partnership with{" "}
+    <strong style={{ color: "#111" }}>{post.adPartner}</strong>
+  </span>
+)}
 </div>
         </div>
 
