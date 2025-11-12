@@ -1052,44 +1052,242 @@ const poolNames =
         </div>
       )}
 
-      {openComments && (
-        <Modal
-          title="Comments"
-          onClose={() => { setOpenComments(false); onAction("comment_close", { id }); }}
-          wide={false}
+   {/* Comments */}
+{openComments && (
+  (isMobile ? (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => { if (e.target === e.currentTarget) setOpenComments(false); }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 480,
+          background: "#fff",
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          animation: "igSheetSlideUp 0.42s cubic-bezier(0.25,1,0.5,1)",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          position: "relative",
+        }}
+      >
+        {/* Drag handle */}
+        <div
+          style={{
+            width: 38,
+            height: 4,
+            background: "rgba(0,0,0,.2)",
+            borderRadius: 999,
+            margin: "8px auto 14px",
+          }}
+        />
+
+        {/* Header */}
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: 16,
+            textAlign: "center",
+            paddingBottom: 10,
+            borderBottom: "1px solid #eee",
+          }}
         >
-          {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : [0]).map((_, i) => (
-            <div key={`ig-ghost-${i}`} className="ghost-row" style={{ display: "flex", alignItems: "flex-start", gap: ".6rem", marginTop: i === 0 ? 2 : 10 }}>
-              <div className="ghost-avatar sm" />
-              <div className="ghost-lines" style={{ flex: 1 }}>
-                <div className="ghost-line w-80" />
-                <div className="ghost-line w-50" />
-              </div>
-            </div>
-          ))}
+          Comments
+        </div>
 
-          {!!mySubmittedComment && (
-            <div className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: shouldShowGhosts ? 10 : 2 }}>
-              <img src={neutralAvatarDataUrl(28)} alt="" width={28} height={28} style={{ display: "block", borderRadius: "999px", flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: ".9rem", fontWeight: 600, lineHeight: 1.2 }}>{String(myParticipantId)}</div>
-                <div style={{ marginTop: 2, color: "#111827", fontSize: ".95rem", lineHeight: 1.35, whiteSpace: "pre-wrap" }}>
-                  {mySubmittedComment}
-                </div>
+        {/* Content */}
+        <div style={{ flex: 1, padding: "20px", textAlign: "center" }}>
+          {baseComments + participantComments > 0 ? (
+            <div>Comments will appear here</div>
+          ) : (
+            <>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
+                No comments yet
               </div>
-            </div>
+              <div style={{ color: "#6b7280", fontSize: 14 }}>
+                Start the conversation.
+              </div>
+            </>
           )}
+        </div>
 
-          <div style={{ marginTop: 12 }}>
-            <textarea className="textarea" rows={4} value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Write your comment..." disabled={disabled} />
+        {/* Comment input */}
+        <div
+          style={{
+            borderTop: "1px solid #e5e7eb",
+            padding: "8px 12px",
+            background: "#fff",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            position: "sticky",
+            bottom: 0,
+          }}
+        >
+          <img
+            src={neutralAvatarDataUrl(32)}
+            alt=""
+            width={32}
+            height={32}
+            style={{ borderRadius: "999px" }}
+          />
+          <input
+            type="text"
+            placeholder="Start the conversation..."
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            style={{
+              flex: 1,
+              border: "none",
+              outline: "none",
+              background: "#f9fafb",
+              borderRadius: 20,
+              padding: "8px 14px",
+              fontSize: 14,
+            }}
+          />
+          <button
+            onClick={onSubmitComment}
+            disabled={!commentText.trim()}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: commentText.trim() ? "#0095f6" : "#9ca3af",
+              fontWeight: 600,
+              fontSize: 14,
+            }}
+          >
+            Post
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <Modal
+      title="Comments"
+      onClose={() => { setOpenComments(false); onAction("comment_close", { id }); }}
+      wide={false}
+    >
+      {(shouldShowGhosts
+        ? Array.from({ length: Math.min(3, baseComments) })
+        : [0]
+      ).map((_, i) => (
+        <div
+          key={`ig-ghost-${i}`}
+          className="ghost-row"
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: ".6rem",
+            marginTop: i === 0 ? 2 : 10,
+          }}
+        >
+          <div className="ghost-avatar sm" />
+          <div className="ghost-lines" style={{ flex: 1 }}>
+            <div className="ghost-line w-80" />
+            <div className="ghost-line w-50" />
           </div>
+        </div>
+      ))}
 
-          <div className="row-end" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-            <button className="btn" onClick={() => { setOpenComments(false); onAction("comment_close", { id }); }}>Close</button>
-            <button className="btn primary" onClick={onSubmitComment} disabled={!commentText.trim() || disabled}>Post</button>
+      {!!mySubmittedComment && (
+        <div
+          className="ghost-row"
+          style={{
+            alignItems: "flex-start",
+            gap: ".6rem",
+            marginTop: shouldShowGhosts ? 10 : 2,
+          }}
+        >
+          <img
+            src={neutralAvatarDataUrl(28)}
+            alt=""
+            width={28}
+            height={28}
+            style={{
+              display: "block",
+              borderRadius: "999px",
+              flexShrink: 0,
+            }}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: ".9rem",
+                fontWeight: 600,
+                lineHeight: 1.2,
+              }}
+            >
+              {String(myParticipantId)}
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                color: "#111827",
+                fontSize: ".95rem",
+                lineHeight: 1.35,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {mySubmittedComment}
+            </div>
           </div>
-        </Modal>
+        </div>
       )}
+
+      <div style={{ marginTop: 12 }}>
+        <textarea
+          className="textarea"
+          rows={4}
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          placeholder="Write your comment..."
+          disabled={disabled}
+        />
+      </div>
+
+      <div
+        className="row-end"
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 8,
+          marginTop: 8,
+        }}
+      >
+        <button
+          className="btn"
+          onClick={() => {
+            setOpenComments(false);
+            onAction("comment_close", { id });
+          }}
+        >
+          Close
+        </button>
+        <button
+          className="btn primary"
+          onClick={onSubmitComment}
+          disabled={!commentText.trim() || disabled}
+        >
+          Post
+        </button>
+      </div>
+    </Modal>
+  ))
+)}
 
       {isMobile && (
         <MobileSheet open={menuOpenMobile} onClose={closeMobileMenu}>
