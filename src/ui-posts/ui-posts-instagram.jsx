@@ -794,8 +794,8 @@ const poolNames =
     setOpenComments(true);
     onAction("comment_open", { id });
   };
-  const doShare = () => {
-  if (disabled || shared) return;
+const doShare = () => {
+  if (disabled) return;
   if (isMobile) {
     setShareSheetOpen(true);
   } else {
