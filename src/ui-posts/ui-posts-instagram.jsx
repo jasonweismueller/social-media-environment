@@ -830,11 +830,19 @@ const VerifiedBadge = (
       </div>
 
       {/* Desktop-only likes label with the word “likes” */}
-      {!isMobile && likes > 0 && (
-        <div style={{ padding: "0 12px 6px 12px", fontWeight: 600 }}>
-          {likes.toLocaleString()} likes
-        </div>
-      )}
+     {!isMobile && likes > 0 && (
+  <div
+    style={{
+      padding: "0 12px 6px 12px",
+      fontWeight: 600,
+      fontSize: 14,              // ✅ match caption size
+      lineHeight: 1.4,           // ✅ same rhythm
+      color: "#111827",          // consistent neutral text
+    }}
+  >
+    {likes.toLocaleString()} likes
+  </div>
+)}
 
       {/* Caption with IG PostText (username floats for first line) */}
       {text?.trim() && (
