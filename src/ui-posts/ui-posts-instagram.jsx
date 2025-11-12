@@ -6,6 +6,7 @@ import { IGCarousel } from "../ui-core/ui-ig-carousel";
 import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
+import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
 
 
 
@@ -1235,6 +1236,18 @@ marginTop: "auto",
     setShareSheetOpen(false);
   }}
 />
+)}
+
+{isMobile && (
+  <ShareSheet
+    open={shareSheetOpen}
+    onClose={() => setShareSheetOpen(false)}
+    onShare={(friendName) => {
+      setShared(true);
+      onAction("share_target", { id, friend: friendName });
+      setShareSheetOpen(false);
+    }}
+  />
 )}
 
 <style>{`
