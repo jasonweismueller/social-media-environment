@@ -861,7 +861,6 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
 {openComments && (
  (isMobile ? (
   <div
-  {...bind}
   role="dialog"
   className="comment-sheet"
   aria-modal="true"
@@ -872,41 +871,44 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
   style={{
     position: "fixed",
     inset: 0,
-    background: "rgba(0,0,0,0.5)",
+    background: "rgba(0,0,0,0.5)", // backdrop stays fixed
     display: "flex",
     alignItems: "flex-end",
     justifyContent: "center",
     zIndex: 9999,
-    transform: `translateY(${translateY}px)`,
-    transition: dragging ? "none" : "transform 0.3s ease",
   }}
 >
+  {/* 👇 Only this inner sheet gets the swipe transform */}
+  <div
+    {...bind}
+    style={{
+      width: "100%",
+      maxWidth: 480,
+      background: "#fff",
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      animation: "igSheetSlideUp 0.5s cubic-bezier(0.25,1,0.5,1)",
+      display: "flex",
+      flexDirection: "column",
+      maxHeight: "85vh",
+      minHeight: "55vh",
+      overflowY: "auto",
+      position: "relative",
+      transform: `translateY(${translateY}px)`,   // ✅ apply swipe only here
+      transition: dragging ? "none" : "transform 0.3s ease",
+    }}
+  >
+    {/* Drag handle */}
     <div
       style={{
-        width: "100%",
-        maxWidth: 480,
-        background: "#fff",
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        animation: "igSheetSlideUp 0.5s cubic-bezier(0.25,1,0.5,1)",
-        display: "flex",
-        flexDirection: "column",
-        maxHeight: "85vh",
-        minHeight: "55vh",
-        overflowY: "auto",
-        position: "relative",
+        width: 38,
+        height: 4,
+        background: "rgba(0,0,0,.2)",
+        borderRadius: 999,
+        margin: "8px auto 14px",
       }}
-    >
-      {/* Drag handle */}
-      <div
-        style={{
-          width: 38,
-          height: 4,
-          background: "rgba(0,0,0,.2)",
-          borderRadius: 999,
-          margin: "8px auto 14px",
-        }}
-      />
+    />
+    
 
       {/* Header */}
       <div
