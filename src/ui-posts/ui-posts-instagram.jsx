@@ -1131,15 +1131,6 @@ const poolNames =
     </>
   ) : (
     <>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
-          {baseComments + participantComments} comment{baseComments + participantComments > 1 ? "s" : ""}
-        </div>
-        <div style={{ color: "#6b7280", fontSize: 14 }}>
-          Join the conversation.
-        </div>
-      </div>
-
       {(shouldShowGhosts ? Array.from({ length: Math.min(3, baseComments) }) : []).map((_, i) => (
         <div
           key={`mobile-ghost-${i}`}
@@ -1175,7 +1166,7 @@ const poolNames =
                 background: "#e5e7eb",
                 borderRadius: 6,
                 height: 12,
-                width: `${70 + Math.random() * 20}%`,
+                width: `${70 + i * 7}%`,   // ✅ fixed deterministic width (no flicker)
               }}
             />
           </div>
@@ -1253,26 +1244,32 @@ marginTop: "auto",
     style={{ borderRadius: "999px" }}
   />
 
-  <input
-    type="text"
-    placeholder="Start the conversation..."
-    value={commentText}
-    onChange={(e) => setCommentText(e.target.value)}
-    inputMode="text"
-    enterKeyHint="send"
-    autoCorrect="off"
-    autoCapitalize="sentences"
-    style={{
-      flex: 1,
-      border: "none",
-      outline: "none",
-      background: "#f9fafb",
-      borderRadius: 20,
-      padding: "10px 14px",
-      fontSize: 16, // ✅ prevents iOS zoom
-      lineHeight: 1.3,
-    }}
-  />
+ <input
+  type="text"
+  placeholder={
+    baseComments + participantComments === 0
+      ? "Start the conversation..."
+      : "Join the conversation..."
+  }
+  value={commentText}
+  onChange={(e) => setCommentText(e.target.value)}
+  inputMode="text"
+  enterKeyHint="send"
+  autoCorrect="off"
+  autoCapitalize="sentences"
+  autoComplete="off"
+  spellCheck="false"
+  style={{
+    flex: 1,
+    border: "none",
+    outline: "none",
+    background: "#f9fafb",
+    borderRadius: 20,
+    padding: "10px 14px",
+    fontSize: 16,
+    lineHeight: 1.3,
+  }}
+/>
 
   <button
     type="submit"
