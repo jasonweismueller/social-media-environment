@@ -251,10 +251,22 @@ function MobileSheet({ open, onClose }) {
     </div>
   );
 }
-
 function ShareSheet({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
+  const [keyboardOffset, setKeyboardOffset] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleFocus = () => setKeyboardOffset(280); // approximate iOS keyboard height
+    const handleBlur = () => setKeyboardOffset(0);
+
+    window.addEventListener("focusin", handleFocus);
+    window.addEventListener("focusout", handleBlur);
+    return () => {
+      window.removeEventListener("focusin", handleFocus);
+      window.removeEventListener("focusout", handleBlur);
+    };
+  }, []);
 
   if (!open) return null;
 
@@ -310,6 +322,8 @@ function ShareSheet({ open, onClose, onShare }) {
           overflowY: "auto",
           paddingBottom: 12,
           color: "#111",
+          transform: `translateY(-${keyboardOffset}px)`,
+          transition: "transform 0.25s ease",
         }}
       >
         {/* Drag handle */}
@@ -434,7 +448,7 @@ function ShareSheet({ open, onClose, onShare }) {
               background: "#f3f4f6",
               borderRadius: 10,
               padding: "10px 14px",
-              fontSize: 15,
+              fontSize: 16, // stops iOS zoom
               color: "#111",
             }}
           />
@@ -460,7 +474,6 @@ function ShareSheet({ open, onClose, onShare }) {
         </div>
       </div>
 
-      {/* Animation */}
       <style>{`
         @keyframes igSheetSlideUp {
           from { transform: translateY(100%); opacity: 0; }
