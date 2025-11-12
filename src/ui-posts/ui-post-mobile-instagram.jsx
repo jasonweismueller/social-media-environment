@@ -1,8 +1,8 @@
 import React from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
 
-/* --- Swipe-to-close helper --- */
-function useSwipeToClose(onClose, threshold = 80) {
+/* --- Swipe-to-close helper with momentum slide --- */
+export function useSwipeToClose(onClose, threshold = 80) {
   const startY = React.useRef(0);
   const [translateY, setTranslateY] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
@@ -15,17 +15,25 @@ function useSwipeToClose(onClose, threshold = 80) {
   const handleTouchMove = (e) => {
     if (!dragging) return;
     const diff = e.touches[0].clientY - startY.current;
-    if (diff > 0) setTranslateY(diff * 0.85); // dampen movement
+    if (diff > 0) setTranslateY(diff * 0.85); // dampen movement slightly
   };
 
   const handleTouchEnd = () => {
     if (!dragging) return;
+
     if (translateY > threshold) {
-      onClose?.();
+      // ✅ smooth “momentum” slide-off before closing
+      setTranslateY(window.innerHeight * 0.9);
+      setDragging(false);
+      setTimeout(() => {
+        setTranslateY(0);
+        onClose?.();
+      }, 180); // short momentum duration (~180ms)
     } else {
+      // snap back if not far enough
       setTranslateY(0);
+      setDragging(false);
     }
-    setDragging(false);
   };
 
   return {
