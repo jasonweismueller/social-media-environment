@@ -62,6 +62,24 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
           flexDirection: "column",
         }}
       >
+          {/* Close Button */}
+  <button
+    onClick={onClose}
+    aria-label="Close"
+    style={{
+      position: "absolute",
+      top: 12,
+      right: 12,
+      border: "none",
+      background: "transparent",
+      fontSize: 22,
+      cursor: "pointer",
+      color: "#737373",
+      lineHeight: 1,
+    }}
+  >
+    ×
+  </button>
         {/* Header */}
         <div
           style={{
