@@ -517,6 +517,25 @@ const doShare = () => {
 
 const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(false));
 
+const VerifiedBadge = (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    width="14"
+    height="14"
+    style={{ flexShrink: 0, marginLeft: 3 }}
+  >
+    <path
+      fill="#1DA1F2"
+      d="M512 256l-63.3 36.5 7.6 72.7-68.3 39.5-27.2 67.3-72.7-7.6L256 512l-36.5-63.3-72.7 7.6-39.5-68.3-67.3-27.2 7.6-72.7L0 256l63.3-36.5-7.6-72.7 68.3-39.5 27.2-67.3 72.7 7.6L256 0l36.5 63.3 72.7-7.6 39.5 68.3 67.3 27.2-7.6 72.7L512 256z"
+    />
+    <path
+      fill="#fff"
+      d="M227.3 342.6L134 249.3l36.4-36.4 56.9 56.9 114.3-114.3 36.4 36.4-150.7 150.7z"
+    />
+  </svg>
+);
+
   return (
     <article
       ref={refFromTracker}
@@ -546,24 +565,7 @@ const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(fal
   }}
 >
   {displayAuthor}
-  {post.badge && (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 512 512"
-    width="14"
-    height="14"
-    style={{ flexShrink: 0, marginLeft: 3 }}
-  >
-    <path
-      fill="#1DA1F2"
-      d="M512 256l-63.3 36.5 7.6 72.7-68.3 39.5-27.2 67.3-72.7-7.6L256 512l-36.5-63.3-72.7 7.6-39.5-68.3-67.3-27.2 7.6-72.7L0 256l63.3-36.5-7.6-72.7 68.3-39.5 27.2-67.3 72.7 7.6L256 0l36.5 63.3 72.7-7.6 39.5 68.3 67.3 27.2-7.6 72.7L512 256z"
-    />
-    <path
-      fill="#fff"
-      d="M227.3 342.6L134 249.3l36.4-36.4 56.9 56.9 114.3-114.3 36.4 36.4-150.7 150.7z"
-    />
-  </svg>
-)}
+  {post.badge && VerifiedBadge}
 </span>
 
 {/* Sponsored Ad (CTA type) */}
@@ -1229,31 +1231,55 @@ marginTop: "auto",
           borderBottom: "1px solid #eee",
         }}
       >
-        <img
-          src={neutralAvatarDataUrl(32)}
-          alt=""
-          width={32}
-          height={32}
-          style={{ borderRadius: "999px" }}
-        />
+       <img
+  src={effectiveAvatarUrl}
+  alt={displayAuthor}
+  width={32}
+  height={32}
+  style={{ borderRadius: "999px", objectFit: "cover" }}
+/>
         <span style={{ fontWeight: 600, fontSize: 14 }}>
           {displayAuthor}
+          {post.badge && VerifiedBadge}
         </span>
       </div>
 
       {/* Caption */}
-      {text?.trim() && (
-        <div
-          style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid #eee",
-            fontSize: 14,
-          }}
-        >
-          <span style={{ fontWeight: 600 }}>{displayAuthor}</span>{" "}
-          {text}
-        </div>
-      )}
+     { text?.trim() && (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "14px 16px 8px 16px",
+      borderBottom: "none",          // 🚫 remove extra line
+    }}
+  >
+    <img
+      src={effectiveAvatarUrl}
+      alt={displayAuthor}
+      width={32}
+      height={32}
+      style={{ borderRadius: "999px", objectFit: "cover" }}
+    />
+    <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{displayAuthor}</span>
+        {post.badge && VerifiedBadge}
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: "#111827",
+          lineHeight: 1.4,
+          marginTop: 2,
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Comments */}
       <div

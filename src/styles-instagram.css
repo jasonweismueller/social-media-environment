@@ -1100,3 +1100,8 @@ body.debug-vp::before {
   background: transparent !important;
   box-shadow: none !important;
 }
+
+/* ===== Fix: Prevent wide modal from overlapping top rail ===== */
+.modal.modal-wide {
+  margin-top: calc(var(--rail-gap, 60px)); /* ≈ 52px top rail + small buffer */
+}
