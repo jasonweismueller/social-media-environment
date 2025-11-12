@@ -1104,25 +1104,67 @@ marginTop: "auto",
       </div>
     </div>
   ) : (
-    <Modal
-  title=""
+   <Modal
   onClose={() => {
     setOpenComments(false);
     onAction("comment_close", { id });
   }}
   wide={true}
+  title={null} // ensure no built-in header is shown
 >
-   <div
+  <div
     style={{
+      position: "relative", // for the close button
       display: "flex",
       flexDirection: "row",
-      width: "min(860px, 90vw)",
+      width: "100%", // fill entire modal wrapper
+      maxWidth: "min(860px, 90vw)",
       maxHeight: "82vh",
-      marginTop: "4vh",               // ✅ keeps modal below top rail
+      margin: "4vh auto",
       overflow: "hidden",
       borderRadius: 12,
+      background: "#fff",
     }}
   >
+    {/* 🔘 Close button */}
+    <button
+      onClick={() => {
+        setOpenComments(false);
+        onAction("comment_close", { id });
+      }}
+      aria-label="Close"
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 12,
+        background: "rgba(255,255,255,0.8)",
+        border: "none",
+        borderRadius: "50%",
+        width: 30,
+        height: 30,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+        zIndex: 10,
+      }}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        stroke="#111"
+        strokeWidth="2"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
     {/* LEFT: Post Image */}
     <div
       style={{
