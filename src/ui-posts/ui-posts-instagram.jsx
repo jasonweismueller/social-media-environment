@@ -1093,15 +1093,7 @@ const poolNames =
 
       {isMobile && (
         <MobileSheet open={menuOpenMobile} onClose={closeMobileMenu}>
-  <div style={{ display: "flex", flexDirection: "column" }}>
-    <button className="btn" style={sheetBtn()} disabled>Save</button>
-    <button className="btn" style={sheetBtn()} disabled>Add to Favourites</button>
-    <button className="btn" style={sheetBtn()} disabled>Unfollow</button>
-    <button className="btn" style={sheetBtn()} disabled>About this account</button>
-    <button className="btn" style={sheetBtn()} disabled>Why you're seeing this post</button>
-    <button className="btn" style={sheetBtn()} disabled>Hide</button>
-    <button className="btn" style={sheetBtn({ danger: true })}>Report</button>
-  </div>
+  
 </MobileSheet>
       )}
 
@@ -1113,6 +1105,17 @@ const poolNames =
           100% { opacity: 0; transform: translateY(6px); }
         }
       `}</style>
+      <style>{`
+  .ig-sheet {
+    animation: igSheetSlideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    
+  }
+  [role="dialog"] {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+`}</style>
+
     </article>
   );
 }
