@@ -5,7 +5,8 @@ import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
 import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
-import { MobileSheet, ShareSheet } from "./ui-post-mobile-instagram";
+import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
+
 
 
 /* ---------------- Small utils ---------------- */
@@ -516,6 +517,8 @@ const doShare = () => {
     onAction("video_play", { id });
   };
 
+const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(false));
+
   return (
     <article
       ref={refFromTracker}
@@ -854,24 +857,30 @@ const doShare = () => {
       )}
 
    {/* Comments */}
+   
 {openComments && (
  (isMobile ? (
   <div
-    role="dialog"
-    className="comment-sheet"
-    aria-modal="true"
-    tabIndex="-1"
-    onClick={(e) => { if (e.target === e.currentTarget) setOpenComments(false); }}
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.5)",
-      display: "flex",
-      alignItems: "flex-end",
-      justifyContent: "center",
-      zIndex: 9999,
-    }}
-  >
+  {...bind}
+  role="dialog"
+  className="comment-sheet"
+  aria-modal="true"
+  tabIndex="-1"
+  onClick={(e) => {
+    if (e.target === e.currentTarget) setOpenComments(false);
+  }}
+  style={{
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.5)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    zIndex: 9999,
+    transform: `translateY(${translateY}px)`,
+    transition: dragging ? "none" : "transform 0.3s ease",
+  }}
+>
     <div
       style={{
         width: "100%",
