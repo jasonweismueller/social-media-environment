@@ -1072,65 +1072,51 @@ body.debug-vp::before {
   z-index: 2;
 }
 
-/* Removes the extra inner box and padding for wide modals */
+
+/* ===========================================================
+   Instagram-style Wide Modal (Desktop Comments)
+   =========================================================== */
+
+/* Remove padding/inner box and header/footer bars */
 .modal-wide .modal-body {
   background: transparent !important;
   padding: 0 !important;
   box-shadow: none !important;
 }
-.modal-wide .modal-head {
-  display: none !important; /* hides the top title bar, Instagram-style */
-}
+.modal-wide .modal-head,
 .modal-wide .modal-footer {
-  display: none !important; /* hide if not needed */
+  display: none !important;
 }
 
-/* ===== Fix: Instagram comment modal fills edge-to-edge inside backdrop ===== */
+/* One clean definition of .modal.modal-wide */
 .modal.modal-wide {
   max-width: none !important;
   width: auto !important;
   display: flex !important;
-  align-items: center !important;
+  align-items: flex-start !important;   /* stay near top rail */
   justify-content: center !important;
+  margin-top: 60px !important;          /* clear top navigation bar */
   padding: 0 !important;
+  height: auto !important;              /* shrink-wrap to content height */
+  max-height: calc(100vh - 60px);       /* safety cap */
 }
 
+/* Inner body should have no forced height/padding */
 .modal.modal-wide .modal-body {
   padding: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-/* ===== Fix: Prevent wide modal from overlapping top rail ===== */
-.modal.modal-wide {
-  margin-top: calc(var(--rail-gap, 60px)); /* ≈ 52px top rail + small buffer */
-}
-
-/* ===========================================================
-   IG Comment Modal — full-bleed, no top/bottom padding
-   =========================================================== */
-.modal.modal-wide {
-  align-items: flex-start !important;     /* prevent vertical centering */
-  justify-content: center !important;
-  margin-top: 60px !important;            /* clear top rail */
-  height: calc(100vh - 60px);             /* fill viewport below rail */
-  padding: 0 !important;
-}
-
-.modal.modal-wide .modal-body {
-  padding: 0 !important;                  /* remove default inner padding */
   margin: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  overflow: hidden !important;
+  overflow: visible !important;
 }
 
+/* Prevent any inner wrapper from introducing vertical gaps */
 .modal.modal-wide > div {
-  margin: 0 !important;                   /* remove outer box gap */
-  height: 100% !important;
+  margin: 0 !important;
+  height: auto !important;
 }
 
-/* Ensure the comment/right column content touches edges vertically */
+/* Right column fills same height as image, no vertical padding */
 .modal.modal-wide .comment-pane {
   display: flex;
   flex-direction: column;
@@ -1138,14 +1124,4 @@ body.debug-vp::before {
   border-left: 1px solid var(--ig-line);
   background: #fff;
   overflow: hidden;
-}
-
-/* Optional: subtle fade shadows when scrolling comments */
-.comment-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 16px;
-  background: #fff;
-  mask-image: linear-gradient(to bottom, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
 }
