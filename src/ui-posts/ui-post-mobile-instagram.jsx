@@ -1,6 +1,104 @@
 import React from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
 
+
+
+/* --- Simple SVG icon set (lightweight, inline) --- */
+function QrIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <rect x="3" y="3" width="6" height="6" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <rect x="15" y="3" width="6" height="6" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <rect x="3" y="15" width="6" height="6" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <path d="M15 15h2v2h2v2h-4v-4Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StarIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        d="M12 17.3l6.2 3.7-1.7-7.2L22 9.3l-7.4-.6L12 2 9.4 8.7 2 9.3l5.5 4.5-1.7 7.2L12 17.3z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function UserMinusIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path d="M5 21v-1a7 7 0 0 1 14 0v1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path d="M16 11h6" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function UserCircleIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <path d="M5 21v-1a7 7 0 0 1 14 0v1" stroke="currentColor" strokeWidth="1.5" fill="none" />
+    </svg>
+  );
+}
+
+function InfoIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <path d="M12 8h.01M11 12h1v4h1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HideIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+      <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ReportIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        d="M3 3h18v14H5l-2 4V3z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        fill="none"
+      />
+      <path
+        d="M12 8v4M12 16h.01"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+function sheetBtn({ danger = false, disabled = false } = {}) {
+  return {
+    width: "100%",
+    background: disabled ? "#374151" : (danger ? "#ef4444" : "#4b5563"),
+    color: "#fff",
+    border: 0,
+    padding: "10px 12px",
+    borderRadius: 10,
+    fontWeight: 600,
+    fontSize: 15,
+    opacity: disabled ? 0.75 : 1
+  };
+}
+
 /* ---------------- Mobile sheet (Instagram-style with icons) ---------------- */
 export function MobileSheet({ open, onClose }) {
   if (!open) return null;
