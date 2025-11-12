@@ -4,6 +4,19 @@ import { neutralAvatarDataUrl } from "../ui-core";
 
 
 /* --- Simple SVG icon set (lightweight, inline) --- */
+function SaveIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
 function QrIcon(props) {
   return (
     <svg viewBox="0 0 24 24" {...props}>
