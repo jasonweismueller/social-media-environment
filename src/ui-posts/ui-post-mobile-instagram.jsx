@@ -1,26 +1,37 @@
 import React from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
 
-/* --- Swipe-to-close helper with momentum slide --- */
-/* --- Swipe-to-close helper with touch-lock and momentum slide --- */
+/* -------------------------------------------------------------------------- */
+/* 🧭 Swipe-to-close Hook (with fade + safe scroll lock)                       */
+/* -------------------------------------------------------------------------- */
 export function useSwipeToClose(onClose, threshold = 80) {
   const startY = React.useRef(0);
   const [translateY, setTranslateY] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
 
-  // ✅ Prevent background scroll + pull-to-refresh
+  // ✅ Prevent background scroll + pull-to-refresh only while dragging
   React.useEffect(() => {
     const preventScroll = (e) => e.preventDefault();
+
     if (dragging) {
       document.body.style.overflow = "hidden";
       document.body.style.touchAction = "none";
-      window.addEventListener("touchmove", preventScroll, { passive: false });
+      window.addEventListener("touchmove", preventScroll, {
+        passive: false,
+        capture: true,
+      });
     } else {
       document.body.style.overflow = "";
       document.body.style.touchAction = "";
-      window.removeEventListener("touchmove", preventScroll);
+      window.removeEventListener("touchmove", preventScroll, {
+        capture: true,
+      });
     }
-    return () => window.removeEventListener("touchmove", preventScroll);
+
+    return () =>
+      window.removeEventListener("touchmove", preventScroll, {
+        capture: true,
+      });
   }, [dragging]);
 
   const handleTouchStart = (e) => {
@@ -32,15 +43,13 @@ export function useSwipeToClose(onClose, threshold = 80) {
     if (!dragging) return;
     const diff = e.touches[0].clientY - startY.current;
 
-    // ✅ Stop pull-to-refresh & body scroll
+    // ✅ block pull-to-refresh
     if (diff > 0) e.preventDefault();
-
     if (diff > 0) setTranslateY(diff * 0.85);
   };
 
   const handleTouchEnd = () => {
     if (!dragging) return;
-
     if (translateY > threshold) {
       setTranslateY(window.innerHeight * 0.9);
       setDragging(false);
@@ -63,6 +72,23 @@ export function useSwipeToClose(onClose, threshold = 80) {
       onTouchEnd: handleTouchEnd,
     },
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* 🎨 Icons                                                                   */
+/* -------------------------------------------------------------------------- */
+function SaveIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function QrIcon(props) {
@@ -137,9 +163,12 @@ function ReportIcon(props) {
   );
 }
 
-/* ---------------- Mobile sheet (Instagram-style with icons + swipe-to-close) ---------------- */
+/* -------------------------------------------------------------------------- */
+/* 📱 MobileSheet (Instagram-style menu with swipe-to-close)                  */
+/* -------------------------------------------------------------------------- */
 export function MobileSheet({ open, onClose }) {
   if (!open) return null;
+
   const { translateY, dragging, bind } = useSwipeToClose(onClose);
   const iconStyle = { width: 20, height: 20, flexShrink: 0 };
 
@@ -162,14 +191,14 @@ export function MobileSheet({ open, onClose }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.45)",
+        background: `rgba(0,0,0,${0.45 - Math.min(translateY / 800, 0.35)})`,
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
         zIndex: 9999,
         backdropFilter: "blur(4px)",
         WebkitBackdropFilter: "blur(4px)",
-        animation: "igBackdropFadeIn 0.35s ease",
+        transition: dragging ? "none" : "background 0.25s ease",
       }}
     >
       <div
@@ -259,16 +288,14 @@ export function MobileSheet({ open, onClose }) {
           from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
-        @keyframes igBackdropFadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
       `}</style>
     </div>
   );
 }
 
-/* ---------------- Share sheet (with swipe-to-close) ---------------- */
+/* -------------------------------------------------------------------------- */
+/* 📤 ShareSheet (friends + message + swipe-to-close)                         */
+/* -------------------------------------------------------------------------- */
 export function ShareSheet({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
@@ -290,13 +317,12 @@ export function ShareSheet({ open, onClose, onShare }) {
     avatar: neutralAvatarDataUrl(60),
   }));
 
-  const toggleSelect = (name) => {
+  const toggleSelect = (name) =>
     setSelectedFriends((prev) =>
       prev.includes(name)
         ? prev.filter((n) => n !== name)
         : [...prev, name]
     );
-  };
 
   const handleSend = () => {
     if (!selectedFriends.length) return;
@@ -315,11 +341,12 @@ export function ShareSheet({ open, onClose, onShare }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.45)",
+        background: `rgba(0,0,0,${0.45 - Math.min(translateY / 800, 0.35)})`,
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
         zIndex: 9999,
+        transition: dragging ? "none" : "background 0.25s ease",
       }}
     >
       <div
@@ -439,7 +466,7 @@ export function ShareSheet({ open, onClose, onShare }) {
           })}
         </div>
 
-        {/* Smooth in/out message section */}
+        {/* Smooth message input section */}
         <div
           style={{
             overflow: "hidden",
