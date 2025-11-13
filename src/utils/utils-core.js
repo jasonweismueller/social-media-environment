@@ -584,35 +584,79 @@ export function buildParticipantRow({
     const { action, post_id } = e || {};
     if (!post_id) continue;
     const p = ensure(post_id);
+switch (action) {
+  /* EXISTING FACEBOOK */
+  case "react_pick":
+    p.reaction_type = (e.type || "").trim() || "like";
+    break;
 
-    switch (action) {
-      case "react_pick":
-        p.reaction_type = (e.type || "").trim() || "like";
-        break;
-      case "react_clear":
-        if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
-          p.reaction_type = "";
-        }
-        break;
-      case "text_clamped":
-        p.expandable = true;
-        break;
-      case "expand_text":
-        p.expanded = true;
-        break;
-      case "comment_submit":
-        p.commented = true;
-        if (e.text) p.comment_texts = [String(e.text)];
-        break;
-      case "share":
-        p.shared = true;
-        break;
-      case "report_misinformation_click":
-        p.reported_misinfo = true;
-        break;
-      default:
-        break;
+  case "react_clear":
+    if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
+      p.reaction_type = "";
     }
+    break;
+
+  case "text_clamped":
+    p.expandable = true;
+    break;
+
+  case "expand_text":
+    p.expanded = true;
+    break;
+
+  case "comment_submit":
+    p.commented = true;
+    if (e.text) p.comment_texts = [String(e.text)];
+    break;
+
+  case "share":
+    p.shared = true;
+    break;
+
+  case "report_misinformation_click":
+    p.reported_misinfo = true;
+    break;
+
+
+  /* -------------------------------------------
+   * IG-ONLY EVENTS (SAFE ADDITIONS)
+   * ------------------------------------------- */
+
+  /* IG share sheet opened */
+  case "share_open":
+    p.share_opened = true;
+    break;
+
+  /* IG share target chosen */
+  case "share_target":
+    p.shared = true;                  // count as a share
+    p.share_target = e.friend || e.friends || null;
+    if (e.message) p.share_text = String(e.message);
+    break;
+
+  /* IG save / unsave */
+  case "save":
+    p.saved = true;
+    break;
+  case "unsave":
+    p.saved = false;
+    break;
+
+  /* IG desktop/mobile menu report */
+  case "report":
+    p.reported_misinfo = true;
+    break;
+
+  /* Sponsored post CTA click */
+  case "cta_click":
+    p.cta_clicked = true;
+    p.cta_label = e.label || null;
+    p.cta_url = e.url || null;
+    break;
+
+  default:
+    break;
+}
   }
 
   const row = {
@@ -649,8 +693,15 @@ export function buildParticipantRow({
       ? agg.comment_texts.join(" | ")
       : "";
 
-    row[`${id}_shared`]            = agg.shared ? 1 : "";
-    row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
+    row[`${id}_saved`] = agg.saved ? 1 : "";
+
+row[`${id}_share_opened`] = agg.share_opened ? 1 : "";
+row[`${id}_share_target`] = agg.share_target || "";
+row[`${id}_share_text`] = agg.share_text || "";
+
+row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : "";
+row[`${id}_cta_label`] = agg.cta_label || "";
+row[`${id}_cta_url`] = agg.cta_url || "";
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
