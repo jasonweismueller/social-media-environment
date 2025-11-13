@@ -465,6 +465,7 @@ export function buildMinimalHeader(posts) {
   const perPost = [];
   posts.forEach((p) => {
     const id = p.id || "unknown";
+
     perPost.push(
       `${id}_reacted`,
       `${id}_reaction_type`,
@@ -475,6 +476,15 @@ export function buildMinimalHeader(posts) {
       `${id}_shared`,
       `${id}_reported_misinfo`,
       `${id}_dwell_s`,
+
+      /* IG additions */
+      `${id}_saved`,
+      `${id}_share_opened`,
+      `${id}_share_target`,
+      `${id}_share_text`,
+      `${id}_cta_clicked`,
+      `${id}_cta_label`,
+      `${id}_cta_url`
     );
   });
 
