@@ -584,6 +584,7 @@ export function buildParticipantRow({
         commented: false,
         comment_texts: [],
         shared: false,
+        saved: false,
         reported_misinfo: false,
       });
     }
@@ -627,6 +628,10 @@ switch (action) {
     p.reported_misinfo = true;
     break;
 
+  case "saved":
+    p.saved = true;
+    break;
+
 
   /* -------------------------------------------
    * IG-ONLY EVENTS (SAFE ADDITIONS)
@@ -644,13 +649,6 @@ switch (action) {
     if (e.message) p.share_text = String(e.message);
     break;
 
-  /* IG save / unsave */
-  case "save":
-    p.saved = true;
-    break;
-  case "unsave":
-    p.saved = false;
-    break;
 
   /* IG desktop/mobile menu report */
   case "report":
