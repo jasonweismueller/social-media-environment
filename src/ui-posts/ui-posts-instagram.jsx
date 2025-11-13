@@ -446,14 +446,14 @@ const poolNames =
   // Autoplay in view (keeps native controls)
   const videoRef = useInViewAutoplay(0.6, { startMuted: true, unmuteOnFirstGesture: true });
 
-  const toggleLike = () => {
-    if (disabled) return;
-    setLiked((v) => {
-      const next = !v;
-      onAction(next ? "react_pick" : "react_clear", { id, type: "like" });
-      return next;
-    });
-  };
+const toggleLike = () => {
+  if (disabled) return;
+  setLiked((v) => {
+    const next = !v;
+    onAction(next ? "react_pick" : "react_clear", { post_id: id, type: "like" });
+    return next;
+  });
+};
   const openCommentsPanel = () => {
     if (disabled) return;
     setOpenComments(true);
