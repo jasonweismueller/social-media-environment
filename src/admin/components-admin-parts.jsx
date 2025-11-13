@@ -338,11 +338,12 @@ export function ParticipantsPanel({
         delete out[k];
       }
 
-      if (k.endsWith("_save_post")) {
-        const base = k.replace("_save_post", "");
-        out[base + "_saved"] = v ? 1 : 0;
-        delete out[k];
-      }
+      // IG v2: directly logs "<postId>_saved"
+if (k.endsWith("_saved")) {
+  const base = k.replace("_saved", "");
+  out[base + "_saved"] = v ? 1 : 0;
+  delete out[k];
+}
 
       if (k.endsWith("_send_share")) {
         const base = k.replace("_send_share", "");
@@ -547,7 +548,7 @@ const perPost = Object.entries(perPostHash).map(([post_id, rawAgg]) => {
     }
 
     // Saved
-    if (agg.save_post === 1) out.saved = 1;
+    if (agg.saved === 1) out.saved = 1;
 
     // Shared
     if (agg.send_share === 1) out.shared = 1;
