@@ -457,18 +457,18 @@ const toggleLike = () => {
   const openCommentsPanel = () => {
     if (disabled) return;
     setOpenComments(true);
-    onAction("comment_open", { id });
+    onAction("comment_open", {post_id: id });
   };
 const doShare = () => {
   if (disabled) return;
   setShareSheetOpen(true); // ✅ open the sheet for both desktop and mobile
-  onAction("share_open", { id, surface: isMobile ? "mobile" : "desktop" });
+  onAction("share_open", {post_id: id, surface: isMobile ? "mobile" : "desktop" });
 };
   const toggleSave = () => {
     if (disabled) return;
     setSaved((prev) => {
       const next = !prev;
-      onAction(next ? "save" : "unsave", { id });
+      onAction(next ? "save" : "unsave", {post_id : id });
       if (next) {
         setSaveToast(true);
         window.clearTimeout(toggleSave._t);
@@ -483,7 +483,7 @@ const doShare = () => {
   const onSubmitComment = () => {
     const txt = commentText.trim();
     if (!txt) return;
-    onAction("comment_submit", { id, text: txt, length: txt.length });
+    onAction("comment_submit", {post_id : id, text: txt, length: txt.length });
     setMySubmittedComment(txt);
     setParticipantComments((c) => c + 1);
     setCommentText("");
@@ -494,7 +494,7 @@ const doShare = () => {
     e.stopPropagation();
     if (isMobile) setMenuOpenMobile(true);
     else setMenuOpenDesktop((v) => !v);
-    onAction("menu_open", { id, surface: isMobile ? "mobile" : "desktop" });
+    onAction("menu_open", {post_id : id, surface: isMobile ? "mobile" : "desktop" });
   };
   const closeMobileMenu = () => setMenuOpenMobile(false);
   const closeDesktopMenu = () => setMenuOpenDesktop(false);
@@ -512,7 +512,7 @@ const doShare = () => {
     document.querySelectorAll('video[data-ig-video="1"]').forEach(v => {
       if (v !== current && !v.paused) v.pause();
     });
-    onAction("video_play", { id });
+    onAction("video_play", {post_id : id });
   };
 
 const { translateY, dragging, bind } = useSwipeToClose(() => setOpenComments(false));
@@ -658,8 +658,8 @@ const VerifiedBadge = (
                   display: "block",
                 }}
                 onPlay={handlePlay}
-                onPause={() => onAction("video_pause", { id })}
-                onEnded={() => onAction("video_ended", { id })}
+                onPause={() => onAction("video_pause", {post_id : id })}
+                onEnded={() => onAction("video_ended", {post_id : id })}
               />
             ) : hasCarousel ? (
               <IGCarousel items={imgs} />
@@ -853,7 +853,7 @@ const VerifiedBadge = (
             text={text}
             expanded={expanded}
             onExpand={() => setExpanded(true)}
-            onClamp={() => onAction("text_clamped", { id })}
+            onClamp={() => onAction("text_clamped", {post_id : id })}
           />
         </div>
       )}
@@ -1120,7 +1120,7 @@ marginTop: "auto",
    <Modal
   onClose={() => {
     setOpenComments(false);
-    onAction("comment_close", { id });
+    onAction("comment_close", {post_id : id });
   }}
   wide={true}
   title={null} // ensure no built-in header is shown
@@ -1143,7 +1143,7 @@ marginTop: "auto",
     <button
       onClick={() => {
         setOpenComments(false);
-        onAction("comment_close", { id });
+        onAction("comment_close", {post_id : id });
       }}
       aria-label="Close"
       style={{
@@ -1460,7 +1460,7 @@ marginTop: "auto",
     onClose={() => setShareSheetOpen(false)}
     onShare={(data) => {
       setShared(true);
-      onAction("share_target", { id, friend: data.friend || data.friends, message: data.message });
+      onAction("share_target", { post_id: id, friend: data.friend || data.friends, message: data.message });
       setShareSheetOpen(false);
     }}
   />
@@ -1470,7 +1470,7 @@ marginTop: "auto",
     onClose={() => setShareSheetOpen(false)}
     onShare={(data) => {
       setShared(true);
-      onAction("share_target", { id, friends: data.friends, message: data.message });
+      onAction("share_target", { post_id, friends: data.friends, message: data.message });
       setShareSheetOpen(false);
     }}
   />
