@@ -1116,6 +1116,7 @@ marginTop: "auto",
       </div>
     </div>
   ) : (
+    <div className="ig-comment-modal">
    <Modal
   onClose={() => {
     setOpenComments(false);
@@ -1442,6 +1443,7 @@ marginTop: "auto",
     </div>
   </div>
 </Modal>
+</div>
   ))
 )}
 

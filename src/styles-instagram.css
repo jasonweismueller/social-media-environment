@@ -1072,33 +1072,22 @@ body.debug-vp::before {
   z-index: 2;
 }
 
-/* ===========================================================
-   Instagram-style Wide Modal (Desktop Comments)
-   =========================================================== */
-body:not(.admin-mode) .modal-wide .modal-body {
-  background: transparent !important;
-  padding: 0 !important;
-  box-shadow: none !important;
-}
-
-body:not(.admin-mode) .modal-wide .modal-head,
-body:not(.admin-mode) .modal-wide .modal-footer {
-  display: none !important;
-}
-
-body:not(.admin-mode) .modal.modal-wide {
+/* ===============================
+   IG Comment Modal – Desktop ONLY
+   =============================== */
+.ig-comment-modal .modal-wide {
   max-width: none !important;
   width: auto !important;
   display: flex !important;
-  align-items: flex-start !important;   /* stay near top rail */
+  align-items: flex-start !important;
   justify-content: center !important;
-  margin-top: 60px !important;          /* clear top navigation bar */
+  margin-top: 60px !important; /* clear top rail */
   padding: 0 !important;
-  height: auto !important;              /* shrink-wrap to content height */
-  max-height: calc(100vh - 60px);       /* safety cap */
+  height: auto !important;
+  max-height: calc(100vh - 60px);
 }
 
-body:not(.admin-mode) .modal.modal-wide .modal-body {
+.ig-comment-modal .modal-wide .modal-body {
   padding: 0 !important;
   margin: 0 !important;
   background: transparent !important;
@@ -1106,16 +1095,16 @@ body:not(.admin-mode) .modal.modal-wide .modal-body {
   overflow: visible !important;
 }
 
-body:not(.admin-mode) .modal.modal-wide > div {
-  margin: 0 !important;
-  height: auto !important;
+.ig-comment-modal .modal-wide .modal-head,
+.ig-comment-modal .modal-wide .modal-footer {
+  display: none !important;
 }
 
-body:not(.admin-mode) .modal.modal-wide .comment-pane {
+.ig-comment-modal .modal-wide .comment-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-left: 1px solid var(--ig-line);
+  border-left: 1px solid rgba(0,0,0,0.08);
   background: #fff;
   overflow: hidden;
 }
