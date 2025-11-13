@@ -481,7 +481,7 @@ export function buildMinimalHeader(posts) {
   return [...base, ...perPost];
 }
 
-/* ---- DICE-style dwell aggregation (multi-visit + height-normalized) ------ */
+/* ---- DICE-style dwell aggregation (multi-visit + height-normalized) ------- */
 export function computePostDwellFromEvents(events = []) {
   const open = new Map();
   const total = new Map();
