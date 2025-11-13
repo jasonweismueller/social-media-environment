@@ -1072,24 +1072,21 @@ body.debug-vp::before {
   z-index: 2;
 }
 
-
 /* ===========================================================
    Instagram-style Wide Modal (Desktop Comments)
    =========================================================== */
-
-/* Remove padding/inner box and header/footer bars */
-.modal-wide .modal-body {
+body:not(.admin-mode) .modal-wide .modal-body {
   background: transparent !important;
   padding: 0 !important;
   box-shadow: none !important;
 }
-.modal-wide .modal-head,
-.modal-wide .modal-footer {
+
+body:not(.admin-mode) .modal-wide .modal-head,
+body:not(.admin-mode) .modal-wide .modal-footer {
   display: none !important;
 }
 
-/* One clean definition of .modal.modal-wide */
-.modal.modal-wide {
+body:not(.admin-mode) .modal.modal-wide {
   max-width: none !important;
   width: auto !important;
   display: flex !important;
@@ -1101,8 +1098,7 @@ body.debug-vp::before {
   max-height: calc(100vh - 60px);       /* safety cap */
 }
 
-/* Inner body should have no forced height/padding */
-.modal.modal-wide .modal-body {
+body:not(.admin-mode) .modal.modal-wide .modal-body {
   padding: 0 !important;
   margin: 0 !important;
   background: transparent !important;
@@ -1110,14 +1106,12 @@ body.debug-vp::before {
   overflow: visible !important;
 }
 
-/* Prevent any inner wrapper from introducing vertical gaps */
-.modal.modal-wide > div {
+body:not(.admin-mode) .modal.modal-wide > div {
   margin: 0 !important;
   height: auto !important;
 }
 
-/* Right column fills same height as image, no vertical padding */
-.modal.modal-wide .comment-pane {
+body:not(.admin-mode) .modal.modal-wide .comment-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
