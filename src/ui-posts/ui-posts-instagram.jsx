@@ -1470,7 +1470,7 @@ marginTop: "auto",
     onClose={() => setShareSheetOpen(false)}
     onShare={(data) => {
       setShared(true);
-      onAction("share_target", { post_id, friends: data.friends, message: data.message });
+      onAction("share_target", { post_id: id, friends: data.friends, message: data.message });
       setShareSheetOpen(false);
     }}
   />
