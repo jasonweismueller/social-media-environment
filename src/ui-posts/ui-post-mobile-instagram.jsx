@@ -166,7 +166,7 @@ function ReportIcon(props) {
 /* -------------------------------------------------------------------------- */
 /* 📱 MobileSheet (Instagram-style menu with swipe-to-close)                  */
 /* -------------------------------------------------------------------------- */
-export function MobileSheet({ open, onClose }) {
+export function MobileSheet({ open, onClose, onAction, postId }) {
   if (!open) return null;
 
   const { translateY, dragging, bind } = useSwipeToClose(onClose);
@@ -254,8 +254,14 @@ export function MobileSheet({ open, onClose }) {
               opacity: item.disabled ? 0.8 : 1,
             }}
             onClick={() => {
-              if (!item.disabled && item.label === "Report") alert("Reported!");
-            }}
+  if (item.disabled) return;
+
+  if (item.label === "Report") {
+    onAction?.("report", { post_id: postId });
+  }
+
+  onClose?.();
+}}
           >
             <item.icon {...iconStyle} />
             <span>{item.label}</span>

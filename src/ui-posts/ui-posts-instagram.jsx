@@ -630,6 +630,7 @@ const VerifiedBadge = (
           onClose={closeDesktopMenu}
           onPick={onAction}
           id={id}
+          onAction={onAction}
         />
       )}
 
@@ -1456,10 +1457,13 @@ marginTop: "auto",
 )}
 
       {isMobile && (
-        <MobileSheet open={menuOpenMobile} onClose={closeMobileMenu}>
-  
-</MobileSheet>
-      )}
+  <MobileSheet
+    open={menuOpenMobile}
+    onClose={closeMobileMenu}
+    onAction={onAction}
+    postId={id}
+  />
+)}
 
     {/* --- Share Sheet (mobile vs desktop) --- */}
 {isMobile ? (
