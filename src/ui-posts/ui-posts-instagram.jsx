@@ -144,9 +144,8 @@ function StoryBar() {
 }
 
 
-
 /* ---------------- Desktop menu ---------------- */
-function DesktopMenu({ open, onClose, onPick, id }) {
+function DesktopMenu({ open, onClose, onPick, id, onAction }) {
   if (!open) return null;
 
   const items = [
@@ -190,6 +189,7 @@ function DesktopMenu({ open, onClose, onPick, id }) {
       >
         {items.map((item, idx) => {
           const isDisabled = !!item.disabled;
+
           return (
             <button
               key={idx}
@@ -199,8 +199,16 @@ function DesktopMenu({ open, onClose, onPick, id }) {
               tabIndex={isDisabled ? -1 : 0}
               onClick={() => {
                 if (isDisabled) return;
+
+                // 🔥 REGISTER REPORT ACTION
+                if (item.action === "report") {
+                  onAction?.("report", { post_id: id });
+                }
+
                 onClose?.();
-                if (item.action !== "cancel") onPick?.(item.action, { id });
+                if (item.action !== "cancel") {
+                  onPick?.(item.action, { id });
+                }
               }}
               style={{
                 display: "block",
