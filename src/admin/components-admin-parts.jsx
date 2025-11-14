@@ -498,7 +498,7 @@ export function ParticipantsPanel({
                               expanded: Number(agg.expanded) === 1,
                               commented: Number(agg.commented) === 1 || hasRealComment,
                               saved: Number(agg.saved) === 1,
-                              shared: Number(agg.shared) === 1,
+                              shared: (Number(agg.shared) === 1 || (agg.share_target && String(agg.share_target).trim() !== "")),
                               reported: Number(agg.reported) === 1,
                               comment_text: rawComment,
                               dwell_s,
