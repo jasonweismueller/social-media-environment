@@ -755,22 +755,20 @@ export function extractPerPostFromRosterRow(row) {
           : 0;
 
         clean[id] = {
-          reacted: Number(agg?.reacted || (rxArr.length ? 1 : 0)),
-          commented: Number(agg?.commented || (cText ? 1 : 0) || (Number(agg?.comment_count) > 0 ? 1 : 0)),
-          shared: Number(agg?.shared || 0),
-          reported: Number(agg?.reported ?? agg?.reported_misinfo ?? 0),
-          expandable: Number(agg?.expandable || 0),
-          expanded: Number(agg?.expanded || 0),
-
-          reactions: rxArr,
-          reaction_types: rxArr,
-          reaction_type: (agg?.reaction_type || rxArr[0] || "").trim(),
-
-          comment_text: cText,
-          comment_count: Number(agg?.comment_count || (cText ? 1 : 0)),
-
-          dwell_s,
-        };
+  reacted: Number(agg?.reacted || (rxArr.length ? 1 : 0)),
+  commented: Number(agg?.commented || (cText ? 1 : 0) || (Number(agg?.comment_count) > 0 ? 1 : 0)),
+  shared: Number(agg?.shared || 0),
+  reported: Number(agg?.reported ?? agg?.reported_misinfo ?? 0),
+  expandable: Number(agg?.expandable || 0),
+  expanded: Number(agg?.expanded || 0),
+  saved: Number(agg?.saved || 0),                     // ← add this line
+  reactions: rxArr,
+  reaction_types: rxArr,
+  reaction_type: (agg?.reaction_type || rxArr[0] || "").trim(),
+  comment_text: cText,
+  comment_count: Number(agg?.comment_count || (cText ? 1 : 0)),
+  dwell_s,
+};
       }
 
       for (const [key, val] of Object.entries(row)) {
@@ -814,19 +812,20 @@ export function extractPerPostFromRosterRow(row) {
   const ensure = (id) => {
     if (!out[id]) {
       out[id] = {
-        reacted: 0, commented: 0, shared: 0, reported: 0,
-        expandable: 0, expanded: 0,
-        reactions: [], reaction_types: [], reaction_type: "",
-        comment_text: "", comment_count: 0,
-        dwell_s: 0,
-      };
+  reacted: 0, commented: 0, shared: 0, reported: 0,
+  expandable: 0, expanded: 0,
+  saved: 0,                                       // ← add this
+  reactions: [], reaction_types: [], reaction_type: "",
+  comment_text: "", comment_count: 0,
+  dwell_s: 0,
+};
     }
     return out[id];
   };
 
   for (const [key, val] of Object.entries(row)) {
     {
-      const m = /^(.+?)_(reacted|commented|shared|reported_misinfo|expanded|expandable)$/.exec(key);
+      const m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable)$/.exec(key);
       if (m) {
         const [, postId, metric] = m;
         const obj = ensure(postId);
@@ -915,8 +914,8 @@ export function summarizeRoster(rows) {
   const postKeys = new Set();
   rows.forEach(r => {
     Object.keys(r).forEach(k => {
-      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_reported_misinfo$/.test(k)) {
-        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|reported_misinfo)$/, "");
+      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$/.test(k)) {
+        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo)$/, "");
         postKeys.add(base);
       }
     });
@@ -928,6 +927,7 @@ export function summarizeRoster(rows) {
     const expandable = rows.reduce((a, r)   => a + (Number(r[`${base}_expandable`]) || 0), 0);
     const expanded   = rows.reduce((acc, r) => acc + (Number(r[`${base}_expanded`]) || 0), 0);
     const commented  = rows.reduce((acc, r) => acc + (Number(r[`${base}_commented`]) || 0), 0);
+    const saved      = rows.reduce((acc, r) => acc + (Number(r[`${base}_saved`]) || 0), 0);
     const shared     = rows.reduce((acc, r) => acc + (Number(r[`${base}_shared`]) || 0), 0);
     const reported   = rows.reduce((acc, r) => acc + (Number(r[`${base}_reported_misinfo`]) || 0), 0);
     const expandRate = expandable > 0 ? expanded / expandable : null;
@@ -941,7 +941,7 @@ export function summarizeRoster(rows) {
       .filter(n => Number.isFinite(n));
     const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
 
-    perPost[base] = { reacted, expandable, expanded, expandRate, commented, shared, reported, avgDwellS };
+    perPost[base] = { reacted, expandable, expanded, expandRate, commented, saved, shared, reported, avgDwellS };
   }
 
   return {

@@ -160,7 +160,7 @@ export function ParticipantsPanel({
   // post-name mappings for pretty headers and UI tables
   const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
 
-  // keep utils’ project in sync so roster GET includes ?project_id
+  // keep utils project in sync so roster GET includes ?project_id
   useEffect(() => {
     setProjectIdUtil(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
@@ -272,7 +272,7 @@ export function ParticipantsPanel({
     return acc;
   }, [rows]);
 
-  // per-post aggregate table (adds IG "saved")
+  // per-post aggregate table (includes saved)
   const perPostList = useMemo(() => {
     if (!showPerPost || !summary?.perPost) return [];
     return Object.entries(summary.perPost).map(([id, agg]) => {
@@ -285,7 +285,7 @@ export function ParticipantsPanel({
         expandable: agg.expandable ?? 0,
         expanded: agg.expanded ?? 0,
         commented: agg.commented ?? 0,
-        saved: agg.saved ?? 0,          // IG
+        saved: agg.saved ?? 0,
         shared: agg.shared ?? 0,
         reported: agg.reported ?? 0,
         avgDwellS,
@@ -293,7 +293,7 @@ export function ParticipantsPanel({
     });
   }, [showPerPost, summary, avgDwellSByPost, nameStore]);
 
-  // ----- compact toggles (spacing/typography) -----
+  // compact spacing
   const padCell = compact ? ".3rem .25rem" : ".4rem .25rem";
   const fsTable = compact ? ".85rem" : ".9rem";
   const wrapperPad = compact ? ".75rem 1rem" : "1rem";
@@ -312,112 +312,58 @@ export function ParticipantsPanel({
           <button className="btn" onClick={() => refresh(false)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
             Refresh
           </button>
+
+          {/* ========= CLEANED CSV EXPORT ========= */}
           <button
             className="btn"
             onClick={() => {
-  if (!rows?.length) return;
+              if (!rows?.length) return;
 
-  // Canonical field mapping for IG → FB-style
-  const normalizeIG = (r) => {
-    const out = { ...r };
+              const BOOL_SUFFIX = /(reacted|expandable|expanded|commented|saved|shared|reported_misinfo|share_opened|cta_clicked)$/;
 
-    for (const k of Object.keys(r)) {
-      const v = Number(r[k] || 0);
+              const normalizedAll = rows.map(raw => {
+                const out = { ...raw };
 
-      if (k.endsWith("_like")) {
-        const base = k.replace("_like", "");
-        out[base + "_reacted"] = v ? 1 : 0;
-        delete out[k];
-      }
+                for (const k of Object.keys(out)) {
+                  // Normalize dwell_ms to dwell_s if any legacy data exists
+                  if (k.endsWith("_dwell_ms")) {
+                    const base = k.replace("_dwell_ms", "");
+                    const msVal = Number(out[k] || 0);
+                    const sKey = base + "_dwell_s";
+                    if (out[sKey] == null) {
+                      out[sKey] = Math.round(msVal / 1000);
+                    }
+                    delete out[k];
+                    continue;
+                  }
 
-      if (k.endsWith("_open_comments") || k.endsWith("_send_comment")) {
-        const base = k.replace(/_(open_comments|send_comment)/, "");
-        out[base + "_expandable"] = 1;
-        out[base + "_expanded"] = 1;
-        out[base + "_commented"] = 1;
-        delete out[k];
-      }
+                  // Normalize boolean-like fields to 0/1
+                  if (BOOL_SUFFIX.test(k)) {
+                    const v = Number(out[k]);
+                    out[k] = Number.isFinite(v) && v > 0 ? 1 : 0;
+                  }
+                }
 
-      // IG v2: directly logs "<postId>_saved"
-if (k.endsWith("_saved")) {
-  const base = k.replace("_saved", "");
-  out[base + "_saved"] = v ? 1 : 0;
-  delete out[k];
-}
+                return out;
+              });
 
-      if (k.endsWith("_send_share")) {
-        const base = k.replace("_send_share", "");
-        out[base + "_shared"] = v ? 1 : 0;
-        delete out[k];
-      }
+              const keySet = new Set();
+              normalizedAll.forEach(r => Object.keys(r).forEach(k => keySet.add(k)));
+              const keys = Array.from(keySet);
 
-      if (k.endsWith("_menu_report")) {
-        const base = k.replace("_menu_report", "");
-        out[base + "_reported"] = v ? 1 : 0;
-        delete out[k];
-      }
-    }
+              const labels = keys.map(k => labelForKey(k, nameStore));
+              const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 
-    return out;
-  };
-
-  // -------- 1) Normalize all rows --------
-  const normalizedAll = rows.map(raw => {
-    let r = normalizeIG(raw); // IG → FB unification
-
-    // Dwell: _dwell_ms → _dwell_s
-    for (const k of Object.keys(r)) {
-      if (k.endsWith("_dwell_ms")) {
-        const base = k.replace("_dwell_ms", "");
-        const msVal = Number(r[k] || 0);
-        const sKey = base + "_dwell_s";
-        if (r[sKey] == null) {
-          r[sKey] = Math.round(msVal / 1000);
-        }
-        delete r[k];
-      }
-    }
-
-    // Normalise booleans
-    const BOOL_SUFFIX = /(reacted|expandable|expanded|commented|saved|shared|reported)$/;
-    const out = { ...r };
-
-    for (const k of Object.keys(out)) {
-      if (BOOL_SUFFIX.test(k)) {
-        const v = Number(out[k]);
-        out[k] = Number.isFinite(v) ? (v ? 1 : 0) : 0;
-        continue;
-      }
-      if (/comment_count$/.test(k)) {
-        delete out[k];
-      }
-    }
-
-    return out;
-  });
-
-  // -------- 2) Build key list --------
-  const keySet = new Set();
-  normalizedAll.forEach(r => Object.keys(r).forEach(k => keySet.add(k)));
-  const keys = Array.from(keySet);
-
-  // -------- 3) Pretty headers --------
-  const labels = keys.map(k => labelForKey(k, nameStore));
-
-  // -------- 4) Convert to CSV --------
-  const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
-
-  // -------- 5) Trigger download --------
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${APP}_participants${projectId ? `_${projectId}` : ""}${feedId ? `_${feedId}` : ""}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}}
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${APP}_participants${projectId ? `_${projectId}` : ""}${feedId ? `_${feedId}` : ""}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            }}
             disabled={!rows?.length}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
@@ -531,61 +477,34 @@ if (k.endsWith("_saved")) {
                         try {
                           const perPostHash = extractPerPostFromRosterRow(r) || {};
                           const names = nameStore;
-const perPost = Object.entries(perPostHash).map(([post_id, rawAgg]) => {
 
-  // --- IG → canonical mapping ---
-  const mapIG = (agg) => {
-    const out = { ...agg };
+                          const perPost = Object.entries(perPostHash).map(([post_id, rawAgg]) => {
+                            const agg = rawAgg || {};
 
-    // Like → reacted
-    if (agg.like === 1) out.reacted = 1;
+                            const dwell_s = Number.isFinite(agg.dwell_s)
+                              ? Number(agg.dwell_s)
+                              : Number.isFinite(agg.dwell_ms)
+                                ? Number(agg.dwell_ms) / 1000
+                                : 0;
 
-    // Comments
-    if (agg.open_comments === 1 || agg.send_comment === 1) {
-      out.expandable = 1;
-      out.expanded = 1;
-      out.commented = 1;
-    }
+                            const rawComment = String(agg.comment_text || "").trim();
+                            const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
 
-    // Saved
-    if (agg.saved === 1) out.saved = 1;
+                            return {
+                              post_id,
+                              name: names[post_id] || "",
+                              reacted: Number(agg.reacted) === 1,
+                              expandable: Number(agg.expandable) === 1,
+                              expanded: Number(agg.expanded) === 1,
+                              commented: Number(agg.commented) === 1 || hasRealComment,
+                              saved: Number(agg.saved) === 1,
+                              shared: Number(agg.shared) === 1,
+                              reported: Number(agg.reported) === 1,
+                              comment_text: rawComment,
+                              dwell_s,
+                            };
+                          });
 
-    // Shared
-    if (agg.send_share === 1) out.shared = 1;
-
-    // Reported
-    if (agg.menu_report === 1) out.reported = 1;
-
-    return out;
-  };
-
-  const agg = mapIG(rawAgg);   // <-- normalize IG fields
-
-  // --- dwell time (FB/IG both supported) ---
-  const dwell_s = Number.isFinite(agg?.dwell_s)
-    ? Number(agg.dwell_s)
-    : Number.isFinite(agg?.dwell_ms)
-      ? Number(agg.dwell_ms) / 1000
-      : 0;
-
-  // --- comment text (canonical) ---
-  const rawComment = String(agg?.comment_text || "").trim();
-  const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
-
-  return {
-    post_id,
-    name: names[post_id] || "",
-    reacted: Number(agg?.reacted) === 1,
-    expandable: Number(agg?.expandable) === 1,
-    expanded: Number(agg?.expanded) === 1,
-    commented: Number(agg?.commented) === 1 || hasRealComment,
-    saved: Number(agg?.saved) === 1,
-    shared: Number(agg?.shared) === 1,
-    reported: Number(agg?.reported) === 1,
-    comment_text: rawComment,
-    dwell_s,
-  };
-});
                           setDetailSubmission({
                             session_id: r.session_id,
                             participant_id: r.participant_id ?? null,
