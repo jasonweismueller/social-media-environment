@@ -573,6 +573,8 @@ export function buildParticipantRow({
 
   const dwellAgg = computePostDwellFromEvents(events);
 
+
+  
   const per = new Map();
   const ensure = (id) => {
     if (!per.has(id)) {
@@ -627,7 +629,7 @@ switch (action) {
     p.reported_misinfo = true;
     break;
 
-  case "saved":
+case "save":
     p.saved = true;
     break;
 
@@ -636,29 +638,22 @@ switch (action) {
    * IG-ONLY EVENTS (SAFE ADDITIONS)
    * ------------------------------------------- */
 
-  /* IG share sheet opened */
-  case "share_open":
-    p.share_opened = true;
-    break;
 
-  /* IG share target chosen */
-  case "share_target":
-    p.shared = true;                  // count as a share
-    p.share_target = e.friend || e.friends || null;
-    if (e.message) p.share_text = String(e.message);
-    break;
+  // When user picks a target → we count this as a real share
+case "share_target":
+  p.share_target = e.friend || e.friends || null;
+  p.share_text   = e.message ? String(e.message) : "";
+  break;
+
+// CTA click is participant-level behavior only
+case "cta_click":
+  p.cta_clicked = true;
+  break;
 
 
   /* IG desktop/mobile menu report */
   case "report":
     p.reported_misinfo = true;
-    break;
-
-  /* Sponsored post CTA click */
-  case "cta_click":
-    p.cta_clicked = true;
-    p.cta_label = e.label || null;
-    p.cta_url = e.url || null;
     break;
 
   default:
@@ -722,10 +717,40 @@ export function extractPerPostFromRosterRow(row) {
   if (!row || typeof row !== "object") return {};
 
   const blob = row.per_post_json || row.per_post || row.perPostJson || null;
+
+  /* =========================================================================
+   * 1) JSON-BASED PER_POST (preferred path)
+   * ========================================================================= */
   if (blob) {
     try {
       const parsed = typeof blob === "string" ? JSON.parse(blob) : blob;
       const clean = {};
+
+      const outEnsure = (id) => {
+        if (!clean[id]) {
+          clean[id] = {
+            reacted: 0,
+            commented: 0,
+            shared: 0,
+            reported: 0,
+            expandable: 0,
+            expanded: 0,
+            saved: 0,
+            reactions: [],
+            reaction_types: [],
+            reaction_type: "",
+            comment_text: "",
+            comment_count: 0,
+            dwell_s: 0,
+            share_target: "",
+            share_text: "",
+            cta_clicked: 0,
+          };
+        }
+        return clean[id];
+      };
+
+      // Parse JSON fields
       for (const [id, agg] of Object.entries(parsed || {})) {
         const rx = agg?.reactions || agg?.reaction_types || [];
         const rxArr = Array.isArray(rx)
@@ -734,161 +759,208 @@ export function extractPerPostFromRosterRow(row) {
           ? rx.split(",").map(s => s.trim()).filter(Boolean)
           : [];
 
-        const cTextRaw = (() => {
-          const t = agg?.comment_text ?? agg?.comment ?? null;
-          const arr = agg?.comment_texts;
-          if (typeof t === "string") return t;
-          if (Array.isArray(arr)) return arr.map(String).join(" | ");
-          if (typeof arr === "string") return arr;
-          return "";
-        })();
-        const cText = (() => {
-          const s = String(cTextRaw || "").trim();
-          return (!s || s === "—" || s === "-" || /^[-—\s]+$/.test(s)) ? "" : s;
-        })();
+        const cText = String(
+          agg?.comment_text ||
+          (Array.isArray(agg?.comment_texts)
+            ? agg.comment_texts.join(" | ")
+            : agg?.comment_texts || "")
+        ).trim();
 
-        const dwell_s = Number.isFinite(agg?.dwell_s)
-          ? Number(agg.dwell_s)
+        const obj = outEnsure(id);
+        obj.reactions = rxArr;
+        obj.reaction_types = rxArr;
+        obj.reaction_type = (agg?.reaction_type || rxArr[0] || "").trim();
+        obj.reacted = obj.reaction_type ? 1 : 0;
+
+        obj.comment_text = cText;
+        obj.commented = cText ? 1 : 0;
+        obj.comment_count = cText ? 1 : 0;
+
+        obj.expandable = Number(agg?.expandable || 0);
+        obj.expanded = Number(agg?.expanded || 0);
+        obj.saved = Number(agg?.saved || 0);
+
+        obj.shared = Number(agg?.shared || 0);
+        obj.reported = Number(agg?.reported || agg?.reported_misinfo || 0);
+
+        obj.share_target = String(agg?.share_target || "").trim();
+        obj.share_text = String(agg?.share_text || "").trim();
+        if (obj.share_target) obj.shared = 1;
+
+        obj.cta_clicked = Number(agg?.cta_clicked || 0);
+
+        obj.dwell_s = Number.isFinite(agg?.dwell_s)
+          ? agg.dwell_s
           : Number.isFinite(agg?.dwell_ms)
-          ? Math.round(Number(agg.dwell_ms) / 1000)
+          ? Math.round(agg.dwell_ms / 1000)
           : 0;
-
-        clean[id] = {
-  reacted: Number(agg?.reacted || (rxArr.length ? 1 : 0)),
-  commented: Number(agg?.commented || (cText ? 1 : 0) || (Number(agg?.comment_count) > 0 ? 1 : 0)),
-  shared: Number(agg?.shared || 0),
-  reported: Number(agg?.reported ?? agg?.reported_misinfo ?? 0),
-  expandable: Number(agg?.expandable || 0),
-  expanded: Number(agg?.expanded || 0),
-  saved: Number(agg?.saved || 0),                     // ← add this line
-  reactions: rxArr,
-  reaction_types: rxArr,
-  reaction_type: (agg?.reaction_type || rxArr[0] || "").trim(),
-  comment_text: cText,
-  comment_count: Number(agg?.comment_count || (cText ? 1 : 0)),
-  dwell_s,
-};
       }
 
+      // Additional per-row overrides (if any)
       for (const [key, val] of Object.entries(row)) {
-        let m = /^(.+?)_commented$/.exec(key);
+        let m;
+
+        // --- commented fallback ---
+        m = /^(.+?)_commented$/.exec(key);
         if (m) {
-          const id = m[1];
-          if (!clean[id]) clean[id] = {};
-          clean[id].commented = Number(val || 0);
+          const obj = outEnsure(m[1]);
+          obj.commented = Number(val || 0);
           continue;
         }
+
+        // --- comment texts fallback ---
         m = /^(.+?)_comment_texts$/.exec(key);
         if (m) {
-          const id = m[1];
-          if (!clean[id]) clean[id] = {};
-          const text = String(val || "").trim();
-          clean[id].comment_text = text;
-          if (text) {
-            clean[id].commented = 1;
-            clean[id].comment_count = clean[id].comment_count || 1;
+          const obj = outEnsure(m[1]);
+          const txt = String(val || "").trim();
+          obj.comment_text = txt;
+          if (txt) {
+            obj.commented = 1;
+            obj.comment_count = 1;
           }
+          continue;
         }
+
+        // --- IG share target ---
+        m = /^(.+?)_share_target$/.exec(key);
+        if (m) {
+          const obj = outEnsure(m[1]);
+          const t = String(val || "").trim();
+          obj.share_target = t;
+          if (t) obj.shared = 1;
+          continue;
+        }
+
+        // --- IG share text ---
+        m = /^(.+?)_share_text$/.exec(key);
+        if (m) {
+          outEnsure(m[1]).share_text = String(val || "").trim();
+          continue;
+        }
+
+        // --- IG CTA ---
+        m = /^(.+?)_cta_clicked$/.exec(key);
+        if (m) {
+          outEnsure(m[1]).cta_clicked = Number(val || 0);
+          continue;
+        }
+
+        // --- reaction type fallback ---
         m = /^(.+?)_reaction_type$/.exec(key);
         if (m) {
-          const id = m[1];
-          if (!clean[id]) clean[id] = {};
+          const obj = outEnsure(m[1]);
           const t = String(val || "").trim();
-          clean[id].reaction_type = t;
-          clean[id].reactions = t ? [t] : [];
-          clean[id].reaction_types = clean[id].reactions;
-          if (t) clean[id].reacted = 1;
+          obj.reaction_type = t;
+          obj.reactions = t ? [t] : [];
+          obj.reaction_types = obj.reactions;
+          obj.reacted = t ? 1 : 0;
+          continue;
         }
       }
 
       return clean;
-    } catch {
-      /* fall through */
-    }
+    } catch {}
   }
+
+  /* =========================================================================
+   * 2) FALLBACK PARSER (no JSON)
+   * ========================================================================= */
 
   const out = {};
   const ensure = (id) => {
     if (!out[id]) {
       out[id] = {
-  reacted: 0, commented: 0, shared: 0, reported: 0,
-  expandable: 0, expanded: 0,
-  saved: 0,                                       // ← add this
-  reactions: [], reaction_types: [], reaction_type: "",
-  comment_text: "", comment_count: 0,
-  dwell_s: 0,
-};
+        reacted: 0, commented: 0, shared: 0, reported: 0,
+        expandable: 0, expanded: 0,
+        saved: 0,
+        reactions: [], reaction_types: [], reaction_type: "",
+        comment_text: "", comment_count: 0,
+        share_target: "", share_text: "",
+        cta_clicked: 0,
+        dwell_s: 0,
+      };
     }
     return out[id];
   };
 
   for (const [key, val] of Object.entries(row)) {
-    {
-      const m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable)$/.exec(key);
-      if (m) {
-        const [, postId, metric] = m;
-        const obj = ensure(postId);
-        const num = Number(val || 0);
-        if (metric === "reported_misinfo") obj.reported = num;
-        else if (metric === "expanded")    obj.expanded = num;
-        else if (metric === "expandable")  obj.expandable = num;
-        else obj[metric] = num;
-        continue;
-      }
+    let m;
+
+    // boolean fields
+    m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable)$/.exec(key);
+    if (m) {
+      const obj = ensure(m[1]);
+      const metric = m[2];
+      const num = Number(val || 0);
+      if (metric === "reported_misinfo") obj.reported = num;
+      else obj[metric] = num;
+      continue;
     }
 
-    {
-      const r1 = /^(.+?)_reaction_type$/.exec(key);
-      if (r1) {
-        const [, postId] = r1;
-        const obj = ensure(postId);
-        const t = String(val || "").trim();
-        obj.reaction_type = t;
-        obj.reactions = t ? [t] : [];
-        obj.reaction_types = obj.reactions;
-        obj.reacted = obj.reacted || (t ? 1 : 0);
-        continue;
-      }
+    // IG share target
+    m = /^(.+?)_share_target$/.exec(key);
+    if (m) {
+      const obj = ensure(m[1]);
+      const t = String(val || "").trim();
+      obj.share_target = t;
+      if (t) obj.shared = 1;
+      continue;
     }
 
-    {
-      const r2 = /^(.+?)_(reactions|reaction_types)$/.exec(key);
-      if (r2) {
-        const [, postId] = r2;
-        const obj = ensure(postId);
-        const arr = String(val || "")
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean);
-        obj.reactions = arr;
-        obj.reaction_types = arr;
-        obj.reaction_type = obj.reaction_type || (arr[0] || "");
-        obj.reacted = obj.reacted || (arr.length ? 1 : 0);
-        continue;
-      }
+    // IG share text
+    m = /^(.+?)_share_text$/.exec(key);
+    if (m) {
+      ensure(m[1]).share_text = String(val || "").trim();
+      continue;
     }
 
-    {
-      const ct = /^(.+?)_comment_texts$/.exec(key);
-      if (ct) {
-        const [, postId] = ct;
-        const obj = ensure(postId);
-        const raw = String(val || "").trim();
-        const text = (!raw || raw === "—" || raw === "-" || /^[-—\s]+$/.test(raw)) ? "" : raw;
-        obj.comment_text = text;
-        obj.commented = obj.commented || (text ? 1 : 0);
-        obj.comment_count = obj.comment_count || (text ? 1 : 0);
-        continue;
-      }
+    // IG CTA
+    m = /^(.+?)_cta_clicked$/.exec(key);
+    if (m) {
+      ensure(m[1]).cta_clicked = Number(val || 0);
+      continue;
     }
 
-    {
-      const ds = /^(.+?)_dwell_s$/.exec(key);
-      if (ds) { const [, postId] = ds; ensure(postId).dwell_s = Number(val || 0); continue; }
-      const dm = /^(.+?)_dwell_ms$/.exec(key);
-      if (dm) { const [, postId] = dm; const o = ensure(postId); if (!o.dwell_s) o.dwell_s = Math.round(Number(val || 0) / 1000); continue; }
+    // reaction type
+    m = /^(.+?)_reaction_type$/.exec(key);
+    if (m) {
+      const obj = ensure(m[1]);
+      const t = String(val || "").trim();
+      obj.reaction_type = t;
+      obj.reactions = t ? [t] : [];
+      obj.reaction_types = obj.reactions;
+      obj.reacted = t ? 1 : 0;
+      continue;
+    }
+
+    // comment text
+    m = /^(.+?)_comment_texts$/.exec(key);
+    if (m) {
+      const obj = ensure(m[1]);
+      const txt = String(val || "").trim();
+      obj.comment_text = txt;
+      if (txt) {
+        obj.commented = 1;
+        obj.comment_count = 1;
+      }
+      continue;
+    }
+
+    // dwell
+    m = /^(.+?)_dwell_s$/.exec(key);
+    if (m) {
+      ensure(m[1]).dwell_s = Number(val || 0);
+      continue;
+    }
+
+    m = /^(.+?)_dwell_ms$/.exec(key);
+    if (m) {
+      const obj = ensure(m[1]);
+      if (!obj.dwell_s) obj.dwell_s = Math.round(Number(val || 0) / 1000);
+      continue;
     }
   }
+
   return out;
 }
 
