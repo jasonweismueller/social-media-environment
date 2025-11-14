@@ -473,18 +473,17 @@ export function buildMinimalHeader(posts) {
       `${id}_expanded`,
       `${id}_commented`,
       `${id}_comment_texts`,
-      `${id}_shared`,
+
       `${id}_reported_misinfo`,
       `${id}_dwell_s`,
 
       /* IG additions */
       `${id}_saved`,
-      `${id}_share_opened`,
-      `${id}_share_target`,
-      `${id}_share_text`,
-      `${id}_cta_clicked`,
-      `${id}_cta_label`,
-      `${id}_cta_url`
+
+  `${id}_shared`,
+  `${id}_share_target`,
+  `${id}_share_text`,
+  `${id}_cta_clicked`
     );
   });
 
@@ -703,13 +702,13 @@ switch (action) {
 
     row[`${id}_saved`] = agg.saved ? 1 : "";
 
-row[`${id}_share_opened`] = agg.share_opened ? 1 : "";
-row[`${id}_share_target`] = agg.share_target || "";
-row[`${id}_share_text`] = agg.share_text || "";
+// IG: shared fields (clean)
+const hasTarget = agg.share_target && String(agg.share_target).trim() !== "";
 
+row[`${id}_shared`]        = hasTarget ? 1 : "";     // <-- shared derived from target
+row[`${id}_share_target`]  = hasTarget ? agg.share_target : "";
+row[`${id}_share_text`]    = agg.share_text || "";
 row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : "";
-row[`${id}_cta_label`] = agg.cta_label || "";
-row[`${id}_cta_url`] = agg.cta_url || "";
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
