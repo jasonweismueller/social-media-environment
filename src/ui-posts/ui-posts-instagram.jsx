@@ -1197,14 +1197,15 @@ marginTop: "auto",
         <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     </button>
-  {/* LEFT: Post Image */}
+ {/* LEFT SIDE — FIXED HEIGHT & IG ASPECT */}
 <div
   style={{
-    flex: 1,
+    width: "calc(100% - 360px)",   // right side is 340px + padding
+    height: "82vh",                // ⭐ match modal maxHeight
     background: "#000",
-    position: "relative",   // ⭐ we use the same pattern as the feed
+    position: "relative",
     overflow: "hidden",
-    maxWidth: "calc(100% - 360px)",
+    flexShrink: 0,                 // ⭐ prevents collapsing
   }}
 >
   {(image?.url || displayImageObj?.url) ? (
@@ -1212,7 +1213,7 @@ marginTop: "auto",
       src={displayImageObj?.url || image?.url}
       alt=""
       style={{
-        position: "absolute",   // ⭐ FIX: essential for cropping
+        position: "absolute",
         inset: 0,
         width: "100%",
         height: "100%",
