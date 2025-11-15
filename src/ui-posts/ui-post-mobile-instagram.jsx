@@ -332,7 +332,7 @@ export function ShareSheet({ open, onClose, onShare }) {
 
   const handleSend = () => {
     if (!selectedFriends.length) return;
-    onShare({ friends: selectedFriends, message });
+    onShare({ friends: selectedFriends.join(", "), message });
     setSelectedFriends([]);
     setMessage("");
     onClose();
