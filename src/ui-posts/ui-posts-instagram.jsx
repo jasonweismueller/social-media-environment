@@ -1219,64 +1219,60 @@ marginTop: "auto",
           }}
         >
           {(() => {
-            // SVG support
-            if (displayImageObj?.svg) {
-              return (
-                <div
-                  dangerouslySetInnerHTML={{
-                    __html: displayImageObj.svg.replace(
-                      "<svg ",
-                      "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-                    ),
-                  }}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background: "#000",
-                  }}
-                />
-              );
-            }
+  // 1. SVG
+  if (displayImageObj?.svg) {
+    return (
+      <div
+        dangerouslySetInnerHTML={{
+          __html: displayImageObj.svg.replace(
+            "<svg ",
+            "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+          ),
+        }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#000",
+        }}
+      />
+    );
+  }
 
-            // URL (cropped or original)
-            const url = displayImageObj?.url || image?.url || null;
-            if (url) {
-              return (
-                <img
-                  src={url}
-                  alt={displayImageObj?.alt || image?.alt || ""}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    objectPosition: `${
-                      image?.focalX != null ? image.focalX : 50
-                    }% ${
-                      image?.focalY != null ? image.focalY : 50
-                    }%`,
-                    display: "block",
-                    background: "#000",
-                  }}
-                />
-              );
-            }
+  // 2. Cropped IMAGE version (the one used in feed)
+  if (displayImageObj?.url) {
+    return (
+      <img
+        src={displayImageObj.url}
+        alt={displayImageObj?.alt || ""}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: `${image?.focalX ?? 50}% ${image?.focalY ?? 50}%`,
+          display: "block",
+          background: "#000",
+        }}
+      />
+    );
+  }
 
-            return (
-              <div
-                style={{
-                  color: "#fff",
-                  fontSize: 18,
-                  textAlign: "center",
-                  padding: "40px 0",
-                  width: "100%",
-                }}
-              >
-                No image
-              </div>
-            );
-          })()}
+  // 3. Fallback
+  return (
+    <div
+      style={{
+        color: "#fff",
+        fontSize: 18,
+        textAlign: "center",
+        padding: "40px 0",
+        width: "100%",
+      }}
+    >
+      No image
+    </div>
+  );
+})()}
         </div>
 
         {/* ------------------- RIGHT: Caption + Comments ------------------- */}
