@@ -740,8 +740,18 @@ const VerifiedBadge = (
       borderBottomRightRadius: 0,
     }}
     onClick={() => {
-      if (post.adUrl) window.open(post.adUrl, "_blank", "noopener,noreferrer");
-    }}
+  // 🔥 Track CTA click (IG ad)
+  onAction?.("cta_click", {
+    post_id: id,
+    label: post.adButtonText || "",
+    url: post.adUrl || ""
+  });
+
+  // open external link
+  if (post.adUrl) {
+    window.open(post.adUrl, "_blank", "noopener,noreferrer");
+  }
+}}
   >
     <span
       style={{
