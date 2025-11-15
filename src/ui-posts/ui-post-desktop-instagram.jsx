@@ -22,7 +22,10 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
 
   const handleSend = () => {
     if (!selectedFriends.length) return;
-    onShare({ friends: selectedFriends, message });
+    onShare({
+  friends: selectedFriends.join(", "),  // ⭐ human-readable
+  message
+});
     setSelectedFriends([]);
     setMessage("");
     onClose();
