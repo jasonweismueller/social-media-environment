@@ -96,8 +96,6 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Saved</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Shared</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Reported</th>
-<th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Sponsored</th>   {/* NEW */}
-<th style={{ textAlign: "center",padding: ".4rem .25rem" }}>CTA Clicked</th> {/* NEW */}
                     <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
                   </tr>
                 </thead>
@@ -119,8 +117,6 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.saved ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.shared ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reported ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.sponsored ? "✓" : "—"}</td>   {/* NEW */}
-<td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.cta_clicked ? "✓" : "—"}</td> {/* NEW */}
                         <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{sShort(dwellSeconds)}</td>
                       </tr>
                     );
@@ -515,11 +511,6 @@ export function ParticipantsPanel({
 
   reported: Number(agg.reported) === 1,
 
-  // ⭐ NEW: Sponsored flag (from post definition)
-  sponsored: post?.adType === "ad",
-
-  // ⭐ NEW: CTA click (from participant actions)
-  cta_clicked: Number(agg.cta_clicked) === 1,
 
   comment_text: rawComment,
   dwell_s,
