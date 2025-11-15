@@ -1197,7 +1197,7 @@ marginTop: "auto",
         <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     </button>
-  /* LEFT: Post Image */
+  {/* LEFT: Post Image */}
 <div
   style={{
     flex: 1,
