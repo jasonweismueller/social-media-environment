@@ -1211,80 +1211,85 @@ marginTop: "auto",
           </svg>
         </button>
 
-        {/* ------------------- LEFT: Post Image ------------------- */}
+      {/* ------------------- LEFT: Post Image ------------------- */}
+<div
+  style={{
+    flex: 1,
+    background: "#000",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    maxWidth: "calc(100% - 360px)",
+    overflow: "hidden",
+    position: "relative",
+  }}
+>
+  {(() => {
+    /* Strict SVG detection */
+    const isRealSVG =
+      typeof displayImageObj?.svg === "string" &&
+      displayImageObj.svg.trim().startsWith("<svg");
+
+    /* 1. SVG rendering */
+    if (isRealSVG) {
+      return (
         <div
-          style={{
-            flex: 1,
-            background: "#000",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "100%",
-            maxWidth: "calc(100% - 360px)",
-            overflow: "hidden",
-            position: "relative",
+          dangerouslySetInnerHTML={{
+            __html: displayImageObj.svg.replace(
+              "<svg ",
+              "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+            ),
           }}
-        >
-          {(() => {
-  // 1. SVG
-  if (displayImageObj?.svg) {
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "#000",
+          }}
+        />
+      );
+    }
+
+    /* 2. Cropped image (correct focal & same as feed) */
+    if (displayImageObj?.url) {
+      return (
+        <img
+          src={displayImageObj.url}
+          alt={displayImageObj?.alt || ""}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: `${
+              displayImageObj?.focalX ?? image?.focalX ?? 50
+            }% ${
+              displayImageObj?.focalY ?? image?.focalY ?? 50
+            }%`,
+            display: "block",
+            background: "#000",
+          }}
+        />
+      );
+    }
+
+    /* 3. Fallback */
     return (
       <div
-        dangerouslySetInnerHTML={{
-          __html: displayImageObj.svg.replace(
-            "<svg ",
-            "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-          ),
-        }}
         style={{
-          position: "absolute",
-          inset: 0,
-          background: "#000",
-        }}
-      />
-    );
-  }
-
-  // 2. Cropped IMAGE version (the one used in feed)
-  if (displayImageObj?.url) {
-    return (
-      <img
-        src={displayImageObj.url}
-        alt={displayImageObj?.alt || ""}
-        style={{
-          position: "absolute",
-          inset: 0,
+          color: "#fff",
+          fontSize: 18,
+          textAlign: "center",
+          padding: "40px 0",
           width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          objectPosition: `${
-  (displayImageObj?.focalX ?? image?.focalX ?? 50)
-}% ${
-  (displayImageObj?.focalY ?? image?.focalY ?? 50)
-}%`,
-          display: "block",
-          background: "#000",
         }}
-      />
+      >
+        No image
+      </div>
     );
-  }
-
-  // 3. Fallback
-  return (
-    <div
-      style={{
-        color: "#fff",
-        fontSize: 18,
-        textAlign: "center",
-        padding: "40px 0",
-        width: "100%",
-      }}
-    >
-      No image
-    </div>
-  );
-})()}
-        </div>
+  })()}
+</div>
 
         {/* ------------------- RIGHT: Caption + Comments ------------------- */}
         <div
