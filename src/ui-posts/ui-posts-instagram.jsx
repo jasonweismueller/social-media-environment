@@ -1136,17 +1136,18 @@ marginTop: "auto",
     </div>
   ) : (
     <div className="ig-comment-modal">
-   <Modal
+  <Modal
   onClose={() => {
     setOpenComments(false);
-    onAction("comment_close", {post_id : id });
+    onAction("comment_close", { post_id: id });
   }}
   wide={true}
-  title={null} // ensure no built-in header is shown
+  title={null}
 >
+<>
   <div
     style={{
-      position: "relative", // for the close button
+      position: "relative",
       display: "flex",
       flexDirection: "row",
       width: "100%", // fill entire modal wrapper
@@ -1492,6 +1493,7 @@ marginTop: "auto",
       </form>
     </div>
   </div>
+</>
 </Modal>
 </div>
   ))
