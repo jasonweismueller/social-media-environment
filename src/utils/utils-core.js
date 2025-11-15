@@ -687,6 +687,7 @@ case "cta_click":
     const reactedFlag = agg.reaction_type ? 1 : 0;
     row[`${id}_reacted`]       = reactedFlag ? 1 : "";
     row[`${id}_reaction_type`] = agg.reaction_type;
+    row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
 
     row[`${id}_expandable`] = agg.expandable ? 1 : "";
     row[`${id}_expanded`]   = agg.expanded ? 1 : "";
