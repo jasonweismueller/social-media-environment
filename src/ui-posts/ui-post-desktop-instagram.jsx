@@ -4,6 +4,16 @@ import { neutralAvatarDataUrl } from "../ui-core";
 export function ShareSheetDesktop({ open, onClose, onShare }) {
   const [selectedFriends, setSelectedFriends] = React.useState([]);
   const [message, setMessage] = React.useState("");
+  const [showMessageSection, setShowMessageSection] = React.useState(false);
+
+  React.useEffect(() => {
+    if (selectedFriends.length > 0) {
+      setShowMessageSection(true);
+    } else {
+      const t = setTimeout(() => setShowMessageSection(false), 250);
+      return () => clearTimeout(t);
+    }
+  }, [selectedFriends.length]);
 
   if (!open) return null;
 
@@ -23,9 +33,9 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
   const handleSend = () => {
     if (!selectedFriends.length) return;
     onShare({
-  friends: selectedFriends.join(", "),  // ⭐ human-readable
-  message
-});
+      friends: selectedFriends.join(", "),
+      message,
+    });
     setSelectedFriends([]);
     setMessage("");
     onClose();
@@ -49,7 +59,6 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
         animation: "fadeIn 0.25s ease",
       }}
     >
-      {/* White sheet box */}
       <div
         style={{
           position: "relative",
@@ -67,7 +76,7 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
           flexDirection: "column",
         }}
       >
-        {/* ✅ Close Button INSIDE box */}
+        {/* Close button */}
         <button
           onClick={onClose}
           aria-label="Close"
@@ -105,7 +114,7 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
             gridTemplateColumns: "repeat(4, 1fr)",
             gap: 20,
             justifyItems: "center",
-            marginBottom: 20,
+            marginBottom: 10,
             overflowY: "auto",
             padding: "4px 2px",
           }}
@@ -182,51 +191,67 @@ export function ShareSheetDesktop({ open, onClose, onShare }) {
           })}
         </div>
 
-        {/* Message + Send */}
+        {/* Smooth message input + send button */}
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
+            overflow: "hidden",
+            transition: "max-height 0.3s ease, opacity 0.3s ease",
+            maxHeight: showMessageSection ? "200px" : "0px",
+            opacity: showMessageSection ? 1 : 0,
           }}
         >
-          <input
-            type="text"
-            placeholder="Write a message..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+          <div
             style={{
-              border: "1px solid #e5e7eb",
-              outline: "none",
-              background: "#f9fafb",
-              borderRadius: 10,
-              padding: "12px 14px",
-              fontSize: 15,
-              color: "#111",
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!selectedFriends.length}
-            style={{
-              background:
-                selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
-              color: "#fff",
-              fontWeight: 600,
-              border: "none",
-              borderRadius: 10,
-              padding: "13px 0",
-              fontSize: 16,
-              cursor: selectedFriends.length ? "pointer" : "default",
-              transition: "background 0.2s ease",
+              borderTop: "1px solid #e5e7eb",
+              padding: "12px 16px 16px",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              transform: showMessageSection
+                ? "translateY(0)"
+                : "translateY(20px)",
+              transition: "transform 0.35s cubic-bezier(0.25,1,0.5,1)",
             }}
           >
-            Send
-          </button>
+            <input
+              type="text"
+              placeholder="Write a message..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              style={{
+                border: "1px solid #e5e7eb",
+                outline: "none",
+                background: "#f9fafb",
+                borderRadius: 10,
+                padding: "12px 14px",
+                fontSize: 15,
+                color: "#111",
+              }}
+            />
+
+            <button
+              onClick={handleSend}
+              disabled={!selectedFriends.length}
+              style={{
+                background:
+                  selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
+                color: "#fff",
+                fontWeight: 600,
+                border: "none",
+                borderRadius: 10,
+                padding: "13px 0",
+                fontSize: 16,
+                cursor: selectedFriends.length ? "pointer" : "default",
+                transition: "background 0.2s ease",
+              }}
+            >
+              Send
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Animations */}
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
