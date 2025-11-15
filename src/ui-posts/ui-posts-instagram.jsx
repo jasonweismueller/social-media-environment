@@ -275,8 +275,6 @@ export function PostCard({
   authorType, showTime, flags: postFlags = {}
 } = post || {};
 
-
-
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
@@ -389,7 +387,6 @@ const poolNames =
     }
     return image || null;
   }, [image, imageMode, randImagesOn, randImageUrl]);
-
 
   const imgs = Array.isArray(images) ? images : [];
   const hasCarousel = imageMode === "multi" && imgs.length > 1;
@@ -548,66 +545,6 @@ const VerifiedBadge = (
   </svg>
 );
 
-
-function ModalImage({ displayImageObj, image }) {
-  const isRealSVG =
-    typeof displayImageObj?.svg === "string" &&
-    displayImageObj.svg.trim().startsWith("<svg");
-
-  if (isRealSVG) {
-    return (
-      <div
-        dangerouslySetInnerHTML={{
-          __html: displayImageObj.svg.replace(
-            "<svg ",
-            "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-          ),
-        }}
-        style={{ position: "absolute", inset: 0, background: "#000" }}
-      />
-    );
-  }
-
-  if (displayImageObj?.url) {
-    return (
-      <img
-        src={displayImageObj.url}
-        alt={displayImageObj?.alt || ""}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          objectPosition: `${
-            displayImageObj?.focalX ?? image?.focalX ?? 50
-          }% ${
-            displayImageObj?.focalY ?? image?.focalY ?? 50
-          }%`,
-          display: "block",
-          background: "#000",
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{
-        color: "#fff",
-        fontSize: 18,
-        textAlign: "center",
-        padding: "40px 0",
-        width: "100%",
-      }}
-    >
-      No image
-    </div>
-  );
-}
-
-console.log("MODAL IMAGE OBJ:", displayImageObj, image);
-
   return (
     <article
       ref={refFromTracker}
@@ -750,56 +687,36 @@ console.log("MODAL IMAGE OBJ:", displayImageObj, image);
                 loading="lazy"
                 decoding="async"
               />
-           ) : (() => {
-  const isRealSVG =
-    typeof displayImageObj?.svg === "string" &&
-    displayImageObj.svg.trim().startsWith("<svg");
-
-  if (isRealSVG) {
-    return (
-      <div
-        dangerouslySetInnerHTML={{
-          __html: displayImageObj.svg.replace(
-            "<svg ",
-            "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-          ),
-        }}
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "#000",
-        }}
-      />
-    );
-  }
-
-  if (displayImageObj?.url) {
-    return (
-      <img
-        src={displayImageObj.url}
-        alt={displayImageObj?.alt || image?.alt || ""}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          objectPosition: `${
-            displayImageObj?.focalX ?? image?.focalX ?? 50
-          }% ${
-            displayImageObj?.focalY ?? image?.focalY ?? 50
-          }%`,
-          display: "block",
-          background: "#000",
-        }}
-        loading="lazy"
-        decoding="async"
-      />
-    );
-  }
-
-  return null;
-})()}
+            ) : displayImageObj?.svg ? (
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: displayImageObj.svg.replace(
+                    "<svg ",
+                    "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+                  ),
+                }}
+              />
+            ) : (displayImageObj?.url || image?.url) ? (
+              <img
+                src={displayImageObj?.url || image?.url}
+                alt={(displayImageObj?.alt || image?.alt) || ""}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  objectPosition: `${
+                    (image?.focalX ?? 50)
+                  }% ${
+                    (image?.focalY ?? 50)
+                  }%`,
+                }}
+                loading="lazy"
+                decoding="async"
+              />
+            ) : null}
           </div>
         </div>
       )}
@@ -971,7 +888,7 @@ console.log("MODAL IMAGE OBJ:", displayImageObj, image);
 
    {/* Comments */}
 {openComments && (
- isMobile ? (
+ (isMobile ? (
   <div
   role="dialog"
   className="comment-sheet"
@@ -1217,79 +1134,70 @@ marginTop: "auto",
 </form>
       </div>
     </div>
- ) : (
-  <>
-
-  
-    {/* Desktop Comments Modal */}
+  ) : (
     <div className="ig-comment-modal">
-  <Modal
-    onClose={() => {
-      setOpenComments(false);
-      onAction("comment_close", { post_id: id });
+   <Modal
+  onClose={() => {
+    setOpenComments(false);
+    onAction("comment_close", {post_id : id });
+  }}
+  wide={true}
+  title={null} // ensure no built-in header is shown
+>
+  <div
+    style={{
+      position: "relative", // for the close button
+      display: "flex",
+      flexDirection: "row",
+      width: "100%", // fill entire modal wrapper
+      maxWidth: "min(860px, 90vw)",
+      maxHeight: "82vh",
+      margin: "4vh auto",
+      overflow: "hidden",
+      borderRadius: 12,
+      background: "#fff",
     }}
-    wide={true}
-    title={null}
   >
-    <div className="modal-body ig-comment-body" style={{ padding: 0, margin: 0 }}>
-
-      {/* WRAPPER for LEFT + RIGHT */}
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          flexDirection: "row",
-          width: "100%",
-          maxWidth: "min(860px, 90vw)",
-          maxHeight: "82vh",
-          margin: "4vh auto",
-          overflow: "hidden",
-          borderRadius: 12,
-          background: "#fff",
-        }}
+    {/* 🔘 Close button */}
+    <button
+      onClick={() => {
+        setOpenComments(false);
+        onAction("comment_close", {post_id : id });
+      }}
+      aria-label="Close"
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 12,
+        background: "rgba(255,255,255,0.8)",
+        border: "none",
+        borderRadius: "50%",
+        width: 30,
+        height: 30,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+        zIndex: 10,
+      }}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        stroke="#111"
+        strokeWidth="2"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       >
-
-        {/* CLOSE BUTTON */}
-        <button
-          onClick={() => {
-            setOpenComments(false);
-            onAction("comment_close", { post_id: id });
-          }}
-          aria-label="Close"
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            background: "rgba(255,255,255,0.8)",
-            border: "none",
-            borderRadius: "50%",
-            width: 30,
-            height: 30,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-            zIndex: 10,
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            stroke="#111"
-            strokeWidth="2"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
-      {/* ------------------- LEFT: Post Image ------------------- */}
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
+  {/* LEFT: Post Image */}
 <div
   style={{
     flex: 1,
@@ -1300,225 +1208,262 @@ marginTop: "auto",
     height: "100%",
     maxWidth: "calc(100% - 360px)",
     overflow: "hidden",
-    position: "relative",
   }}
 >
-  <ModalImage displayImageObj={displayImageObj} image={image} />
+  {(image?.url || displayImageObj?.url) ? (
+    <img
+      src={displayImageObj?.url || image?.url}
+      alt=""
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover", // ✅ match feed framing
+        objectPosition: `${
+          image?.focalX != null ? image.focalX : 50
+        }% ${
+          image?.focalY != null ? image.focalY : 50
+        }%`, // ✅ same focal point logic
+        backgroundColor: "#000",
+        display: "block",
+      }}
+    />
+  ) : (
+    <div
+      style={{
+        color: "#fff",
+        fontSize: 18,
+        textAlign: "center",
+        width: "100%",
+        padding: "40px 0",
+      }}
+    >
+      No Image
+    </div>
+  )}
 </div>
-  
+    {/* RIGHT: Caption + Comments */}
+    <div
+  style={{
+    width: 340,
+    display: "flex",
+    flexDirection: "column",
+    borderLeft: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "-6px 0 8px -6px rgba(0,0,0,0.08)",
+    background: "#fff",
+  }}
+>
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "14px 16px",
+          borderBottom: "1px solid #eee",
+        }}
+      >
+       <img
+  src={effectiveAvatarUrl}
+  alt={displayAuthor}
+  width={32}
+  height={32}
+  style={{ borderRadius: "999px", objectFit: "cover" }}
+/>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>
+          {displayAuthor}
+          {post.badge && VerifiedBadge}
+        </span>
+      </div>
 
-        {/* ------------------- RIGHT: Caption + Comments ------------------- */}
-        <div
-          style={{
-            width: 340,
-            display: "flex",
-            flexDirection: "column",
-            borderLeft: "1px solid rgba(0,0,0,0.08)",
-            boxShadow: "-6px 0 8px -6px rgba(0,0,0,0.08)",
-            background: "#fff",
-          }}
-        >
-          {/* Header */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "14px 16px",
-              borderBottom: "1px solid #eee",
-            }}
-          >
-            <img
-              src={effectiveAvatarUrl}
-              alt={displayAuthor}
-              width={32}
-              height={32}
-              style={{ borderRadius: "999px", objectFit: "cover" }}
-            />
-            <span style={{ fontWeight: 600, fontSize: 14 }}>
-              {displayAuthor}
-              {post.badge && VerifiedBadge}
-            </span>
-          </div>
-
-          {/* Caption */}
-          {text?.trim() && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                padding: "14px 16px 8px 16px",
-              }}
-            >
-              <img
-                src={effectiveAvatarUrl}
-                alt={displayAuthor}
-                width={32}
-                height={32}
-                style={{ borderRadius: "999px", objectFit: "cover" }}
-              />
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>
-                    {displayAuthor}
-                  </span>
-                  {post.badge && VerifiedBadge}
-                </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: "#111827",
-                    lineHeight: 1.4,
-                    marginTop: 2,
-                  }}
-                >
-                  {text}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Comments list */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "14px 16px",
-              background: "#fff",
-            }}
-          >
-            {baseComments + participantComments === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  marginTop: "40%",
-                  color: "#6b7280",
-                  fontSize: 14,
-                }}
-              >
-                No comments yet.
-              </div>
-            ) : (
-              <>
-                {/* Ghost comments */}
-                {Array.from({ length: Math.min(5, baseComments) }).map((_, i) => (
-                  <div
-                    key={`ghost-${i}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: ".6rem",
-                      marginBottom: 14,
-                    }}
-                  >
-                    <img
-                      src={neutralAvatarDataUrl(32)}
-                      width={32}
-                      height={32}
-                      style={{ borderRadius: "999px", flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          fontSize: 14,
-                          marginBottom: 4,
-                        }}
-                      >
-                        User {i + 1}
-                      </div>
-                      <div
-                        style={{
-                          background: "#e5e7eb",
-                          borderRadius: 6,
-                          height: 12,
-                          width: "80%",
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-
-                {/* Submitted comment */}
-                {!!mySubmittedComment && (
-                  <div style={{ display: "flex", gap: ".6rem", marginTop: 10 }}>
-                    <img
-                      src={neutralAvatarDataUrl(32)}
-                      width={32}
-                      height={32}
-                      style={{ borderRadius: "999px" }}
-                    />
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>
-                        {String(myParticipantId)}
-                      </div>
-                      <div
-                        style={{
-                          color: "#111827",
-                          fontSize: 14,
-                          lineHeight: 1.35,
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {mySubmittedComment}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Add Comment */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSubmitComment();
-            }}
-            style={{
-              borderTop: "1px solid #e5e7eb",
-              padding: "10px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              background: "#fff",
-            }}
-          >
-            <input
-              type="text"
-              placeholder="Add a comment..."
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              style={{
-                flex: 1,
-                border: "none",
-                outline: "none",
-                fontSize: 14,
-              }}
-            />
-            <button
-              type="submit"
-              disabled={!commentText.trim()}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: commentText.trim() ? "#0095f6" : "#9ca3af",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: commentText.trim() ? "pointer" : "default",
-              }}
-            >
-              Post
-            </button>
-          </form>
-        </div>
+      {/* Caption */}
+     { text?.trim() && (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: "14px 16px 8px 16px",
+      borderBottom: "none",          // 🚫 remove extra line
+    }}
+  >
+    <img
+      src={effectiveAvatarUrl}
+      alt={displayAuthor}
+      width={32}
+      height={32}
+      style={{ borderRadius: "999px", objectFit: "cover" }}
+    />
+    <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{displayAuthor}</span>
+        {post.badge && VerifiedBadge}
+      </div>
+      <div
+        style={{
+          fontSize: 14,
+          color: "#111827",
+          lineHeight: 1.4,
+          marginTop: 2,
+        }}
+      >
+        {text}
       </div>
     </div>
-  </Modal>
+  </div>
+)}
+
+      {/* Comments */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "14px 16px",
+          background: "#fff",
+        }}
+      >
+        {baseComments + participantComments === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "40%",
+              color: "#6b7280",
+              fontSize: 14,
+            }}
+          >
+            No comments yet.
+          </div>
+        ) : (
+          <>
+            {Array.from({ length: Math.min(5, baseComments) }).map((_, i) => (
+              <div
+                key={`ghost-${i}`}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: ".6rem",
+                  marginBottom: 14,
+                }}
+              >
+                <img
+                  src={neutralAvatarDataUrl(32)}
+                  alt=""
+                  width={32}
+                  height={32}
+                  style={{ borderRadius: "999px", flexShrink: 0 }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      marginBottom: 4,
+                    }}
+                  >
+                    User {i + 1}
+                  </div>
+                  <div
+                    style={{
+                      background: "#e5e7eb",
+                      borderRadius: 6,
+                      height: 12,
+                      width: "80%",
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+
+            {!!mySubmittedComment && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: ".6rem",
+                  marginTop: 10,
+                }}
+              >
+                <img
+                  src={neutralAvatarDataUrl(32)}
+                  alt=""
+                  width={32}
+                  height={32}
+                  style={{ borderRadius: "999px" }}
+                />
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: 14,
+                      marginBottom: 2,
+                    }}
+                  >
+                    {String(myParticipantId)}
+                  </div>
+                  <div
+                    style={{
+                      color: "#111827",
+                      fontSize: 14,
+                      lineHeight: 1.35,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {mySubmittedComment}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Add Comment */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmitComment();
+        }}
+        style={{
+          borderTop: "1px solid #e5e7eb",
+          padding: "10px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: "#fff",
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Add a comment..."
+          value={commentText}
+          onChange={(e) => setCommentText(e.target.value)}
+          style={{
+            flex: 1,
+            border: "none",
+            outline: "none",
+            fontSize: 14,
+            background: "transparent",
+          }}
+        />
+        <button
+          type="submit"
+          disabled={!commentText.trim()}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: commentText.trim() ? "#0095f6" : "#9ca3af",
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: commentText.trim() ? "pointer" : "default",
+          }}
+        >
+          Post
+        </button>
+      </form>
+    </div>
+  </div>
+</Modal>
 </div>
-  </>
-)
+  ))
 )}
 
       {isMobile && (
