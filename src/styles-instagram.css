@@ -596,7 +596,7 @@ body.admin-mode .ig-topbar { display:none !important; }
   .feed-end, .feed-submit, .submit-wrap, .end{
     display:block !important;
     text-align:center;
-    padding:12px 16px;
+    padding:4px 16px;
   }
 }
 
