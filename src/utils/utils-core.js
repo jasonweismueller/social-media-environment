@@ -125,13 +125,35 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
   } catch {}
 }
 
+export function getAppParam() {
+  try {
+    const sp = getCombinedSearchParams();
+    const fromUrl = (sp.get("app") || "").toLowerCase();
+    const fromWin = (window.APP || "").toLowerCase();
+
+    if (fromUrl === "ig" || fromUrl === "instagram") return "ig";
+    if (fromUrl === "fb" || fromUrl === "facebook") return "fb";
+    if (fromWin === "ig" || fromWin === "instagram") return "ig";
+    if (fromWin === "fb" || fromWin === "facebook") return "fb";
+
+    return ""; // default: none
+  } catch {
+    return "";
+  }
+}
+
 export function buildFeedShareUrl(feedOrId) {
   const origin = "https://studyfeed.org"; // fixed base
   const fid = typeof feedOrId === "string" ? feedOrId : feedOrId?.feed_id || "";
   const pid = getProjectId();
+  const app = getAppParam();
+
   const qp = new URLSearchParams();
+
   if (fid) qp.set("feed", fid);
   if (pid) qp.set("project", pid);
+  if (app) qp.set("app", app);
+
   return `${origin}/?${qp.toString()}`;
 }
 
