@@ -202,12 +202,12 @@ function DesktopMenu({ open, onClose, onPick, id, onAction }) {
 
                 // 🔥 REGISTER REPORT ACTION
                 if (item.action === "report") {
-                  onAction?.("report", { post_id: id });
+                  onAction?.("report_misinformation_click", { post_id: id });
                 }
 
                 onClose?.();
                 if (item.action !== "cancel") {
-                  onPick?.(item.action, { id });
+                  onPick?.("report_misinformation_click", { id });
                 }
               }}
               style={{

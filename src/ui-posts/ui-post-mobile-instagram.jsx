@@ -257,8 +257,8 @@ export function MobileSheet({ open, onClose, onAction, postId }) {
   if (item.disabled) return;
 
   if (item.label === "Report") {
-    onAction?.("report", { post_id: postId });
-  }
+    onAction?.("report_misinformation_click", { post_id: postId });
+}
 
   onClose?.();
 }}
