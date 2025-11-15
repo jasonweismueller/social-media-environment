@@ -1600,7 +1600,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
             style={{
               gridColumn: "1 / -1",
               textAlign: "center",
-              margin: "1.2rem 0",
+              margin: "0.6rem 0",
               fontSize: 14,
               color: "#6b7280"
             }}
@@ -1615,7 +1615,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
             gridColumn: "1 / -1",
             display: "flex",
             justifyContent: "center",
-            margin: "1.5rem 0"
+            margin: "0.6rem 0"
           }}
         >
           <button type="button" className="btn primary" onClick={onSubmit} disabled={disabled === true}>
