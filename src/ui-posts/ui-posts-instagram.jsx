@@ -1202,12 +1202,9 @@ marginTop: "auto",
   style={{
     flex: 1,
     background: "#000",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
-    maxWidth: "calc(100% - 360px)",
+    position: "relative",   // ⭐ we use the same pattern as the feed
     overflow: "hidden",
+    maxWidth: "calc(100% - 360px)",
   }}
 >
   {(image?.url || displayImageObj?.url) ? (
@@ -1215,16 +1212,16 @@ marginTop: "auto",
       src={displayImageObj?.url || image?.url}
       alt=""
       style={{
+        position: "absolute",   // ⭐ FIX: essential for cropping
+        inset: 0,
         width: "100%",
         height: "100%",
-        objectFit: "cover", // ✅ match feed framing
+        objectFit: "cover",
         objectPosition: `${
           image?.focalX != null ? image.focalX : 50
         }% ${
           image?.focalY != null ? image.focalY : 50
-        }%`, // ✅ same focal point logic
-        backgroundColor: "#000",
-        display: "block",
+        }%`,
       }}
     />
   ) : (
@@ -1233,7 +1230,6 @@ marginTop: "auto",
         color: "#fff",
         fontSize: 18,
         textAlign: "center",
-        width: "100%",
         padding: "40px 0",
       }}
     >
