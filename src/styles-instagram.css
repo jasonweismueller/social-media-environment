@@ -107,8 +107,21 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .action svg { display:block; }
 
 /* Submit / misc */
-.submit-wrap{text-align:center;margin:.5rem 0 1.5rem}
-.btn-wide{display:block;width:100%;max-width:300px;margin:1rem auto}
+.submit-wrap {
+  grid-column: 1 / -1;
+  text-align: center;
+  margin: 1.5rem 0 2.5rem;
+}
+
+.btn-wide {
+  display: block;
+  width: 100%;
+  max-width: 100%;     /* full post width */
+  padding: 0.9rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 0.75rem;
+}
 .end{color:#6b7280;text-align:center;font-size:.9rem;padding:1.5rem}
 .link-row{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.5rem}
 .link{font-size:.9rem}

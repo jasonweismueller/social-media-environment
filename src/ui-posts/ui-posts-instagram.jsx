@@ -1595,33 +1595,17 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
         <div ref={sentinelRef} aria-hidden="true" />
 
         {visibleCount >= posts.length && (
-          <div
-            className="feed-end"
-            style={{
-              gridColumn: "1 / -1",
-              textAlign: "center",
-              margin: "0.6rem 0",
-              fontSize: 14,
-              color: "#6b7280"
-            }}
-          >
-            End of Feed
-          </div>
-        )}
-
-        <div
-          className="feed-submit"
-          style={{
-            gridColumn: "1 / -1",
-            display: "flex",
-            justifyContent: "center",
-            margin: "0.6rem 0"
-          }}
-        >
-          <button type="button" className="btn primary" onClick={onSubmit} disabled={disabled === true}>
-            Submit
-          </button>
-        </div>
+  <div className="submit-wrap">
+    <button
+      type="button"
+      className="btn primary btn-wide"
+      onClick={onSubmit}
+      disabled={disabled === true}
+    >
+      Submit
+    </button>
+  </div>
+)}
       </main>
     </div>
   );
