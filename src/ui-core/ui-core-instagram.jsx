@@ -379,13 +379,32 @@ export function LoadingOverlay({ title = "Loading your feed…", subtitle = "Thi
   );
 }
 
+
 export function ThankYouOverlay() {
+  const [sessionId, setSessionId] = React.useState("");
+
+  React.useEffect(() => {
+    // Retrieve the UID stored earlier via localStorage or internal logic
+    setSessionId(uid());
+  }, []);
+
   return (
     <div className="modal-backdrop" style={{ zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>
         <div className="modal-body">
           <h2 style={{ marginTop: 0 }}>Thank you for your response</h2>
-          <p>You may now close this window.</p>
+          <p>Please go back to the survey and enter the following code:</p>
+          <p
+            style={{
+              fontSize: "1.25rem",
+              fontWeight: "bold",
+              marginTop: "0.5rem",
+              fontFamily: "monospace",
+              letterSpacing: "0.5px",
+            }}
+          >
+            {sessionId}
+          </p>
         </div>
       </div>
     </div>
