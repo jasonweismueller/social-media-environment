@@ -642,9 +642,11 @@ case "save":
   // When user picks a target → we count this as a real share
 case "share_target":
   const friendList =
-    Array.isArray(e.friends) ? e.friends.join(", ") :
-    e.friend ? String(e.friend) :
-    "";
+  typeof e.friends === "string" && e.friends.trim()
+    ? e.friends.trim()
+    : e.friend
+    ? String(e.friend)
+    : "";
 
   p.share_target = friendList;
   p.share_text   = e.message ? String(e.message) : "";
@@ -704,11 +706,7 @@ case "cta_click":
     row[`${id}_saved`] = agg.saved ? 1 : "";
 
 // IG: shared fields (clean)
-const shareTargetClean =
-  Array.isArray(agg.share_target)
-    ? agg.share_target.join(", ")
-    : String(agg.share_target || "").trim();
-
+const shareTargetClean = String(agg.share_target || "").trim();
 const hasTarget = shareTargetClean !== "";
 
 row[`${id}_shared`]        = hasTarget ? 1 : "";
