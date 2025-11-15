@@ -96,6 +96,8 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Saved</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Shared</th>
                     <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Reported</th>
+<th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Sponsored</th>   {/* NEW */}
+<th style={{ textAlign: "center",padding: ".4rem .25rem" }}>CTA Clicked</th> {/* NEW */}
                     <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
                   </tr>
                 </thead>
@@ -117,6 +119,8 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.saved ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.shared ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reported ? "✓" : "—"}</td>
+                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.sponsored ? "✓" : "—"}</td>   {/* NEW */}
+<td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.cta_clicked ? "✓" : "—"}</td> {/* NEW */}
                         <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{sShort(dwellSeconds)}</td>
                       </tr>
                     );
@@ -491,25 +495,38 @@ export function ParticipantsPanel({
                             const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
 
                             return {
-                              post_id,
-                              name: names[post_id] || "",
-                              reacted: Number(agg.reacted) === 1,
-                              expandable: Number(agg.expandable) === 1,
-                              expanded: Number(agg.expanded) === 1,
-                              commented: Number(agg.commented) === 1 || hasRealComment,
-                              saved: Number(agg.saved) === 1,
-                              shared: !!(
-  agg.shared ||
-  (
-    agg.share_target &&
-    String(agg.share_target).trim() &&
-    !String(agg.share_target).trim().startsWith("[Ljava.lang.Object;@")
-  )
-),
-                              reported: Number(agg.reported) === 1,
-                              comment_text: rawComment,
-                              dwell_s,
-                            };
+  post_id,
+  name: names[post_id] || "",
+
+  reacted: Number(agg.reacted) === 1,
+  expandable: Number(agg.expandable) === 1,
+  expanded: Number(agg.expanded) === 1,
+  commented: Number(agg.commented) === 1 || hasRealComment,
+  saved: Number(agg.saved) === 1,
+
+  shared: !!(
+    agg.shared ||
+    (
+      agg.share_target &&
+      String(agg.share_target).trim() &&
+      !String(agg.share_target).trim().startsWith("[Ljava.lang.Object;@")
+    )
+  ),
+
+  reported: Number(agg.reported) === 1,
+
+  // ⭐ NEW: Sponsored flag (from post definition)
+  sponsored: (() => {
+    const postDef = posts.find(p => p.id === post_id);
+    return postDef?.adType === "ad";
+  })(),
+
+  // ⭐ NEW: CTA click (from participant actions)
+  cta_clicked: Number(agg.cta_clicked) === 1,
+
+  comment_text: rawComment,
+  dwell_s,
+};
                           });
 
                           setDetailSubmission({
