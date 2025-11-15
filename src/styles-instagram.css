@@ -110,34 +110,52 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .submit-wrap {
   grid-column: 1 / -1;
   text-align: center;
-  margin: 1.5rem 0 2.5rem;
+
+  /* TIGHT spacing */
+  margin: 0.75rem 0 1.25rem;  /* ⬅️ Adjust if you want even tighter */
+  padding: 0;
 }
 
 .btn-wide {
   display: block;
   width: 100%;
-  max-width: 100%;     /* full post width */
-  padding: 0.9rem 0;
+  max-width: 100%;
+  padding: 0.75rem 0;
   font-size: 1rem;
   font-weight: 600;
-  border-radius: 0.75rem;
+  border-radius: 0.65rem;
 }
-.end{color:#6b7280;text-align:center;font-size:.9rem;padding:1.5rem}
-.link-row{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.5rem}
-.link{font-size:.9rem}
 
-/* Center submit + end inside feed grid (desktop/tablet) */
+/* Remove excessive padding from the old .end section, keep safe */
+.end {
+  color:#6b7280;
+  text-align:center;
+  font-size:.9rem;
+  padding: 0.75rem 0;
+}
+
+.link-row {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.75rem;
+  margin-top:.5rem;
+}
+.link { font-size:.9rem; }
+
+/* Center submit inside feed grid */
 .ig-feed .submit-wrap,
-.page .feed .submit-wrap,
-.ig-feed .end,
-.page .feed .end{
+.page .feed .submit-wrap {
   grid-column: 1 / -1;
   display:flex;
   justify-content:center;
   text-align:center;
 }
+
+/* REMOVE the old forced margin that was adding space */
 .ig-feed .submit-wrap .btn,
-.page .feed .submit-wrap .btn{ margin:1rem auto; }
+.page .feed .submit-wrap .btn {
+  margin: 0;    /* ⬅️ This is what removes the HUGE extra spacing */
+}
 
 /* Gated blur while overlays shown */
 .app-shell{transition:filter .2s ease,opacity .2s ease}
