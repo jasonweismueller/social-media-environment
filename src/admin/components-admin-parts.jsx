@@ -516,10 +516,7 @@ export function ParticipantsPanel({
   reported: Number(agg.reported) === 1,
 
   // ⭐ NEW: Sponsored flag (from post definition)
-  sponsored: (() => {
-    const postDef = posts.find(p => p.id === post_id);
-    return postDef?.adType === "ad";
-  })(),
+  sponsored: post?.adType === "ad",
 
   // ⭐ NEW: CTA click (from participant actions)
   cta_clicked: Number(agg.cta_clicked) === 1,
