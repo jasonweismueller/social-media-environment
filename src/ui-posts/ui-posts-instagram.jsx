@@ -548,6 +548,64 @@ const VerifiedBadge = (
   </svg>
 );
 
+
+function ModalImage({ displayImageObj, image }) {
+  const isRealSVG =
+    typeof displayImageObj?.svg === "string" &&
+    displayImageObj.svg.trim().startsWith("<svg");
+
+  if (isRealSVG) {
+    return (
+      <div
+        dangerouslySetInnerHTML={{
+          __html: displayImageObj.svg.replace(
+            "<svg ",
+            "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+          ),
+        }}
+        style={{ position: "absolute", inset: 0, background: "#000" }}
+      />
+    );
+  }
+
+  if (displayImageObj?.url) {
+    return (
+      <img
+        src={displayImageObj.url}
+        alt={displayImageObj?.alt || ""}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: `${
+            displayImageObj?.focalX ?? image?.focalX ?? 50
+          }% ${
+            displayImageObj?.focalY ?? image?.focalY ?? 50
+          }%`,
+          display: "block",
+          background: "#000",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        color: "#fff",
+        fontSize: 18,
+        textAlign: "center",
+        padding: "40px 0",
+        width: "100%",
+      }}
+    >
+      No image
+    </div>
+  );
+}
+
 console.log("MODAL IMAGE OBJ:", displayImageObj, image);
 
   return (
@@ -692,36 +750,56 @@ console.log("MODAL IMAGE OBJ:", displayImageObj, image);
                 loading="lazy"
                 decoding="async"
               />
-            ) : displayImageObj?.svg ? (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: displayImageObj.svg.replace(
-                    "<svg ",
-                    "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-                  ),
-                }}
-              />
-            ) : (displayImageObj?.url || image?.url) ? (
-              <img
-                src={displayImageObj?.url || image?.url}
-                alt={(displayImageObj?.alt || image?.alt) || ""}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  display: "block",
-                  objectPosition: `${
-                    (image?.focalX ?? 50)
-                  }% ${
-                    (image?.focalY ?? 50)
-                  }%`,
-                }}
-                loading="lazy"
-                decoding="async"
-              />
-            ) : null}
+           ) : (() => {
+  const isRealSVG =
+    typeof displayImageObj?.svg === "string" &&
+    displayImageObj.svg.trim().startsWith("<svg");
+
+  if (isRealSVG) {
+    return (
+      <div
+        dangerouslySetInnerHTML={{
+          __html: displayImageObj.svg.replace(
+            "<svg ",
+            "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+          ),
+        }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "#000",
+        }}
+      />
+    );
+  }
+
+  if (displayImageObj?.url) {
+    return (
+      <img
+        src={displayImageObj.url}
+        alt={displayImageObj?.alt || image?.alt || ""}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: `${
+            displayImageObj?.focalX ?? image?.focalX ?? 50
+          }% ${
+            displayImageObj?.focalY ?? image?.focalY ?? 50
+          }%`,
+          display: "block",
+          background: "#000",
+        }}
+        loading="lazy"
+        decoding="async"
+      />
+    );
+  }
+
+  return null;
+})()}
           </div>
         </div>
       )}
@@ -1225,71 +1303,9 @@ marginTop: "auto",
     position: "relative",
   }}
 >
-  {(() => {
-    /* Strict SVG detection */
-    const isRealSVG =
-      typeof displayImageObj?.svg === "string" &&
-      displayImageObj.svg.trim().startsWith("<svg");
-
-    /* 1. SVG rendering */
-    if (isRealSVG) {
-      return (
-        <div
-          dangerouslySetInnerHTML={{
-            __html: displayImageObj.svg.replace(
-              "<svg ",
-              "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
-            ),
-          }}
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "#000",
-          }}
-        />
-      );
-    }
-
-    /* 2. Cropped image (correct focal & same as feed) */
-    if (displayImageObj?.url) {
-      return (
-        <img
-          src={displayImageObj.url}
-          alt={displayImageObj?.alt || ""}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: `${
-              displayImageObj?.focalX ?? image?.focalX ?? 50
-            }% ${
-              displayImageObj?.focalY ?? image?.focalY ?? 50
-            }%`,
-            display: "block",
-            background: "#000",
-          }}
-        />
-      );
-    }
-
-    /* 3. Fallback */
-    return (
-      <div
-        style={{
-          color: "#fff",
-          fontSize: 18,
-          textAlign: "center",
-          padding: "40px 0",
-          width: "100%",
-        }}
-      >
-        No image
-      </div>
-    );
-  })()}
+  <ModalImage displayImageObj={displayImageObj} image={image} />
 </div>
+  
 
         {/* ------------------- RIGHT: Caption + Comments ------------------- */}
         <div
