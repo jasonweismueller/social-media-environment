@@ -275,6 +275,8 @@ export function PostCard({
   authorType, showTime, flags: postFlags = {}
 } = post || {};
 
+
+
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 
@@ -387,6 +389,7 @@ const poolNames =
     }
     return image || null;
   }, [image, imageMode, randImagesOn, randImageUrl]);
+
 
   const imgs = Array.isArray(images) ? images : [];
   const hasCarousel = imageMode === "multi" && imgs.length > 1;
@@ -1250,7 +1253,11 @@ marginTop: "auto",
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          objectPosition: `${image?.focalX ?? 50}% ${image?.focalY ?? 50}%`,
+          objectPosition: `${
+  (displayImageObj?.focalX ?? image?.focalX ?? 50)
+}% ${
+  (displayImageObj?.focalY ?? image?.focalY ?? 50)
+}%`,
           display: "block",
           background: "#000",
         }}
