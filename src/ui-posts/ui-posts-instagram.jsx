@@ -548,6 +548,8 @@ const VerifiedBadge = (
   </svg>
 );
 
+console.log("MODAL IMAGE OBJ:", displayImageObj, image);
+
   return (
     <article
       ref={refFromTracker}
@@ -1139,6 +1141,8 @@ marginTop: "auto",
     </div>
  ) : (
   <>
+
+  
     {/* Desktop Comments Modal */}
     <div className="ig-comment-modal">
   <Modal
