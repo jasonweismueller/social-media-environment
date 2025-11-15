@@ -1197,7 +1197,7 @@ marginTop: "auto",
         <line x1="6" y1="6" x2="18" y2="18" />
       </svg>
     </button>
-  {/* LEFT: Post Image */}
+  /* LEFT: Post Image */
 <div
   style={{
     flex: 1,
@@ -1210,36 +1210,67 @@ marginTop: "auto",
     overflow: "hidden",
   }}
 >
-  {(image?.url || displayImageObj?.url) ? (
-    <img
-      src={displayImageObj?.url || image?.url}
-      alt=""
-      style={{
-        width: "100%",
-        height: "100%",
-        objectFit: "cover", // ✅ match feed framing
-        objectPosition: `${
-          image?.focalX != null ? image.focalX : 50
-        }% ${
-          image?.focalY != null ? image.focalY : 50
-        }%`, // ✅ same focal point logic
-        backgroundColor: "#000",
-        display: "block",
-      }}
-    />
-  ) : (
-    <div
-      style={{
-        color: "#fff",
-        fontSize: 18,
-        textAlign: "center",
-        width: "100%",
-        padding: "40px 0",
-      }}
-    >
-      No Image
-    </div>
-  )}
+
+  {/* 🔥 Replace the ENTIRE old (image?.url || displayImageObj?.url) block with this */}
+  {(() => {
+    // 1. SVG case
+    if (displayImageObj?.svg) {
+      return (
+        <div
+          dangerouslySetInnerHTML={{
+            __html: displayImageObj.svg.replace(
+              "<svg ",
+              "<svg preserveAspectRatio='xMidYMid slice' style='position:absolute;inset:0;display:block;width:100%;height:100%' "
+            ),
+          }}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "#000",
+          }}
+        />
+      );
+    }
+
+    const url = displayImageObj?.url || image?.url || null;
+    if (url) {
+      return (
+        <img
+          src={url}
+          alt={displayImageObj?.alt || image?.alt || ""}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: `${
+              image?.focalX != null ? image.focalX : 50
+            }% ${
+              image?.focalY != null ? image.focalY : 50
+            }%`,
+            display: "block",
+            background: "#000",
+          }}
+        />
+      );
+    }
+
+    return (
+      <div
+        style={{
+          color: "#fff",
+          fontSize: 18,
+          textAlign: "center",
+          padding: "40px 0",
+          width: "100%",
+        }}
+      >
+        No Image
+      </div>
+    );
+  })()}
+
 </div>
     {/* RIGHT: Caption + Comments */}
     <div
