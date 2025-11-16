@@ -277,6 +277,7 @@ export function PostCard({
 
 // ✅ Add this line directly after:
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
+const likeButtonRef = useRef(null);
 
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
 
@@ -550,13 +551,25 @@ const [showHeartBurst, setShowHeartBurst] = useState(false);
 const lastTapRef = useRef(0);
 
 const handleMediaTap = () => {
-  if (!isMobile) return; // mobile only
+  if (!isMobile) return;
   const now = Date.now();
   if (now - lastTapRef.current < 300) {
-    // double tap under 300ms
     if (!liked) toggleLike();
+
+    if (likeButtonRef.current) {
+      const rect = likeButtonRef.current.getBoundingClientRect();
+      const parent = likeButtonRef.current.closest(".insta-media");
+      const parentRect = parent?.getBoundingClientRect() ?? { left:0, top:0 };
+
+      const x = rect.left - parentRect.left + rect.width / 2;
+      const y = rect.top - parentRect.top + rect.height / 2;
+
+      document.documentElement.style.setProperty("--like-x", `${x}px`);
+      document.documentElement.style.setProperty("--like-y", `${y}px`);
+    }
+
     setShowHeartBurst(true);
-    setTimeout(() => setShowHeartBurst(false), 700);
+    setTimeout(() => setShowHeartBurst(false), 1200);
   }
   lastTapRef.current = now;
 };
@@ -665,7 +678,7 @@ const handleMediaTap = () => {
 >
   {showHeartBurst && (
     <div className="ig-heart-burst">
-      <svg viewBox="0 0 24 24" width="120" height="120">
+      <svg viewBox="0 0 24 24" width="100" height="100">
         <path
           d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-.99-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.77-8.84a5.5 5.5 0 0 0 0-7.78Z"
           fill="#ed4956"
@@ -815,6 +828,7 @@ const handleMediaTap = () => {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button
+          ref={likeButtonRef}
             aria-label="Like"
             onClick={toggleLike}
             style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}

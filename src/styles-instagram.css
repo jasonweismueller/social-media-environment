@@ -1234,12 +1234,11 @@ body.admin-mode .nav {
     opacity: 0.85;
   }
   80% {
-    /* fly toward like button */
-    transform: translate(115px, 260px) scale(0.32);
+    transform: translate(var(--like-x, 115px), var(--like-y, 260px)) scale(0.32);
     opacity: 0.25;
   }
   100% {
-    transform: translate(115px, 260px) scale(0.15);
+    transform: translate(var(--like-x, 115px), var(--like-y, 260px)) scale(0.15);
     opacity: 0;
   }
 }
