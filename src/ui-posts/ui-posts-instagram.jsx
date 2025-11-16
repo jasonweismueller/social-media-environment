@@ -442,11 +442,30 @@ const poolNames =
 const avatarRef = useRef(null);
 const authorRef = useRef(null);
 const [hoverTargetEl, setHoverTargetEl] = useState(null);
-const attachBioHover = (ref) => ({
-  ref,
-  onMouseEnter: () => showHover(ref.current),
-  onMouseLeave: hideHover,
-});
+const attachBioHover = (ref) => {
+  if (!ref) return {};
+
+  return {
+    ref,
+    ...(isMobile
+      ? {
+          onClick: () => {
+            if (!post.showBio) return;
+            // toggle:
+            setHoverTargetEl((prev) => (prev === ref.current ? null : ref.current));
+
+            if (!bioShownRef.current) {
+              bioShownRef.current = true;
+              onAction?.("bio_open", { post_id: post.id, surface: "mobile" });
+            }
+          },
+        }
+      : {
+          onMouseEnter: () => showHover(ref.current),
+          onMouseLeave: hideHover,
+        }),
+  };
+};
 
 const hideDelayRef = useRef(null);
 
@@ -1614,6 +1633,17 @@ marginTop: "auto",
     hideDelayRef={hideDelayRef}    // 👈 REQUIRED
   />
 )}
+{hoverTargetEl && isMobile && post.showBio && (
+  <BioHoverCard
+    anchorEl={hoverTargetEl}
+    author={displayAuthor}
+    avatarUrl={effectiveAvatarUrl}
+    bio={post}
+    verified={!!post.badge}
+    hideHover={() => setHoverTargetEl(null)}
+    hideDelayRef={hideDelayRef}
+  />
+)}
 
     </article>
   );
@@ -1632,6 +1662,23 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
     const handle = ric(() => setVisibleCount((c) => Math.min(c + STEP, posts.length)));
     return () => (window.cancelIdleCallback ? window.cancelIdleCallback(handle) : clearTimeout(handle));
   }, [posts]);
+
+  // Close bio on outside tap (mobile only)
+useEffect(() => {
+  if (!isMobile) return;
+  if (!hoverTargetEl) return;
+
+  const handleTapOutside = (e) => {
+    if (!refFromTracker?.current) return;
+    if (!refFromTracker.current.contains(e.target)) {
+      setHoverTargetEl(null);
+      bioShownRef.current = false;
+    }
+  };
+
+  document.addEventListener("click", handleTapOutside);
+  return () => document.removeEventListener("click", handleTapOutside);
+}, [isMobile, hoverTargetEl]);
 
   const sentinelRef = useRef(null);
   useEffect(() => {
