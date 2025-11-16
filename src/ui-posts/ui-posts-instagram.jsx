@@ -545,6 +545,22 @@ const VerifiedBadge = (
   </svg>
 );
 
+// ❤️ Double tap like state + animation
+const [showHeartBurst, setShowHeartBurst] = useState(false);
+const lastTapRef = useRef(0);
+
+const handleMediaTap = () => {
+  if (!isMobile) return; // mobile only
+  const now = Date.now();
+  if (now - lastTapRef.current < 300) {
+    // double tap under 300ms
+    if (!liked) toggleLike();
+    setShowHeartBurst(true);
+    setTimeout(() => setShowHeartBurst(false), 700);
+  }
+  lastTapRef.current = now;
+};
+
   return (
     <article
       ref={refFromTracker}
@@ -637,15 +653,30 @@ const VerifiedBadge = (
       {/* Media */}
       {(hasVideo || hasCarousel || hasImage) && (
         <div className="insta-media" style={{ position: "relative", background: "#000" }}>
-          <div
-            style={{
-              width: "100%",
-              aspectRatio: hasVideo ? "4 / 5" : "1 / 1",
-              maxHeight: "80vh",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
+        <div
+  onClick={handleMediaTap}
+  style={{
+    position: "relative",
+    width: "100%",
+    aspectRatio: hasVideo ? "4 / 5" : "1 / 1",
+    maxHeight: "80vh",
+    overflow: "hidden",
+  }}
+>
+  {showHeartBurst && (
+    <div className="ig-heart-burst">
+      <svg viewBox="0 0 24 24" width="120" height="120">
+        <path
+          d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-.99-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.77-8.84a5.5 5.5 0 0 0 0-7.78Z"
+          fill="#fff"
+          stroke="#fff"
+          strokeWidth="1"
+        />
+      </svg>
+    </div>
+  )}
+
+  {/* ORIGINAL IMAGE / VIDEO / CAROUSEL BLOCK HERE */}
             {hasVideo ? (
               <video
                 ref={videoRef}
