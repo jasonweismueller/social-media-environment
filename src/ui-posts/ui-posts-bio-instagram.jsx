@@ -11,27 +11,48 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-/* ---------------- Instagram Link Icon (real IG path) ---------------- */
-const LinkIcon = ({ size = 14 }) => (
-  <svg aria-label="Link" fill="currentColor" height={size} width={size} viewBox="0 0 24 24">
-    <path d="M14.828 9.172a4 4 0 015.657 5.656l-3.536 3.536a4 4 0 01-5.657-5.657l.707-.707"/>
-    <path d="M9.172 14.828a4 4 0 01-5.656-5.657l3.536-3.536a4 4 0 015.657 5.657l-.707.707"/>
+/* ---------------- Insta-style Link Icon ---------------- */
+const LinkIcon = ({ size = 14, style = {} }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    width={size}
+    height={size}
+    style={{ flexShrink: 0, ...style }}
+  >
+    <path
+      fill="currentColor"
+      d="M10.59 13.41a1.978 1.978 0 0 1 0-2.82l2.83-2.83a1.978 1.978 0 0 1 2.82 0c.78.78.78 2.05 0 2.83l-1.18 1.18 1.41 1.41 1.18-1.18a3.972 3.972 0 0 0 0-5.65 3.972 3.972 0 0 0-5.65 0l-2.83 2.83a3.972 3.972 0 0 0 0 5.65c1.55 1.55 4.09 1.55 5.64 0l.71-.71-1.41-1.41-.71.71a1.978 1.978 0 0 1-2.82 0z"
+    />
   </svg>
 );
 
-/* ---------------- Click logging ---------------- */
+/* ---------------- Verified Icon ---------------- */
+export const VerifiedBadge = (
+  <svg width="15" height="15" viewBox="0 0 512 512" style={{ marginLeft: 3, flexShrink: 0 }}>
+    <path fill="#1DA1F2" d="M512 256l-63.3 36.5 7.6 72.7-68.3 39.5-27.2 67.3-72.7-7.6L256 512l-36.5-63.3-72.7 7.6-39.5-68.3-67.3-27.2 7.6-72.7L0 256l63.3-36.5-7.6-72.7 68.3-39.5 27.2-67.3 72.7 7.6L256 0l36.5 63.3 72.7-7.6 39.5 68.3 67.3 27.2-7.6 72.7L512 256z"/>
+    <path fill="#fff" d="M227.3 342.6L134 249.3l36.4-36.4 56.9 56.9 114.3-114.3 36.4 36.4-150.7 150.7z"/>
+  </svg>
+);
+
+/* ---------------- Logging ---------------- */
 function logBioUrlClick(postId, url) {
   try {
     window.__smeLogEvent?.("bio_url_click", { postId, url });
-  } catch (err) {
-    console.warn("Bio URL click logging failed:", err);
-  }
+  } catch {}
 }
 
-/* ---------------- Helper: make URLs clickable inside text ---------------- */
+/* ---------------- Capture hover open event ---------------- */
+function logBioHoverOpen(postId) {
+  try {
+    window.__smeLogEvent?.("bio_hover_open", { postId });
+  } catch {}
+}
+
+/* ---------------- Linkify that doesn't include punctuation ---------------- */
 function linkifyText(text = "") {
   return text.replace(
-    /(https?:\/\/[^\s]+)/g,
+    /(https?:\/\/[^\s<>()]+[^\s<>().,!?])/g,
     (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
   );
 }
@@ -53,6 +74,14 @@ export function BioHoverCard({
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
+  // Capture hover open logging
+  useEffect(() => {
+    if (anchorEl && bio?.id) {
+      logBioHoverOpen(bio.id);
+    }
+  }, [anchorEl, bio?.id]);
+
+  // Position the card
   useEffect(() => {
     if (!anchorEl) return;
     const rect = anchorEl.getBoundingClientRect();
@@ -65,16 +94,18 @@ export function BioHoverCard({
 
   const hasBioText = !!bio.bio_text?.trim();
   const hasBioUrl = !!bio.bio_url?.trim();
+  const postId = bio.id ?? bio.post_id ?? null;
 
   return ReactDOM.createPortal(
     <div
       ref={ref}
-      onMouseEnter={() => clearTimeout(hideDelayRef.current)} // keep open
-      onMouseLeave={hideHover} // close on exit
+      onMouseEnter={() => clearTimeout(hideDelayRef.current)}
+      onMouseLeave={hideHover}
       style={{
         position: "absolute",
         top: pos.top,
         left: pos.left,
+        pointerEvents: "auto", // ensures clicks still work even in overlays
         padding: 18,
         background: "#fff",
         borderRadius: 18,
@@ -89,7 +120,6 @@ export function BioHoverCard({
         cursor: "default",
       }}
     >
-
       {/* ------------ Avatar + name ------------ */}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <img
@@ -102,13 +132,7 @@ export function BioHoverCard({
         <div style={{ maxWidth: 260 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontWeight: 600, fontSize: 15 }}>{author}</span>
-
-            {verified && (
-              <svg width="15" height="15" viewBox="0 0 512 512">
-                <path fill="#1DA1F2" d="M512 256l-63.3 36.5..."/>
-                <path fill="#fff" d="M227.3 342.6L134 249.3..."/>
-              </svg>
-            )}
+            {verified && VerifiedBadge}
           </div>
 
           {/* ------------ Text & URL Behaviour ------------ */}
@@ -124,7 +148,7 @@ export function BioHoverCard({
                   href={bio.bio_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => logBioUrlClick(bio.id, bio.bio_url)}
+                  onClick={() => logBioUrlClick(postId, bio.bio_url)}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -147,7 +171,7 @@ export function BioHoverCard({
               href={bio.bio_url}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => logBioUrlClick(bio.id, bio.bio_url)}
+              onClick={() => logBioUrlClick(postId, bio.bio_url)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
