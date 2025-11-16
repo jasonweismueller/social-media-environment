@@ -1205,15 +1205,14 @@ body.admin-mode .nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: igHeartFlow 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
   pointer-events: none;
   z-index: 5;
 }
 
-/* 1) Pop in center
-   2) Hold
-   3) Fly + shrink toward Like button
-*/
+.ig-heart-inner {
+  animation: igHeartFlow 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  will-change: transform;
+}
 @keyframes igHeartFlow {
   0% {
     opacity: 0;
@@ -1227,18 +1226,12 @@ body.admin-mode .nav {
     opacity: 1;
     transform: scale(1);
   }
-  50% {
-    opacity: 0.95;
-  }
-  60% {
-    opacity: 0.85;
-  }
   80% {
     transform: translate(var(--like-x, 115px), var(--like-y, 260px)) scale(0.32);
     opacity: 0.25;
   }
   100% {
-    transform: translate(var(--like-x, 115px), var(--like-y, 260px)) scale(0.15);
+    transform: translate(var(--like-x, 115px), var(--like-y, 260px)) scale(0.1);
     opacity: 0;
   }
 }
