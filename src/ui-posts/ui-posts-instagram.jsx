@@ -504,8 +504,8 @@ useEffect(() => {
     }
   };
 
-  document.addEventListener("click", handleTapOutside);
-  return () => document.removeEventListener("click", handleTapOutside);
+  document.addEventListener("pointerdown", handleTapOutside);
+return () => document.removeEventListener("pointerdown", handleTapOutside);
 }, [isMobile, hoverTargetEl]);
 
   const [commentText, setCommentText] = useState("");
