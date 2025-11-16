@@ -11,7 +11,7 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-export function BioHoverCard({ author, avatarUrl, bio, anchorEl }) {
+export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified}) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
@@ -52,7 +52,21 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl }) {
           style={{ borderRadius: "999px", objectFit: "cover" }}
         />
         <div style={{ maxWidth: 210 }}>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>{author}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+  <span style={{ fontWeight: 600, fontSize: 15 }}>{author}</span>
+  {verified && (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      width="15"
+      height="15"
+      style={{ flexShrink: 0 }}
+    >
+      <path fill="#1DA1F2" d="M512 256l-63.3 36.5..."/>
+      <path fill="#fff" d="M227.3 342.6L134 249.3..."/>
+    </svg>
+  )}
+</div>
           <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{bio.bio_text}</div>
         </div>
       </div>
