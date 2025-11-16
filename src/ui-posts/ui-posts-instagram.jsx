@@ -6,7 +6,8 @@ import { IGCarousel } from "../ui-core/ui-ig-carousel";
 import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
-import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
+import { ShareSheetDesktop, BioHoverCard } from "./ui-post-desktop-instagram";
+
 
 
 
@@ -280,10 +281,26 @@ const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlag
 const likeButtonRef = useRef(null);
 
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
+const bioAnchorRef = useRef(null);
+const [bioHoverOpen, setBioHoverOpen] = useState(false);
+
+
+const displayBio = useMemo(() => {
+  if (!post.bio) return null;
+  if (!randBiosOn) return post.bio;
+
+  // randomization helper in utils
+  try {
+    return getRandomizedBio(post.bio, [...seedParts, "bio"]);
+  } catch {
+    return post.bio;
+  }
+}, [post.bio, randBiosOn, id, runSeed, app, projectId, feedId]);
+
 
 const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
-  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_times: effectiveFlags.randomize_times }
+  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_bio: false, randomize_times: effectiveFlags.randomize_times }
   : effectiveFlags;
 
   // Deterministic seed for consistent randomization across sessions
@@ -304,6 +321,9 @@ const effectiveRandFlags = isSponsored
  const randAvatarOn = forcedRand || !!(effectiveRandFlags.randomize_avatars || effectiveRandFlags.randomize_avatar);
  const randImagesOn = forcedRand || !!effectiveRandFlags.randomize_images;
  const randTimesOn  = forcedRand || !!effectiveRandFlags.randomize_times;
+ const randBiosOn   = forcedRand || !!(effectiveRandFlags.randomize_bios || effectiveRandFlags.randomize_bio);
+
+ 
 
   // ---- IG username randomizer (deterministic) ----
   function pickIGUsername(postId, parts, fallback = "username") {
@@ -599,7 +619,11 @@ const handleMediaTap = () => {
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
-    <span
+   <span
+  ref={bioAnchorRef}
+  onMouseEnter={() => !isMobile && setBioHoverOpen(true)}
+  onMouseLeave={() => !isMobile && setBioHoverOpen(false)}
+  onClick={() => isMobile && setBioHoverOpen((x) => !x)}
   style={{
     fontWeight: 600,
     fontSize: 14,
@@ -609,6 +633,7 @@ const handleMediaTap = () => {
     display: "flex",
     alignItems: "center",
     gap: 4,
+    cursor: "pointer",
   }}
 >
   {displayAuthor}
@@ -671,6 +696,16 @@ const handleMediaTap = () => {
           onAction={onAction}
         />
       )}
+
+      {/* ==== Desktop Bio Popover ==== */}
+{bioHoverOpen && displayBio && (
+  <BioHoverCard
+    author={displayAuthor}
+    avatarUrl={effectiveAvatarUrl}
+    bio={displayBio}
+    anchorEl={bioAnchorRef.current}
+  />
+)}
 
       {/* Media */}
       {(hasVideo || hasCarousel || hasImage) && (
