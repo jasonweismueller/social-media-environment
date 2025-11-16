@@ -60,6 +60,7 @@ export function BioHoverCard({
   anchorEl,
   hideHover,
   hideDelayRef,
+  onAction
 }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
@@ -143,14 +144,15 @@ export function BioHoverCard({
                     lineHeight: "1.35",
                   }}
                 >
-                  <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
-                  <a
+                 <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
+<a
   href={bio.bio_url}
   target="_blank"
   rel="noopener noreferrer"
   onClick={(e) => {
-    e.preventDefault(); // prevent immediate navigation so logging fires
+    e.preventDefault(); // allow log to dispatch
     onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url });
+    window.__smeLogEvent?.("bio_url_click", { post_id: postId, url: bio.bio_url }); // optional
     window.open(bio.bio_url, "_blank", "noopener,noreferrer");
   }}
   style={{

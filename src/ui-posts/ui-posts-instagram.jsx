@@ -1641,14 +1641,15 @@ marginTop: "auto",
 
 {hoverTargetEl && !isMobile && post.showBio && (
   <BioHoverCard
-    anchorEl={hoverTargetEl}
-    author={displayAuthor}
-    avatarUrl={effectiveAvatarUrl}
-    bio={post}
-    verified={!!post.badge}
-    hideHover={hideHover}          // 👈 REQUIRED
-    hideDelayRef={hideDelayRef}    // 👈 REQUIRED
-  />
+  anchorEl={hoverTargetEl}
+  author={displayAuthor}
+  avatarUrl={effectiveAvatarUrl}
+  bio={post}
+  verified={!!post.badge}
+  hideHover={hideHover}
+  hideDelayRef={hideDelayRef}
+  onAction={onAction}   // 👈 MUST PASS THIS
+/>
 )}
 {isMobile && bioOpen && post.showBio && (
   <MobileBioSheet
