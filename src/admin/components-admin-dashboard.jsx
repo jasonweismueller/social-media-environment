@@ -45,7 +45,7 @@ import { genNeutralAvatarDataUrl, makeRandomPost } from "./components-admin-edit
 import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
 
-const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
+
 
 // Pick based on current app (set in main-facebook.jsx or main-instagram.jsx)
 const app = (window.APP || new URLSearchParams(window.location.search).get("app") || "fb").toLowerCase();
@@ -231,50 +231,6 @@ function ChipToggle({ label, checked, onChange }) {
   );
 }
 
-function FlagToggle({ projectId, feedId, flag, label }) {
-  const rowKey = keyFor(projectId, feedId);
-  const ff = feedFlags[rowKey] || {};
-
-  const storeKey = flag.replace("randomize_", "random_"); // randomize_images → random_image
-  const active = !!(ff[flag] ?? ff[storeKey]);
-  const savingKey = `saving_${flag}`;
-  const busy = !!ff[savingKey];
-
-  const anySaving = Object.keys(ff).some(k => /^saving/.test(k));
-
-  return (
-    <ChipToggle
-      label={label}
-      checked={active}
-      onChange={async (next) => {
-        if (!ff.loaded && !ff.loading) await loadFlagsFor(feedId);
-        if (anySaving) return;
-
-        setFeedFlags(m => ({
-          ...m,
-          [rowKey]: { ...(m[rowKey] || {}), [savingKey]: true }
-        }));
-
-        try {
-          const res = await setFeedFlagsOnBackend({
-            projectId,
-            feedId,
-            patch: { [storeKey]: next },
-          });
-          if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
-          await loadFlagsFor(feedId, { force: true });
-        } catch (e) {
-          alert(e.message || "Failed to update feed flag. Please re-login and try again.");
-        } finally {
-          setFeedFlags(m => ({
-            ...m,
-            [rowKey]: { ...(m[rowKey] || {}), [savingKey]: false }
-          }));
-        }
-      }}
-    />
-  );
-}
 
 /* ----------------------------- Admin Dashboard ------------------------------ */
 export function AdminDashboard({
@@ -302,6 +258,7 @@ export function AdminDashboard({
   const [postNames, setPostNames] = useState({});
   const [participantsCount, setParticipantsCount] = useState(null);
   const [booting, setBooting] = useState(true);
+  const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
 
   // projects
   const [projects, setProjects] = useState([]);
@@ -371,6 +328,61 @@ export function AdminDashboard({
     const f = await getFeedFlagsFromBackend({ projectId, feedId: fid });
     setFeedFlags((m) => ({ ...m, [k]: { ...f, loaded: true, loading: false } }));
   };
+
+  const FEED_RANDOMIZE_FLAGS = [
+  ["randomize_times",   "Times"],
+  ["randomize_names",   "Names"],
+  ["randomize_avatars", "Avatars"],
+  ["randomize_images",  "Images"],
+  ["randomize_bios",    "Bios"],
+];
+
+
+function FlagToggle({ projectId, feedId, flag, label }) {
+  const rowKey = keyFor(projectId, feedId);
+  const ff = feedFlags[rowKey] || {};
+
+  const storeKey = flag.replace("randomize_", "random_"); // images → image
+  const active = !!(ff[flag] ?? ff[storeKey]);
+  const savingKey = `saving_${flag}`;
+  const busy = !!ff[savingKey];
+
+  // NEW: memoized check
+  const anySaving = Object.keys(ff).some(k => k.startsWith("saving_"));
+
+  return (
+    <ChipToggle
+      label={busy ? `${label}…` : label}
+      checked={active}
+      onChange={async (next) => {
+        if (!ff.loaded && !ff.loading) await loadFlagsFor(feedId);
+        if (anySaving) return;
+
+        setFeedFlags(m => ({
+          ...m,
+          [rowKey]: { ...(m[rowKey] || {}), [savingKey]: true }
+        }));
+
+        try {
+          const res = await setFeedFlagsOnBackend({
+            projectId,
+            feedId,
+            patch: { [storeKey]: next },
+          });
+          if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+          await loadFlagsFor(feedId, { force: true });
+        } catch (e) {
+          alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+        } finally {
+          setFeedFlags(m => ({
+            ...m,
+            [rowKey]: { ...(m[rowKey] || {}), [savingKey]: false }
+          }));
+        }
+      }}
+    />
+  );
+}
 
   useEffect(() => {
     const syncFromUrl = () => {
@@ -1036,13 +1048,16 @@ export function AdminDashboard({
   background: "rgba(0,0,0,0.04)",
   borderRadius: 8
 }}>
-  <FlagToggle projectId={projectId} feedId={f.feed_id} flag="randomize_times" label="Times" />
-  <FlagToggle projectId={projectId} feedId={f.feed_id} flag="randomize_names"   label="Names" />
-  <FlagToggle projectId={projectId} feedId={f.feed_id} flag="randomize_avatars" label="Avatars" />
-  <FlagToggle projectId={projectId} feedId={f.feed_id} flag="randomize_images"  label="Images" />
-  <FlagToggle projectId={projectId} feedId={f.feed_id} flag="randomize_bios"    label="Bios" />
+  {FEED_RANDOMIZE_FLAGS.map(([flag, label]) => (
+    <FlagToggle
+      key={flag}
+      projectId={projectId}
+      feedId={f.feed_id}
+      flag={flag}
+      label={label}
+    />
+  ))}
 </div>
-
                                 <button
                                   className="btn"
                                   disabled={isSaving}
