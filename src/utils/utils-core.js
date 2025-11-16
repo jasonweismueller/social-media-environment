@@ -176,6 +176,33 @@ export function displayTimeForPost(post, { randomize, seedParts=[] } = {}){
   return `${hours}h`;
 }
 
+/* ------------------------- Bio display helper ------------------------- */
+/**
+ * displayBioForPost(post, { randomize, seedParts })
+ * - deterministic bio randomization
+ * - safe fallback to post.bio
+ * - consistent with displayTimeForPost
+ */
+export function displayBioForPost(post, { randomize = false, seedParts = [] } = {}) {
+  const bio = post?.bio;
+  if (!bio || !randomize) return bio || "";
+
+  const variants = [
+    bio, // always include original
+    bio.replace(/\./g, "") + " ✨",
+    `Life lately: ${bio}`,
+    `${bio} | 📍 Somewhere on Earth`,
+    `${bio} • sharing moments`,
+  ];
+
+  try {
+    const picked = pickDeterministic(variants, [...seedParts, "bio"]);
+    return picked || bio;
+  } catch {
+    return bio;
+  }
+}
+
 /* --------------------- Reactions helpers ---------------------------------- */
 export const REACTION_META = {
   like:  { emoji: "👍", label: "Like"  },

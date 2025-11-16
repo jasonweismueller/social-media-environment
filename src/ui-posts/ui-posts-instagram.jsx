@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, displayBioForPost } from "../utils";
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop, BioHoverCard } from "./ui-post-desktop-instagram";
@@ -283,24 +283,24 @@ const likeButtonRef = useRef(null);
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
 const bioAnchorRef = useRef(null);
 const [bioHoverOpen, setBioHoverOpen] = useState(false);
+// ---- Bio randomization ----
+const rawBio = post.bio || null;
 
-
-const displayBio = useMemo(() => {
-  if (!post.bio) return null;
-  if (!randBiosOn) return post.bio;
-
-  // randomization helper in utils
-  try {
-    return getRandomizedBio(post.bio, [...seedParts, "bio"]);
-  } catch {
-    return post.bio;
-  }
-}, [post.bio, randBiosOn, id, runSeed, app, projectId, feedId]);
+const displayBioText = useMemo(() => {
+  if (!rawBio?.bioText) return "";
+  return displayBioForPost(
+    rawBio.bioText,
+    {
+      randomize: randBiosOn,
+      seedParts: [...seedParts, "bio"]
+    }
+  );
+}, [rawBio, randBiosOn, id, runSeed, app, projectId, feedId]);
 
 
 const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
-  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_bio: false, randomize_times: effectiveFlags.randomize_times }
+  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_bios: false, randomize_times: effectiveFlags.randomize_times }
   : effectiveFlags;
 
   // Deterministic seed for consistent randomization across sessions
@@ -698,11 +698,14 @@ const handleMediaTap = () => {
       )}
 
       {/* ==== Desktop Bio Popover ==== */}
-{bioHoverOpen && displayBio && (
+{bioHoverOpen && rawBio && (
   <BioHoverCard
     author={displayAuthor}
     avatarUrl={effectiveAvatarUrl}
-    bio={displayBio}
+    bio={{
+      ...rawBio,
+      bioText: displayBioText
+    }}
     anchorEl={bioAnchorRef.current}
   />
 )}
