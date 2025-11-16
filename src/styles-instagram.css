@@ -1195,3 +1195,24 @@ body.admin-mode .nav {
   flex-direction: column;
   background: #fff;
 }
+
+/* ===========================
+   IG Double-Tap Heart Burst
+   =========================== */
+.ig-heart-burst {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: igHeartPop 0.65s ease-out forwards;
+  pointer-events: none;
+  z-index: 5;
+}
+
+@keyframes igHeartPop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  10%  { opacity: 1; transform: scale(1.1); }
+  30%  { transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
