@@ -358,6 +358,103 @@ export function AdminPostEditor({
   )}
 </fieldset>
 
+{/* ========================================================== */}
+{/*                     Author Bio Section                    */}
+{/* ========================================================== */}
+<h4 className="section-title">Author Bio</h4>
+<fieldset className="fieldset">
+
+  {/* Toggle bio on/off */}
+  <label>
+    Show Bio
+    <select
+      className="select"
+      value={editing.showBio ? "true" : "false"}
+      onChange={(e) => {
+        const v = e.target.value === "true";
+        setEditing((ed) => ({ ...ed, showBio: v }));
+      }}
+    >
+      <option value="false">No</option>
+      <option value="true">Yes</option>
+    </select>
+  </label>
+
+  {/* Only show the inputs if bio is enabled */}
+  {editing.showBio && (
+    <>
+      <div className="grid-3" style={{ marginTop: 8 }}>
+        <label>Posts
+          <input
+            className="input"
+            type="number"
+            min="0"
+            placeholder="e.g. 245"
+            value={editing.bio_posts ?? ""}
+            onChange={(e) =>
+              setEditing((ed) => ({
+                ...ed,
+                bio_posts: Number(e.target.value) || 0,
+              }))
+            }
+          />
+        </label>
+        <label>Followers
+          <input
+            className="input"
+            type="number"
+            min="0"
+            placeholder="e.g. 12,400"
+            value={editing.bio_followers ?? ""}
+            onChange={(e) =>
+              setEditing((ed) => ({
+                ...ed,
+                bio_followers: Number(e.target.value) || 0,
+              }))
+            }
+          />
+        </label>
+        <label>Following
+          <input
+            className="input"
+            type="number"
+            min="0"
+            placeholder="e.g. 421"
+            value={editing.bio_following ?? ""}
+            onChange={(e) =>
+              setEditing((ed) => ({
+                ...ed,
+                bio_following: Number(e.target.value) || 0,
+              }))
+            }
+          />
+        </label>
+      </div>
+
+      <label style={{ marginTop: 8 }}>
+        Bio text
+        <textarea
+          className="textarea"
+          rows={3}
+          placeholder="e.g. Photographer • Traveler • Coffee enthusiast"
+          value={editing.bio_text ?? ""}
+          onChange={(e) =>
+            setEditing((ed) => ({
+              ...ed,
+              bio_text: e.target.value,
+            }))
+          }
+        />
+      </label>
+
+      <div className="subtle" style={{ marginTop: 4 }}>
+        Optional: If <code>randomize_bios</code> is enabled in feed settings,
+        these values will be replaced with randomized ones at render time.
+      </div>
+    </>
+  )}
+</fieldset>
+
         <h4 className="section-title">Reactions & Metrics</h4>
         <fieldset className="fieldset">
           <label>Show like count
