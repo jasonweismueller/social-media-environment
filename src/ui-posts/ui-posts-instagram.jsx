@@ -1653,14 +1653,11 @@ marginTop: "auto",
 )}
 {isMobile && bioOpen && post.showBio && (
   <MobileBioSheet
-    open={bioOpen}
-    onClose={() => setBioOpen(false)}
-    post={{
-      ...post,
-      author: displayAuthor,
-      avatarUrl: effectiveAvatarUrl
-    }}
-  />
+  open={bioOpen}
+  onClose={() => setBioOpen(false)}
+  post={post}
+  onAction={onAction}
+/>
 )}
 
 

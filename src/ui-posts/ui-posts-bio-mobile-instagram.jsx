@@ -48,15 +48,26 @@ function logBioUrlClick(postId, url) {
   try { window.__smeLogEvent?.("bio_url_click", { postId, url }); } catch {}
 }
 
-export function MobileBioSheet({ open, onClose, post }) {
+export function MobileBioSheet({ open, onClose, post, onAction }) {
   if (!open) return null;
 
   const bio = post;
-  const { translateY, dragging, bind } = useSwipeToClose(onClose);
-  const postId = bio.id ?? bio.post_id ?? null;
+  const { translateY, dragging, bind } = useSwipeToClose(() => {
+    onClose?.();
+    onAction?.("bio_close", { post_id: bio.id, surface: "mobile" });
+  });
 
+  const postId = bio.id ?? bio.post_id ?? null;
   const hasBioText = !!bio.bio_text?.trim();
   const hasBioUrl = !!bio.bio_url?.trim();
+
+  // 🟦 Track open as soon as rendered
+  React.useEffect(() => {
+    if (open && postId) {
+      onAction?.("bio_open", { post_id: postId, surface: "mobile" });
+      try { window.__smeLogEvent?.("bio_open", { post_id: postId }); } catch {}
+    }
+  }, [open, postId]);
 
   return createPortal(
     <div
@@ -144,7 +155,12 @@ export function MobileBioSheet({ open, onClose, post }) {
                   href={bio.bio_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => logBioUrlClick(postId, bio.bio_url)}
+                  onClick={(e) => {
+  e.preventDefault(); // so we log first
+  onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url, surface: "mobile" });
+  try { window.__smeLogEvent?.("bio_url_click", { post_id: postId, url: bio.bio_url }); } catch {}
+  window.open(bio.bio_url, "_blank", "noopener,noreferrer");
+}}
                   style={{
                     color: "#2563eb",
                     textDecoration: "none",
