@@ -668,8 +668,8 @@ const handleMediaTap = () => {
       <svg viewBox="0 0 24 24" width="120" height="120">
         <path
           d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-.99-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.77-8.84a5.5 5.5 0 0 0 0-7.78Z"
-          fill="#fff"
-          stroke="#fff"
+          fill="#ed4956"
+          stroke="#ed4956"
           strokeWidth="1"
         />
       </svg>

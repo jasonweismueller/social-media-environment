@@ -1197,7 +1197,7 @@ body.admin-mode .nav {
 }
 
 /* ===========================
-   IG Double-Tap Heart Burst
+   IG Double Tap → Fly to Like
    =========================== */
 .ig-heart-burst {
   position: absolute;
@@ -1205,14 +1205,41 @@ body.admin-mode .nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: igHeartPop 0.65s ease-out forwards;
+  animation: igHeartFlow 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
   pointer-events: none;
   z-index: 5;
 }
 
-@keyframes igHeartPop {
-  0%   { opacity: 0; transform: scale(0.4); }
-  10%  { opacity: 1; transform: scale(1.1); }
-  30%  { transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.9); }
+/* 1) Pop in center
+   2) Hold
+   3) Fly + shrink toward Like button
+*/
+@keyframes igHeartFlow {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+  }
+  60% {
+    opacity: 0.85;
+  }
+  80% {
+    /* fly toward like button */
+    transform: translate(115px, 260px) scale(0.32);
+    opacity: 0.25;
+  }
+  100% {
+    transform: translate(115px, 260px) scale(0.15);
+    opacity: 0;
+  }
 }
