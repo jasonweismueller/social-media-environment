@@ -1146,44 +1146,27 @@ marginTop: "auto",
       >
         <div className="ig-comment-inner">
           {/* Close button on top-right of the whole card */}
-          <button
-            onClick={() => {
-              setOpenComments(false);
-              onAction("comment_close", { post_id: id });
-            }}
-            aria-label="Close"
-            style={{
-              position: "absolute",
-              top: 12,
-              right: 12,
-              background: "rgba(255,255,255,0.8)",
-              border: "none",
-              borderRadius: "50%",
-              width: 30,
-              height: 30,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-              zIndex: 10,
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              width="18"
-              height="18"
-              stroke="#111"
-              strokeWidth="2"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+         <button
+  onClick={() => {
+    setOpenComments(false);
+    onAction("comment_close", { post_id: id });
+  }}
+  aria-label="Close"
+  style={{
+    position: "absolute",
+    top: 12,
+    right: 12,
+    border: "none",
+    background: "transparent",
+    fontSize: 22,           // same as ShareSheet
+    cursor: "pointer",
+    color: "#737373",       // same as ShareSheet
+    lineHeight: 1,
+    zIndex: 10,
+  }}
+>
+  ×
+</button>
 
           {/* LEFT: media */}
           <div className="ig-comment-media">
