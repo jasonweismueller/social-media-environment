@@ -355,31 +355,43 @@ function FlagToggle({ projectId, feedId, flag, label }) {
       label={busy ? `${label}…` : label}
       checked={active}
       onChange={async (next) => {
-        if (!ff.loaded && !ff.loading) await loadFlagsFor(feedId);
-        if (anySaving) return;
+  // Ensure flags loaded first
+  if (!ff.loaded && !ff.loading) await loadFlagsFor(feedId);
 
-        setFeedFlags(m => ({
-          ...m,
-          [rowKey]: { ...(m[rowKey] || {}), [savingKey]: true }
-        }));
+  // Avoid parallel updates
+  if (anySaving) return;
 
-        try {
-          const res = await setFeedFlagsOnBackend({
-            projectId,
-            feedId,
-            patch: { [storeKey]: next },
-          });
-          if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
-          await loadFlagsFor(feedId, { force: true });
-        } catch (e) {
-          alert(e.message || "Failed to update feed flag. Please re-login and try again.");
-        } finally {
-          setFeedFlags(m => ({
-            ...m,
-            [rowKey]: { ...(m[rowKey] || {}), [savingKey]: false }
-          }));
-        }
-      }}
+  // Optimistic UI update
+  setFeedFlags(m => ({
+    ...m,
+    [rowKey]: {
+      ...(m[rowKey] || {}),
+      [flag]: next,
+      [savingKey]: true,
+    },
+  }));
+
+  try {
+    const res = await setFeedFlagsOnBackend({
+      projectId,
+      feedId,
+      patch: { [storeKey]: next },
+    });
+    if (!res?.ok) throw new Error(res?.err || "Failed to update flag");
+    await loadFlagsFor(feedId, { force: true });
+  } catch (e) {
+    alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+  } finally {
+    // Only remove saving key instead of replacing the whole record
+    setFeedFlags(m => ({
+      ...m,
+      [rowKey]: {
+        ...(m[rowKey] || {}),
+        [savingKey]: false,
+      },
+    }));
+  }
+}}
     />
   );
 }
