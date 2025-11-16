@@ -12,22 +12,16 @@ function formatNumber(n) {
 }
 
 /* ---------------- Insta-style Link Icon ---------------- */
-const LinkIcon = ({ size = 15, style = {} }) => (
+const LinkIcon = ({ size = 14, style = {} }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
+    viewBox="0 0 20 20"
     width={size}
     height={size}
-    style={{
-      flexShrink: 0,
-      display: "block",
-      ...style,
-    }}
+    style={{ display: "block", flexShrink: 0, ...style }}
+    fill="currentColor"
   >
-    <path
-      fill="currentColor"
-      d="M10.59 13.41a1.978 1.978 0 0 1 0-2.82l2.83-2.83a1.978 1.978 0 0 1 2.82 0c.78.78.78 2.05 0 2.83l-1.18 1.18 1.41 1.41 1.18-1.18a3.972 3.972 0 0 0 0-5.65 3.972 3.972 0 0 0-5.65 0l-2.83 2.83a3.972 3.972 0 0 0 0 5.65c1.55 1.55 4.09 1.55 5.64 0l.71-.71-1.41-1.41-.71.71a1.978 1.978 0 0 1-2.82 0z"
-    />
+    <path d="M12.59 7.41a1 1 0 0 0-1.42 1.42l1.3 1.3a2 2 0 1 1-2.83 2.83l-2.88-2.88a2 2 0 0 1 2.83-2.83l.29.29a1 1 0 1 0 1.41-1.41l-.29-.29a4 4 0 1 0-5.66 5.66l2.88 2.88a4 4 0 0 0 5.66-5.66l-1.29-1.29z"/>
   </svg>
 );
 
@@ -152,7 +146,7 @@ export function BioHoverCard({
                     lineHeight: "1.35",
                   }}
                 >
-                  <LinkIcon size={15} style={{ color: "#2563eb" }} />
+                  <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
                   <a
                     href={bio.bio_url}
                     target="_blank"
