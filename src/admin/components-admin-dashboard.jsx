@@ -939,6 +939,9 @@ export function AdminDashboard({
                       const randomNameBusy   = !!ff.savingNm || !!ff.loading;
                       const randomImageBusy  = !!ff.savingImg|| !!ff.loading;
                       const anySaving        = !!(ff.saving || ff.savingAv || ff.savingNm || ff.savingImg);
+                      const randomBioActive = !!(ff.randomize_bios ?? ff.random_bio);
+const randomBioBusy = !!ff.savingBio;
+
 
                       return (
                         <tr
@@ -1050,6 +1053,8 @@ export function AdminDashboard({
                                 </button>
 
 
+
+
   <button
     className={`btn ghost ${randomImageActive ? "active" : ""}`}
     title="When ON, this feed randomizes post images from the topic folder (deterministic per session)."
@@ -1108,6 +1113,35 @@ export function AdminDashboard({
                                 >
                                   {randomNameBusy ? "Random name…" : (randomNameActive ? "Random name: ON" : "Random name: OFF")}
                                 </button>
+
+                                <button
+  className={`btn ghost ${randomBioActive ? "active" : ""}`}
+  title="When ON, this feed randomizes profile bio stats and text (deterministic per session)."
+  disabled={randomBioBusy || (anySaving && !ff.savingBio)}
+  onClick={async () => {
+    if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+    if (ff.saving || ff.savingAv || ff.savingNm || ff.savingImg || ff.savingBio) return;
+
+    const cur = !!((feedFlags[rowKey]?.randomize_bios ?? feedFlags[rowKey]?.random_bio));
+    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingBio: true } }));
+
+    try {
+      const res = await setFeedFlagsOnBackend({
+        projectId,
+        feedId: f.feed_id,
+        patch: { random_bio: !cur },
+      });
+      if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+      await loadFlagsFor(f.feed_id, { force: true });
+    } catch (e) {
+      alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+    } finally {
+      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingBio: false } }));
+    }
+  }}
+>
+  {randomBioBusy ? "Random bio…" : (randomBioActive ? "Random bio: ON" : "Random bio: OFF")}
+</button>
 
                                 <button
                                   className="btn"
