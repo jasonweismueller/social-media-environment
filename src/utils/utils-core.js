@@ -532,7 +532,9 @@ export function buildMinimalHeader(posts) {
   `${id}_shared`,
   `${id}_share_target`,
   `${id}_share_text`,
-  `${id}_cta_clicked`
+  `${id}_cta_clicked`,
+  `${id}_bio_opened`,
+  `${id}_bio_url_clicked`
     );
   });
 
@@ -683,6 +685,7 @@ case "save":
     break;
 
 
+
   /* -------------------------------------------
    * IG-ONLY EVENTS (SAFE ADDITIONS)
    * ------------------------------------------- */
@@ -704,6 +707,14 @@ case "share_target":
 // CTA click is participant-level behavior only
 case "cta_click":
   p.cta_clicked = true;
+  break;
+
+case "bio_open":
+  p.bio_opened = true;
+  break;
+
+case "bio_url_click":
+  p.bio_url_clicked = true;
   break;
 
 
@@ -762,6 +773,8 @@ row[`${id}_shared`]        = hasTarget ? 1 : "";
 row[`${id}_share_target`]  = hasTarget ? shareTargetClean : "";
 row[`${id}_share_text`]    = agg.share_text || "";
 row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : "";
+row[`${id}_bio_opened`]     = agg.bio_opened ? 1 : "";
+row[`${id}_bio_url_clicked`] = agg.bio_url_clicked ? 1 : "";
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
@@ -803,6 +816,9 @@ export function extractPerPostFromRosterRow(row) {
             share_target: "",
             share_text: "",
             cta_clicked: 0,
+            bio_opened: 0,
+            bio_url_clicked: 0,
+            
           };
         }
         return clean[id];
@@ -846,6 +862,9 @@ export function extractPerPostFromRosterRow(row) {
         if (obj.share_target) obj.shared = 1;
 
         obj.cta_clicked = Number(agg?.cta_clicked || 0);
+
+        obj.bio_opened = Number(agg?.bio_opened || 0);
+obj.bio_url_clicked = Number(agg?.bio_url_clicked || 0);
 
         obj.dwell_s = Number.isFinite(agg?.dwell_s)
           ? agg.dwell_s
@@ -936,6 +955,8 @@ export function extractPerPostFromRosterRow(row) {
         share_target: "", share_text: "",
         cta_clicked: 0,
         dwell_s: 0,
+        bio_opened: 0,
+        bio_url_clicked: 0
       };
     }
     return out[id];
@@ -945,15 +966,15 @@ export function extractPerPostFromRosterRow(row) {
     let m;
 
     // boolean fields
-    m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable)$/.exec(key);
-    if (m) {
-      const obj = ensure(m[1]);
-      const metric = m[2];
-      const num = Number(val || 0);
-      if (metric === "reported_misinfo") obj.reported = num;
-      else obj[metric] = num;
-      continue;
-    }
+   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked)$/.exec(key);
+if (m) {
+  const obj = ensure(m[1]);
+  const metric = m[2];
+  const num = Number(val || 0);
+  if (metric === "reported_misinfo") obj.reported = num;
+  else obj[metric] = num;
+  continue;
+}
 
     // IG share target
     m = /^(.+?)_share_target$/.exec(key);
@@ -1041,14 +1062,14 @@ export function summarizeRoster(rows) {
   const lastInteractionTimes = completedRows.map(r => toNum(r.ms_enter_to_last_interaction)).filter(Number.isFinite);
 
   const postKeys = new Set();
-  rows.forEach(r => {
-    Object.keys(r).forEach(k => {
-      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$/.test(k)) {
-        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo)$/, "");
-        postKeys.add(base);
-      }
-    });
+rows.forEach(r => {
+  Object.keys(r).forEach(k => {
+    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$/.test(k)) {
+      const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked)$/, "");
+      postKeys.add(base);
+    }
   });
+});
 
   const perPost = {};
   for (const base of postKeys) {
