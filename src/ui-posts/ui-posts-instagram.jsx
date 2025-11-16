@@ -553,24 +553,28 @@ const lastTapRef = useRef(0);
 const handleMediaTap = () => {
   if (!isMobile) return;
   const now = Date.now();
+
   if (now - lastTapRef.current < 300) {
     if (!liked) toggleLike();
 
     if (likeButtonRef.current) {
-      const rect = likeButtonRef.current.getBoundingClientRect();
-      const parent = likeButtonRef.current.closest(".insta-media");
-      const parentRect = parent?.getBoundingClientRect() ?? { left:0, top:0 };
+      const mediaEl = likeButtonRef.current.closest(".insta-media");
+      if (mediaEl) {
+        const rect = likeButtonRef.current.getBoundingClientRect();
+        const parentRect = mediaEl.getBoundingClientRect();
 
-      const x = rect.left - parentRect.left + rect.width / 2;
-      const y = rect.top - parentRect.top + rect.height / 2;
+        const x = rect.left - parentRect.left + rect.width / 2;
+        const y = rect.top - parentRect.top + rect.height / 2;
 
-      document.documentElement.style.setProperty("--like-x", `${x}px`);
-      document.documentElement.style.setProperty("--like-y", `${y}px`);
+        mediaEl.style.setProperty("--like-x", `${x}px`);
+        mediaEl.style.setProperty("--like-y", `${y}px`);
+      }
     }
 
     setShowHeartBurst(true);
     setTimeout(() => setShowHeartBurst(false), 1200);
   }
+
   lastTapRef.current = now;
 };
 
