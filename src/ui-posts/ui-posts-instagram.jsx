@@ -7,6 +7,7 @@ import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pic
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
+import { BioHoverCard } from "./ui-posts-bio-instagram";
 
 
 
@@ -93,6 +94,7 @@ function DotsIcon(props) {
 
 /* ---------------- Helpers ---------------- */
 const sumReactions = (rx) => (rx ? Object.values(rx).reduce((a, b) => a + (Number(b) || 0), 0) : 0);
+
 
 /* ---------------- Mobile “Stories” ghost bar (non-sticky, no scroll) ---- */
 function useStoriesCount() {
@@ -436,6 +438,9 @@ const poolNames =
   const [menuOpenDesktop, setMenuOpenDesktop] = useState(false);
   const dotsBtnRef = useRef(null);
 
+  const [hoverBio, setHoverBio] = useState(false);
+const authorRef = useRef(null);
+
   const [commentText, setCommentText] = useState("");
   const [mySubmittedComment, setMySubmittedComment] = useState(post._localMyCommentText || "");
   const [participantComments, setParticipantComments] = useState(mySubmittedComment ? 1 : 0);
@@ -600,6 +605,9 @@ const handleMediaTap = () => {
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
     <span
+  ref={authorRef}
+  onMouseEnter={() => !isMobile && post.showBio && setHoverBio(true)}
+  onMouseLeave={() => setHoverBio(false)}
   style={{
     fontWeight: 600,
     fontSize: 14,
@@ -609,12 +617,12 @@ const handleMediaTap = () => {
     display: "flex",
     alignItems: "center",
     gap: 4,
+    cursor: post.showBio ? "pointer" : "default",
   }}
 >
   {displayAuthor}
   {post.badge && VerifiedBadge}
 </span>
-
 {/* Sponsored Ad (CTA type) */}
 {post.adType === "ad" && (
   <span
@@ -1567,6 +1575,15 @@ marginTop: "auto",
     transition: transform 0.1s ease;
   }
 `}</style>
+
+{hoverBio && !isMobile && post.showBio && (
+  <BioHoverCard
+    anchorEl={authorRef.current}
+    author={displayAuthor}
+    avatarUrl={effectiveAvatarUrl}
+    bio={post}
+  />
+)}
 
     </article>
   );
