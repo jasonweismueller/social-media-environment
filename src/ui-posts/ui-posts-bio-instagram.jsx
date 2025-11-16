@@ -145,18 +145,22 @@ export function BioHoverCard({
                 >
                   <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
                   <a
-                    href={bio.bio_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => logBioUrlClick(postId, bio.bio_url)}
-                    style={{
-                      color: "#2563eb",
-                      textDecoration: "none",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {prettyUrl(bio.bio_url)}
-                  </a>
+  href={bio.bio_url}
+  target="_blank"
+  rel="noopener noreferrer"
+  onClick={(e) => {
+    e.preventDefault(); // prevent immediate navigation so logging fires
+    onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url });
+    window.open(bio.bio_url, "_blank", "noopener,noreferrer");
+  }}
+  style={{
+    color: "#2563eb",
+    textDecoration: "none",
+    fontWeight: 500,
+  }}
+>
+  {prettyUrl(bio.bio_url)}
+</a>
                 </div>
               )}
             </>
