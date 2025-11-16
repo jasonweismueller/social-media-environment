@@ -137,7 +137,7 @@ export function BioHoverCard({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 2,
                     marginTop: 2,
                     fontSize: 13,
                     lineHeight: "1.35",
