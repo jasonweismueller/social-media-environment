@@ -557,22 +557,27 @@ const handleMediaTap = () => {
   if (now - lastTapRef.current < 300) {
     if (!liked) toggleLike();
 
-    if (likeButtonRef.current) {
-      const mediaEl = likeButtonRef.current.closest(".insta-media");
-      if (mediaEl) {
-        const rect = likeButtonRef.current.getBoundingClientRect();
-        const parentRect = mediaEl.getBoundingClientRect();
+    const mediaEl = likeButtonRef.current?.closest(".insta-media");
+    if (mediaEl) {
+      const rect = likeButtonRef.current.getBoundingClientRect();
+      const parentRect = mediaEl.getBoundingClientRect();
+      const x = rect.left - parentRect.left + rect.width / 2;
+      const y = rect.top - parentRect.top + rect.height / 2;
 
-        const x = rect.left - parentRect.left + rect.width / 2;
-        const y = rect.top - parentRect.top + rect.height / 2;
+      // First show the heart
+      setShowHeartBurst(true);
 
-        mediaEl.style.setProperty("--like-x", `${x}px`);
-        mediaEl.style.setProperty("--like-y", `${y}px`);
-      }
+      // Then apply CSS vars *after* the element exists
+      setTimeout(() => {
+        const inner = mediaEl.querySelector(".ig-heart-inner");
+        if (inner) {
+          inner.style.setProperty("--like-x", `${x}px`);
+          inner.style.setProperty("--like-y", `${y}px`);
+        }
+      }, 0);
+
+      setTimeout(() => setShowHeartBurst(false), 1200);
     }
-
-    setShowHeartBurst(true);
-    setTimeout(() => setShowHeartBurst(false), 1200);
   }
 
   lastTapRef.current = now;
@@ -682,6 +687,7 @@ const handleMediaTap = () => {
 >
   {showHeartBurst && (
     <div className="ig-heart-burst">
+      <div className="ig-heart-inner">
       <svg viewBox="0 0 24 24" width="100" height="100">
         <path
           d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-.99-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.77-8.84a5.5 5.5 0 0 0 0-7.78Z"
@@ -690,6 +696,7 @@ const handleMediaTap = () => {
           strokeWidth="1"
         />
       </svg>
+    </div>
     </div>
   )}
 

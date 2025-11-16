@@ -1195,7 +1195,6 @@ body.admin-mode .nav {
   flex-direction: column;
   background: #fff;
 }
-
 /* ===========================
    IG Double Tap → Fly to Like
    =========================== */
@@ -1211,20 +1210,21 @@ body.admin-mode .nav {
 
 .ig-heart-inner {
   animation: igHeartFlow 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
-  will-change: transform;
+  will-change: transform, opacity;
 }
+
 @keyframes igHeartFlow {
   0% {
     opacity: 0;
-    transform: scale(0.4);
+    transform: translate(0, 0) scale(0.4);    /* ⬅ start centered */
   }
   10% {
     opacity: 1;
-    transform: scale(1.25);
+    transform: translate(0, 0) scale(1.25);
   }
   25% {
     opacity: 1;
-    transform: scale(1);
+    transform: translate(0, 0) scale(1);      /* ⬅ explicitly centered */
   }
   80% {
     transform: translate(var(--like-x, 115px), var(--like-y, 260px)) scale(0.32);
