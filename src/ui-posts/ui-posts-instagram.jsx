@@ -450,16 +450,24 @@ const attachBioHover = (ref) => ({
 
 const hideDelayRef = useRef(null);
 
+const bioShownRef = useRef(false);
+
 const showHover = (el) => {
   if (!isMobile && post.showBio) {
     clearTimeout(hideDelayRef.current);
     setHoverTargetEl(el);
+
+    if (!bioShownRef.current) {
+      bioShownRef.current = true;
+      onAction?.("bio_open", { post_id: post.id });
+    }
   }
 };
 
 const hideHover = () => {
   hideDelayRef.current = setTimeout(() => {
     setHoverTargetEl(null);
+    bioShownRef.current = false;
   }, 150);
 };
 

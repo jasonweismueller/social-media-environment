@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 import { neutralAvatarDataUrl } from "../ui-core";
 
-// --- Number formatting helper ---
+/* ---------------- Number formatting ---------------- */
 function formatNumber(n) {
   n = Number(n || 0);
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0) + "M";
@@ -11,17 +11,47 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-export function BioHoverCard({ author, avatarUrl, bio, verified, anchorEl, hideHover, hideDelayRef }) {
+/* ---------------- Instagram Link Icon (real IG path) ---------------- */
+const LinkIcon = ({ size = 14 }) => (
+  <svg aria-label="Link" fill="currentColor" height={size} width={size} viewBox="0 0 24 24">
+    <path d="M14.828 9.172a4 4 0 015.657 5.656l-3.536 3.536a4 4 0 01-5.657-5.657l.707-.707"/>
+    <path d="M9.172 14.828a4 4 0 01-5.656-5.657l3.536-3.536a4 4 0 015.657 5.657l-.707.707"/>
+  </svg>
+);
+
+/* ---------------- Click logging ---------------- */
+function logBioUrlClick(postId, url) {
+  try {
+    window.__smeLogEvent?.("bio_url_click", { postId, url });
+  } catch (err) {
+    console.warn("Bio URL click logging failed:", err);
+  }
+}
+
+/* ---------------- Helper: make URLs clickable inside text ---------------- */
+function linkifyText(text = "") {
+  return text.replace(
+    /(https?:\/\/[^\s]+)/g,
+    (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+  );
+}
+
+/* ---------------- Helper: format URL for display ---------------- */
+const prettyUrl = (u) => u?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+/* ------------------------------------------------------------------------ */
+
+export function BioHoverCard({
+  author,
+  avatarUrl,
+  bio,
+  verified,
+  anchorEl,
+  hideHover,
+  hideDelayRef,
+}) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
-
-  // auto-link helper
-  function linkify(text = "") {
-    return text.replace(
-      /(https?:\/\/[^\s]+)/g,
-      (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
-    );
-  }
 
   useEffect(() => {
     if (!anchorEl) return;
@@ -33,11 +63,14 @@ export function BioHoverCard({ author, avatarUrl, bio, verified, anchorEl, hideH
 
   if (!pos) return null;
 
+  const hasBioText = !!bio.bio_text?.trim();
+  const hasBioUrl = !!bio.bio_url?.trim();
+
   return ReactDOM.createPortal(
     <div
       ref={ref}
-      onMouseEnter={() => clearTimeout(hideDelayRef.current)}  // 👈 keep open
-      onMouseLeave={hideHover}                                // 👈 triggers delayed close
+      onMouseEnter={() => clearTimeout(hideDelayRef.current)} // keep open
+      onMouseLeave={hideHover} // close on exit
       style={{
         position: "absolute",
         top: pos.top,
@@ -46,16 +79,18 @@ export function BioHoverCard({ author, avatarUrl, bio, verified, anchorEl, hideH
         background: "#fff",
         borderRadius: 18,
         boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
-        width: 360,         // ⬆ bigger for longer bios
+        width: 360,
         maxWidth: "95vw",
-        maxHeight: 320,     // ⬆ taller
+        maxHeight: 340,
         overflowY: "auto",
         zIndex: 100000,
         fontSize: 14,
         animation: "fadeIn .15s ease",
+        cursor: "default",
       }}
     >
-      {/* Avatar + name */}
+
+      {/* ------------ Avatar + name ------------ */}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <img
           src={avatarUrl || neutralAvatarDataUrl(60)}
@@ -67,28 +102,71 @@ export function BioHoverCard({ author, avatarUrl, bio, verified, anchorEl, hideH
         <div style={{ maxWidth: 260 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontWeight: 600, fontSize: 15 }}>{author}</span>
+
             {verified && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 512 512"
-                width="15"
-                height="15"
-                style={{ flexShrink: 0 }}
-              >
+              <svg width="15" height="15" viewBox="0 0 512 512">
                 <path fill="#1DA1F2" d="M512 256l-63.3 36.5..."/>
                 <path fill="#fff" d="M227.3 342.6L134 249.3..."/>
               </svg>
             )}
           </div>
 
-          <div
-            style={{ fontSize: 13, color: "#4b5563", marginTop: 6, lineHeight: 1.35 }}
-            dangerouslySetInnerHTML={{ __html: linkify(bio.bio_text) }}
-          />
+          {/* ------------ Text & URL Behaviour ------------ */}
+          {hasBioText ? (
+            <>
+              <div
+                style={{ fontSize: 13, color: "#4b5563", marginTop: 6, lineHeight: 1.35 }}
+                dangerouslySetInnerHTML={{ __html: linkifyText(bio.bio_text) }}
+              />
+
+              {hasBioUrl && (
+                <a
+                  href={bio.bio_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => logBioUrlClick(bio.id, bio.bio_url)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 6,
+                    fontSize: 13,
+                    color: "#2563eb",
+                    textDecoration: "none",
+                    fontWeight: 500,
+                  }}
+                >
+                  <LinkIcon size={14} />
+                  {prettyUrl(bio.bio_url)}
+                </a>
+              )}
+            </>
+          ) : hasBioUrl ? (
+            // URL only, no text
+            <a
+              href={bio.bio_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => logBioUrlClick(bio.id, bio.bio_url)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                marginTop: 6,
+                fontSize: 13,
+                color: "#2563eb",
+                textDecoration: "none",
+                fontWeight: 500,
+              }}
+            >
+              <LinkIcon size={14} />
+              {prettyUrl(bio.bio_url)}
+            </a>
+          ) : null}
         </div>
       </div>
 
-      {/* Stats */}
+      {/* ------------ Stats ------------ */}
       <div
         style={{
           display: "flex",
@@ -112,6 +190,13 @@ export function BioHoverCard({ author, avatarUrl, bio, verified, anchorEl, hideH
           <br /><span style={{ fontSize: 12 }}>following</span>
         </div>
       </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>,
     document.body
   );
