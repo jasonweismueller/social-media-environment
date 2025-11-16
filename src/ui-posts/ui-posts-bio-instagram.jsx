@@ -11,7 +11,7 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-/* ---------------- Insta-style Link Icon ---------------- */
+/* ---------------- Insta-style Link Icon (horizontal) ---------------- */
 const LinkIcon = ({ size = 14, style = {} }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -35,15 +35,10 @@ export const VerifiedBadge = (
 
 /* ---------------- Logging ---------------- */
 function logBioUrlClick(postId, url) {
-  try {
-    window.__smeLogEvent?.("bio_url_click", { postId, url });
-  } catch {}
+  try { window.__smeLogEvent?.("bio_url_click", { postId, url }); } catch {}
 }
-
 function logBioHoverOpen(postId) {
-  try {
-    window.__smeLogEvent?.("bio_hover_open", { postId });
-  } catch {}
+  try { window.__smeLogEvent?.("bio_hover_open", { postId }); } catch {}
 }
 
 /* ---------------- Utilities ---------------- */
@@ -53,7 +48,6 @@ function linkifyText(text = "") {
     (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
   );
 }
-
 const prettyUrl = (u) => u?.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 /* ------------------------------------------------------------------------ */
@@ -70,10 +64,12 @@ export function BioHoverCard({
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
+  // Log hover open
   useEffect(() => {
     if (anchorEl && bio?.id) logBioHoverOpen(bio.id);
   }, [anchorEl, bio?.id]);
 
+  // Position popup
   useEffect(() => {
     if (!anchorEl) return;
     const rect = anchorEl.getBoundingClientRect();
@@ -112,6 +108,7 @@ export function BioHoverCard({
         animation: "fadeIn .15s ease",
       }}
     >
+
       {/* ------------ Avatar + name ------------ */}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <img
@@ -127,7 +124,7 @@ export function BioHoverCard({
             {verified && VerifiedBadge}
           </div>
 
-          {/* ------------ Text & URL Behaviour ------------ */}
+          {/* ------------ Text & URL Logic ------------ */}
           {hasBioText ? (
             <>
               <div
@@ -164,6 +161,7 @@ export function BioHoverCard({
               )}
             </>
           ) : hasBioUrl ? (
+            // URL only, no bio text
             <div
               style={{
                 display: "flex",
@@ -174,7 +172,7 @@ export function BioHoverCard({
                 lineHeight: "1.35",
               }}
             >
-              <LinkIcon size={15} style={{ color: "#2563eb" }} />
+              <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
               <a
                 href={bio.bio_url}
                 target="_blank"
