@@ -490,6 +490,24 @@ const hideHover = () => {
   }, 150);
 };
 
+// --- Mobile: close bio when tapping outside ---
+useEffect(() => {
+  if (!isMobile) return;
+  if (!hoverTargetEl) return;
+
+  const handleTapOutside = (e) => {
+    // If click is not inside this post
+    if (!refFromTracker?.current) return;
+    if (!refFromTracker.current.contains(e.target)) {
+      setHoverTargetEl(null);
+      bioShownRef.current = false;
+    }
+  };
+
+  document.addEventListener("click", handleTapOutside);
+  return () => document.removeEventListener("click", handleTapOutside);
+}, [isMobile, hoverTargetEl]);
+
   const [commentText, setCommentText] = useState("");
   const [mySubmittedComment, setMySubmittedComment] = useState(post._localMyCommentText || "");
   const [participantComments, setParticipantComments] = useState(mySubmittedComment ? 1 : 0);
@@ -1663,22 +1681,6 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
     return () => (window.cancelIdleCallback ? window.cancelIdleCallback(handle) : clearTimeout(handle));
   }, [posts]);
 
-  // Close bio on outside tap (mobile only)
-useEffect(() => {
-  if (!isMobile) return;
-  if (!hoverTargetEl) return;
-
-  const handleTapOutside = (e) => {
-    if (!refFromTracker?.current) return;
-    if (!refFromTracker.current.contains(e.target)) {
-      setHoverTargetEl(null);
-      bioShownRef.current = false;
-    }
-  };
-
-  document.addEventListener("click", handleTapOutside);
-  return () => document.removeEventListener("click", handleTapOutside);
-}, [isMobile, hoverTargetEl]);
 
   const sentinelRef = useRef(null);
   useEffect(() => {
