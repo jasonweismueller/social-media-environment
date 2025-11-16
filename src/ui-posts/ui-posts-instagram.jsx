@@ -438,8 +438,20 @@ const poolNames =
   const [menuOpenDesktop, setMenuOpenDesktop] = useState(false);
   const dotsBtnRef = useRef(null);
 
-  const [hoverBio, setHoverBio] = useState(false);
+  // Hover triggers on both
+const avatarRef = useRef(null);
 const authorRef = useRef(null);
+const [hoverTargetEl, setHoverTargetEl] = useState(null);
+const attachBioHover = (ref) => ({
+  ref,
+  onMouseEnter: () => showHover(ref.current),
+  onMouseLeave: hideHover,
+});
+
+const showHover = (el) => {
+  if (!isMobile && post.showBio) setHoverTargetEl(el);
+};
+const hideHover = () => setHoverTargetEl(null);
 
   const [commentText, setCommentText] = useState("");
   const [mySubmittedComment, setMySubmittedComment] = useState(post._localMyCommentText || "");
@@ -599,24 +611,21 @@ const handleMediaTap = () => {
       <header className="insta-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           {effectiveAvatarUrl ? (
-            <img src={effectiveAvatarUrl} alt="" style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover" }} />
+       <img
+  {...attachBioHover(avatarRef)}
+  src={effectiveAvatarUrl}
+  alt=""
+  style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover" }}
+/>
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
-    <span
-  ref={authorRef}
-  onMouseEnter={() => !isMobile && post.showBio && setHoverBio(true)}
-  onMouseLeave={() => setHoverBio(false)}
+   <span
+  {...attachBioHover(authorRef)}
   style={{
     fontWeight: 600,
     fontSize: 14,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
     cursor: post.showBio ? "pointer" : "default",
   }}
 >
@@ -1576,12 +1585,13 @@ marginTop: "auto",
   }
 `}</style>
 
-{hoverBio && !isMobile && post.showBio && (
+{hoverTargetEl && !isMobile && post.showBio && (
   <BioHoverCard
-    anchorEl={authorRef.current}
+    anchorEl={hoverTargetEl}
     author={displayAuthor}
     avatarUrl={effectiveAvatarUrl}
     bio={post}
+    verified={!!post.badge}   // 👈 NEW
   />
 )}
 
