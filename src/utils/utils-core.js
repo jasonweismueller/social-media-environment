@@ -1074,7 +1074,7 @@ export async function getAvatarPool(kind = "female") {
     const url = AVATAR_POOLS_ENDPOINTS[k];
     if (!url) return [];
     try {
-      const res = await fetch(url, { mode: "cors", cache: "force-cache" });
+      const res = await fetch(url, { mode: "cors", cache: "no-cache" });
       const list = await res.json().catch(() => []);
       const base = CF_BASE.replace(/\/+$/,'');
       return (Array.isArray(list) ? list : [])
@@ -1180,7 +1180,7 @@ export async function getImagePool(topic = "") {
         (async () => {
           try {
             const url = imagePoolIndexUrl(folder);
-            const res = await fetch(url, { mode: "cors", cache: "force-cache" });
+            const res = await fetch(url, { mode: "cors", cache: "no-cache" });
             if (!res.ok) return [];
             const list = await res.json().catch(() => []);
             return normalizeImageIndex(list, folder);
