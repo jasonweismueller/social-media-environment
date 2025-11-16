@@ -53,7 +53,7 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl }) {
         />
         <div style={{ maxWidth: 210 }}>
           <div style={{ fontWeight: 600, fontSize: 15 }}>{author}</div>
-          <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{bio.bioText}</div>
+          <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{bio.bio_text}</div>
         </div>
       </div>
 
@@ -69,17 +69,17 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl }) {
         }}
       >
         <div>
-          <strong>{formatNumber(bio.bioPosts)}</strong>
+          <strong>{formatNumber(bio.bio_posts)}</strong>
           <br />
           <span style={{ fontSize: 12, color: "#4b5563" }}>posts</span>
         </div>
         <div>
-          <strong>{formatNumber(bio.bioFollowers)}</strong>
+          <strong>{formatNumber(bio.bio_followers)}</strong>
           <br />
           <span style={{ fontSize: 12, color: "#4b5563" }}>followers</span>
         </div>
         <div>
-          <strong>{formatNumber(bio.bioFollowing)}</strong>
+          <strong>{formatNumber(bio.bio_following)}</strong>
           <br />
           <span style={{ fontSize: 12, color: "#4b5563" }}>following</span>
         </div>
