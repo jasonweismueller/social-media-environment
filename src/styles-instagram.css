@@ -120,8 +120,8 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   display: block;
   width: 100%;
   max-width: 100%;
-  padding: 0.75rem 0;
-  font-size: 1rem;
+  padding: 0.4rem 0;
+  font-size: 0.7rem;
   font-weight: 600;
   border-radius: 0.65rem;
 }
