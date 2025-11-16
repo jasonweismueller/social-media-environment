@@ -286,17 +286,6 @@ const [bioHoverOpen, setBioHoverOpen] = useState(false);
 // ---- Bio randomization ----
 const rawBio = post.bio || null;
 
-const displayBioText = useMemo(() => {
-  if (!rawBio?.bioText) return "";
-  return displayBioForPost(
-    rawBio.bioText,
-    {
-      randomize: randBiosOn,
-      seedParts: [...seedParts, "bio"]
-    }
-  );
-}, [rawBio, randBiosOn, id, runSeed, app, projectId, feedId]);
-
 
 const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
@@ -316,6 +305,20 @@ const effectiveRandFlags = isSponsored
   const forcedRand =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("forcerand") === "1";
+
+
+
+const displayBioText = useMemo(() => {
+  if (!rawBio?.bioText) return "";
+  return displayBioForPost(
+    rawBio.bioText,
+    {
+      randomize: randBiosOn,
+      seedParts: [...seedParts, "bio"]
+    }
+  );
+}, [rawBio, randBiosOn, id, runSeed, app, projectId, feedId]);
+
 
  const randNamesOn  = forcedRand || !!effectiveRandFlags.randomize_names;
  const randAvatarOn = forcedRand || !!(effectiveRandFlags.randomize_avatars || effectiveRandFlags.randomize_avatar);
