@@ -1,55 +1,96 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 import { neutralAvatarDataUrl } from "../ui-core";
 
-export function BioHoverCard({ anchorEl, author, avatarUrl, bio }) {
-  if (!anchorEl || !bio) return null;
+// --- Number formatting helper ---
+function formatNumber(n) {
+  n = Number(n || 0);
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0) + "M";
+  if (n >= 10_000) return Math.round(n / 1000) + "K"; // 100K, 250K
+  if (n >= 1000) return (n / 1000).toFixed(1) + "K"; // 1.2K, 3.6K
+  return n.toLocaleString();
+}
 
-  const rect = anchorEl.getBoundingClientRect();
-  const top = rect.bottom + window.scrollY + 8;
-  const left = rect.left + window.scrollX;
+export function BioHoverCard({ author, avatarUrl, bio, anchorEl }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  useEffect(() => {
+    if (!anchorEl) return;
+    const rect = anchorEl.getBoundingClientRect();
+    const top = rect.bottom + window.scrollY + 8;
+    const left = rect.left + window.scrollX - 20; // slight left shift so it's centered
+    setPos({ top, left });
+  }, [anchorEl]);
+
+  if (!pos) return null;
 
   return ReactDOM.createPortal(
     <div
+      ref={ref}
       style={{
         position: "absolute",
-        top,
-        left,
-        padding: 12,
+        top: pos.top,
+        left: pos.left,
+        padding: 16,
         background: "#fff",
-        borderRadius: 12,
-        boxShadow: "0 8px 28px rgba(0,0,0,0.22)",
-        width: 240,
+        borderRadius: 16,
+        boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
+        width: 300,     // <-- bigger
+        maxWidth: "90vw",
         zIndex: 100000,
         fontSize: 14,
         animation: "fadeIn .15s ease",
       }}
     >
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      {/* Avatar + name */}
+      <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <img
-          src={avatarUrl || neutralAvatarDataUrl(48)}
-          width={48}
-          height={48}
-          style={{ borderRadius: "999px" }}
+          src={avatarUrl || neutralAvatarDataUrl(60)}
+          width={60}
+          height={60}
+          style={{ borderRadius: "999px", objectFit: "cover" }}
         />
-        <div>
-          <div style={{ fontWeight: 600 }}>{author}</div>
-          <div style={{ fontSize: 13, color: "#4b5563" }}>{bio.bio_text}</div>
+        <div style={{ maxWidth: 210 }}>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>{author}</div>
+          <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{bio.bioText}</div>
         </div>
       </div>
 
+      {/* Stats */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          marginTop: 12,
+          marginTop: 14,
           textAlign: "center",
+          paddingTop: 12,
+          borderTop: "1px solid #e5e7eb",
         }}
       >
-        <div><strong>{bio.bio_posts}</strong><br/><span style={{ fontSize: 12 }}>posts</span></div>
-        <div><strong>{bio.bio_followers}</strong><br/><span style={{ fontSize: 12 }}>followers</span></div>
-        <div><strong>{bio.bio_following}</strong><br/><span style={{ fontSize: 12 }}>following</span></div>
+        <div>
+          <strong>{formatNumber(bio.bioPosts)}</strong>
+          <br />
+          <span style={{ fontSize: 12, color: "#4b5563" }}>posts</span>
+        </div>
+        <div>
+          <strong>{formatNumber(bio.bioFollowers)}</strong>
+          <br />
+          <span style={{ fontSize: 12, color: "#4b5563" }}>followers</span>
+        </div>
+        <div>
+          <strong>{formatNumber(bio.bioFollowing)}</strong>
+          <br />
+          <span style={{ fontSize: 12, color: "#4b5563" }}>following</span>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>,
     document.body
   );
