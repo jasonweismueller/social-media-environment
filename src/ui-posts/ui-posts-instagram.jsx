@@ -8,6 +8,7 @@ import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
 import { BioHoverCard } from "./ui-posts-bio-instagram";
+import { MobileBioSheet } from "./ui-posts-bio-mobile-instagram";
 
 
 
@@ -438,32 +439,30 @@ const poolNames =
   const [menuOpenDesktop, setMenuOpenDesktop] = useState(false);
   const dotsBtnRef = useRef(null);
 
+  const [bioOpen, setBioOpen] = useState(false);
   // Hover triggers on both
+// Hover triggers on both
 const avatarRef = useRef(null);
 const authorRef = useRef(null);
 const [hoverTargetEl, setHoverTargetEl] = useState(null);
+
 const attachBioHover = (ref) => {
   if (!ref) return {};
-
   return {
     ref,
     ...(isMobile
       ? {
           onClick: () => {
             if (!post.showBio) return;
-            // toggle:
-            setHoverTargetEl((prev) => (prev === ref.current ? null : ref.current));
-
-            if (!bioShownRef.current) {
-              bioShownRef.current = true;
-              onAction?.("bio_open", { post_id: post.id, surface: "mobile" });
-            }
+            setBioOpen(true);
+            onAction?.("bio_open", { post_id: post.id, surface: "mobile" });
           },
         }
       : {
           onMouseEnter: () => showHover(ref.current),
           onMouseLeave: hideHover,
-        }),
+        }
+    ),
   };
 };
 
@@ -1651,17 +1650,18 @@ marginTop: "auto",
     hideDelayRef={hideDelayRef}    // 👈 REQUIRED
   />
 )}
-{hoverTargetEl && isMobile && post.showBio && (
-  <BioHoverCard
-    anchorEl={hoverTargetEl}
-    author={displayAuthor}
-    avatarUrl={effectiveAvatarUrl}
-    bio={post}
-    verified={!!post.badge}
-    hideHover={() => setHoverTargetEl(null)}
-    hideDelayRef={hideDelayRef}
+{isMobile && bioOpen && post.showBio && (
+  <MobileBioSheet
+    open={bioOpen}
+    onClose={() => setBioOpen(false)}
+    post={{
+      ...post,
+      author: displayAuthor,
+      avatarUrl: effectiveAvatarUrl
+    }}
   />
 )}
+
 
     </article>
   );
