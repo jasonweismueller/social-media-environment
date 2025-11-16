@@ -45,6 +45,8 @@ import { genNeutralAvatarDataUrl, makeRandomPost } from "./components-admin-edit
 import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
 
+const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
+
 // Pick based on current app (set in main-facebook.jsx or main-instagram.jsx)
 const app = (window.APP || new URLSearchParams(window.location.search).get("app") || "fb").toLowerCase();
 const AdminPostEditor = app === "ig" ? AdminPostEditorIG : AdminPostEditorFB;
@@ -348,7 +350,7 @@ export function AdminDashboard({
     (!booting && feedsLoading && !feedsError);
   const showBlur = showOverlay;
 
-  const keyFor = (pid, fid) => `${pid || "global"}::${fid}`;
+
 
   const loadStatsFor = async (id) => {
     if (!id) return;
