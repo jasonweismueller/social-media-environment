@@ -12,7 +12,7 @@ function formatNumber(n) {
 }
 
 /* ---------------- Insta-style Link Icon ---------------- */
-const LinkIcon = ({ size = 26, style = {} }) => (
+const LinkIcon = ({ size = 15, style = {} }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -20,7 +20,7 @@ const LinkIcon = ({ size = 26, style = {} }) => (
     height={size}
     style={{
       flexShrink: 0,
-      display: "block",   // ensures no baseline weirdness
+      display: "block",
       ...style,
     }}
   >
@@ -46,14 +46,13 @@ function logBioUrlClick(postId, url) {
   } catch {}
 }
 
-/* ---------------- Capture hover open event ---------------- */
 function logBioHoverOpen(postId) {
   try {
     window.__smeLogEvent?.("bio_hover_open", { postId });
   } catch {}
 }
 
-/* ---------------- Linkify that doesn't include punctuation ---------------- */
+/* ---------------- Utilities ---------------- */
 function linkifyText(text = "") {
   return text.replace(
     /(https?:\/\/[^\s<>()]+[^\s<>().,!?])/g,
@@ -61,7 +60,6 @@ function linkifyText(text = "") {
   );
 }
 
-/* ---------------- Helper: format URL for display ---------------- */
 const prettyUrl = (u) => u?.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
 /* ------------------------------------------------------------------------ */
@@ -78,20 +76,17 @@ export function BioHoverCard({
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
-  // Capture hover open logging
   useEffect(() => {
-    if (anchorEl && bio?.id) {
-      logBioHoverOpen(bio.id);
-    }
+    if (anchorEl && bio?.id) logBioHoverOpen(bio.id);
   }, [anchorEl, bio?.id]);
 
-  // Position the card
   useEffect(() => {
     if (!anchorEl) return;
     const rect = anchorEl.getBoundingClientRect();
-    const top = rect.bottom + window.scrollY + 8;
-    const left = rect.left + window.scrollX - 20;
-    setPos({ top, left });
+    setPos({
+      top: rect.bottom + window.scrollY + 8,
+      left: rect.left + window.scrollX - 20,
+    });
   }, [anchorEl]);
 
   if (!pos) return null;
@@ -109,7 +104,7 @@ export function BioHoverCard({
         position: "absolute",
         top: pos.top,
         left: pos.left,
-        pointerEvents: "auto", // ensures clicks still work even in overlays
+        pointerEvents: "auto",
         padding: 18,
         background: "#fff",
         borderRadius: 18,
@@ -121,7 +116,6 @@ export function BioHoverCard({
         zIndex: 100000,
         fontSize: 14,
         animation: "fadeIn .15s ease",
-        cursor: "default",
       }}
     >
       {/* ------------ Avatar + name ------------ */}
@@ -148,49 +142,59 @@ export function BioHoverCard({
               />
 
               {hasBioUrl && (
-  <a
-    href={bio.bio_url}
-    target="_blank"
-    rel="noopener noreferrer"
-    onClick={() => logBioUrlClick(postId, bio.bio_url)}
-    style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 6,
-      marginTop: 6,
-      fontSize: 13,
-      color: "#2563eb",
-      textDecoration: "none",
-      fontWeight: 500,
-      lineHeight: 1.35,          // keeps alignment tight
-    }}
-  >
-    <LinkIcon size={26} style={{ marginTop: -1 }} />  {/* ✔️ bigger + aligned */}
-    <span style={{ position: "relative", top: "-0.3px" }}>{prettyUrl(bio.bio_url)}</span>
-  </a>
-)}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 6,
+                    fontSize: 13,
+                    lineHeight: "1.35",
+                  }}
+                >
+                  <LinkIcon size={15} style={{ color: "#2563eb" }} />
+                  <a
+                    href={bio.bio_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => logBioUrlClick(postId, bio.bio_url)}
+                    style={{
+                      color: "#2563eb",
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {prettyUrl(bio.bio_url)}
+                  </a>
+                </div>
+              )}
             </>
           ) : hasBioUrl ? (
-            // URL only, no text
-            <a
-              href={bio.bio_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => logBioUrlClick(postId, bio.bio_url)}
+            <div
               style={{
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
                 gap: 6,
                 marginTop: 6,
                 fontSize: 13,
-                color: "#2563eb",
-                textDecoration: "none",
-                fontWeight: 500,
+                lineHeight: "1.35",
               }}
             >
-              <LinkIcon size={26} />
-              {prettyUrl(bio.bio_url)}
-            </a>
+              <LinkIcon size={15} style={{ color: "#2563eb" }} />
+              <a
+                href={bio.bio_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => logBioUrlClick(postId, bio.bio_url)}
+                style={{
+                  color: "#2563eb",
+                  textDecoration: "none",
+                  fontWeight: 500,
+                }}
+              >
+                {prettyUrl(bio.bio_url)}
+              </a>
+            </div>
           ) : null}
         </div>
       </div>
