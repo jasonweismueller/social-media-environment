@@ -3,11 +3,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, displayBioForPost } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
-import { ShareSheetDesktop, BioHoverCard } from "./ui-post-desktop-instagram";
-
+import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
 
 
 
@@ -281,15 +280,10 @@ const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlag
 const likeButtonRef = useRef(null);
 
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
-const bioAnchorRef = useRef(null);
-const [bioHoverOpen, setBioHoverOpen] = useState(false);
-// ---- Bio randomization ----
-const rawBio = post.bio || null;
-
 
 const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
-  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_bios: false, randomize_times: effectiveFlags.randomize_times }
+  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_times: effectiveFlags.randomize_times }
   : effectiveFlags;
 
   // Deterministic seed for consistent randomization across sessions
@@ -306,27 +300,10 @@ const effectiveRandFlags = isSponsored
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("forcerand") === "1";
 
-
-
-const displayBioText = useMemo(() => {
-  if (!rawBio?.bioText) return "";
-  return displayBioForPost(
-    rawBio.bioText,
-    {
-      randomize: randBiosOn,
-      seedParts: [...seedParts, "bio"]
-    }
-  );
-}, [rawBio, randBiosOn, id, runSeed, app, projectId, feedId]);
-
-
  const randNamesOn  = forcedRand || !!effectiveRandFlags.randomize_names;
  const randAvatarOn = forcedRand || !!(effectiveRandFlags.randomize_avatars || effectiveRandFlags.randomize_avatar);
  const randImagesOn = forcedRand || !!effectiveRandFlags.randomize_images;
  const randTimesOn  = forcedRand || !!effectiveRandFlags.randomize_times;
- const randBiosOn   = forcedRand || !!(effectiveRandFlags.randomize_bios || effectiveRandFlags.randomize_bio);
-
- 
 
   // ---- IG username randomizer (deterministic) ----
   function pickIGUsername(postId, parts, fallback = "username") {
@@ -622,11 +599,7 @@ const handleMediaTap = () => {
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
           <div style={{ display: "flex", flexDirection: "column" }}>
-   <span
-  ref={bioAnchorRef}
-  onMouseEnter={() => !isMobile && setBioHoverOpen(true)}
-  onMouseLeave={() => !isMobile && setBioHoverOpen(false)}
-  onClick={() => isMobile && setBioHoverOpen((x) => !x)}
+    <span
   style={{
     fontWeight: 600,
     fontSize: 14,
@@ -636,7 +609,6 @@ const handleMediaTap = () => {
     display: "flex",
     alignItems: "center",
     gap: 4,
-    cursor: "pointer",
   }}
 >
   {displayAuthor}
@@ -699,19 +671,6 @@ const handleMediaTap = () => {
           onAction={onAction}
         />
       )}
-
-      {/* ==== Desktop Bio Popover ==== */}
-{bioHoverOpen && rawBio && (
-  <BioHoverCard
-    author={displayAuthor}
-    avatarUrl={effectiveAvatarUrl}
-    bio={{
-      ...rawBio,
-      bioText: displayBioText
-    }}
-    anchorEl={bioAnchorRef.current}
-  />
-)}
 
       {/* Media */}
       {(hasVideo || hasCarousel || hasImage) && (
