@@ -12,7 +12,7 @@ function formatNumber(n) {
 }
 
 /* ---------------- Insta-style Link Icon ---------------- */
-const LinkIcon = ({ size = 18, style = {} }) => (
+const LinkIcon = ({ size = 26, style = {} }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 24 24"
@@ -165,7 +165,7 @@ export function BioHoverCard({
       lineHeight: 1.35,          // keeps alignment tight
     }}
   >
-    <LinkIcon size={18} style={{ marginTop: -1 }} />  {/* ✔️ bigger + aligned */}
+    <LinkIcon size={26} style={{ marginTop: -1 }} />  {/* ✔️ bigger + aligned */}
     <span style={{ position: "relative", top: "-0.3px" }}>{prettyUrl(bio.bio_url)}</span>
   </a>
 )}
@@ -188,7 +188,7 @@ export function BioHoverCard({
                 fontWeight: 500,
               }}
             >
-              <LinkIcon size={18} />
+              <LinkIcon size={26} />
               {prettyUrl(bio.bio_url)}
             </a>
           ) : null}
