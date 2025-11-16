@@ -11,15 +11,23 @@ function formatNumber(n) {
   return n.toLocaleString();
 }
 
-export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified}) {
+export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
+
+  // auto-link helper
+  function linkify(text = "") {
+    return text.replace(
+      /(https?:\/\/[^\s]+)/g,
+      (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+    );
+  }
 
   useEffect(() => {
     if (!anchorEl) return;
     const rect = anchorEl.getBoundingClientRect();
     const top = rect.bottom + window.scrollY + 8;
-    const left = rect.left + window.scrollX - 20; // slight left shift so it's centered
+    const left = rect.left + window.scrollX - 20;
     setPos({ top, left });
   }, [anchorEl]);
 
@@ -28,16 +36,20 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified}) {
   return ReactDOM.createPortal(
     <div
       ref={ref}
+      onMouseEnter={() => anchorEl?.dispatchEvent(new Event("mouseenter", { bubbles: true }))} 
+      onMouseLeave={() => anchorEl?.dispatchEvent(new Event("mouseleave", { bubbles: true }))}
       style={{
         position: "absolute",
         top: pos.top,
         left: pos.left,
-        padding: 16,
+        padding: 18,
         background: "#fff",
-        borderRadius: 16,
+        borderRadius: 18,
         boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
-        width: 300,     // <-- bigger
-        maxWidth: "90vw",
+        width: 340,
+        maxWidth: "95vw",
+        maxHeight: 280,
+        overflowY: "auto",
         zIndex: 100000,
         fontSize: 14,
         animation: "fadeIn .15s ease",
@@ -51,23 +63,27 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified}) {
           height={60}
           style={{ borderRadius: "999px", objectFit: "cover" }}
         />
-        <div style={{ maxWidth: 210 }}>
+        <div style={{ maxWidth: 250 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-  <span style={{ fontWeight: 600, fontSize: 15 }}>{author}</span>
-  {verified && (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 512 512"
-      width="15"
-      height="15"
-      style={{ flexShrink: 0 }}
-    >
-      <path fill="#1DA1F2" d="M512 256l-63.3 36.5..."/>
-      <path fill="#fff" d="M227.3 342.6L134 249.3..."/>
-    </svg>
-  )}
-</div>
-          <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{bio.bio_text}</div>
+            <span style={{ fontWeight: 600, fontSize: 15 }}>{author}</span>
+            {verified && (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    width="15"
+    height="15"
+    style={{ flexShrink: 0 }}
+  >
+    <path fill="#1DA1F2" d="M512 256l-63.3 36.5..."/>
+    <path fill="#fff" d="M227.3 342.6L134 249.3..."/>
+  </svg>
+)}
+          </div>
+
+          <div
+            style={{ fontSize: 13, color: "#4b5563", marginTop: 6, lineHeight: 1.35 }}
+            dangerouslySetInnerHTML={{ __html: linkify(bio.bio_text) }}
+          />
         </div>
       </div>
 
@@ -84,27 +100,17 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified}) {
       >
         <div>
           <strong>{formatNumber(bio.bio_posts)}</strong>
-          <br />
-          <span style={{ fontSize: 12, color: "#4b5563" }}>posts</span>
+          <br /><span style={{ fontSize: 12 }}>posts</span>
         </div>
         <div>
           <strong>{formatNumber(bio.bio_followers)}</strong>
-          <br />
-          <span style={{ fontSize: 12, color: "#4b5563" }}>followers</span>
+          <br /><span style={{ fontSize: 12 }}>followers</span>
         </div>
         <div>
           <strong>{formatNumber(bio.bio_following)}</strong>
-          <br />
-          <span style={{ fontSize: 12, color: "#4b5563" }}>following</span>
+          <br /><span style={{ fontSize: 12 }}>following</span>
         </div>
       </div>
-
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>,
     document.body
   );
