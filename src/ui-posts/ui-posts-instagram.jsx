@@ -448,10 +448,20 @@ const attachBioHover = (ref) => ({
   onMouseLeave: hideHover,
 });
 
+const hideDelayRef = useRef(null);
+
 const showHover = (el) => {
-  if (!isMobile && post.showBio) setHoverTargetEl(el);
+  if (!isMobile && post.showBio) {
+    clearTimeout(hideDelayRef.current);
+    setHoverTargetEl(el);
+  }
 };
-const hideHover = () => setHoverTargetEl(null);
+
+const hideHover = () => {
+  hideDelayRef.current = setTimeout(() => {
+    setHoverTargetEl(null);
+  }, 150);
+};
 
   const [commentText, setCommentText] = useState("");
   const [mySubmittedComment, setMySubmittedComment] = useState(post._localMyCommentText || "");
@@ -1591,7 +1601,9 @@ marginTop: "auto",
     author={displayAuthor}
     avatarUrl={effectiveAvatarUrl}
     bio={post}
-    verified={!!post.badge}   // 👈 NEW
+    verified={!!post.badge}
+    hideHover={hideHover}          // 👈 REQUIRED
+    hideDelayRef={hideDelayRef}    // 👈 REQUIRED
   />
 )}
 

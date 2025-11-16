@@ -6,12 +6,12 @@ import { neutralAvatarDataUrl } from "../ui-core";
 function formatNumber(n) {
   n = Number(n || 0);
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0) + "M";
-  if (n >= 10_000) return Math.round(n / 1000) + "K"; // 100K, 250K
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K"; // 1.2K, 3.6K
+  if (n >= 10_000) return Math.round(n / 1000) + "K";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
   return n.toLocaleString();
 }
 
-export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified }) {
+export function BioHoverCard({ author, avatarUrl, bio, verified, anchorEl, hideHover, hideDelayRef }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
@@ -36,8 +36,8 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified }) {
   return ReactDOM.createPortal(
     <div
       ref={ref}
-      onMouseEnter={() => anchorEl?.dispatchEvent(new Event("mouseenter", { bubbles: true }))} 
-      onMouseLeave={() => anchorEl?.dispatchEvent(new Event("mouseleave", { bubbles: true }))}
+      onMouseEnter={() => clearTimeout(hideDelayRef.current)}  // 👈 keep open
+      onMouseLeave={hideHover}                                // 👈 triggers delayed close
       style={{
         position: "absolute",
         top: pos.top,
@@ -46,9 +46,9 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified }) {
         background: "#fff",
         borderRadius: 18,
         boxShadow: "0 12px 34px rgba(0,0,0,0.22)",
-        width: 340,
+        width: 360,         // ⬆ bigger for longer bios
         maxWidth: "95vw",
-        maxHeight: 280,
+        maxHeight: 320,     // ⬆ taller
         overflowY: "auto",
         zIndex: 100000,
         fontSize: 14,
@@ -63,27 +63,22 @@ export function BioHoverCard({ author, avatarUrl, bio, anchorEl, verified }) {
           height={60}
           style={{ borderRadius: "999px", objectFit: "cover" }}
         />
-        <div style={{ maxWidth: 250 }}>
+
+        <div style={{ maxWidth: 260 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontWeight: 600, fontSize: 15 }}>{author}</span>
-          {verified && (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 512 512"
-    width="15"
-    height="15"
-    style={{ flexShrink: 0 }}
-  >
-    <path
-      fill="#1DA1F2"
-      d="M512 256l-63.3 36.5 7.6 72.7-68.3 39.5-27.2 67.3-72.7-7.6L256 512l-36.5-63.3-72.7 7.6-39.5-68.3-67.3-27.2 7.6-72.7L0 256l63.3-36.5-7.6-72.7 68.3-39.5 27.2-67.3 72.7 7.6L256 0l36.5 63.3 72.7-7.6 39.5 68.3 67.3 27.2-7.6 72.7L512 256z"
-    />
-    <path
-      fill="#fff"
-      d="M227.3 342.6L134 249.3l36.4-36.4 56.9 56.9 114.3-114.3 36.4 36.4-150.7 150.7z"
-    />
-  </svg>
-)}
+            {verified && (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 512 512"
+                width="15"
+                height="15"
+                style={{ flexShrink: 0 }}
+              >
+                <path fill="#1DA1F2" d="M512 256l-63.3 36.5..."/>
+                <path fill="#fff" d="M227.3 342.6L134 249.3..."/>
+              </svg>
+            )}
           </div>
 
           <div
