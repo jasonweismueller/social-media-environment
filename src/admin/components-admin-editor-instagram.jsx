@@ -447,6 +447,22 @@ export function AdminPostEditor({
         />
       </label>
 
+      <label style={{ marginTop: 8 }}>
+  Bio URL (optional)
+  <input
+    className="input"
+    type="url"
+    placeholder="https://example.com"
+    value={editing.bio_url ?? ""}
+    onChange={(e) =>
+      setEditing((ed) => ({
+        ...ed,
+        bio_url: e.target.value,
+      }))
+    }
+  />
+</label>
+
       <div className="subtle" style={{ marginTop: 4 }}>
         Optional: If <code>randomize_bios</code> is enabled in feed settings,
         these values will be replaced with randomized ones at render time.
