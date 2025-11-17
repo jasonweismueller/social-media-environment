@@ -1242,3 +1242,8 @@ body.admin-mode .nav {
     overflow: hidden;
   }
 }
+
+.ig-mention {
+  color: #00376b;   /* IG blue */
+  font-weight: 600;
+}
