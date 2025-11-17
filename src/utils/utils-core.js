@@ -1218,25 +1218,6 @@ export async function getImagePool(topic = "") {
   return [];
 }
 
-export function randomizeBioStats(bio, { randomize, seedParts }) {
-  if (!randomize) return bio;
-
-  const next = { ...bio };
-
-  function randInRange(min, max, key) {
-    const seed = [...seedParts, "bio", key].join("|");
-    const r = rng(seed); // already defined earlier in this file
-    return Math.floor(min + r() * (max - min));
-  }
-
-  next.bio_posts     = randInRange(5, 200,       "posts");
-  next.bio_followers = 123456789;
-  next.bio_following = randInRange(50, 2000,     "following");
-  
-
-
-  return next;
-}
 
 export function randomizeBioStats(bio, { randomize }) {
   if (!randomize) return bio;
