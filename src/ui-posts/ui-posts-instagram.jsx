@@ -660,6 +660,9 @@ const randBiosOn = forcedRand || !!effectiveRandFlags.randomize_bios;
 const displayBio = useMemo(() => {
   const rawBio = {
     id: post.id,
+    author: displayAuthor,       // NEW
+    avatarUrl: effectiveAvatarUrl, // NEW
+    badge: post.badge,             // NEW
     bio_posts: post.bio_posts,
     bio_followers: post.bio_followers,
     bio_following: post.bio_following,
@@ -667,12 +670,15 @@ const displayBio = useMemo(() => {
     bio_url: post.bio_url,
   };
 
-  const result = randBiosOn
+  return randBiosOn
     ? randomizeBioStats(rawBio, { randomize: true, seedParts })
     : rawBio;
-
-  return result;
-}, [randBiosOn, post]);
+}, [
+  randBiosOn,
+  post,
+  displayAuthor,
+  effectiveAvatarUrl,
+]);
 
   return (
     <article
