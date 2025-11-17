@@ -1246,46 +1246,27 @@ export async function getImagePool(topic = "") {
 }
 
 
-/**
- * displayBioStatsForPost(post, { randomize = false, seedParts = [] })
- * Returns { posts, followers, following } with deterministic RNG
- */
-export function displayBioStatsForPost(post, { randomize = false, seedParts = [] } = {}) {
-  if (!post || !randomize) {
-    return {
-      posts: post.bio_posts ?? 0,
-      followers: post.bio_followers ?? 0,
-      following: post.bio_following ?? 0,
-    };
+export function randomizeBioStats(bio, { randomize, seedParts }) {
+  if (!randomize) return bio;
+
+  const next = { ...bio };
+
+  function randInRange(min, max, key) {
+    const pick = pickDeterministic(
+      Array.from({ length: max - min + 1 }, (_, i) => min + i),
+      [...seedParts, "bio", key]
+    );
+    return pick;
   }
 
-  const seed = [...seedParts, post.id ?? "", "bioStats"].join("::");
-  const r = rng(seed);
+  // posts always small-ish
+  next.bio_posts = randInRange(5, 200, "posts");
 
-  function jitter(base) {
-    base = Number(base) || 0;
-    if (base <= 0) return 0;
+  // followers: ranges that feel realistic
+  next.bio_followers = randInRange(100, 5_000_000, "followers");
 
-    // Small accounts → small jitter
-    if (base < 1000) {
-      const delta = Math.floor(r() * 200) - 100; // +/- 100
-      return Math.max(1, base + delta);
-    }
+  // following
+  next.bio_following = randInRange(50, 2000, "following");
 
-    // Medium accounts
-    if (base < 100_000) {
-      const delta = Math.floor(base * (0.05 + r() * 0.15)); // 5–20%
-      return Math.max(500, base + (r() < 0.5 ? -delta : delta));
-    }
-
-    // Large accounts
-    const delta = Math.floor(base * (0.03 + r() * 0.10)); // 3–13%
-    return Math.max(10_000, base + (r() < 0.5 ? -delta : delta));
-  }
-
-  return {
-    posts: jitter(post.bio_posts),
-    followers: jitter(post.bio_followers),
-    following: jitter(post.bio_following),
-  };
+  return next;
 }
