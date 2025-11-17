@@ -230,15 +230,18 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
     const handle = target.getAttribute("data-handle");
 
     onAction?.("mention_clicked", { post_id: postId, handle });
-console.log("🔥 mention_clicked fired", handle, postId);
 
     alert(
       "We have noted your interest in exploring this profile. Please also consider checking out the bio, which has a link to their website. We will provide you with further information in the study debrief."
     );
 
+      console.log("🔥 mention_clicked fired", handle, postId);
+
     e.preventDefault();
     e.stopPropagation();
   };
+
+
 
   return (
     <span className="text-wrap">
