@@ -666,12 +666,14 @@ const displayBio = useMemo(() => {
     bio_url: post.bio_url,
   };
 
-  console.log("displayBio:", displayBio);
-
-  return randBiosOn
+  const result = randBiosOn
     ? randomizeBioStats(rawBio, { randomize: true, seedParts })
     : rawBio;
-}, [randBiosOn, post, seedParts]);
+
+  console.log("displayBio result:", result, "seedParts:", seedParts);
+
+  return result;
+}, [randBiosOn, post, seedParts.join("|")]);
 
   return (
     <article
