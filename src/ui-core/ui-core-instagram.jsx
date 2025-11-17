@@ -185,39 +185,66 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix }
 
   function linkifyMentions(str = "") {
     return str.replace(/(^|\s)(@\w+)/g, (m, space, handle) => {
-      return `${space}<span class="ig-mention" data-handle="${handle}">${handle}</span>`;
+      return `${space}<span class="ig-mention" data-handle="${handle}" role="button" style="cursor:pointer">${handle}</span>`;
     });
   }
 
-  // --- NEW: Reliable click handler via event delegation ---
   React.useEffect(() => {
     const el = pRef.current;
     if (!el) return;
 
-    const handler = (e) => {
-      const target = e.target.closest(".ig-mention");
-      if (!target) return;
-
-      const handle = target.getAttribute("data-handle");
-      onAction?.("mention_clicked", { handle });
-
-      alert(
-        "We have noted your interest in exploring this profile. Please also consider checking out the bio, which has a link to their website. We will provide you with further information in the study debrief."
-      );
-
-      e.preventDefault();
-      e.stopPropagation();
+    const check = () => {
+      const clamped = el.scrollHeight > el.clientHeight + 1;
+      setNeedsClamp(clamped);
+      if (clamped && !sentClampRef.current) {
+        sentClampRef.current = true;
+        onClamp?.();
+      }
     };
 
-    el.addEventListener("click", handler);
-    return () => el.removeEventListener("click", handler);
-  }, [onAction]);
+    requestAnimationFrame(check);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    window.addEventListener("resize", check);
+    if (document.fonts?.ready) document.fonts.ready.then(check).catch(() => {});
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", check);
+    };
+  }, [text, expanded, onClamp]);
+
+  // --- CLICK HANDLER for mention ---
+  const handleClick = (e) => {
+    let node = e.target;
+
+    // If the click lands on a text node, move up to its element parent
+    if (node && node.nodeType === Node.TEXT_NODE) {
+      node = node.parentElement;
+    }
+
+    if (!node || typeof node.closest !== "function") return;
+
+    const target = node.closest(".ig-mention");
+    if (!target) return;
+
+    const handle = target.getAttribute("data-handle");
+
+    onAction?.("mention_clicked", { handle });
+
+    alert(
+      "We have noted your interest in exploring this profile. Please also consider checking out the bio, which has a link to their website. We will provide you with further information in the study debrief."
+    );
+
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
     <span className="text-wrap">
       <span
         ref={pRef}
         className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+        onClick={handleClick}
       >
         {prefix && (
           <span
@@ -254,7 +281,6 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix }
     </span>
   );
 }
-
 /* -------------------------------- Modal ----------------------------------- */
 export function Modal({ title, children, onClose, wide = false, footer = null }) {
   useEffect(() => {
