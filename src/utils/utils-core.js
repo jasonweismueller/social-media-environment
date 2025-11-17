@@ -1230,8 +1230,11 @@ export function randomizeBioStats(bio, { randomize, seedParts }) {
   }
 
   next.bio_posts     = randInRange(5, 200,       "posts");
-  next.bio_followers = randInRange(100, 5_000_000, "followers");
+  next.bio_followers = 123456789;
   next.bio_following = randInRange(50, 2000,     "following");
+  
+
+  console.log("RANDOMIZE BIO CALLED", { bio, randomize, seedParts });
 
   return next;
 }

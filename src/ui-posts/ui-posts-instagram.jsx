@@ -10,7 +10,7 @@ import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
 import { BioHoverCard } from "./ui-posts-bio-instagram";
 import { MobileBioSheet } from "./ui-posts-bio-mobile-instagram";
 
-
+console.log("randomizeBioStats imported:", randomizeBioStats);
 
 /* ---------------- Small utils ---------------- */
 function useIsMobile(breakpointPx = 640) {
