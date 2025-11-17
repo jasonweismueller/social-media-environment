@@ -154,7 +154,7 @@ export function BioHoverCard({
   onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url });
 
   alert(
-    "For the purpose of this study, we have noted your interest in following this bio link. We will provide you with further information in the study debrief."
+    "We have noted your interest in following this bio link. We will provide you with further information in the study debrief."
   );
 }}
   style={{
