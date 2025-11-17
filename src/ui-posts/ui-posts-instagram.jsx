@@ -1034,6 +1034,7 @@ const displayBio = useMemo(() => {
     onAction?.("expand_text", { post_id: id });
   }}
   onClamp={() => onAction("text_clamped", { post_id: id })}
+  onAction={onAction} 
 />
   </div>
 )}
