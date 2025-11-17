@@ -1222,45 +1222,44 @@ export function randomizeBioStats(bio, { randomize, seedParts }) {
   if (!randomize) return bio;
 
   const seed = [...seedParts, "bio", window.__BIO_SESSION_SEED__].join("|");
-  const r = rng(seed); // deterministic but new each session
-
+  const r = rng(seed);
   const pick = (arr) => arr[Math.floor(r() * arr.length)];
   const rand = (min, max) => Math.floor(min + r() * (max - min));
 
-  // 1. Decide influencer tier based on deterministic RNG
-  const tier = pick(["nano", "nano", "micro", "micro", "macro", "macro", "mega"]); 
-  // Weighted to produce more nano/micro/macro than mega
+  // Weighted distribution: mostly nano/micro
+  const tier = pick(["nano", "nano", "micro", "micro", "micro", "macro", "mega"]);
 
-  let followers;
+  let followers, posts, following;
+
   switch (tier) {
     case "nano":
-      followers = rand(1_000, 10_000);
+      followers = rand(800, 5000);
+      posts = rand(5, 200);
+      following = rand(200, 800);
       break;
+
     case "micro":
-      followers = rand(10_000, 100_000);
+      followers = rand(7000, 60000);
+      posts = rand(20, 300);
+      following = rand(150, 700);
       break;
+
     case "macro":
-      followers = rand(100_000, 1_000_000);
+      followers = rand(60000, 350000);
+      posts = rand(100, 600);
+      following = rand(80, 350);
       break;
+
     case "mega":
-      followers = rand(1_000_000, 10_000_000);
+      followers = rand(300000, 3000000);
+      posts = rand(150, 1200);
+      following = rand(30, 180);
       break;
   }
 
-  // 2. Posts and following scale with influencer size
-  const posts = rand(
-    tier === "nano" ? 10 : 50,
-    tier === "mega" ? 2000 : tier === "macro" ? 1200 : 400
-  );
-
-  const following = rand(
-    tier === "mega" ? 200 : tier === "macro" ? 400 : 1000,
-    tier === "mega" ? 800 : tier === "macro" ? 1500 : 3000
-  );
-
   return {
     ...bio,
-    influencer_tier: tier, // 🔥 helpful for debugging
+    influencer_tier: tier,
     bio_posts: posts,
     bio_followers: followers,
     bio_following: following,
