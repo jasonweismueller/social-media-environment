@@ -507,7 +507,8 @@ export function buildMinimalHeader(posts) {
   `${id}_share_text`,
   `${id}_cta_clicked`,
   `${id}_bio_opened`,
-  `${id}_bio_url_clicked`
+  `${id}_bio_url_clicked`,
+  `${id}_mention_clicked`
     );
   });
 
@@ -690,6 +691,10 @@ case "bio_url_click":
   p.bio_url_clicked = true;
   break;
 
+case "mention_clicked":
+  p.mention_clicked = true;
+  break;
+
 
   /* IG desktop/mobile menu report */
   case "report":
@@ -748,6 +753,7 @@ row[`${id}_share_text`]    = agg.share_text || "";
 row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : "";
 row[`${id}_bio_opened`]     = agg.bio_opened ? 1 : "";
 row[`${id}_bio_url_clicked`] = agg.bio_url_clicked ? 1 : "";
+row[`${id}_mention_clicked`] = agg.mention_clicked ? 1 : "";
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
@@ -791,6 +797,8 @@ export function extractPerPostFromRosterRow(row) {
             cta_clicked: 0,
             bio_opened: 0,
             bio_url_clicked: 0,
+            mention_clicked: 0,
+            
             
           };
         }
@@ -838,6 +846,7 @@ export function extractPerPostFromRosterRow(row) {
 
         obj.bio_opened = Number(agg?.bio_opened || 0);
 obj.bio_url_clicked = Number(agg?.bio_url_clicked || 0);
+obj.mention_clicked = Number(agg?.mention_clicked || 0);
 
         obj.dwell_s = Number.isFinite(agg?.dwell_s)
           ? agg.dwell_s
@@ -939,7 +948,7 @@ obj.bio_url_clicked = Number(agg?.bio_url_clicked || 0);
     let m;
 
     // boolean fields
-   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked)$/.exec(key);
+   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked)$/.exec(key);
 if (m) {
   const obj = ensure(m[1]);
   const metric = m[2];
@@ -1037,8 +1046,8 @@ export function summarizeRoster(rows) {
   const postKeys = new Set();
 rows.forEach(r => {
   Object.keys(r).forEach(k => {
-    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$/.test(k)) {
-      const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked)$/, "");
+    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$/.test(k)) {
+      const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked)$/, "");
       postKeys.add(base);
     }
   });
