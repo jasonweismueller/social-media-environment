@@ -203,7 +203,7 @@ export function BioHoverCard({
           display: "flex",
           justifyContent: "space-between",
           marginTop: 14,
-          textAlign: "center",
+          textAlign: "left",
           paddingTop: 12,
           borderTop: "1px solid #e5e7eb",
         }}
