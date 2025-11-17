@@ -1021,17 +1021,20 @@ const displayBio = useMemo(() => {
 {text?.trim() && (
   <div className="ig-caption-row">
     <PostText
-      prefix={
-        <span className="ig-username" style={{ display: "inline-block" }}>
-  {displayAuthor}
-  {post.badge && VerifiedBadge}
-</span>
-      }
-      text={text}
-      expanded={expanded}
-      onExpand={() => setExpanded(true)}
-      onClamp={() => onAction("text_clamped", { post_id: id })}
-    />
+  prefix={
+    <span className="ig-username" style={{ display: "inline-block" }}>
+      {displayAuthor}
+      {post.badge && VerifiedBadge}
+    </span>
+  }
+  text={text}
+  expanded={expanded}
+  onExpand={() => {
+    setExpanded(true);
+    onAction?.("text_expand", { post_id: id });
+  }}
+  onClamp={() => onAction("text_clamped", { post_id: id })}
+/>
   </div>
 )}
 
