@@ -669,7 +669,7 @@ const handleMediaTap = () => {
   {...attachBioHover(avatarRef)}
   src={effectiveAvatarUrl}
   alt=""
-  style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover" }}
+  style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover",cursor: post.showBio ? "pointer" : "default"}}
 />
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
