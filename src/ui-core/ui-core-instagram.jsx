@@ -211,35 +211,43 @@ function linkifyMentions(str = "") {
 
   return (
   <span className="text-wrap">
-    <span
-      ref={pRef}
-      className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
-      dangerouslySetInnerHTML={{
-        __html:
-          (prefix
-            ? `<span class="ig-username" style="font-weight:600;margin-right:0.25ch">${prefix}</span>`
-            : "") +
-          linkifyMentions(text),
-      }}
-    />
-
-    {!expanded && needsClamp && (
-      <span className="fade-more">
-        <span className="dots" aria-hidden="true">…</span>
-        <button
-          type="button"
-          className="see-more"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onExpand?.();
-          }}
-        >
-          more
-        </button>
+  <span
+    ref={pRef}
+    className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+  >
+    {prefix && (
+      <span
+        className="ig-username"
+        style={{ fontWeight: 600, marginRight: "0.25ch" }}
+      >
+        {prefix}
       </span>
     )}
+
+    <span
+      dangerouslySetInnerHTML={{
+        __html: linkifyMentions(text),
+      }}
+    />
   </span>
+
+  {!expanded && needsClamp && (
+    <span className="fade-more">
+      <span className="dots" aria-hidden="true">…</span>
+      <button
+        type="button"
+        className="see-more"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onExpand?.();
+        }}
+      >
+        more
+      </button>
+    </span>
+  )}
+</span>
 );
 }
 
