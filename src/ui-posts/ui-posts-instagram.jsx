@@ -657,10 +657,19 @@ const handleMediaTap = () => {
 const randBiosOn = forcedRand || !!effectiveRandFlags.randomize_bios;
 
 const displayBio = useMemo(() => {
+  const rawBio = {
+    id: post.id,
+    bio_posts: post.bio_posts,
+    bio_followers: post.bio_followers,
+    bio_following: post.bio_following,
+    bio_text: post.bio_text,
+    bio_url: post.bio_url,
+  };
+
   return randBiosOn
-    ? randomizeBioStats(post, { randomize: true, seedParts })
-    : post;
-}, [randBiosOn, post, seedParts]);
+    ? randomizeBioStats(rawBio, { randomize: true, seedParts })
+    : rawBio;
+}, [randBiosOn, post, seedParts.join("|")]);
 
   return (
     <article
