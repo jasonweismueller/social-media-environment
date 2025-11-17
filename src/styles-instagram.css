@@ -1216,3 +1216,11 @@ body.admin-mode .nav {
 .ig-caption-row .fade-more {
   right: 12px; /* IG-style spacing */
 }
+
+/* FIX IG caption clamp override */
+.ig-caption-row .text.clamp {
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
