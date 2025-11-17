@@ -727,33 +727,7 @@ body.admin-mode .ig-topbar { display:none !important; }
   white-space:pre-wrap;
 }
 
-/* INLINE clamp (so it can start on same line as username) */
-.ig-caption-row .text.clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  padding-right: 2.75ch; /* reserve space for “more” */
-}
 
-/* Only add the reserve space when overflow is REAL */
-.ig-caption-row .text.clamp.needs{
-  padding-right: 2.75ch;
-}
-
-/* Fade + "more" cluster sits snug to the end of the inline wrapper */
-.ig-caption-row .fade-more{
-  position:absolute;
-  right:0;
-  bottom:0;
-  height:1.4em;
-  display:inline-flex;
-  align-items:center;
-  gap:.35ch;
-  background:var(--ig-card);
-  padding-left:.25ch;
-  z-index:1;
-}
 .ig-caption-row .fade-more::before{
   content:"";
   position:absolute;
@@ -763,15 +737,6 @@ body.admin-mode .ig-topbar { display:none !important; }
   height:100%;
   background:linear-gradient(90deg, rgba(255,255,255,0), var(--ig-card));
 }
-
-/* Avoid duplicate ellipsis look if your component also renders dots */
-.ig-caption-row .fade-more .dots{ display:none !important; }
-
-/* Mobile: slightly more pad so "more" never wraps */
-@media (max-width:700px){
-  .ig-caption-row .text.clamp.needs{ padding-right:3.25ch; }
-}
-
 
 /* --- Expand/Collapse Chevron & Section Animation (from Facebook) --- */
 
