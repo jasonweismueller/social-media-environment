@@ -605,7 +605,7 @@ const VerifiedBadge = (
     viewBox="0 0 512 512"
     width="14"
     height="14"
-    style={{ flexShrink: 0, marginLeft: 3 }}
+    style={{ flexShrink: 0, marginLeft: 3, verticalAlign: "-2px" }}
   >
     <path
       fill="#1DA1F2"
