@@ -1218,17 +1218,51 @@ export async function getImagePool(topic = "") {
   return [];
 }
 
-
-export function randomizeBioStats(bio, { randomize }) {
+export function randomizeBioStats(bio, { randomize, seedParts }) {
   if (!randomize) return bio;
 
-  // Matches time behavior: random on each reload, stable within render
-  const rand = () => Math.random();
+  const seed = [...seedParts, "bio", window.__BIO_SESSION_SEED__].join("|");
+  const r = rng(seed); // deterministic but new each session
+
+  const pick = (arr) => arr[Math.floor(r() * arr.length)];
+  const rand = (min, max) => Math.floor(min + r() * (max - min));
+
+  // 1. Decide influencer tier based on deterministic RNG
+  const tier = pick(["nano", "nano", "micro", "micro", "macro", "macro", "mega"]); 
+  // Weighted to produce more nano/micro/macro than mega
+
+  let followers;
+  switch (tier) {
+    case "nano":
+      followers = rand(1_000, 10_000);
+      break;
+    case "micro":
+      followers = rand(10_000, 100_000);
+      break;
+    case "macro":
+      followers = rand(100_000, 1_000_000);
+      break;
+    case "mega":
+      followers = rand(1_000_000, 10_000_000);
+      break;
+  }
+
+  // 2. Posts and following scale with influencer size
+  const posts = rand(
+    tier === "nano" ? 10 : 50,
+    tier === "mega" ? 2000 : tier === "macro" ? 1200 : 400
+  );
+
+  const following = rand(
+    tier === "mega" ? 200 : tier === "macro" ? 400 : 1000,
+    tier === "mega" ? 800 : tier === "macro" ? 1500 : 3000
+  );
 
   return {
     ...bio,
-    bio_posts:     Math.floor(rand() * (200 - 5)) + 5,
-    bio_followers: Math.floor(rand() * (5_000_000 - 100)) + 100,
-    bio_following: Math.floor(rand() * (2000 - 50)) + 50,
+    influencer_tier: tier, // 🔥 helpful for debugging
+    bio_posts: posts,
+    bio_followers: followers,
+    bio_following: following,
   };
 }
