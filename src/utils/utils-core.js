@@ -1234,7 +1234,20 @@ export function randomizeBioStats(bio, { randomize, seedParts }) {
   next.bio_following = randInRange(50, 2000,     "following");
   
 
-  console.log("RANDOMIZE BIO CALLED", { bio, randomize, seedParts });
 
   return next;
+}
+
+export function randomizeBioStats(bio, { randomize }) {
+  if (!randomize) return bio;
+
+  // Matches time behavior: random on each reload, stable within render
+  const rand = () => Math.random();
+
+  return {
+    ...bio,
+    bio_posts:     Math.floor(rand() * (200 - 5)) + 5,
+    bio_followers: Math.floor(rand() * (5_000_000 - 100)) + 100,
+    bio_following: Math.floor(rand() * (2000 - 50)) + 50,
+  };
 }
