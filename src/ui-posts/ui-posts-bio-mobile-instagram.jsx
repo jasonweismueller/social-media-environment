@@ -180,7 +180,7 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
             display: "flex",
             justifyContent: "space-between",
             marginTop: 18,
-            textAlign: "center",
+            textAlign: "left",
             paddingTop: 14,
             borderTop: "1px solid #e5e7eb",
           }}
