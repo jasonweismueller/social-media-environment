@@ -1024,7 +1024,6 @@ const displayBio = useMemo(() => {
       prefix={
         <span
           className="ig-username"
-          style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
         >
           {displayAuthor}
           {post.badge && VerifiedBadge}
