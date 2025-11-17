@@ -1231,4 +1231,18 @@ body.admin-mode .nav {
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+
+.ig-caption-row .text-wrap {
+  display: block;        /* needed for proper height measurement */
+  max-width: 100%;
+  position: relative;
+}
+
+.ig-caption-row .text.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 }
