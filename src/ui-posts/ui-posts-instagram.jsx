@@ -1674,6 +1674,9 @@ marginTop: "auto",
 
 {isMobile && bioOpen && post.showBio && (
   <MobileBioSheet
+   author={displayAuthor}
+    avatarUrl={effectiveAvatarUrl}
+    verified={!!post.badge}
     open={bioOpen}
     onClose={() => setBioOpen(false)}
     post={displayBio}       
