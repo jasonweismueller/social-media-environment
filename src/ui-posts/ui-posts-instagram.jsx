@@ -1017,20 +1017,18 @@ const displayBio = useMemo(() => {
   </div>
 )}
 
-      {/* Caption with IG-style username separate from clamped text */}
-{text?.trim() && (
-  <div className="ig-caption-row" style={{ padding: "0 12px 4px 12px" }}>
-    <span className="ig-username" style={{ fontWeight: 600, marginRight: 0.5 }}>
-      {displayAuthor}
-    </span>
-    <PostText
-      text={text}
-      expanded={expanded}
-      onExpand={() => setExpanded(true)}
-      onClamp={() => onAction("text_clamped", { post_id: id })}
-    />
-  </div>
-)}
+      {/* Caption with IG PostText (username floats for first line) */}
+      {text?.trim() && (
+        <div className="ig-caption-row">
+          <PostText
+            prefix={<span className="ig-username">{displayAuthor}</span>}
+            text={text}
+            expanded={expanded}
+            onExpand={() => setExpanded(true)}
+            onClamp={() => onAction("text_clamped", {post_id : id })}
+          />
+        </div>
+      )}
 
       {/* Time (randomized if flag on) */}
       {timeLabel && (
