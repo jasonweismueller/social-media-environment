@@ -132,9 +132,10 @@ async function getFeedFlagsFromBackend({ projectId, feedId }) {
       randomize_avatars: !!(norm.randomize_avatars ?? norm.random_avatar),
       randomize_names:   !!(norm.randomize_names   ?? norm.random_name),
       randomize_images:  !!(norm.randomize_images  ?? norm.random_image ?? norm.rand_images),
+      randomize_bios:    !!(norm.randomize_bios    ?? norm.random_bio),
     };
    } catch {
-    return { randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false };
+    return { randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false};
    }
 }
 
