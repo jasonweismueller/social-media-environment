@@ -178,7 +178,7 @@ export function SkeletonFeed() {
 }
 
 /* --------------------------- Caption clamping ------------------------------ */
-export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix }) {
+export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, postId }) {
   const pRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
   const sentClampRef = React.useRef(false);
@@ -229,7 +229,7 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix }
 
     const handle = target.getAttribute("data-handle");
 
-    onAction?.("mention_clicked", { handle });
+    onAction?.("mention_clicked", { post_id: postId, handle });
 
     alert(
       "We have noted your interest in exploring this profile. Please also consider checking out the bio, which has a link to their website. We will provide you with further information in the study debrief."
