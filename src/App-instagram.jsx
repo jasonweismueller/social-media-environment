@@ -45,7 +45,8 @@ function normalizeFlags(raw) {
   const randomize_avatars  = truthy(f.randomize_avatars?? f.randomize_avatar?? f.rand_avatar    ?? false);
   const randomize_names    = truthy(f.randomize_names  ?? f.rand_names      ?? false);
   const randomize_images   = truthy(f.randomize_images ?? f.randomize_image ?? f.rand_images    ?? false);
-  return { randomize_times, randomize_avatars, randomize_names, randomize_images };
+  const randomize_bios     = truthy(f.randomize_bios     ?? f.rand_bios         ?? false);
+  return { randomize_times, randomize_avatars, randomize_names, randomize_images, randomize_bios };
 }
 
 /* iOS UX guards (same behavior as FB) */
@@ -210,7 +211,13 @@ export default function App() {
   const feedAbortRef = useRef(null);
 
   // Flags + assets readiness (parity with FB)
-  const [flags, setFlags] = useState({ randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false });
+  const [flags, setFlags] = useState({
+  randomize_times: false,
+  randomize_avatars: false,
+  randomize_names: false,
+  randomize_images: false,
+  randomize_bios: false
+});
   const [avatarPools, setAvatarPools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
