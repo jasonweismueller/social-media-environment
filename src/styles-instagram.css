@@ -1237,11 +1237,17 @@ body.admin-mode .nav {
 }
 
 
+/* Ensure ellipsis doesn't duplicate */
+.ig-caption-row .fade-more .dots {
+  display: none !important;
+}
+
+/* Add room for fade-more only when needed */
 .ig-caption-row .text.clamp.needs {
-  padding-right: 3.25ch; /* room for "more" */
+  padding-right: 3.25ch; /* prevents overlap */
 }
 
+/* Position fade-more properly */
 .ig-caption-row .fade-more {
-  right: 12px;    /* aligns with caption padding */
+  right: 12px; /* IG-style spacing */
 }
-
