@@ -183,6 +183,13 @@ export function PostText({ text, expanded, onExpand, onClamp, prefix }) {
   const [needsClamp, setNeedsClamp] = React.useState(false);
   const sentClampRef = React.useRef(false);
 
+  // --- NEW: simple mention highlighter ---
+function linkifyMentions(str = "") {
+   return str.replace(/(^|\s)(@\w+)/g, (m, space, handle) => {
+     return `${space}<span class="ig-mention">${handle}</span>`;
+   });
+ }
+
   React.useEffect(() => {
     const el = pRef.current;
     if (!el) return;
@@ -203,35 +210,37 @@ export function PostText({ text, expanded, onExpand, onClamp, prefix }) {
   }, [text, expanded, onClamp]);
 
   return (
-    // Only change is the className: always "clamp" while !expanded,
-// and add "needs" only if we detected overflow.
-<span className="text-wrap">
-  <span
-  ref={pRef}
-  className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
->
-  {prefix && (
-    <span className="ig-username" style={{ fontWeight: 600, marginRight: 0.5 }}>
-      {prefix}
-    </span>
-  )}
-  {text}
-</span>
+  <span className="text-wrap">
+    <span
+      ref={pRef}
+      className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+      dangerouslySetInnerHTML={{
+        __html:
+          (prefix
+            ? `<span class="ig-username" style="font-weight:600;margin-right:0.25ch">${prefix}</span>`
+            : "") +
+          linkifyMentions(text),
+      }}
+    />
 
-  {!expanded && needsClamp && (
-    <span className="fade-more">
-      <span className="dots" aria-hidden="true">…</span>
-      <button
-        type="button"
-        className="see-more"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onExpand?.(); }}
-      >
-        more
-      </button>
-    </span>
-  )}
-</span>
-  );
+    {!expanded && needsClamp && (
+      <span className="fade-more">
+        <span className="dots" aria-hidden="true">…</span>
+        <button
+          type="button"
+          className="see-more"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onExpand?.();
+          }}
+        >
+          more
+        </button>
+      </span>
+    )}
+  </span>
+);
 }
 
 /* -------------------------------- Modal ----------------------------------- */
