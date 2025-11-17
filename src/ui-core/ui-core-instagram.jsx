@@ -178,21 +178,21 @@ export function SkeletonFeed() {
 }
 
 /* --------------------------- Caption clamping ------------------------------ */
-export function PostText({ text, expanded, onExpand, onClamp, prefix }) {
+export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix }) {
   const pRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
   const sentClampRef = React.useRef(false);
 
-  // --- NEW: simple mention highlighter ---
-function linkifyMentions(str = "") {
-   return str.replace(/(^|\s)(@\w+)/g, (m, space, handle) => {
-     return `${space}<span class="ig-mention">${handle}</span>`;
-   });
- }
+  function linkifyMentions(str = "") {
+    return str.replace(/(^|\s)(@\w+)/g, (m, space, handle) => {
+      return `${space}<span class="ig-mention" data-handle="${handle}">${handle}</span>`;
+    });
+  }
 
   React.useEffect(() => {
     const el = pRef.current;
     if (!el) return;
+
     const check = () => {
       const clamped = el.scrollHeight > el.clientHeight + 1;
       setNeedsClamp(clamped);
@@ -201,6 +201,7 @@ function linkifyMentions(str = "") {
         onClamp?.();
       }
     };
+
     requestAnimationFrame(check);
     const ro = new ResizeObserver(check);
     ro.observe(el);
@@ -209,46 +210,64 @@ function linkifyMentions(str = "") {
     return () => { ro.disconnect(); window.removeEventListener("resize", check); };
   }, [text, expanded, onClamp]);
 
+  // --- CLICK HANDLER for mention ---
+  const handleClick = (e) => {
+    const target = e.target.closest(".ig-mention");
+    if (!target) return;
+
+    const handle = target.getAttribute("data-handle");
+
+    onAction?.("mention_clicked", { handle });
+
+    alert(
+      "For the purpose of this study, we have noted your interest in this profile. We will provide you with further information in the study debrief."
+    );
+
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
-  <span className="text-wrap">
-  <span
-    ref={pRef}
-    className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
-  >
-    {prefix && (
+    <span className="text-wrap">
       <span
-        className="ig-username"
-        style={{ fontWeight: 600, marginRight: "0.25ch" }}
+        ref={pRef}
+        className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+        onClick={handleClick}
       >
-        {prefix}
+        {prefix && (
+          <span
+            className="ig-username"
+            style={{ fontWeight: 600, marginRight: "0.25ch" }}
+          >
+            {prefix}
+          </span>
+        )}
+
+        <span
+          dangerouslySetInnerHTML={{
+            __html: linkifyMentions(text),
+          }}
+        />
       </span>
-    )}
 
-    <span
-      dangerouslySetInnerHTML={{
-        __html: linkifyMentions(text),
-      }}
-    />
-  </span>
-
-  {!expanded && needsClamp && (
-    <span className="fade-more">
-      <span className="dots" aria-hidden="true">…</span>
-      <button
-        type="button"
-        className="see-more"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onExpand?.();
-        }}
-      >
-        more
-      </button>
+      {!expanded && needsClamp && (
+        <span className="fade-more">
+          <span className="dots" aria-hidden="true">…</span>
+          <button
+            type="button"
+            className="see-more"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onExpand?.();
+            }}
+          >
+            more
+          </button>
+        </span>
+      )}
     </span>
-  )}
-</span>
-);
+  );
 }
 
 /* -------------------------------- Modal ----------------------------------- */
