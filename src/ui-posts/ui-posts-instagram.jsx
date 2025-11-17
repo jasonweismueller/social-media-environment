@@ -660,7 +660,7 @@ const displayBio = useMemo(() => {
   return randBiosOn
     ? randomizeBioStats(post, { randomize: true, seedParts })
     : post;
-}, [randBiosOn, post, seedParts.join("|")]);
+}, [randBiosOn, post, seedParts]);
 
   return (
     <article
