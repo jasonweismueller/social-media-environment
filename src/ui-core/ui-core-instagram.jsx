@@ -216,24 +216,23 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
   // --- CLICK HANDLER for mention ---
   const handleClick = (e) => {
   let node = e.target;
-  if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  if (node && node.nodeType === Node.TEXT_NODE) {
+    node = node.parentElement;
+  }
 
   const target = node?.closest?.(".ig-mention");
   if (!target) return;
 
   const handle = target.getAttribute("data-handle");
-  console.log("🔥 START handler", handle, postId);
 
-  try {
-    console.log("🔥 BEFORE onAction");
-    onAction?.("mention_clicked", { post_id: postId, handle });
-    console.log("🔥 AFTER onAction");
-  } catch(err) {
-    console.error("🔥 ERROR in onAction:", err);
-  }
+  onAction?.("mention_clicked", { post_id: postId, handle });
 
-  alert("Clicked mention!");
-  console.log("🔥 AFTER ALERT");
+  alert(
+    "We have noted your interest in exploring this profile. Please also consider checking out the bio, which has a link to their website. We will provide you with further information in the study debrief."
+  );
+
+  e.preventDefault();
+  e.stopPropagation();
 };
 
 
