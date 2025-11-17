@@ -1244,3 +1244,48 @@ export async function getImagePool(topic = "") {
 
   return [];
 }
+
+
+/**
+ * displayBioStatsForPost(post, { randomize = false, seedParts = [] })
+ * Returns { posts, followers, following } with deterministic RNG
+ */
+export function displayBioStatsForPost(post, { randomize = false, seedParts = [] } = {}) {
+  if (!post || !randomize) {
+    return {
+      posts: post.bio_posts ?? 0,
+      followers: post.bio_followers ?? 0,
+      following: post.bio_following ?? 0,
+    };
+  }
+
+  const seed = [...seedParts, post.id ?? "", "bioStats"].join("::");
+  const r = rng(seed);
+
+  function jitter(base) {
+    base = Number(base) || 0;
+    if (base <= 0) return 0;
+
+    // Small accounts → small jitter
+    if (base < 1000) {
+      const delta = Math.floor(r() * 200) - 100; // +/- 100
+      return Math.max(1, base + delta);
+    }
+
+    // Medium accounts
+    if (base < 100_000) {
+      const delta = Math.floor(base * (0.05 + r() * 0.15)); // 5–20%
+      return Math.max(500, base + (r() < 0.5 ? -delta : delta));
+    }
+
+    // Large accounts
+    const delta = Math.floor(base * (0.03 + r() * 0.10)); // 3–13%
+    return Math.max(10_000, base + (r() < 0.5 ? -delta : delta));
+  }
+
+  return {
+    posts: jitter(post.bio_posts),
+    followers: jitter(post.bio_followers),
+    following: jitter(post.bio_following),
+  };
+}
