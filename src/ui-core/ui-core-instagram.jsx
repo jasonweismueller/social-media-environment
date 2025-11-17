@@ -211,7 +211,7 @@ export function PostText({ text, expanded, onExpand, onClamp, prefix }) {
   className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
 >
   {prefix && (
-    <span className="ig-username" style={{ fontWeight: 600, marginRight: 2 }}>
+    <span className="ig-username" style={{ fontWeight: 600, marginRight: 0.5 }}>
       {prefix}
     </span>
   )}
