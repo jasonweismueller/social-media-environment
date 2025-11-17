@@ -1224,22 +1224,14 @@ export function randomizeBioStats(bio, { randomize, seedParts }) {
   const next = { ...bio };
 
   function randInRange(min, max, key) {
-    const pick = pickDeterministic(
-      Array.from({ length: max - min + 1 }, (_, i) => min + i),
-      [...seedParts, "bio", key]
-    );
-    return pick;
+    const seed = [...seedParts, "bio", key].join("|");
+    const r = rng(seed); // already defined earlier in this file
+    return Math.floor(min + r() * (max - min));
   }
 
-  // posts always small-ish
-  next.bio_posts = randInRange(5, 200, "posts");
-
-  // followers: ranges that feel realistic
+  next.bio_posts     = randInRange(5, 200,       "posts");
   next.bio_followers = randInRange(100, 5_000_000, "followers");
-
-  // following
-  next.bio_following = randInRange(50, 2000, "following");
+  next.bio_following = randInRange(50, 2000,     "following");
 
   return next;
 }
-
