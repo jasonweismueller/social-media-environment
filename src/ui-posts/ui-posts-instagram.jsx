@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, randomizeBioStats } from "../utils";
 import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -653,6 +653,14 @@ const handleMediaTap = () => {
 
   lastTapRef.current = now;
 };
+
+const randBiosOn = forcedRand || !!effectiveRandFlags.randomize_bios;
+
+const displayBio = useMemo(() => {
+  return randBiosOn
+    ? randomizeBioStats(post, { randomize: true, seedParts })
+    : post;
+}, [randBiosOn, post, seedParts.join("|")]);
 
   return (
     <article
@@ -1641,23 +1649,24 @@ marginTop: "auto",
 
 {hoverTargetEl && !isMobile && post.showBio && (
   <BioHoverCard
-  anchorEl={hoverTargetEl}
-  author={displayAuthor}
-  avatarUrl={effectiveAvatarUrl}
-  bio={post}
-  verified={!!post.badge}
-  hideHover={hideHover}
-  hideDelayRef={hideDelayRef}
-  onAction={onAction}   // 👈 MUST PASS THIS
-/>
+    anchorEl={hoverTargetEl}
+    author={displayAuthor}
+    avatarUrl={effectiveAvatarUrl}
+    bio={displayBio}        
+    verified={!!post.badge}
+    hideHover={hideHover}
+    hideDelayRef={hideDelayRef}
+    onAction={onAction}
+  />
 )}
+
 {isMobile && bioOpen && post.showBio && (
   <MobileBioSheet
-  open={bioOpen}
-  onClose={() => setBioOpen(false)}
-  post={post}
-  onAction={onAction}
-/>
+    open={bioOpen}
+    onClose={() => setBioOpen(false)}
+    post={displayBio}       
+    onAction={onAction}
+  />
 )}
 
 
