@@ -1235,3 +1235,16 @@ body.admin-mode .nav {
     opacity: 0;
   }
 }
+
+
+@media (max-width:700px){
+  .ig-caption-row .fade-more {
+    height: 1.6em;              /* slightly taller */
+    bottom: 0.05em;             /* tiny nudge up */
+  }
+
+  /* ensure text wrapper doesn't collapse */
+  .ig-caption-row .text-wrap {
+    line-height: 1.45;          /* stable baseline */
+  }
+}
