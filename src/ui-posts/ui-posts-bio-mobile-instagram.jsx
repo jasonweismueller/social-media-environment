@@ -155,11 +155,14 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
                   href={bio.bio_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={(e) => {
-  e.preventDefault(); // so we log first
+                onClick={(e) => {
+  e.preventDefault();
   onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url, surface: "mobile" });
   try { window.__smeLogEvent?.("bio_url_click", { post_id: postId, url: bio.bio_url }); } catch {}
-  window.open(bio.bio_url, "_blank", "noopener,noreferrer");
+
+  alert(
+    "For the purpose of this study, we have noted your interest in following this bio link.\nWe will provide you with further information in the study debrief."
+  );
 }}
                   style={{
                     color: "#2563eb",
