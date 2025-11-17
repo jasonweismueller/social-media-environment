@@ -1021,7 +1021,15 @@ const displayBio = useMemo(() => {
       {text?.trim() && (
         <div className="ig-caption-row">
           <PostText
-            prefix={<span className="ig-username">{displayAuthor}</span>}
+            prefix={
+  <span
+    className="ig-username"
+    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+  >
+    {displayAuthor}
+    {post.badge && <IconBadge style={{ width: 13, height: 13 }} />}
+  </span>
+}
             text={text}
             expanded={expanded}
             onExpand={() => setExpanded(true)}
