@@ -1244,6 +1244,11 @@ body.admin-mode .nav {
 }
 
 .ig-mention {
-  color: #00376b;   /* IG blue */
-  font-weight: 600;
+  color: #385898;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ig-mention:hover {
+  text-decoration: underline;
 }
