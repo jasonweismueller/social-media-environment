@@ -1031,7 +1031,7 @@ const displayBio = useMemo(() => {
   expanded={expanded}
   onExpand={() => {
     setExpanded(true);
-    onAction?.("text_expand", { post_id: id });
+    onAction?.("expand_text", { post_id: id });
   }}
   onClamp={() => onAction("text_clamped", { post_id: id })}
 />
