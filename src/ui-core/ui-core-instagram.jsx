@@ -207,11 +207,16 @@ export function PostText({ text, expanded, onExpand, onClamp, prefix }) {
 // and add "needs" only if we detected overflow.
 <span className="text-wrap">
   <span
-    ref={pRef}
-    className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
-  >
-    {text}
-  </span>
+  ref={pRef}
+  className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+>
+  {prefix && (
+    <span className="ig-username" style={{ fontWeight: 600, marginRight: 6 }}>
+      {prefix}
+    </span>
+  )}
+  {text}
+</span>
 
   {!expanded && needsClamp && (
     <span className="fade-more">
