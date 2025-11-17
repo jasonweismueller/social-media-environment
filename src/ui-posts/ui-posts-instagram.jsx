@@ -1022,12 +1022,10 @@ const displayBio = useMemo(() => {
   <div className="ig-caption-row">
     <PostText
       prefix={
-        <span
-          className="ig-username"
-        >
-          {displayAuthor}
-          {post.badge && VerifiedBadge}
-        </span>
+        <span className="ig-username" style={{ display: "inline-block" }}>
+  {displayAuthor}
+  {post.badge && VerifiedBadge}
+</span>
       }
       text={text}
       expanded={expanded}
