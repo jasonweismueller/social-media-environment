@@ -220,7 +220,7 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix }
     onAction?.("mention_clicked", { handle });
 
     alert(
-      "For the purpose of this study, we have noted your interest in this profile. We will provide you with further information in the study debrief."
+      "We have noted your interest in exploring this profile. Please also consider checking out the bio, which has a link to their website. We will provide you with further information in the study debrief."
     );
 
     e.preventDefault();
