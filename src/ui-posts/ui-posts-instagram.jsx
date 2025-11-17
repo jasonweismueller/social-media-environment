@@ -286,7 +286,7 @@ const [shareSheetOpen, setShareSheetOpen] = useState(false);
 
 const isSponsored = post.adType === "ad" || post.adType === "influencer";
 const effectiveRandFlags = isSponsored
-  ? { randomize_names: false, randomize_avatars: false, randomize_images: false, randomize_bios: false, randomize_times: effectiveFlags.randomize_times,
+  ? { randomize_names: effectiveFlags.randomize_names, randomize_avatars: false, randomize_images: false, randomize_bios: false, randomize_times: effectiveFlags.randomize_times,
    }
   : effectiveFlags;
 
