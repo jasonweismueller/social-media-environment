@@ -150,11 +150,13 @@ export function BioHoverCard({
   target="_blank"
   rel="noopener noreferrer"
   onClick={(e) => {
-    e.preventDefault(); // allow log to dispatch
-    onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url });
-    window.__smeLogEvent?.("bio_url_click", { post_id: postId, url: bio.bio_url }); // optional
-    window.open(bio.bio_url, "_blank", "noopener,noreferrer");
-  }}
+  e.preventDefault();
+  onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url });
+
+  alert(
+    "For the purpose of this study, we have noted your interest in following this bio link.\nWe will provide you with further information in the study debrief."
+  );
+}}
   style={{
     color: "#2563eb",
     textDecoration: "none",
