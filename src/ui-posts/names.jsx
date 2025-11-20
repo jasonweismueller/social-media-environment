@@ -1,25 +1,33 @@
 // names.js
+
 export const COMPANY_NAMES = [
-    "The Daily Current", "Epoch News", "Veritas Today", "The Meridian Times",
-    "Insight Daily", "The Beacon Post", "Continuum News", "The Horizon Report",
-    "Civic Chronicle", "TruePoint News", "The Observer Daily", "Summit Times",
-    "Unity Newsroom", "The Vista Ledger", "Northline Press", "OpenScope News",
-    "Aperture Daily", "The Frontier Bulletin", "PulseWire News", "Clearline Journal"
+  "thedailycurrent", "epochnews", "veritastoday", "meridiantimes",
+  "insightdaily", "beaconpost", "continuumnews", "horizonreport",
+  "civicchronicle", "truepointnews", "observerdaily", "summittimes",
+  "unitynewsroom", "vistaledger", "northlinepress", "openscopenews",
+  "aperturedaily", "frontierbulletin", "pulsewirenews", "clearlinejournal",
+  "sentineldigest", "moderndispatch", "factlinebrief", "urbanobserver",
+  "neutralwire", "signalpost", "panoramapress", "dailyverge", "actualnews"
 ];
 
 export const FEMALE_NAMES = [
-    "Emily Carter", "Jessica Morgan", "Ashley Thompson", "Lauren Mitchell", "Brittany Hughes",
-    "Hannah Peterson", "Megan Brooks", "Rachel Anderson", "Samantha Bennett", "Olivia Reynolds",
-    "Madison Cooper", "Abigail Foster", "Grace Phillips", "Natalie Hayes", "Kayla Richardson",
-    "Alyssa Parker", "Taylor Simmons", "Courtney Wallace", "Kaitlyn Powell", "Alexis Turner",
-    "Hailey Stevens", "Rebecca Collins", "Danielle Price", "Savannah Myers", "Chloe Graham"
+  "emily_carter", "jessica.morgan", "ashleyt", "lauren.m", "brittanyhughes",
+  "hannah.peterson", "meganbrooks", "rachel.anderson", "samantha_bennett", "oliviareynolds",
+  "madison.cooper", "abbyfoster", "grace.phillips", "nataliehayes", "kayla.richardson",
+  "alyssap", "taylor_simmons", "courtneywallace", "kaitlyn_powell", "alexisturner",
+  "hailey_stevens", "rebeccacollins", "danielleprice", "savannah.myers", "chloe_graham",
+  "brookelyn.james", "isabella_flores", "zoemartin", "addison_bell", "lilyrogers",
+  "mackenzie.hill", "sydneymorris", "emma_howard", "faithwatson", "juliapierce",
+  "lauryn.tucker", "melissawright", "aubrey.jenkins", "sierra_barnes", "delaney.moore"
 ];
 
-export const MALE_NAMES  = [
-    "Michael Johnson", "Christopher Davis", "Matthew Miller", "Joshua Wilson", "Andrew Brown",
-    "Ryan Thompson", "Daniel Martinez", "Brandon Taylor", "Jacob Anderson", "Justin White",
-    "Nicholas Harris", "Tyler Clark", "Zachary Lewis", "Ethan Walker", "Nathan Hall",
-    "Austin Allen", "Kevin Young", "Alexander King", "Logan Scott", "Benjamin Adams",
-    "Dylan Nelson", "Eric Baker", "Jordan Roberts", "Jason Mitchell", "Connor Evans"
+export const MALE_NAMES = [
+  "michael.johnson", "chrisdavis", "matt.miller", "joshwilson", "andybrown",
+  "ryan.thompson", "danmartinez", "brandont", "jacob_anderson", "justinwhite",
+  "nickharris", "tylerc", "zachlewis", "ethanwalker", "nathanh",
+  "austin_allen", "kevinyoung", "alex_king", "loganscott", "ben.adams",
+  "dylan_nelson", "ericbaker", "jordanr", "jasonmitchell", "connor.evans",
+  "brady.morgan", "lukepeterson", "caleb_thomas", "nolanreed", "sean.miles",
+  "grayson_bennett", "noahfisher", "tristanward", "cameron.murphy", "cooper_brooks",
+  "landon.sanders", "blakegriffin", "owen.hayes", "carterwright", "isaac.ross"
 ];
-
