@@ -430,14 +430,7 @@ export function LoadingOverlay({ title = "Loading your feed…", subtitle = "Thi
 }
 
 
-export function ThankYouOverlay() {
-  const [sessionId, setSessionId] = React.useState("");
-
-  React.useEffect(() => {
-    // Retrieve the UID stored earlier via localStorage or internal logic
-    setSessionId(uid());
-  }, []);
-
+export function ThankYouOverlay({ sessionId }) {
   return (
     <div className="modal-backdrop" style={{ zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>

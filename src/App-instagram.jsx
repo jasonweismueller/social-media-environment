@@ -829,7 +829,7 @@ useIOSViewportGuard({
         </div>
       )}
 
-      {submitted && <ThankYouOverlay />}
+      {submitted && <ThankYouOverlay sessionId={sessionIdRef.current} />}
     </Router>
   );
 }
