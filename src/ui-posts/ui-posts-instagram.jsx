@@ -284,11 +284,33 @@ const likeButtonRef = useRef(null);
 
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
 
-const isSponsored = post.adType === "ad" || post.adType === "influencer";
-const effectiveRandFlags = isSponsored
-  ? { randomize_names: effectiveFlags.randomize_names, randomize_avatars: false, randomize_images: false, randomize_bios: false, randomize_times: effectiveFlags.randomize_times,
-   }
-  : effectiveFlags;
+const isSponsored = post.adType === "influencer";
+const isAd        = post.adType === "ad";
+
+let effectiveRandFlags;
+
+if (isSponsored) {
+  effectiveRandFlags = {
+    randomize_names:   effectiveFlags.randomize_names,
+    randomize_avatars: false,
+    randomize_images:  false,
+    randomize_bios:    false,
+    randomize_times:   effectiveFlags.randomize_times,
+  };
+
+} else if (isAd) {
+  effectiveRandFlags = {
+    randomize_names:   false,  // ads have fixed brand name
+    randomize_avatars: false,  // do not randomize the logo/avatar
+    randomize_images:  false,  // keep ad creative fixed
+    randomize_bios:    false,  // no bios for ads
+    randomize_times:   effectiveFlags.randomize_times, 
+  };
+
+} else {
+  // 🟢 Organic rules (default)
+  effectiveRandFlags = effectiveFlags;
+}
 
   // Deterministic seed for consistent randomization across sessions
   const seedParts = [
@@ -898,12 +920,14 @@ const displayBio = useMemo(() => {
     label: post.adButtonText || "",
     url: post.adUrl || ""
   });
-
-  // open external link
-  if (post.adUrl) {
-    window.open(post.adUrl, "_blank", "noopener,noreferrer");
-  }
+  alert(
+    "We have registered your interest in this product. We will provide you with further information in the study debrief."
+  );
 }}
+  // open external link
+  //if (post.adUrl) {
+  //  window.open(post.adUrl, "_blank", "noopener,noreferrer");
+ // }
   >
     <span
       style={{
