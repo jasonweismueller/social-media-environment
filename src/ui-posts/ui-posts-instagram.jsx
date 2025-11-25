@@ -418,30 +418,48 @@ const poolNames =
   const imgs = Array.isArray(images) ? images : [];
   const hasCarousel = imageMode === "multi" && imgs.length > 1;
   const isMobile = useIsMobile(700);
+// ---- Time randomization (label) ----
+const timeLabel = useMemo(() => {
+  const shouldShow = showTime === false ? false : true;
+  if (!shouldShow) return "";
 
-  // ---- Time randomization (label) ----
-  const timeLabel = useMemo(() => {
-    const shouldShow = showTime === false ? false : true; // default true
-    if (!shouldShow) return "";
+  // Try shared util first
+  try {
+    const maybe = displayTimeForPost?.(post, {
+      randomize: !!randTimesOn,
+      seedParts,
+    });
 
-    // Prefer shared util if available
-    try {
-      const maybe = displayTimeForPost?.(post, {
-        randomize: !!randTimesOn,
-        seedParts,
-      });
-      if (typeof maybe === "string" && maybe.length) return maybe;
-    } catch { /* fall through */ }
-
-    // Fallback: use provided time, or a deterministic pseudo-label if flags demand randomization
-    if (!time && randTimesOn) {
-      // simple deterministic fallback windows: "2h", "6h", "12h", "1d"
-      const opts = ["2h", "3h", "6h", "12h", "1d", "2d"];
-      return pickDeterministic(opts, [...seedParts, "time"]) || "2h";
+    if (typeof maybe === "string" && maybe.length) {
+      return maybe.toLowerCase();   // 🔥 force lowercase
     }
-    return time || "";
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [time, showTime, randTimesOn, id, runSeed, app, projectId, feedId]);
+  } catch { /* ignore and fallback */ }
+
+  // ---------------------------
+  // Fallback randomization
+  // ---------------------------
+  if (!time && randTimesOn) {
+    // New natural-language options
+    const opts = [
+      "1 hour ago",
+      "2 hours ago",
+      "3 hours ago",
+      "6 hours ago",
+      "12 hours ago",
+      "1 day ago",
+      "2 days ago",
+    ];
+
+    const picked = pickDeterministic(opts, [...seedParts, "time"]);
+    return (picked || "2 hours ago").toLowerCase();  // 🔥 lowercase
+  }
+
+  // ---------------------------
+  // Backend time → lowercase
+  // ---------------------------
+  return (time || "").toLowerCase();
+
+}, [time, showTime, randTimesOn, id, runSeed, app, projectId, feedId]);
 
   // ---- Metrics and state ----
   const baseLikes = useMemo(() => sumReactions(reactions), [reactions]);
