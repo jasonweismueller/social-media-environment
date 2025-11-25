@@ -1084,7 +1084,7 @@ const displayBio = useMemo(() => {
 
       {/* Time (randomized if flag on) */}
       {timeLabel && (
-        <div style={{ padding: "6px 12px 12px 12px", fontSize: 11, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".02em" }}>
+        <div style={{ padding: "6px 12px 12px 12px", fontSize: 11, color: "#9ca3af", textTransform: "lowercase", letterSpacing: ".02em" }}>
           {timeLabel}
         </div>
       )}
