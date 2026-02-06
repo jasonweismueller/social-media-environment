@@ -388,43 +388,65 @@ export function AdminPostEditor({
   </label>
 
   {editing.interventionType === "note" && (
-    <>
-      <label>Note text
-        <input
-          className="input"
-          value={editing.noteText || ""}
-          onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
-          placeholder="e.g., Independent sources indicate this post omits key context."
-        />
-      </label>
+  <>
+    <label>Note text
+      <textarea
+        className="textarea"
+        rows={5}
+        value={editing.noteText || ""}
+        onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
+        placeholder={"Write the context note. Links like https://... will be clickable.\n\nYou can use blank lines."}
+      />
+      <div className="subtle" style={{ marginTop: 6 }}>
+        Tip: You can add line breaks. URLs will render as clickable links in the feed.
+      </div>
+    </label>
 
-      <div className="grid-2">
-        <label>Reader type
+    <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+      <input
+        type="checkbox"
+        checked={!!editing.noteMetaEnabled}
+        onChange={(e) => {
+          const on = e.target.checked;
+          setEditing((ed) => ({
+            ...ed,
+            noteMetaEnabled: on,
+            // only require/keep values if enabled; otherwise clear (optional)
+            noteReaderType: on ? (ed.noteReaderType ?? "") : "",
+            noteReaderSize: on ? (ed.noteReaderSize ?? "") : "",
+          }));
+        }}
+      />
+      <span>Add “Type” and “Size” info tooltip</span>
+    </label>
+
+    {editing.noteMetaEnabled && (
+      <div className="grid-2" style={{ marginTop: 8 }}>
+        <label>Type
           <input
             className="input"
             value={editing.noteReaderType || ""}
             onChange={(e) => setEditing((ed) => ({ ...ed, noteReaderType: e.target.value }))}
             placeholder='e.g., "Community readers"'
           />
-          <div className="subtle" style={{ marginTop: 6 }}>
-            Shown when participants hover/click “Readers added context”.
-          </div>
         </label>
 
-        <label>Reader size
+        <label>Size
           <input
             className="input"
             value={editing.noteReaderSize || ""}
             onChange={(e) => setEditing((ed) => ({ ...ed, noteReaderSize: e.target.value }))}
-            placeholder='e.g., "Many" or "Hundreds"'
+            placeholder='e.g., "Several" or "Many"'
           />
-          <div className="subtle" style={{ marginTop: 6 }}>
-            Use whatever scale you prefer (e.g., Few/Several/Many).
-          </div>
         </label>
+
+        <div className="subtle" style={{ gridColumn: "1 / -1", marginTop: 2 }}>
+          This tooltip explains who added context and roughly how many contributors were involved.
+        </div>
       </div>
-    </>
-  )}
+    )}
+  </>
+)}
 </fieldset>
 
         <h4 className="section-title">Reactions & Metrics</h4>

@@ -38,45 +38,144 @@ function useInViewAutoplay(threshold = 0.6) {
   return { wrapRef, inView };
 }
 
-function ReadersContextPopover({ typeValue, sizeValue }) {
+function NoteRichText({ text }) {
+  const raw = String(text || "");
+
+  // URLs: http(s)://... or www....
+  const URL_RE = /(\bhttps?:\/\/[^\s]+|\bwww\.[^\s]+)/gi;
+
+  const parts = raw.split(URL_RE);
+
+  return (
+    <span style={{ whiteSpace: "pre-wrap" }}>
+      {parts.map((p, i) => {
+        const isUrl = URL_RE.test(p);
+        // reset regex state (because .test with /g is stateful)
+        URL_RE.lastIndex = 0;
+
+        if (!isUrl) return <React.Fragment key={i}>{p}</React.Fragment>;
+
+        const href = p.startsWith("http") ? p : `https://${p}`;
+        return (
+          <a
+            key={i}
+            href={href}
+            onClick={(e) => e.preventDefault()} // keep it non-navigating in study; remove if you want navigation
+            style={{ color: "#1877F2", textDecoration: "underline" }}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {p}
+          </a>
+        );
+      })}
+    </span>
+  );
+}
+
+function ReadersContextPopover({ enabled, typeValue, sizeValue, onAction, postId }) {
   const [open, setOpen] = React.useState(false);
 
-  const helpText =
-    "We have many types of readers that help us add context to social media posts if they feel the post is false or misleading. Here, we clarify what type of readers added context and how many of them.";
+  if (!enabled) return <div className="note-title">Readers added context</div>;
+
+  const typeText = String(typeValue || "Not specified");
+  const sizeText = String(sizeValue || "Not specified");
+
+  const help =
+    "Context notes are contributed by readers to add helpful information when a post may be misleading. " +
+    "This panel shows who contributed and roughly how many contributors were involved.";
 
   return (
     <div
       className="note-title-wrap"
+      style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 6 }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
       <button
         type="button"
         className="note-title-btn"
+        style={{
+          background: "transparent",
+          border: 0,
+          padding: 0,
+          cursor: "pointer",
+          fontWeight: 700,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          color: "inherit",
+        }}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={(e) => {
           e.preventDefault();
           setOpen((v) => !v);
+          onAction?.("note_meta_toggle", { post_id: postId, open: !open });
         }}
+        title="More info"
       >
-        Readers added context <span className="note-title-caret">▾</span>
+        <span>Readers added context</span>
+        <span style={{ display: "inline-flex", opacity: 0.85 }} aria-hidden="true">
+          <IconInfo />
+        </span>
       </button>
 
       {open && (
-        <div className="note-popover" role="dialog" aria-label="Readers context">
-          <div className="note-popover-row">
-            <span className="note-popover-label">Type:</span>
-            <span className="note-popover-value">{String(typeValue)}</span>
-          </div>
-          <div className="note-popover-row">
-            <span className="note-popover-label">Size:</span>
-            <span className="note-popover-value">{String(sizeValue)}</span>
+        <div
+          className="note-popover"
+          role="dialog"
+          aria-label="Readers context details"
+          style={{
+            position: "absolute",
+            top: "130%",
+            left: 0,
+            width: 320,
+            maxWidth: "75vw",
+            background: "#fff",
+            color: "#111827",
+            border: "1px solid rgba(17,24,39,.12)",
+            borderRadius: 12,
+            boxShadow: "0 10px 30px rgba(0,0,0,.18)",
+            padding: 12,
+            zIndex: 9999,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div
+              style={{
+                width: 34, height: 34, borderRadius: 10,
+                background: "rgba(59,130,246,.12)",
+                display: "grid", placeItems: "center",
+              }}
+              aria-hidden="true"
+            >
+              <IconUsers />
+            </div>
+            <div style={{ fontWeight: 800, lineHeight: 1.1 }}>
+              About this context note
+              <div style={{ fontWeight: 600, fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+                Contributor details
+              </div>
+            </div>
           </div>
 
-          <div className="note-popover-divider" />
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>Type</div>
+              <div style={{ fontWeight: 700 }}>{typeText}</div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>Size</div>
+              <div style={{ fontWeight: 700 }}>{sizeText}</div>
+            </div>
+          </div>
 
-          <div className="note-popover-help">{helpText}</div>
+          <div style={{ height: 1, background: "rgba(17,24,39,.10)", margin: "10px 0" }} />
+
+          <div style={{ fontSize: 12, lineHeight: 1.35, opacity: 0.9 }}>
+            {help}
+          </div>
         </div>
       )}
     </div>
@@ -1395,19 +1494,27 @@ const displayImage = React.useMemo(() => {
       )}
 
 {post.interventionType === "note" && (() => {
-  const readerType =
-    post.noteReaderType ?? post.noteType ?? post.readerType ?? "Not specified";
-  const readerSize =
-    post.noteReaderSize ?? post.noteSize ?? post.readerSize ?? "Not specified";
+  const enabled = !!post.noteMetaEnabled;
+  const readerType = post.noteReaderType || "";
+  const readerSize = post.noteReaderSize || "";
 
   return (
     <div className="note-bar">
       <div className="note-head">
         <div className="note-icon"><IconUsers /></div>
-        <ReadersContextPopover typeValue={readerType} sizeValue={readerSize} />
+
+        <ReadersContextPopover
+          enabled={enabled}
+          typeValue={readerType}
+          sizeValue={readerSize}
+          onAction={onAction}
+          postId={post.id}
+        />
       </div>
 
-      <div className="note-sub">{post.noteText || ""}</div>
+      <div className="note-sub">
+        <NoteRichText text={post.noteText || ""} />
+      </div>
 
       <div className="note-row">
         <div>Do you find this helpful?</div>
