@@ -73,17 +73,41 @@ function NoteRichText({ text }) {
   );
 }
 
-function ReadersContextPopover({ enabled, typeValue, sizeValue, onAction, postId }) {
+function ReadersContextPopover({
+  enabled,
+  groups,            // NEW: [{type,size}, {type,size}]
+  typeValue,         // legacy (optional)
+  sizeValue,         // legacy (optional)
+  onAction,
+  postId
+}) {
   const [open, setOpen] = React.useState(false);
 
-  if (!enabled) return <div className="note-title">Readers added context</div>;
+  // Build groups in a backward-compatible way
+  const rawGroups = Array.isArray(groups) ? groups : [];
+  const normalized = rawGroups
+    .map(g => ({
+      type: String(g?.type || "").trim(),
+      size: String(g?.size || "").trim(),
+    }))
+    .filter(g => g.type || g.size)
+    .slice(0, 2);
 
-  const typeText = String(typeValue || "Not specified");
-  const sizeText = String(sizeValue || "Not specified");
+  // If no groups provided but legacy values exist, fall back to one group
+  if (normalized.length === 0 && (typeValue || sizeValue)) {
+    normalized.push({
+      type: String(typeValue || "").trim(),
+      size: String(sizeValue || "").trim(),
+    });
+  }
+
+  const showMeta = !!enabled && normalized.length > 0;
+
+  if (!showMeta) return <div className="note-title">Readers added context</div>;
 
   const help =
     "Context notes are contributed by readers to add helpful information when a post may be misleading. " +
-    "This panel shows who contributed and roughly how many contributors were involved.";
+    "This panel shows which groups contributed and the approximate number of contributors in each group.";
 
   return (
     <div
@@ -130,8 +154,8 @@ function ReadersContextPopover({ enabled, typeValue, sizeValue, onAction, postId
             position: "absolute",
             top: "130%",
             left: 0,
-            width: 320,
-            maxWidth: "75vw",
+            width: 340,
+            maxWidth: "80vw",
             background: "#fff",
             color: "#111827",
             border: "1px solid rgba(17,24,39,.12)",
@@ -160,15 +184,41 @@ function ReadersContextPopover({ enabled, typeValue, sizeValue, onAction, postId
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>Type</div>
-              <div style={{ fontWeight: 700 }}>{typeText}</div>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>Size</div>
-              <div style={{ fontWeight: 700 }}>{sizeText}</div>
-            </div>
+          {/* NEW: render 1–2 groups */}
+          <div style={{ display: "grid", gap: 10 }}>
+            {normalized.map((g, idx) => {
+              const typeText = g.type || "Not specified";
+              const sizeText = g.size || "Not specified";
+
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    border: "1px solid rgba(17,24,39,.10)",
+                    borderRadius: 10,
+                    padding: 10,
+                    background: "rgba(17,24,39,.02)",
+                  }}
+                >
+                  {normalized.length > 1 && (
+                    <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85, marginBottom: 6 }}>
+                      Group {idx + 1}
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>Type</div>
+                      <div style={{ fontWeight: 700 }}>{typeText}</div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>Size</div>
+                      <div style={{ fontWeight: 700 }}>{sizeText}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div style={{ height: 1, background: "rgba(17,24,39,.10)", margin: "10px 0" }} />
@@ -1492,11 +1542,17 @@ const displayImage = React.useMemo(() => {
           </div>
         </div>
       )}
-
 {post.interventionType === "note" && (() => {
   const enabled = !!post.noteMetaEnabled;
-  const readerType = post.noteReaderType || "";
-  const readerSize = post.noteReaderSize || "";
+
+  // New data model: 0–2 groups
+  const groupsRaw = Array.isArray(post.noteReaderGroups) ? post.noteReaderGroups : [];
+
+  // Keep only non-empty groups (so tooltip can be optional/clean)
+  const groups = groupsRaw
+    .map(g => ({ type: (g?.type || "").trim(), size: (g?.size || "").trim() }))
+    .filter(g => g.type || g.size)
+    .slice(0, 2);
 
   return (
     <div className="note-bar">
@@ -1504,9 +1560,8 @@ const displayImage = React.useMemo(() => {
         <div className="note-icon"><IconUsers /></div>
 
         <ReadersContextPopover
-          enabled={enabled}
-          typeValue={readerType}
-          sizeValue={readerSize}
+          enabled={enabled && groups.length > 0}
+          groups={groups} // 👈 pass array instead of typeValue/sizeValue
           onAction={onAction}
           postId={post.id}
         />

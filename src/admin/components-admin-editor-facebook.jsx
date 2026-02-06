@@ -357,7 +357,7 @@ export function AdminPostEditor({
           )}
         </fieldset>
 
-        <h4 className="section-title">Intervention</h4>
+       <h4 className="section-title">Intervention</h4>
 <fieldset className="fieldset">
   <label>Type
     <select
@@ -366,19 +366,20 @@ export function AdminPostEditor({
       onChange={(e) => {
         const nextType = e.target.value;
 
-        // If switching away from note, keep fields but it's fine either way.
-        // If switching to note, ensure defaults exist so preview doesn't show "Not specified".
-        setEditing((ed) => ({
-          ...ed,
-          interventionType: nextType,
-          ...(nextType === "note"
-            ? {
-                noteText: ed.noteText ?? "",
-                noteReaderType: ed.noteReaderType ?? "Community readers",
-                noteReaderSize: ed.noteReaderSize ?? "Several",
-              }
-            : {}),
-        }));
+        setEditing((ed) => {
+          // If switching to note, ensure noteText exists (but don't force meta/groups)
+          if (nextType === "note") {
+            return {
+              ...ed,
+              interventionType: nextType,
+              noteText: ed.noteText ?? "",
+              noteMetaEnabled: !!ed.noteMetaEnabled,
+              noteReaderGroups: Array.isArray(ed.noteReaderGroups) ? ed.noteReaderGroups : [],
+              noteReaderGroup2Enabled: !!ed.noteReaderGroup2Enabled,
+            };
+          }
+          return { ...ed, interventionType: nextType };
+        });
       }}
     >
       <option value="none">None</option>
@@ -388,65 +389,138 @@ export function AdminPostEditor({
   </label>
 
   {editing.interventionType === "note" && (
-  <>
-    <label>Note text
-      <textarea
-        className="textarea"
-        rows={5}
-        value={editing.noteText || ""}
-        onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
-        placeholder={"Write the context note. Links like https://... will be clickable.\n\nYou can use blank lines."}
-      />
-      <div className="subtle" style={{ marginTop: 6 }}>
-        Tip: You can add line breaks. URLs will render as clickable links in the feed.
-      </div>
-    </label>
-
-    <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-      <input
-        type="checkbox"
-        checked={!!editing.noteMetaEnabled}
-        onChange={(e) => {
-          const on = e.target.checked;
-          setEditing((ed) => ({
-            ...ed,
-            noteMetaEnabled: on,
-            // only require/keep values if enabled; otherwise clear (optional)
-            noteReaderType: on ? (ed.noteReaderType ?? "") : "",
-            noteReaderSize: on ? (ed.noteReaderSize ?? "") : "",
-          }));
-        }}
-      />
-      <span>Add “Type” and “Size” info tooltip</span>
-    </label>
-
-    {editing.noteMetaEnabled && (
-      <div className="grid-2" style={{ marginTop: 8 }}>
-        <label>Type
-          <input
-            className="input"
-            value={editing.noteReaderType || ""}
-            onChange={(e) => setEditing((ed) => ({ ...ed, noteReaderType: e.target.value }))}
-            placeholder='e.g., "Community readers"'
-          />
-        </label>
-
-        <label>Size
-          <input
-            className="input"
-            value={editing.noteReaderSize || ""}
-            onChange={(e) => setEditing((ed) => ({ ...ed, noteReaderSize: e.target.value }))}
-            placeholder='e.g., "Several" or "Many"'
-          />
-        </label>
-
-        <div className="subtle" style={{ gridColumn: "1 / -1", marginTop: 2 }}>
-          This tooltip explains who added context and roughly how many contributors were involved.
+    <>
+      <label>Note text
+        <textarea
+          className="textarea"
+          rows={6}
+          value={editing.noteText || ""}
+          onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
+          placeholder={
+            "Write the context note.\n\nYou can use blank lines. URLs like https://... will be clickable in the feed."
+          }
+        />
+        <div className="subtle" style={{ marginTop: 6 }}>
+          Tip: Add blank lines for readability. URLs will render as clickable links in the feed.
         </div>
-      </div>
-    )}
-  </>
-)}
+      </label>
+
+      {/* Toggle meta tooltip */}
+      <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+        <input
+          type="checkbox"
+          checked={!!editing.noteMetaEnabled}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setEditing((ed) => {
+              // When enabling, ensure at least group 1 exists
+              const groups = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
+              if (on && groups.length === 0) groups.push({ type: "", size: "" });
+
+              return {
+                ...ed,
+                noteMetaEnabled: on,
+                noteReaderGroups: on ? groups : [],
+                noteReaderGroup2Enabled: on ? !!ed.noteReaderGroup2Enabled : false,
+              };
+            });
+          }}
+        />
+        <span>Add contributor info tooltip (optional)</span>
+      </label>
+
+      {/* Meta groups */}
+      {editing.noteMetaEnabled && (() => {
+        const groups = Array.isArray(editing.noteReaderGroups) ? editing.noteReaderGroups : [];
+        const g0 = groups[0] || { type: "", size: "" };
+        const g1 = groups[1] || { type: "", size: "" };
+        const hasSecond = !!editing.noteReaderGroup2Enabled;
+
+        const setGroup = (idx, patch) => {
+          setEditing((ed) => {
+            const prev = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
+            while (prev.length < 2) prev.push({ type: "", size: "" });
+            prev[idx] = { ...prev[idx], ...patch };
+            // If second group is disabled, keep only first group in storage
+            return {
+              ...ed,
+              noteReaderGroups: ed.noteReaderGroup2Enabled ? prev : [prev[0]],
+            };
+          });
+        };
+
+        return (
+          <>
+            <div className="grid-2" style={{ marginTop: 8 }}>
+              <label>Group 1 type
+                <input
+                  className="input"
+                  value={g0.type}
+                  onChange={(e) => setGroup(0, { type: e.target.value })}
+                  placeholder='e.g., "Community readers"'
+                />
+              </label>
+
+              <label>Group 1 size
+                <input
+                  className="input"
+                  value={g0.size}
+                  onChange={(e) => setGroup(0, { size: e.target.value })}
+                  placeholder='e.g., "Several" or "Many"'
+                />
+              </label>
+            </div>
+
+            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+              <input
+                type="checkbox"
+                checked={!!editing.noteReaderGroup2Enabled}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setEditing((ed) => {
+                    const prev = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
+                    while (prev.length < 2) prev.push({ type: "", size: "" });
+                    return {
+                      ...ed,
+                      noteReaderGroup2Enabled: on,
+                      noteReaderGroups: on ? prev : [prev[0]],
+                    };
+                  });
+                }}
+              />
+              <span>Add second contributor group</span>
+            </label>
+
+            {hasSecond && (
+              <div className="grid-2" style={{ marginTop: 8 }}>
+                <label>Group 2 type
+                  <input
+                    className="input"
+                    value={g1.type}
+                    onChange={(e) => setGroup(1, { type: e.target.value })}
+                    placeholder='e.g., "Subject-matter experts"'
+                  />
+                </label>
+
+                <label>Group 2 size
+                  <input
+                    className="input"
+                    value={g1.size}
+                    onChange={(e) => setGroup(1, { size: e.target.value })}
+                    placeholder='e.g., "A few"'
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="subtle" style={{ marginTop: 6 }}>
+              This tooltip can show one or two contributor groups and their approximate sizes.
+            </div>
+          </>
+        );
+      })()}
+    </>
+  )}
 </fieldset>
 
         <h4 className="section-title">Reactions & Metrics</h4>
