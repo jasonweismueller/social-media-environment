@@ -38,6 +38,51 @@ function useInViewAutoplay(threshold = 0.6) {
   return { wrapRef, inView };
 }
 
+function ReadersContextPopover({ typeValue, sizeValue }) {
+  const [open, setOpen] = React.useState(false);
+
+  const helpText =
+    "We have many types of readers that help us add context to social media posts if they feel the post is false or misleading. Here, we clarify what type of readers added context and how many of them.";
+
+  return (
+    <div
+      className="note-title-wrap"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="note-title-btn"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+      >
+        Readers added context <span className="note-title-caret">▾</span>
+      </button>
+
+      {open && (
+        <div className="note-popover" role="dialog" aria-label="Readers context">
+          <div className="note-popover-row">
+            <span className="note-popover-label">Type:</span>
+            <span className="note-popover-value">{String(typeValue)}</span>
+          </div>
+          <div className="note-popover-row">
+            <span className="note-popover-label">Size:</span>
+            <span className="note-popover-value">{String(sizeValue)}</span>
+          </div>
+
+          <div className="note-popover-divider" />
+
+          <div className="note-popover-help">{helpText}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth <= breakpoint : false
@@ -1349,19 +1394,33 @@ const displayImage = React.useMemo(() => {
         </div>
       )}
 
-      {post.interventionType === "note" && (
-        <div className="note-bar">
-          <div className="note-head">
-            <div className="note-icon"><IconUsers /></div>
-            <div className="note-title">Third-party fact checkers added context</div>
-          </div>
-          <div className="note-sub">{post.noteText || ""}</div>
-          <div className="note-row">
-            <div>Do you find this helpful?</div>
-            <button className="btn" onClick={() => onAction("note_rate_open", { post_id: post.id })}>Rate it</button>
-          </div>
-        </div>
-      )}
+{post.interventionType === "note" && (() => {
+  const readerType =
+    post.noteReaderType ?? post.noteType ?? post.readerType ?? "Not specified";
+  const readerSize =
+    post.noteReaderSize ?? post.noteSize ?? post.readerSize ?? "Not specified";
+
+  return (
+    <div className="note-bar">
+      <div className="note-head">
+        <div className="note-icon"><IconUsers /></div>
+        <ReadersContextPopover typeValue={readerType} sizeValue={readerSize} />
+      </div>
+
+      <div className="note-sub">{post.noteText || ""}</div>
+
+      <div className="note-row">
+        <div>Do you find this helpful?</div>
+        <button
+          className="btn"
+          onClick={() => onAction("note_rate_open", { post_id: post.id })}
+        >
+          Rate it
+        </button>
+      </div>
+    </div>
+  );
+})()}
 
       {reportAck && (
         <div className="ack-overlay" role="status" aria-live="polite">
