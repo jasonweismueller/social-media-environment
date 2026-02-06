@@ -40,32 +40,39 @@ function useInViewAutoplay(threshold = 0.6) {
 
 function NoteRichText({ text }) {
   const raw = String(text || "");
-
-  // URLs: http(s)://... or www....
   const URL_RE = /(\bhttps?:\/\/[^\s]+|\bwww\.[^\s]+)/gi;
 
-  const parts = raw.split(URL_RE);
+  const out = [];
+  let last = 0;
+  let m;
+
+  while ((m = URL_RE.exec(raw)) !== null) {
+    const start = m.index;
+    const end = start + m[0].length;
+
+    if (start > last) out.push({ kind: "text", value: raw.slice(last, start) });
+
+    out.push({ kind: "url", value: m[0] });
+    last = end;
+  }
+
+  if (last < raw.length) out.push({ kind: "text", value: raw.slice(last) });
 
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
-      {parts.map((p, i) => {
-        const isUrl = URL_RE.test(p);
-        // reset regex state (because .test with /g is stateful)
-        URL_RE.lastIndex = 0;
-
-        if (!isUrl) return <React.Fragment key={i}>{p}</React.Fragment>;
-
-        const href = p.startsWith("http") ? p : `https://${p}`;
+      {out.map((p, i) => {
+        if (p.kind === "text") return <React.Fragment key={i}>{p.value}</React.Fragment>;
+        const href = p.value.startsWith("http") ? p.value : `https://${p.value}`;
         return (
           <a
             key={i}
             href={href}
-            onClick={(e) => e.preventDefault()} // keep it non-navigating in study; remove if you want navigation
+            onClick={(e) => e.preventDefault()} // keep non-navigating for study
             style={{ color: "#1877F2", textDecoration: "underline" }}
             rel="noreferrer"
             target="_blank"
           >
-            {p}
+            {p.value}
           </a>
         );
       })}
