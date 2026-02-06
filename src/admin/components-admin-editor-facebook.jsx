@@ -358,20 +358,74 @@ export function AdminPostEditor({
         </fieldset>
 
         <h4 className="section-title">Intervention</h4>
-        <fieldset className="fieldset">
-          <label>Type
-            <select className="select" value={editing.interventionType} onChange={(e) => setEditing({ ...editing, interventionType: e.target.value })}>
-              <option value="none">None</option>
-              <option value="label">False info label</option>
-              <option value="note">Context note</option>
-            </select>
-          </label>
-          {editing.interventionType === "note" && (
-            <label>Note text
-              <input className="input" value={editing.noteText || ""} onChange={(e) => setEditing({ ...editing, noteText: e.target.value })} />
-            </label>
-          )}
-        </fieldset>
+<fieldset className="fieldset">
+  <label>Type
+    <select
+      className="select"
+      value={editing.interventionType || "none"}
+      onChange={(e) => {
+        const nextType = e.target.value;
+
+        // If switching away from note, keep fields but it's fine either way.
+        // If switching to note, ensure defaults exist so preview doesn't show "Not specified".
+        setEditing((ed) => ({
+          ...ed,
+          interventionType: nextType,
+          ...(nextType === "note"
+            ? {
+                noteText: ed.noteText ?? "",
+                noteReaderType: ed.noteReaderType ?? "Community readers",
+                noteReaderSize: ed.noteReaderSize ?? "Several",
+              }
+            : {}),
+        }));
+      }}
+    >
+      <option value="none">None</option>
+      <option value="label">False info label</option>
+      <option value="note">Context note</option>
+    </select>
+  </label>
+
+  {editing.interventionType === "note" && (
+    <>
+      <label>Note text
+        <input
+          className="input"
+          value={editing.noteText || ""}
+          onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
+          placeholder="e.g., Independent sources indicate this post omits key context."
+        />
+      </label>
+
+      <div className="grid-2">
+        <label>Reader type
+          <input
+            className="input"
+            value={editing.noteReaderType || ""}
+            onChange={(e) => setEditing((ed) => ({ ...ed, noteReaderType: e.target.value }))}
+            placeholder='e.g., "Community readers"'
+          />
+          <div className="subtle" style={{ marginTop: 6 }}>
+            Shown when participants hover/click “Readers added context”.
+          </div>
+        </label>
+
+        <label>Reader size
+          <input
+            className="input"
+            value={editing.noteReaderSize || ""}
+            onChange={(e) => setEditing((ed) => ({ ...ed, noteReaderSize: e.target.value }))}
+            placeholder='e.g., "Many" or "Hundreds"'
+          />
+          <div className="subtle" style={{ marginTop: 6 }}>
+            Use whatever scale you prefer (e.g., Few/Several/Many).
+          </div>
+        </label>
+      </div>
+    </>
+  )}
+</fieldset>
 
         <h4 className="section-title">Reactions & Metrics</h4>
         <fieldset className="fieldset">

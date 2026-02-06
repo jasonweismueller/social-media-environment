@@ -1430,3 +1430,86 @@ input, select, textarea{ font-size:16px; } /* prevent focus-zoom later */
 
 /* Also stop iOS auto-resizing text weirdness */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+
+.note-title-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.note-title-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+}
+
+.note-title-btn:hover {
+  text-decoration: underline;
+}
+
+.note-title-caret {
+  font-size: 0.9em;
+  opacity: 0.7;
+}
+
+.note-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  width: 320px;
+  background: #fff;
+  color: #111;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  padding: 12px;
+}
+
+.note-popover-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.note-popover-label {
+  opacity: 0.75;
+}
+
+.note-popover-value {
+  font-weight: 600;
+}
+
+.note-popover-divider {
+  height: 1px;
+  background: rgba(0,0,0,0.10);
+  margin: 10px 0;
+}
+
+.note-popover-help {
+  font-size: 0.9em;
+  line-height: 1.35;
+  opacity: 0.9;
+}
+
+/* Optional: small arrow */
+.note-popover::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 16px;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-left: 1px solid rgba(0,0,0,0.12);
+  border-top: 1px solid rgba(0,0,0,0.12);
+  transform: rotate(45deg);
+}
