@@ -1536,19 +1536,47 @@ const displayImage = React.useMemo(() => {
       )}
 
       {/* intervention surfaces */}
-      {post.interventionType === "label" && (
-        <div className="info-bar info-clean">
-          <div className="info-head">
-            <div className="info-icon"><IconInfo /></div>
-            <div className="info-title">False information</div>
-          </div>
-          <div className="info-sub">This is information that third-party fact-checkers say is false.</div>
-          <div className="info-row">
-            <div>Want to see why?</div>
-            <button className="btn" onClick={() => onAction("intervention_learn_more", { post_id: post.id })}>Learn more</button>
-          </div>
-        </div>
-      )}
+      {post.interventionType === "label" && (() => {
+  const enabled = !!post.noteMetaEnabled;
+
+  const groupsRaw = Array.isArray(post.noteReaderGroups)
+    ? post.noteReaderGroups
+    : [];
+
+  const groups = groupsRaw
+    .map(g => ({ type: (g?.type || "").trim(), size: (g?.size || "").trim() }))
+    .filter(g => g.type || g.size)
+    .slice(0, 2);
+
+  return (
+    <div className="info-bar info-clean">
+      <div className="info-head">
+        <div className="info-icon"><IconInfo /></div>
+
+        <ReadersContextPopover
+          enabled={enabled && groups.length > 0}
+          groups={groups}
+          onAction={onAction}
+          postId={post.id}
+        />
+      </div>
+
+      <div className="info-sub">
+        This is information that third-party fact-checkers say is false.
+      </div>
+
+      <div className="info-row">
+        <div>Want to see why?</div>
+        <button
+          className="btn"
+          onClick={() => onAction("intervention_learn_more", { post_id: post.id })}
+        >
+          Learn more
+        </button>
+      </div>
+    </div>
+  );
+})()}
 {post.interventionType === "note" && (() => {
   const enabled = !!post.noteMetaEnabled;
 

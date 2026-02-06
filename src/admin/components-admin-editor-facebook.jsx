@@ -521,6 +521,119 @@ export function AdminPostEditor({
       })()}
     </>
   )}
+
+  {editing.interventionType === "label" && (
+  <>
+    <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+      <input
+        type="checkbox"
+        checked={!!editing.noteMetaEnabled}
+        onChange={(e) => {
+          const on = e.target.checked;
+          setEditing((ed) => ({
+            ...ed,
+            noteMetaEnabled: on,
+            noteReaderGroups: on
+              ? (Array.isArray(ed.noteReaderGroups)
+                  ? ed.noteReaderGroups
+                  : [{ type: "", size: "" }])
+              : [],
+            noteReaderGroup2Enabled: false
+          }));
+        }}
+      />
+      <span>Add “Type” and “Size” info tooltip</span>
+    </label>
+
+    {editing.noteMetaEnabled && (() => {
+      const groups = Array.isArray(editing.noteReaderGroups)
+        ? editing.noteReaderGroups
+        : [];
+
+      const g0 = groups[0] || { type: "", size: "" };
+      const g1 = groups[1] || { type: "", size: "" };
+
+      const setGroup = (idx, patch) => {
+        setEditing((ed) => {
+          const prev = Array.isArray(ed.noteReaderGroups)
+            ? [...ed.noteReaderGroups]
+            : [];
+
+          while (prev.length < 2) prev.push({ type: "", size: "" });
+          prev[idx] = { ...prev[idx], ...patch };
+
+          return { ...ed, noteReaderGroups: prev };
+        });
+      };
+
+      return (
+        <>
+          <div className="grid-2" style={{ marginTop: 8 }}>
+            <label>Group 1 type
+              <input
+                className="input"
+                value={g0.type}
+                onChange={(e) => setGroup(0, { type: e.target.value })}
+                placeholder='e.g., "Community readers"'
+              />
+            </label>
+
+            <label>Group 1 size
+              <input
+                className="input"
+                value={g0.size}
+                onChange={(e) => setGroup(0, { size: e.target.value })}
+                placeholder='e.g., "Several"'
+              />
+            </label>
+          </div>
+
+          <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+            <input
+              type="checkbox"
+              checked={!!editing.noteReaderGroup2Enabled}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setEditing((ed) => ({
+                  ...ed,
+                  noteReaderGroup2Enabled: on,
+                  noteReaderGroups: on
+                    ? (Array.isArray(ed.noteReaderGroups)
+                        ? ed.noteReaderGroups
+                        : [{ type: "", size: "" }, { type: "", size: "" }])
+                    : [g0],
+                }));
+              }}
+            />
+            <span>Add second reader group</span>
+          </label>
+
+          {editing.noteReaderGroup2Enabled && (
+            <div className="grid-2" style={{ marginTop: 8 }}>
+              <label>Group 2 type
+                <input
+                  className="input"
+                  value={g1.type}
+                  onChange={(e) => setGroup(1, { type: e.target.value })}
+                  placeholder='e.g., "Subject-matter experts"'
+                />
+              </label>
+
+              <label>Group 2 size
+                <input
+                  className="input"
+                  value={g1.size}
+                  onChange={(e) => setGroup(1, { size: e.target.value })}
+                  placeholder='e.g., "A few"'
+                />
+              </label>
+            </div>
+          )}
+        </>
+      );
+    })()}
+  </>
+)}
 </fieldset>
 
         <h4 className="section-title">Reactions & Metrics</h4>
