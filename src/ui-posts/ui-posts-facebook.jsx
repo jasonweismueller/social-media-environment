@@ -132,7 +132,7 @@ function ReadersContextPopover({
   const help =
     "Context notes are contributed by readers to add helpful information when a post may be misleading. " +
     "This panel shows which groups contributed and the approximate number of contributors in each group.";
-    
+
 return (
   <div
     className="note-title-wrap"
@@ -173,9 +173,19 @@ return (
     </button>
 
     {/* Row 2: grey subline (not inside the button) */}
-    <div style={{ marginTop: 2, fontSize: 12, color: "var(--muted)", lineHeight: 1.25 }}>
-      {ratedByLine}
-    </div>
+<div
+  style={{
+    marginTop: 2,
+    fontSize: 12,
+    color: "var(--muted)",
+    lineHeight: 1.25,
+
+    // ✅ pull the second line left so it starts under the icon
+    marginLeft: "calc(-1 * var(--noteIconOffset, 0px))",
+  }}
+>
+  {ratedByLine}
+</div>
 
     {open && (
       <div
@@ -1619,16 +1629,24 @@ const displayImage = React.useMemo(() => {
 
   return (
     <div className="note-bar">
-      <div className="note-head">
-        <div className="note-icon"><IconUsers /></div>
+      <div
+  className="note-head"
+  style={{
+    // icon width (smaller) + the gap between icon and title block
+    ["--noteIconOffset"]: "28px",
+  }}
+>
+  <div className="note-icon">
+    <IconUsers style={{ width: 16, height: 16 }} />   {/* smaller icon */}
+  </div>
 
-        <ReadersContextPopover
-          enabled={enabled && groups.length > 0}
-          groups={groups} // 👈 pass array instead of typeValue/sizeValue
-          onAction={onAction}
-          postId={post.id}
-        />
-      </div>
+  <ReadersContextPopover
+    enabled={enabled && groups.length > 0}
+    groups={groups}
+    onAction={onAction}
+    postId={post.id}
+  />
+</div>
 
       <div className="note-sub">
         <NoteRichText text={post.noteText || ""} />
