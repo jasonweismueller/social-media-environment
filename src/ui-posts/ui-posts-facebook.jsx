@@ -1634,7 +1634,7 @@ const displayImage = React.useMemo(() => {
   style={{
     display: "flex",
     alignItems: "flex-start",     // ✅ align to top of block
-    gap: 10,
+    gap: 5,
     ["--noteIconW"]: "16px",
     ["--noteIconGap"]: "10px",
     ["--noteIconOffset"]: "calc(var(--noteIconW) + var(--noteIconGap))",
