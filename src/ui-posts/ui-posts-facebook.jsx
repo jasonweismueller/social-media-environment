@@ -118,13 +118,38 @@ function ReadersContextPopover({
     return `${size} ${type}`.replace(/\s+/g, " ").trim();
   };
 
-  const ratedByLine = (() => {
-    if (!showMeta) return null;
-    if (normalized.length === 1) {
-      return `The context was rated as helpful by ${fmtGroupInline(normalized[0])}.`;
-    }
-    return `The context was rated as helpful by ${fmtGroupInline(normalized[0])} and ${fmtGroupInline(normalized[1])}.`;
-  })();
+  const renderGroup = (g, key) => {
+  const size = nice(g.size) || "an unspecified number of";
+  const type = (nice(g.type) || "readers").toLowerCase();
+
+  return (
+    <span key={key} style={{ fontWeight: 600 }}>
+      {size} {type}
+    </span>
+  );
+};
+
+const ratedByLine = (() => {
+  if (!showMeta) return null;
+
+  if (normalized.length === 1) {
+    return (
+      <>
+        The context was rated as helpful by{" "}
+        {renderGroup(normalized[0], 0)}.
+      </>
+    );
+  }
+
+  return (
+    <>
+      The context was rated as helpful by{" "}
+      {renderGroup(normalized[0], 0)}{" "}
+      and{" "}
+      {renderGroup(normalized[1], 1)}.
+    </>
+    );
+})();
 
   // If tooltip is disabled OR there are no groups, show only the title (no subline)
   if (!showMeta) return <div className="note-title">Readers added context</div>;
