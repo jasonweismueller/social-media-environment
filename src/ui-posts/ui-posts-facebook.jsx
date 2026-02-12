@@ -79,12 +79,11 @@ function NoteRichText({ text }) {
     </span>
   );
 }
-
 function ReadersContextPopover({
   enabled,
-  groups,            // NEW: [{type,size}, {type,size}]
-  typeValue,         // legacy (optional)
-  sizeValue,         // legacy (optional)
+  groups,            // [{type,size}, {type,size}]
+  typeValue,         // legacy fallback
+  sizeValue,         // legacy fallback
   onAction,
   postId
 }) {
@@ -100,7 +99,7 @@ function ReadersContextPopover({
     .filter(g => g.type || g.size)
     .slice(0, 2);
 
-  // If no groups provided but legacy values exist, fall back to one group
+  // Legacy fallback (single group)
   if (normalized.length === 0 && (typeValue || sizeValue)) {
     normalized.push({
       type: String(typeValue || "").trim(),
@@ -110,6 +109,24 @@ function ReadersContextPopover({
 
   const showMeta = !!enabled && normalized.length > 0;
 
+  // Helpers for the subline sentence
+  const nice = (s) => String(s || "").trim();
+  const fmtGroupInline = (g) => {
+    const size = nice(g.size) || "an unspecified number of";
+    const type = nice(g.type) || "readers";
+    // e.g., "Several Community readers"
+    return `${size} ${type}`.replace(/\s+/g, " ").trim();
+  };
+
+  const ratedByLine = (() => {
+    if (!showMeta) return null;
+    if (normalized.length === 1) {
+      return `Before appearing, the context was rated by ${fmtGroupInline(normalized[0])}.`;
+    }
+    return `Before appearing, the context was rated by ${fmtGroupInline(normalized[0])} and ${fmtGroupInline(normalized[1])}.`;
+  })();
+
+  // If tooltip is disabled OR there are no groups, show only the title (no subline)
   if (!showMeta) return <div className="note-title">Readers added context</div>;
 
   const help =
@@ -119,7 +136,7 @@ function ReadersContextPopover({
   return (
     <div
       className="note-title-wrap"
-      style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 6 }}
+      style={{ position: "relative", display: "inline-flex", alignItems: "flex-start" }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
@@ -131,11 +148,11 @@ function ReadersContextPopover({
           border: 0,
           padding: 0,
           cursor: "pointer",
-          fontWeight: 700,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
           color: "inherit",
+          textAlign: "left",
+          display: "inline-flex",
+          flexDirection: "column",
+          gap: 2,
         }}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -146,9 +163,13 @@ function ReadersContextPopover({
         }}
         title="More info"
       >
-        <span>Readers added context</span>
-        <span style={{ display: "inline-flex", opacity: 0.85 }} aria-hidden="true">
-          <IconInfo />
+        <span style={{ fontWeight: 700, lineHeight: 1.1 }}>
+          Readers added context
+        </span>
+
+        {/* ✅ NEW grey subline */}
+        <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.25 }}>
+          {ratedByLine}
         </span>
       </button>
 
@@ -191,7 +212,7 @@ function ReadersContextPopover({
             </div>
           </div>
 
-          {/* NEW: render 1–2 groups */}
+          {/* render 1–2 groups */}
           <div style={{ display: "grid", gap: 10 }}>
             {normalized.map((g, idx) => {
               const typeText = g.type || "Not specified";
