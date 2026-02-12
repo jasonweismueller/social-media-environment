@@ -1688,19 +1688,32 @@ const displayImage = React.useMemo(() => {
   />
 </div>
 
-      <div className="note-sub">
-        <NoteRichText text={post.noteText || ""} />
-      </div>
+     {/* Divider line above rating section */}
+<div
+  style={{
+    height: 1,
+    background: "var(--line, rgba(17,24,39,.08))",
+    margin: "12px 0 8px",
+  }}
+/>
 
-      <div className="note-row">
-        <div>Do you find this helpful?</div>
-        <button
-          className="btn"
-          onClick={() => onAction("note_rate_open", { post_id: post.id })}
-        >
-          Rate it
-        </button>
-      </div>
+<div
+  className="note-row"
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between", // pushes button right
+  }}
+>
+  <div>Do you find this helpful?</div>
+
+  <button
+    className="btn"
+    onClick={() => onAction("note_rate_open", { post_id: post.id })}
+  >
+    Rate it
+  </button>
+</div>
     </div>
   );
 })()}
