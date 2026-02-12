@@ -1629,15 +1629,30 @@ const displayImage = React.useMemo(() => {
 
   return (
     <div className="note-bar">
-      <div
+     <div
   className="note-head"
   style={{
-    // icon width (smaller) + the gap between icon and title block
-    ["--noteIconOffset"]: "28px",
+    display: "flex",
+    alignItems: "flex-start",     // ✅ align to top of block
+    gap: 10,
+    ["--noteIconW"]: "16px",
+    ["--noteIconGap"]: "10px",
+    ["--noteIconOffset"]: "calc(var(--noteIconW) + var(--noteIconGap))",
   }}
 >
-  <div className="note-icon">
-    <IconUsers style={{ width: 16, height: 16 }} />   {/* smaller icon */}
+  <div
+    className="note-icon"
+    style={{
+      width: "var(--noteIconW)",
+      height: "var(--noteIconW)",
+      flexShrink: 0,
+      marginTop: 2,               // ✅ nudge down to match text baseline
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <IconUsers style={{ width: "var(--noteIconW)", height: "var(--noteIconW)", display: "block" }} />
   </div>
 
   <ReadersContextPopover
