@@ -1654,66 +1654,84 @@ const displayImage = React.useMemo(() => {
 
   return (
     <div className="note-bar">
-     <div
-  className="note-head"
-  style={{
-    display: "flex",
-    alignItems: "flex-start",     // ✅ align to top of block
-    gap: 5,
-    ["--noteIconW"]: "16px",
-    ["--noteIconGap"]: "5px",
-    ["--noteIconOffset"]: "calc(var(--noteIconW) + var(--noteIconGap))",
-  }}
->
-  <div
-    className="note-icon"
-    style={{
-      width: "var(--noteIconW)",
-      height: "var(--noteIconW)",
-      flexShrink: 0,
-      marginTop: 1.3,               // ✅ nudge down to match text baseline
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    }}
-  >
-    <IconUsers style={{ width: "var(--noteIconW)", height: "var(--noteIconW)", display: "block" }} />
-  </div>
+      <div
+        className="note-head"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 5,
+          ["--noteIconW"]: "16px",
+          ["--noteIconGap"]: "5px",
+          ["--noteIconOffset"]: "calc(var(--noteIconW) + var(--noteIconGap))",
+        }}
+      >
+        <div
+          className="note-icon"
+          style={{
+            width: "var(--noteIconW)",
+            height: "var(--noteIconW)",
+            flexShrink: 0,
+            marginTop: 1.3, // nudge for baseline
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <IconUsers
+            style={{
+              width: "var(--noteIconW)",
+              height: "var(--noteIconW)",
+              display: "block",
+            }}
+          />
+        </div>
 
-  <ReadersContextPopover
-    enabled={enabled && groups.length > 0}
-    groups={groups}
-    onAction={onAction}
-    postId={post.id}
-  />
-</div>
+        <ReadersContextPopover
+          enabled={enabled && groups.length > 0}
+          groups={groups}
+          onAction={onAction}
+          postId={post.id}
+        />
+      </div>
 
-     {/* Divider line above rating section */}
-<div
-  style={{
-    height: 1,
-    background: "var(--line, rgba(17,24,39,.08))",
-    margin: "12px 0 8px",
-  }}
-/>
+      {/* ✅ NOTE TEXT (this is what disappeared) */}
+      <div className="note-sub">
+        <NoteRichText text={post.noteText || ""} />
+      </div>
 
-<div
-  className="note-row"
-  style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between", // pushes button right
-  }}
->
-  <div>Do you find this helpful?</div>
+      {/* ✅ Full-bleed divider (no left/right gap) */}
+      <div
+        aria-hidden="true"
+        style={{
+          height: 1,
+          background: "var(--line, rgba(17,24,39,.08))",
+          marginTop: 12,
+          marginBottom: 8,
 
-  <button
-    className="btn"
-    onClick={() => onAction("note_rate_open", { post_id: post.id })}
-  >
-    Rate it
-  </button>
-</div>
+          // change 16 to match your .note-bar horizontal padding
+          marginLeft: -16,
+          marginRight: -16,
+        }}
+      />
+
+      {/* Rating row */}
+      <div
+        className="note-row"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div>Do you find this helpful?</div>
+
+        <button
+          className="btn"
+          onClick={() => onAction("note_rate_open", { post_id: post.id })}
+        >
+          Rate it
+        </button>
+      </div>
     </div>
   );
 })()}
