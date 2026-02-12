@@ -121,9 +121,9 @@ function ReadersContextPopover({
   const ratedByLine = (() => {
     if (!showMeta) return null;
     if (normalized.length === 1) {
-      return `Before appearing, the context was rated by ${fmtGroupInline(normalized[0])}.`;
+      return `The context was rated as helpful by ${fmtGroupInline(normalized[0])}.`;
     }
-    return `Before appearing, the context was rated by ${fmtGroupInline(normalized[0])} and ${fmtGroupInline(normalized[1])}.`;
+    return `The context was rated as helpful by ${fmtGroupInline(normalized[0])} and ${fmtGroupInline(normalized[1])}.`;
   })();
 
   // If tooltip is disabled OR there are no groups, show only the title (no subline)
@@ -1646,7 +1646,7 @@ const displayImage = React.useMemo(() => {
       width: "var(--noteIconW)",
       height: "var(--noteIconW)",
       flexShrink: 0,
-      marginTop: 1.5,               // ✅ nudge down to match text baseline
+      marginTop: 1.3,               // ✅ nudge down to match text baseline
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
