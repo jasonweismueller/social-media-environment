@@ -1646,7 +1646,7 @@ const displayImage = React.useMemo(() => {
       width: "var(--noteIconW)",
       height: "var(--noteIconW)",
       flexShrink: 0,
-      marginTop: 2,               // ✅ nudge down to match text baseline
+      marginTop: 1.5,               // ✅ nudge down to match text baseline
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
