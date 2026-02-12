@@ -132,132 +132,139 @@ function ReadersContextPopover({
   const help =
     "Context notes are contributed by readers to add helpful information when a post may be misleading. " +
     "This panel shows which groups contributed and the approximate number of contributors in each group.";
-
-  return (
-    <div
-      className="note-title-wrap"
-      style={{ position: "relative", display: "inline-flex", alignItems: "flex-start" }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+    
+return (
+  <div
+    className="note-title-wrap"
+    style={{
+      position: "relative",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-start",
+    }}
+    onMouseEnter={() => setOpen(true)}
+    onMouseLeave={() => setOpen(false)}
+  >
+    {/* Row 1: clickable title only */}
+    <button
+      type="button"
+      className="note-title-btn"
+      style={{
+        background: "transparent",
+        border: 0,
+        padding: 0,
+        cursor: "pointer",
+        color: "inherit",
+        textAlign: "left",
+        display: "inline-flex",
+        alignItems: "center",
+        lineHeight: 1.1,
+      }}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      onClick={(e) => {
+        e.preventDefault();
+        setOpen((v) => !v);
+        onAction?.("note_meta_toggle", { post_id: postId, open: !open });
+      }}
+      title="More info"
     >
-      <button
-        type="button"
-        className="note-title-btn"
+      <span style={{ fontWeight: 700 }}>Readers added context</span>
+    </button>
+
+    {/* Row 2: grey subline (not inside the button) */}
+    <div style={{ marginTop: 2, fontSize: 12, color: "var(--muted)", lineHeight: 1.25 }}>
+      {ratedByLine}
+    </div>
+
+    {open && (
+      <div
+        className="note-popover"
+        role="dialog"
+        aria-label="Readers context details"
         style={{
-          background: "transparent",
-          border: 0,
-          padding: 0,
-          cursor: "pointer",
-          color: "inherit",
-          textAlign: "left",
-          display: "inline-flex",
-          flexDirection: "column",
-          gap: 2,
+          position: "absolute",
+          top: "130%",
+          left: 0,
+          width: 340,
+          maxWidth: "80vw",
+          background: "#fff",
+          color: "#111827",
+          border: "1px solid rgba(17,24,39,.12)",
+          borderRadius: 12,
+          boxShadow: "0 10px 30px rgba(0,0,0,.18)",
+          padding: 12,
+          zIndex: 9999,
         }}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={(e) => {
-          e.preventDefault();
-          setOpen((v) => !v);
-          onAction?.("note_meta_toggle", { post_id: postId, open: !open });
-        }}
-        title="More info"
       >
-        <span style={{ fontWeight: 700, lineHeight: 1.1 }}>
-          Readers added context
-        </span>
-
-        {/* ✅ NEW grey subline */}
-        <span style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.25 }}>
-          {ratedByLine}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          className="note-popover"
-          role="dialog"
-          aria-label="Readers context details"
-          style={{
-            position: "absolute",
-            top: "130%",
-            left: 0,
-            width: 340,
-            maxWidth: "80vw",
-            background: "#fff",
-            color: "#111827",
-            border: "1px solid rgba(17,24,39,.12)",
-            borderRadius: 12,
-            boxShadow: "0 10px 30px rgba(0,0,0,.18)",
-            padding: 12,
-            zIndex: 9999,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div
-              style={{
-                width: 34, height: 34, borderRadius: 10,
-                background: "rgba(59,130,246,.12)",
-                display: "grid", placeItems: "center",
-              }}
-              aria-hidden="true"
-            >
-              <IconUsers />
-            </div>
-            <div style={{ fontWeight: 800, lineHeight: 1.1 }}>
-              About this context note
-              <div style={{ fontWeight: 600, fontSize: 12, opacity: 0.75, marginTop: 2 }}>
-                Contributor details
-              </div>
-            </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              background: "rgba(59,130,246,.12)",
+              display: "grid",
+              placeItems: "center",
+            }}
+            aria-hidden="true"
+          >
+            <IconUsers />
           </div>
-
-          {/* render 1–2 groups */}
-          <div style={{ display: "grid", gap: 10 }}>
-            {normalized.map((g, idx) => {
-              const typeText = g.type || "Not specified";
-              const sizeText = g.size || "Not specified";
-
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    border: "1px solid rgba(17,24,39,.10)",
-                    borderRadius: 10,
-                    padding: 10,
-                    background: "rgba(17,24,39,.02)",
-                  }}
-                >
-                  {normalized.length > 1 && (
-                    <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85, marginBottom: 6 }}>
-                      Group {idx + 1}
-                    </div>
-                  )}
-
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>Type</div>
-                      <div style={{ fontWeight: 700 }}>{typeText}</div>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>Size</div>
-                      <div style={{ fontWeight: 700 }}>{sizeText}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ height: 1, background: "rgba(17,24,39,.10)", margin: "10px 0" }} />
-
-          <div style={{ fontSize: 12, lineHeight: 1.35, opacity: 0.9 }}>
-            {help}
+          <div style={{ fontWeight: 800, lineHeight: 1.1 }}>
+            About this context note
+            <div style={{ fontWeight: 600, fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+              Contributor details
+            </div>
           </div>
         </div>
-      )}
-    </div>
-  );
+
+        {/* render 1–2 groups */}
+        <div style={{ display: "grid", gap: 10 }}>
+          {normalized.map((g, idx) => {
+            const typeText = g.type || "Not specified";
+            const sizeText = g.size || "Not specified";
+
+            return (
+              <div
+                key={idx}
+                style={{
+                  border: "1px solid rgba(17,24,39,.10)",
+                  borderRadius: 10,
+                  padding: 10,
+                  background: "rgba(17,24,39,.02)",
+                }}
+              >
+                {normalized.length > 1 && (
+                  <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85, marginBottom: 6 }}>
+                    Group {idx + 1}
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>Type</div>
+                    <div style={{ fontWeight: 700 }}>{typeText}</div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>Size</div>
+                    <div style={{ fontWeight: 700 }}>{sizeText}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ height: 1, background: "rgba(17,24,39,.10)", margin: "10px 0" }} />
+
+        <div style={{ fontSize: 12, lineHeight: 1.35, opacity: 0.9 }}>
+          {help}
+        </div>
+      </div>
+    )}
+  </div>
+);
 }
 
 function useIsMobile(breakpoint = 768) {
