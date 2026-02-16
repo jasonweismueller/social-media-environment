@@ -70,7 +70,7 @@ a:hover{text-decoration:underline}
 .avatar-img{width:40px;height:40px;border-radius:999px;object-fit:cover;display:block}
 
 .text{margin:.25rem 0;font-size:15px;line-height:1.5;white-space:pre-wrap}
-.image-btn{display:block;width:100%;border:none;background:transparent;padding:0;cursor:pointer}
+.image-btn{display:block;width:100%;border:none;background:transparent;padding:0;cursor:default}
 
 /* Footer actions */
 .footer{padding:.5rem;border-top:1px solid var(--line)}
@@ -171,10 +171,9 @@ a:hover{text-decoration:underline}
 
 /* — Ensure divider above reactions when an intervention is present — */
 .info-bar + .bar-stats,
-.note-bar + .bar-stats {
-  border-top: 1px solid var(--line) !important;
-  margin-top: .25rem;
-  padding-top: .5rem;
+.note-bar{
+  background:#f3f4f6;
+  border-top:1px solid rgba(17,24,39,.08); /* matches your JSX */
 }
 
 /* ============= Reactions summary ============= */
