@@ -81,7 +81,7 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
       >
         <div
           style={{
-            padding: "14px 16px",
+            padding: "12px 14px",
             borderBottom: "1px solid rgba(17,24,39,.10)",
             display: "flex",
             alignItems: "center",
@@ -89,7 +89,7 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
             gap: 12,
           }}
         >
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{title}</div>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
           <button
             type="button"
             onClick={onClose}
@@ -97,7 +97,7 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
             style={{
               border: 0,
               background: "transparent",
-              fontSize: 22,
+              fontSize: 20,
               cursor: "pointer",
               lineHeight: 1,
               padding: 6,
@@ -107,9 +107,52 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
           </button>
         </div>
 
-        <div style={{ padding: 16 }}>{children}</div>
+        <div style={{ padding: 14 }}>{children}</div>
       </div>
     </div>
+  );
+}
+
+// --- Helpers: build and render the "rated as helpful by ..." subline (restores sizes/types) ---
+function buildReaderGroups(post) {
+  const enabled = !!post?.noteMetaEnabled;
+  const groupsRaw = Array.isArray(post?.noteReaderGroups) ? post.noteReaderGroups : [];
+  const normalized = groupsRaw
+    .map((g) => ({ type: String(g?.type || "").trim(), size: String(g?.size || "").trim() }))
+    .filter((g) => g.type || g.size)
+    .slice(0, 2);
+
+  return { enabled, normalized };
+}
+
+function RatedByLine({ post }) {
+  const { enabled, normalized } = buildReaderGroups(post);
+  if (!(enabled && normalized.length > 0)) return null;
+
+  const nice = (s) => String(s || "").trim();
+  const renderGroup = (g, key) => {
+    const size = nice(g.size) || "an unspecified number of";
+    const type = (nice(g.type) || "readers").toLowerCase(); // ✅ lowercase type
+    return (
+      <span key={key} style={{ fontWeight: 700 }}>
+        {size} {type}
+      </span>
+    );
+  };
+
+  return (
+    <>
+      {normalized.length === 1 ? (
+        <>
+          The context was rated as helpful by {renderGroup(normalized[0], 0)}.
+        </>
+      ) : (
+        <>
+          The context was rated as helpful by {renderGroup(normalized[0], 0)} and{" "}
+          {renderGroup(normalized[1], 1)}.
+        </>
+      )}
+    </>
   );
 }
 
@@ -123,11 +166,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   // You can wire these to your own post fields:
   const ratedHelpfulLabel = "Currently rated helpful"; // or compute from post.noteMeta...
   const shownOnLabel = "Shown on X";
-  const badges = [
-    "Provides important context",
-    "Easy to understand",
-    // you can conditionally add more
-  ];
+  const badges = ["Provides important context", "Easy to understand"];
 
   return (
     <div
@@ -139,68 +178,84 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
     >
       {/* Top: pseudo “post” header like X */}
       <div style={{ padding: 14 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-          {/* avatar */}
-          <div style={{ width: 44, height: 44, borderRadius: 999, overflow: "hidden", background: "#e5e7eb", flexShrink: 0 }}>
+        {/* Header row: smaller avatar + name */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div
+            style={{
+              width: 32, // ✅ smaller avatar
+              height: 32,
+              borderRadius: 999,
+              overflow: "hidden",
+              background: "#e5e7eb",
+              flexShrink: 0,
+            }}
+          >
             {avatarUrl ? (
-              <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <img
+                src={avatarUrl}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
             ) : null}
           </div>
 
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, lineHeight: 1.1 }}>{author}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.1 }}>{author}</div>
               {post.badge ? (
                 <span
                   aria-label="Verified"
                   title="Verified"
                   style={{
-                    width: 18,
-                    height: 18,
+                    width: 14,
+                    height: 14,
                     borderRadius: 999,
                     background: "#1D9BF0",
                     display: "inline-grid",
                     placeItems: "center",
                     color: "#fff",
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: 900,
                   }}
                 >
                   ✓
                 </span>
               ) : null}
-              {timeLabel ? <div style={{ color: "#6b7280" }}>· {timeLabel}</div> : null}
+              {timeLabel ? <div style={{ color: "#6b7280", fontSize: 12 }}>· {timeLabel}</div> : null}
             </div>
+          </div>
+        </div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "flex-start" }}>
-              {/* Small image (top-left) */}
-              {hasImage ? (
+        {/* Content row: image immediately below header, then text */}
+        <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "flex-start" }}>
+          {hasImage ? (
+            <div
+              style={{
+                width: 86,
+                height: 86,
+                borderRadius: 14,
+                overflow: "hidden",
+                background: "#e5e7eb",
+                flexShrink: 0,
+              }}
+            >
+              {view?.image?.url ? (
+                <img
+                  src={view.image.url}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
                 <div
-                  style={{
-                    width: 92,
-                    height: 92,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    background: "#e5e7eb",
-                    flexShrink: 0,
-                  }}
-                >
-                  {view?.image?.url ? (
-                    <img src={view.image.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                  ) : (
-                    <div
-                      dangerouslySetInnerHTML={{ __html: String(view?.image?.svg || "") }}
-                      style={{ width: "100%", height: "100%" }}
-                    />
-                  )}
-                </div>
-              ) : null}
-
-              {/* Post text */}
-              <div style={{ fontSize: 18, lineHeight: 1.35, color: "#111827", whiteSpace: "pre-wrap" }}>
-                {post.text || ""}
-              </div>
+                  dangerouslySetInnerHTML={{ __html: String(view?.image?.svg || "") }}
+                  style={{ width: "100%", height: "100%" }}
+                />
+              )}
             </div>
+          ) : null}
+
+          <div style={{ fontSize: 14, lineHeight: 1.35, color: "#111827", whiteSpace: "pre-wrap" }}>
+            {post.text || ""}
           </div>
         </div>
       </div>
@@ -209,36 +264,56 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
 
       {/* Note meta rows (like the screenshot) */}
       <div style={{ padding: 14, display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 16 }}>
-          <span style={{ width: 20, height: 20, borderRadius: 999, background: "#10b981", display: "inline-grid", placeItems: "center", color: "#fff", fontWeight: 900 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+          <span
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: 999,
+              background: "#10b981",
+              display: "inline-grid",
+              placeItems: "center",
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: 12,
+            }}
+          >
             ✓
           </span>
           <span style={{ fontWeight: 800 }}>{ratedHelpfulLabel}</span>
           <span style={{ color: "#6b7280" }}>·</span>
           <button
             type="button"
-            style={{ border: 0, background: "transparent", color: "#6b7280", textDecoration: "underline", cursor: "pointer" }}
+            style={{
+              border: 0,
+              background: "transparent",
+              color: "#6b7280",
+              textDecoration: "underline",
+              cursor: "pointer",
+              fontSize: 13,
+              padding: 0,
+            }}
             onClick={() => onAction?.("note_view_details", { post_id: post.id })}
           >
             View details
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 16 }}>
-          <span style={{ width: 20, textAlign: "center" }}>👁</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
+          <span style={{ width: 18, textAlign: "center" }}>👁</span>
           <span>{shownOnLabel}</span>
         </div>
 
         {badges.map((b, i) => (
-          <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 16 }}>
-            <span style={{ width: 20, textAlign: "center" }}>💬</span>
+          <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
+            <span style={{ width: 18, textAlign: "center" }}>💬</span>
             <span>{b}</span>
           </div>
         ))}
       </div>
 
       {/* Note body */}
-      <div style={{ padding: 14, fontSize: 20, lineHeight: 1.4 }}>
+      <div style={{ padding: 14, fontSize: 14, lineHeight: 1.45 }}>
         <NoteRichText
           text={post.noteText || ""}
           onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
@@ -249,7 +324,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
 
       {/* Rating row */}
       <div style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ fontWeight: 800, fontSize: 18 }}>Is this note helpful?</div>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Is this note helpful?</div>
 
         <div style={{ display: "flex", gap: 10 }}>
           {["Yes", "Somewhat", "No"].map((label) => (
@@ -291,7 +366,7 @@ function NoteIntervention({ post, view, onAction }) {
           borderTop: "1px solid rgba(17,24,39,.08)",
         }}
       >
-        {/* clicking anywhere on note surface opens modal */}
+        {/* Clicking note surface opens modal, but links inside do not */}
         <div
           role="button"
           tabIndex={0}
@@ -317,14 +392,15 @@ function NoteIntervention({ post, view, onAction }) {
                 placeItems: "center",
               }}
             >
-              <IconUsers style={{ width: 16, height: 16, display: "block" }} />
+              {/* ✅ force blue like X + keep icon from "whitespace" misalignment */}
+              <IconUsers style={{ width: 16, height: 16, display: "block", color: "#1D9BF0" }} />
             </div>
 
             <div style={{ display: "grid", gap: 2 }}>
               <div style={{ fontWeight: 800, lineHeight: 1.1 }}>Readers added context</div>
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.25 }}>
-                {/* keep your “rated as helpful by …” sentence here if you want */}
-                The context was rated as helpful.
+                {/* ✅ restore sizes + types (bold) */}
+                <RatedByLine post={post} />
               </div>
             </div>
           </div>
@@ -359,12 +435,7 @@ function NoteIntervention({ post, view, onAction }) {
       </div>
 
       <NoteModal open={open} onClose={() => setOpen(false)} title="Note">
-        <NoteDetailsCard
-          post={post}
-          view={view}
-          onAction={onAction}
-          onClose={() => setOpen(false)}
-        />
+        <NoteDetailsCard post={post} view={view} onAction={onAction} onClose={() => setOpen(false)} />
       </NoteModal>
     </>
   );
@@ -374,9 +445,13 @@ function LabelIntervention({ post, onAction }) {
   return (
     <div className="info-bar info-clean">
       <div className="info-head">
-        <div className="info-icon"><IconInfo /></div>
+        <div className="info-icon">
+          <IconInfo />
+        </div>
         <div className="info-title-wrap">
-          <div className="info-title" style={{ fontWeight: 800 }}>Independent fact-checkers</div>
+          <div className="info-title" style={{ fontWeight: 800 }}>
+            Independent fact-checkers
+          </div>
           <div className="info-sub" style={{ marginTop: 2 }}>
             This is information that third-party fact-checkers say is false.
           </div>
