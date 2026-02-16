@@ -1335,8 +1335,16 @@ const displayImage = React.useMemo(() => {
         </div>
       )}
 
-{/* intervention surfaces */}
-<InterventionBlock post={post} onAction={onAction} IconUsersFromCaller={IconUsers} />
+<InterventionBlock
+  post={post}
+  onAction={onAction}
+  view={{
+    author: displayAuthor,
+    avatarUrl: displayAvatar,
+    timeLabel,
+    image: displayImage, // the same object you used in the post UI
+  }}
+/>
 
       {reportAck && (
         <div className="ack-overlay" role="status" aria-live="polite">

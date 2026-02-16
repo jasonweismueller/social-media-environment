@@ -1,9 +1,9 @@
 // components-ui-interventions.jsx
 import React from "react";
-import { IconInfo, IconUsers } from "../ui-core";
+import { IconInfo, IconUsers } from "../ui-core"; // adjust path if needed
 
-/* ------------------- Helpers: Note rich text ------------------- */
-export function NoteRichText({ text }) {
+// --- NOTE: render URLs as real links that DO NOT trigger modal open ---
+function NoteRichText({ text, onLinkClick }) {
   const raw = String(text || "");
   const URL_RE = /(\bhttps?:\/\/[^\s]+|\bwww\.[^\s]+)/gi;
 
@@ -14,27 +14,31 @@ export function NoteRichText({ text }) {
   while ((m = URL_RE.exec(raw)) !== null) {
     const start = m.index;
     const end = start + m[0].length;
-
     if (start > last) out.push({ kind: "text", value: raw.slice(last, start) });
     out.push({ kind: "url", value: m[0] });
     last = end;
   }
-
   if (last < raw.length) out.push({ kind: "text", value: raw.slice(last) });
 
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
       {out.map((p, i) => {
         if (p.kind === "text") return <React.Fragment key={i}>{p.value}</React.Fragment>;
+
         const href = p.value.startsWith("http") ? p.value : `https://${p.value}`;
         return (
           <a
             key={i}
             href={href}
-            onClick={(e) => e.preventDefault()} // keep non-navigating for study
-            style={{ color: "#1877F2", textDecoration: "underline" }}
-            rel="noreferrer"
             target="_blank"
+            rel="noreferrer"
+            style={{ color: "#1877F2", textDecoration: "underline" }}
+            onClick={(e) => {
+              // ✅ open URL in new tab, but do NOT open the modal
+              e.stopPropagation();
+              onLinkClick?.(href);
+              // allow default browser open-new-tab behavior
+            }}
           >
             {p.value}
           </a>
@@ -44,311 +48,360 @@ export function NoteRichText({ text }) {
   );
 }
 
-/* ------------------- Popover: readers context ------------------- */
-export function ReadersContextPopover({
-  enabled,
-  groups,            // [{type,size}, {type,size}]
-  typeValue,         // legacy fallback
-  sizeValue,         // legacy fallback
-  onAction,
-  postId
-}) {
-  const [open, setOpen] = React.useState(false);
-
-  const rawGroups = Array.isArray(groups) ? groups : [];
-  const normalized = rawGroups
-    .map(g => ({
-      type: String(g?.type || "").trim(),
-      size: String(g?.size || "").trim(),
-    }))
-    .filter(g => g.type || g.size)
-    .slice(0, 2);
-
-  if (normalized.length === 0 && (typeValue || sizeValue)) {
-    normalized.push({
-      type: String(typeValue || "").trim(),
-      size: String(sizeValue || "").trim(),
-    });
-  }
-
-  const showMeta = !!enabled && normalized.length > 0;
-  const nice = (s) => String(s || "").trim();
-
-  const renderGroup = (g, key) => {
-    const size = nice(g.size) || "an unspecified number of";
-    const type = (nice(g.type) || "readers").toLowerCase();
-    return (
-      <span key={key} style={{ fontWeight: 700 }}>
-        {size} {type}
-      </span>
-    );
-  };
-
-  const ratedByLine = (() => {
-    if (!showMeta) return null;
-    if (normalized.length === 1) {
-      return <>The context was rated as helpful by {renderGroup(normalized[0], 0)}.</>;
-    }
-    return (
-      <>
-        The context was rated as helpful by {renderGroup(normalized[0], 0)} and {renderGroup(normalized[1], 1)}.
-      </>
-    );
-  })();
-
-  if (!showMeta) return <div className="note-title">Readers added context</div>;
-
-  const help =
-    "Context notes are contributed by readers to add helpful information when a post may be misleading. " +
-    "This panel shows which groups contributed and the approximate number of contributors in each group.";
+// --- Simple modal (no dependency on your existing Modal component) ---
+function NoteModal({ open, onClose, children, title = "Note" }) {
+  if (!open) return null;
 
   return (
     <div
-      className="note-title-wrap"
+      role="dialog"
+      aria-label={title}
       style={{
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
+        position: "fixed",
+        inset: 0,
+        zIndex: 50000,
+        background: "rgba(0,0,0,.45)",
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
       }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseDown={onClose}
     >
-      <button
-        type="button"
-        className="note-title-btn"
-        style={{
-          background: "transparent",
-          border: 0,
-          padding: 0,
-          cursor: "pointer",
-          color: "inherit",
-          textAlign: "left",
-          display: "inline-flex",
-          alignItems: "center",
-          lineHeight: 1.1,
-        }}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={(e) => {
-          e.preventDefault();
-          setOpen((v) => !v);
-          onAction?.("note_meta_toggle", { post_id: postId, open: !open });
-        }}
-        title="More info"
-      >
-        <span style={{ fontWeight: 700 }}>Readers added context</span>
-      </button>
-
       <div
         style={{
-          marginTop: 2,
-          fontSize: 12,
-          color: "var(--muted)",
-          lineHeight: 1.25,
-          // start subline under the icon
-          marginLeft: "calc(-1 * var(--noteIconOffset, 0px))",
+          width: 760,
+          maxWidth: "92vw",
+          maxHeight: "90vh",
+          overflow: "auto",
+          background: "#fff",
+          borderRadius: 16,
+          boxShadow: "0 20px 60px rgba(0,0,0,.25)",
         }}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        {ratedByLine}
-      </div>
-
-      {open && (
         <div
-          className="note-popover"
-          role="dialog"
-          aria-label="Readers context details"
           style={{
-            position: "absolute",
-            top: "130%",
-            left: 0,
-            width: 340,
-            maxWidth: "80vw",
-            background: "#fff",
-            color: "#111827",
-            border: "1px solid rgba(17,24,39,.12)",
-            borderRadius: 12,
-            boxShadow: "0 10px 30px rgba(0,0,0,.18)",
-            padding: 12,
-            zIndex: 9999,
+            padding: "14px 16px",
+            borderBottom: "1px solid rgba(17,24,39,.10)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
-                background: "rgba(59,130,246,.12)",
-                display: "grid",
-                placeItems: "center",
-              }}
-              aria-hidden="true"
-            >
-              <IconUsers />
-            </div>
-            <div style={{ fontWeight: 800, lineHeight: 1.1 }}>
-              About this context note
-              <div style={{ fontWeight: 600, fontSize: 12, opacity: 0.75, marginTop: 2 }}>
-                Contributor details
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {normalized.map((g, idx) => {
-              const typeText = g.type || "Not specified";
-              const sizeText = g.size || "Not specified";
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    border: "1px solid rgba(17,24,39,.10)",
-                    borderRadius: 10,
-                    padding: 10,
-                    background: "rgba(17,24,39,.02)",
-                  }}
-                >
-                  {normalized.length > 1 && (
-                    <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85, marginBottom: 6 }}>
-                      Group {idx + 1}
-                    </div>
-                  )}
-
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>Type</div>
-                      <div style={{ fontWeight: 700 }}>{typeText}</div>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>Size</div>
-                      <div style={{ fontWeight: 700 }}>{sizeText}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ height: 1, background: "rgba(17,24,39,.10)", margin: "10px 0" }} />
-          <div style={{ fontSize: 12, lineHeight: 1.35, opacity: 0.9 }}>{help}</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              border: 0,
+              background: "transparent",
+              fontSize: 22,
+              cursor: "pointer",
+              lineHeight: 1,
+              padding: 6,
+            }}
+          >
+            ✕
+          </button>
         </div>
-      )}
+
+        <div style={{ padding: 16 }}>{children}</div>
+      </div>
     </div>
   );
 }
 
-/* ------------------- Wrapper: renders label OR note ------------------- */
-export function InterventionBlock({ post, onAction, IconUsersFromCaller }) {
-  // allow caller to pass IconUsers to avoid mismatch; fallback to ui-core IconUsers
-  const UsersIcon = IconUsersFromCaller || IconUsers;
+// --- The “X-like” note details block inside the modal ---
+function NoteDetailsCard({ post, view, onAction, onClose }) {
+  const hasImage = !!(view?.image?.url || view?.image?.svg);
+  const author = view?.author || post.author || "User";
+  const avatarUrl = view?.avatarUrl || post.avatarUrl || null;
+  const timeLabel = view?.timeLabel || "";
 
-  if (!post?.interventionType) return null;
+  // You can wire these to your own post fields:
+  const ratedHelpfulLabel = "Currently rated helpful"; // or compute from post.noteMeta...
+  const shownOnLabel = "Shown on X";
+  const badges = [
+    "Provides important context",
+    "Easy to understand",
+    // you can conditionally add more
+  ];
 
-  const enabled = !!post.noteMetaEnabled;
-
-  const groupsRaw = Array.isArray(post.noteReaderGroups) ? post.noteReaderGroups : [];
-  const groups = groupsRaw
-    .map(g => ({ type: (g?.type || "").trim(), size: (g?.size || "").trim() }))
-    .filter(g => g.type || g.size)
-    .slice(0, 2);
-
-  if (post.interventionType === "label") {
-    return (
-      <div className="info-bar info-clean">
-        <div className="info-head">
-          <div className="info-icon"><IconInfo /></div>
-
-          <ReadersContextPopover
-            enabled={enabled && groups.length > 0}
-            groups={groups}
-            onAction={onAction}
-            postId={post.id}
-          />
-        </div>
-
-        <div className="info-sub">
-          This is information that third-party fact-checkers say is false.
-        </div>
-
-        <div className="info-row">
-          <div>Want to see why?</div>
-          <button className="btn" onClick={() => onAction("intervention_learn_more", { post_id: post.id })}>
-            Learn more
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (post.interventionType === "note") {
-    return (
-      <div className="note-bar">
-        <div
-          className="note-head"
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 5,
-            ["--noteIconW"]: "16px",
-            ["--noteIconGap"]: "5px",
-            ["--noteIconOffset"]: "calc(var(--noteIconW) + var(--noteIconGap))",
-          }}
-        >
-          <div
-            className="note-icon"
-            style={{
-              width: "var(--noteIconW)",
-              height: "var(--noteIconW)",
-              flexShrink: 0,
-              marginTop: 1.3,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <UsersIcon style={{ width: "var(--noteIconW)", height: "var(--noteIconW)", display: "block" }} />
+  return (
+    <div
+      style={{
+        border: "1px solid rgba(17,24,39,.12)",
+        borderRadius: 16,
+        overflow: "hidden",
+      }}
+    >
+      {/* Top: pseudo “post” header like X */}
+      <div style={{ padding: 14 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          {/* avatar */}
+          <div style={{ width: 44, height: 44, borderRadius: 999, overflow: "hidden", background: "#e5e7eb", flexShrink: 0 }}>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            ) : null}
           </div>
 
-          <ReadersContextPopover
-            enabled={enabled && groups.length > 0}
-            groups={groups}
-            onAction={onAction}
-            postId={post.id}
-          />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 800, fontSize: 18, lineHeight: 1.1 }}>{author}</div>
+              {post.badge ? (
+                <span
+                  aria-label="Verified"
+                  title="Verified"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    background: "#1D9BF0",
+                    display: "inline-grid",
+                    placeItems: "center",
+                    color: "#fff",
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  ✓
+                </span>
+              ) : null}
+              {timeLabel ? <div style={{ color: "#6b7280" }}>· {timeLabel}</div> : null}
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "flex-start" }}>
+              {/* Small image (top-left) */}
+              {hasImage ? (
+                <div
+                  style={{
+                    width: 92,
+                    height: 92,
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    background: "#e5e7eb",
+                    flexShrink: 0,
+                  }}
+                >
+                  {view?.image?.url ? (
+                    <img src={view.image.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  ) : (
+                    <div
+                      dangerouslySetInnerHTML={{ __html: String(view?.image?.svg || "") }}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  )}
+                </div>
+              ) : null}
+
+              {/* Post text */}
+              <div style={{ fontSize: 18, lineHeight: 1.35, color: "#111827", whiteSpace: "pre-wrap" }}>
+                {post.text || ""}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
+
+      {/* Note meta rows (like the screenshot) */}
+      <div style={{ padding: 14, display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 16 }}>
+          <span style={{ width: 20, height: 20, borderRadius: 999, background: "#10b981", display: "inline-grid", placeItems: "center", color: "#fff", fontWeight: 900 }}>
+            ✓
+          </span>
+          <span style={{ fontWeight: 800 }}>{ratedHelpfulLabel}</span>
+          <span style={{ color: "#6b7280" }}>·</span>
+          <button
+            type="button"
+            style={{ border: 0, background: "transparent", color: "#6b7280", textDecoration: "underline", cursor: "pointer" }}
+            onClick={() => onAction?.("note_view_details", { post_id: post.id })}
+          >
+            View details
+          </button>
         </div>
 
-        <div className="note-sub">
-          <NoteRichText text={post.noteText || ""} />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 16 }}>
+          <span style={{ width: 20, textAlign: "center" }}>👁</span>
+          <span>{shownOnLabel}</span>
         </div>
 
+        {badges.map((b, i) => (
+          <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 16 }}>
+            <span style={{ width: 20, textAlign: "center" }}>💬</span>
+            <span>{b}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Note body */}
+      <div style={{ padding: 14, fontSize: 20, lineHeight: 1.4 }}>
+        <NoteRichText
+          text={post.noteText || ""}
+          onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
+        />
+      </div>
+
+      <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
+
+      {/* Rating row */}
+      <div style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontWeight: 800, fontSize: 18 }}>Is this note helpful?</div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          {["Yes", "Somewhat", "No"].map((label) => (
+            <button
+              key={label}
+              type="button"
+              className="btn"
+              onClick={() => {
+                onAction?.("note_helpful_rate", { post_id: post.id, value: label.toLowerCase() });
+                onClose?.();
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoteIntervention({ post, view, onAction }) {
+  const [open, setOpen] = React.useState(false);
+
+  const openModal = (source) => {
+    onAction?.("note_modal_open", { post_id: post.id, source });
+    setOpen(true);
+  };
+
+  return (
+    <>
+      {/* ✅ Gray background note surface (X-like) */}
+      <div
+        className="note-bar"
+        style={{
+          marginTop: 0,
+          padding: 12,
+          background: "#f3f4f6",
+          borderTop: "1px solid rgba(17,24,39,.08)",
+        }}
+      >
+        {/* clicking anywhere on note surface opens modal */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => openModal("note_surface")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openModal("note_surface");
+            }
+          }}
+          style={{ cursor: "pointer" }}
+        >
+          {/* header */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <div
+              aria-hidden="true"
+              style={{
+                width: 16,
+                height: 16,
+                marginTop: 2,
+                flexShrink: 0,
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <IconUsers style={{ width: 16, height: 16, display: "block" }} />
+            </div>
+
+            <div style={{ display: "grid", gap: 2 }}>
+              <div style={{ fontWeight: 800, lineHeight: 1.1 }}>Readers added context</div>
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.25 }}>
+                {/* keep your “rated as helpful by …” sentence here if you want */}
+                The context was rated as helpful.
+              </div>
+            </div>
+          </div>
+
+          {/* note text */}
+          <div style={{ marginTop: 10, fontSize: 14, color: "#111827" }}>
+            <NoteRichText
+              text={post.noteText || ""}
+              onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
+            />
+          </div>
+        </div>
+
+        {/* divider inside gray box */}
         <div
           aria-hidden="true"
           style={{
             height: 1,
-            background: "var(--line, rgba(17,24,39,.08))",
+            background: "rgba(17,24,39,.10)",
             marginTop: 12,
-            marginBottom: 8,
-            marginLeft: -16,   // set to your .note-bar horizontal padding
-            marginRight: -16,  // set to your .note-bar horizontal padding
+            marginBottom: 10,
           }}
         />
 
-        <div
-          className="note-row"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>Do you find this helpful?</div>
-          <button className="btn" onClick={() => onAction("note_rate_open", { post_id: post.id })}>
+        {/* rating row */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontSize: 14, color: "#374151" }}>Do you find this helpful?</div>
+          <button type="button" className="btn" onClick={() => openModal("rate_it_button")}>
             Rate it
           </button>
         </div>
       </div>
-    );
+
+      <NoteModal open={open} onClose={() => setOpen(false)} title="Note">
+        <NoteDetailsCard
+          post={post}
+          view={view}
+          onAction={onAction}
+          onClose={() => setOpen(false)}
+        />
+      </NoteModal>
+    </>
+  );
+}
+
+function LabelIntervention({ post, onAction }) {
+  return (
+    <div className="info-bar info-clean">
+      <div className="info-head">
+        <div className="info-icon"><IconInfo /></div>
+        <div className="info-title-wrap">
+          <div className="info-title" style={{ fontWeight: 800 }}>Independent fact-checkers</div>
+          <div className="info-sub" style={{ marginTop: 2 }}>
+            This is information that third-party fact-checkers say is false.
+          </div>
+        </div>
+      </div>
+
+      <div className="info-row">
+        <div>Want to see why?</div>
+        <button className="btn" onClick={() => onAction?.("intervention_learn_more", { post_id: post.id })}>
+          Learn more
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function InterventionBlock({ post, onAction, view }) {
+  if (!post?.interventionType) return null;
+
+  if (post.interventionType === "note") {
+    return <NoteIntervention post={post} view={view} onAction={onAction} />;
+  }
+
+  if (post.interventionType === "label") {
+    return <LabelIntervention post={post} onAction={onAction} />;
   }
 
   return null;
