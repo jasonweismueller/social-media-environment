@@ -1342,7 +1342,7 @@ const displayImage = React.useMemo(() => {
     author: displayAuthor,
     avatarUrl: displayAvatar,
     timeLabel,
-    image: displayImage, // the same object you used in the post UI
+    image: displayImage, // {url, alt} or svg; matches what interventions expects
   }}
 />
 
