@@ -2,15 +2,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { randomSVG, uploadFileToS3ViaSigner } from "../utils";
 
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function toNum(v, fallback) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
 
-/* ================== Square focal-point cropper (shared) ================== */
 function ImageCropper({
   src,
   alt = "",
@@ -25,69 +22,66 @@ function ImageCropper({
 
   const x = clamp(toNum(focalX, 50), 0, 100);
   const y = clamp(toNum(focalY, 50), 0, 100);
-  const z = clamp(toNum(zoom, 1), 1, 3);
-
-  const objectPosition = useMemo(() => `${x}% ${y}%`, [x, y]);
+  const z = clamp(toNum(zoom, 1), 0.5, 3); // ✅ allow zoom out
 
   const emit = useCallback(
     (next) => {
       onChange?.({
         focalX: clamp(Math.round(toNum(next.focalX, x)), 0, 100),
         focalY: clamp(Math.round(toNum(next.focalY, y)), 0, 100),
-        zoom: clamp(toNum(next.zoom, z), 1, 3),
+        zoom: clamp(toNum(next.zoom, z), 0.5, 3),
       });
     },
     [onChange, x, y, z]
   );
 
-  const onPointerMove = useCallback(
-    (e) => {
-      if (!dragging || !wrapRef.current) return;
-      const rect = wrapRef.current.getBoundingClientRect();
-
-      const clientX = "touches" in e ? (e.touches[0]?.clientX ?? 0) : e.clientX;
-      const clientY = "touches" in e ? (e.touches[0]?.clientY ?? 0) : e.clientY;
+  const updateFromXY = useCallback(
+    (clientX, clientY) => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
 
       const xPct = clamp(((clientX - rect.left) / rect.width) * 100, 0, 100);
       const yPct = clamp(((clientY - rect.top) / rect.height) * 100, 0, 100);
-
       emit({ focalX: xPct, focalY: yPct, zoom: z });
     },
-    [dragging, emit, z]
+    [emit, z]
   );
 
-  const startDrag = useCallback(
+  const onPointerDown = useCallback(
     (e) => {
       if (disabled || !src) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+
       setDragging(true);
-      onPointerMove(e);
+      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+      updateFromXY(e.clientX, e.clientY);
       e.preventDefault();
     },
-    [disabled, src, onPointerMove]
+    [disabled, src, updateFromXY]
   );
 
-  const stopDrag = useCallback(() => setDragging(false), []);
+  const onPointerMove = useCallback(
+    (e) => {
+      if (disabled || !dragging) return;
+      updateFromXY(e.clientX, e.clientY);
+      e.preventDefault();
+    },
+    [disabled, dragging, updateFromXY]
+  );
 
-  useEffect(() => {
-    if (!dragging) return;
+  const endDrag = useCallback(
+    (e) => {
+      if (!dragging) return;
+      setDragging(false);
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+    },
+    [dragging]
+  );
 
-    const move = (ev) => onPointerMove(ev);
-    const up = () => stopDrag();
-
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-    document.addEventListener("touchmove", move, { passive: false });
-    document.addEventListener("touchend", up);
-    document.addEventListener("touchcancel", up);
-
-    return () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-      document.removeEventListener("touchmove", move);
-      document.removeEventListener("touchend", up);
-      document.removeEventListener("touchcancel", up);
-    };
-  }, [dragging, onPointerMove, stopDrag]);
+  const objectPosition = `${x}% ${y}%`;
+  const bgSize = `${z * 100}%`;
 
   return (
     <div>
@@ -103,41 +97,30 @@ function ImageCropper({
           overflow: "hidden",
           background: "#f3f4f6",
           userSelect: "none",
-          cursor: disabled ? "default" : dragging ? "grabbing" : "grab",
+          cursor: disabled ? "default" : (dragging ? "grabbing" : "grab"),
           boxShadow: "inset 0 0 0 1px rgba(0,0,0,.05)",
+          touchAction: "none",
         }}
-        onMouseDown={startDrag}
-        onTouchStart={startDrag}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerLeave={endDrag}
       >
         {src ? (
-          <img
-            src={src}
-            alt={alt}
-            draggable={false}
+          <div
+            aria-label={alt || ""}
             style={{
               position: "absolute",
               inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition,
-              display: "block",
-
-              // ✅ Zoom (simple + robust) — scales image around focal point
-              transform: `scale(${z})`,
-              transformOrigin: objectPosition,
+              backgroundImage: `url(${src})`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: objectPosition,
+              backgroundSize: bgSize, // ✅ zoom in + zoom out
             }}
           />
         ) : (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "grid",
-              placeItems: "center",
-              color: "#9ca3af",
-            }}
-          >
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "#9ca3af" }}>
             No image
           </div>
         )}
@@ -185,12 +168,11 @@ function ImageCropper({
           />
         </label>
 
-        {/* ✅ Zoom bar (your test control) */}
         <label>
           Zoom
           <input
             type="range"
-            min={1}
+            min={0.5}     // ✅ zoom out
             max={3}
             step={0.01}
             value={z}
@@ -199,10 +181,6 @@ function ImageCropper({
           />
           <div className="subtle">{z.toFixed(2)}×</div>
         </label>
-      </div>
-
-      <div className="subtle" style={{ marginTop: 4 }}>
-        Tip: drag inside the square to reposition; sliders fine-tune.
       </div>
     </div>
   );
