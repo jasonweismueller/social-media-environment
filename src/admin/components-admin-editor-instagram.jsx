@@ -8,7 +8,7 @@ import {
   uploadFileToS3ViaSigner,
 } from "../utils";
 import { PostCard } from "../ui-posts";
-import { MediaFieldset } from "./components-admin-media-facebook";
+import { MediaFieldset } from "./components-admin-media-instagram";
 import { randomAvatarByKind } from "../avatar-utils";
 
 /* ---------------- Avatar (neutral) ---------------- */
