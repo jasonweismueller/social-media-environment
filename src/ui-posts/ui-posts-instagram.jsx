@@ -406,14 +406,21 @@ const poolNames =
     return () => { cancelled = true; };
   }, [randImagesOn, topic, image, imageMode, runSeed, app, projectId, feedId, id]);
 
-  const displayImageObj = useMemo(() => {
-    const hasImage = !!(image && imageMode && imageMode !== "none");
-    if (!hasImage) return null;
-    if (randImagesOn && randImageUrl) {
-      return { url: randImageUrl, alt: image?.alt || "" };
-    }
-    return image || null;
-  }, [image, imageMode, randImagesOn, randImageUrl]);
+const displayImageObj = useMemo(() => {
+  const hasImage = !!(image && imageMode && imageMode !== "none");
+  if (!hasImage) return null;
+
+  // keep focal/zoom even when swapping URL
+  if (randImagesOn && randImageUrl) {
+    return { ...(image || {}), url: randImageUrl };
+  }
+
+  return image || null;
+}, [image, imageMode, randImagesOn, randImageUrl]);
+// ✅ PUT THESE HERE
+const fx = displayImageObj?.focalX ?? 50;
+const fy = displayImageObj?.focalY ?? 50;
+const zoom = displayImageObj?.zoom ?? 1;
 
   const imgs = Array.isArray(images) ? images : [];
   const hasCarousel = imageMode === "multi" && imgs.length > 1;
@@ -899,11 +906,7 @@ const displayBio = useMemo(() => {
                   height: "100%",
                   objectFit: "cover",
                   display: "block",
-                  objectPosition: `${
-                    (image?.focalX ?? 50)
-                  }% ${
-                    (image?.focalY ?? 50)
-                  }%`,
+                  objectPosition: `${fx}% ${fy}%`,
                 }}
                 loading="lazy"
                 decoding="async"
@@ -1385,11 +1388,7 @@ marginTop: "auto",
                   width: "100%",
                   height: "100%",
                   objectFit: "cover",
-                  objectPosition: `${
-                    image?.focalX != null ? image.focalX : 50
-                  }% ${
-                    image?.focalY != null ? image.focalY : 50
-                  }%`,
+                  objectPosition: `${fx}% ${fy}%`,
                 }}
               />
             ) : (
