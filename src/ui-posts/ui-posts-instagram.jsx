@@ -291,7 +291,7 @@ let effectiveRandFlags;
 
 if (isSponsored) {
   effectiveRandFlags = {
-    randomize_names:   false,
+    randomize_names:   effectiveFlags.randomize_names,
     randomize_avatars: false,
     randomize_images:  false,
     randomize_bios:    false,
