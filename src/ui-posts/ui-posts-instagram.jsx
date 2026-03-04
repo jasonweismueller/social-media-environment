@@ -1378,32 +1378,53 @@ marginTop: "auto",
 
           {/* LEFT: media */}
           <div className="ig-comment-media">
-            {(displayImageObj?.url || image?.url) ? (
-              <img
-                src={displayImageObj?.url || image?.url}
-                alt={(displayImageObj?.alt || image?.alt) || ""}
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  objectPosition: `${fx}% ${fy}%`,
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  color: "#fff",
-                  fontSize: 18,
-                  textAlign: "center",
-                  padding: "40px 0",
-                }}
-              >
-                No image
-              </div>
-            )}
-          </div>
+  {hasVideo ? (
+    <video
+      src={video?.url || video}
+      poster={videoPosterUrl || undefined}
+      controls
+      playsInline
+      preload="metadata"
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        display: "block",
+        background: "#000",
+      }}
+      onPlay={handlePlay}
+      onPause={() => onAction("video_pause", { post_id: id })}
+      onEnded={() => onAction("video_ended", { post_id: id })}
+    />
+  ) : (displayImageObj?.url || image?.url) ? (
+    <img
+      src={displayImageObj?.url || image?.url}
+      alt={(displayImageObj?.alt || image?.alt) || ""}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        objectPosition: `${fx}% ${fy}%`,
+        display: "block",
+      }}
+    />
+  ) : (
+    <div
+      style={{
+        color: "#fff",
+        fontSize: 18,
+        textAlign: "center",
+        padding: "40px 0",
+      }}
+    >
+      No media
+    </div>
+  )}
+</div>
 
           {/* RIGHT: caption + comments */}
           <div className="comment-pane">
