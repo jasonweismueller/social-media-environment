@@ -165,9 +165,9 @@ export function ParticipantsPanel({
     setProjectIdUtil(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
 
-  // cache key includes APP + projectId + feedId to scope correctly
-  const mkCacheKey = (id, pid = projectId) =>
-    `participants_cache_v8::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
+// cache key includes APP + projectId + feedId to scope correctly
+const mkCacheKey = (id, pid = projectId) =>
+  `participants_cache_v9::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
   const saveCache = (data, pid = projectId) => {
     try {
