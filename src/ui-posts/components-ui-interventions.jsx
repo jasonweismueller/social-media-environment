@@ -130,15 +130,16 @@ function RatedByLine({ post }) {
   if (!(enabled && normalized.length > 0)) return null;
 
   const nice = (s) => String(s || "").trim();
-  const renderGroup = (g, key) => {
-    const size = nice(g.size) || "an unspecified number of";
-    const type = (nice(g.type) || "readers").toLowerCase(); // ✅ lowercase type
-    return (
-      <span key={key} style={{ fontWeight: 700 }}>
-        {size} {type}
-      </span>
-    );
-  };
+function renderGroup(g, key) {
+  const size = nice(g.size);
+  const type = (nice(g.type) || "readers").toLowerCase();
+
+  return (
+    <span key={key} style={{ fontWeight: 700 }}>
+      {size ? `${size} ${type}` : type}
+    </span>
+  );
+}
 
   return (
     <>
