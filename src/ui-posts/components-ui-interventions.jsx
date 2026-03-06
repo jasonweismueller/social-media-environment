@@ -165,9 +165,9 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   const timeLabel = view?.timeLabel || "";
 
   // You can wire these to your own post fields:
-  const ratedHelpfulLabel = "Currently rated helpful"; // or compute from post.noteMeta...
-  const shownOnLabel = "Shown on X";
-  const badges = ["Provides important context", "Easy to understand"];
+  const ratedHelpfulLabel = "Currently rated helpful";
+  const shownOnLabel = "Visible";
+  const badgeSummary = "Directly addresses the post’s claim · Easy to understand";
 
   return (
     <div
@@ -300,17 +300,15 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
           <span style={{ width: 18, textAlign: "center" }}>👁</span>
           <span>{shownOnLabel}</span>
         </div>
 
-        {badges.map((b, i) => (
-          <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
-            <span style={{ width: 18, textAlign: "center" }}>💬</span>
-            <span>{b}</span>
-          </div>
-        ))}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
+          <span style={{ width: 18, textAlign: "center" }}>💬</span>
+          <span>{badgeSummary}</span>
+        </div>
       </div>
 
       {/* Note body */}
