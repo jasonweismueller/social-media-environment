@@ -346,9 +346,9 @@ if (isSponsored) {
 
 // NAME
 const poolNames =
-  authorType === "female" ? FEMALE_NAMES :
-  authorType === "male"   ? MALE_NAMES   :
-                            COMPANY_NAMES;
+  authorType === "female" ? IG_FEMALE_NAMES :
+  authorType === "male"   ? IG_MALE_NAMES   :
+                            IG_COMPANY_NAMES;
 
   // ---- Author name & avatar (deterministic) ----
  const displayAuthor = React.useMemo(() => {
