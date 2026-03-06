@@ -127,9 +127,9 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   // right before the meta markup, derive once:
 
   const NAME_POOLS = {
-  female: FEMALE_NAMES,
-  male: MALE_NAMES,
-  company: COMPANY_NAMES,
+  female: FB_FEMALE_NAMES,
+  male: FB_MALE_NAMES,
+  company: FB_COMPANY_NAMES,
 };
 
 const randNamesOn  = !!(flags?.randomize_names);
