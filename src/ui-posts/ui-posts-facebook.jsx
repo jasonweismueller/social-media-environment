@@ -529,9 +529,9 @@ const seedParts = [
 
 // NAME
 const poolNames =
-  authorType === "female" ? FEMALE_NAMES :
-  authorType === "male"   ? MALE_NAMES   :
-                            COMPANY_NAMES;
+  authorType === "female" ? FB_FEMALE_NAMES :
+  authorType === "male"   ? FB_MALE_NAMES   :
+                            FB_COMPANY_NAMES;
 
 const displayAuthor = React.useMemo(() => {
   if (!randNamesOn && post.author) return post.author;
