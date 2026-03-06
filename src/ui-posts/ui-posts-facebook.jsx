@@ -8,7 +8,7 @@ import {
   getImagePool,            
 } from "../utils";
 
-import { FEMALE_NAMES, MALE_NAMES, COMPANY_NAMES } from "./names";
+import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
 
 import { BottomSheet } from "../ui-core/ui-mobile-facebook";
 import { createPortal } from "react-dom";
