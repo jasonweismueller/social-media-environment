@@ -507,8 +507,13 @@ export function buildMinimalHeader(posts) {
   `${id}_share_text`,
   `${id}_cta_clicked`,
   `${id}_bio_opened`,
-  `${id}_bio_url_clicked`,
-  `${id}_mention_clicked`
+`${id}_bio_url_clicked`,
+`${id}_mention_clicked`,
+`${id}_note_opened`,
+`${id}_note_view_details`,
+`${id}_note_link_clicked`,
+`${id}_note_helpful_rated`,
+`${id}_note_helpful_value`
     );
   });
 
@@ -604,15 +609,20 @@ export function buildParticipantRow({
   const ensure = (id) => {
     if (!per.has(id)) {
       per.set(id, {
-        reaction_type: "",
-        expandable: false,
-        expanded: false,
-        commented: false,
-        comment_texts: [],
-        shared: false,
-        saved: false,
-        reported_misinfo: false,
-      });
+  reaction_type: "",
+  expandable: false,
+  expanded: false,
+  commented: false,
+  comment_texts: [],
+  shared: false,
+  saved: false,
+  reported_misinfo: false,
+  note_opened: false,
+  note_view_details: false,
+  note_link_clicked: false,
+  note_helpful_rated: false,
+  note_helpful_value: "",
+});
     }
     return per.get(id);
   };
@@ -657,6 +667,11 @@ switch (action) {
 case "save":
     p.saved = true;
     break;
+  
+    case "note_helpful_rate":
+  p.note_helpful_rated = true;
+  p.note_helpful_value = String(e.value || "").trim();
+  break;
 
 
 
@@ -693,6 +708,18 @@ case "bio_url_click":
 
 case "mention_clicked":
   p.mention_clicked = true;
+  break;
+
+case "note_modal_open":
+  p.note_opened = true;
+  break;
+
+case "note_view_details":
+  p.note_view_details = true;
+  break;
+
+case "note_link_open":
+  p.note_link_clicked = true;
   break;
 
 
@@ -751,9 +778,14 @@ row[`${id}_shared`]        = hasTarget ? 1 : "";
 row[`${id}_share_target`]  = hasTarget ? shareTargetClean : "";
 row[`${id}_share_text`]    = agg.share_text || "";
 row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : "";
-row[`${id}_bio_opened`]     = agg.bio_opened ? 1 : "";
+row[`${id}_bio_opened`] = agg.bio_opened ? 1 : "";
 row[`${id}_bio_url_clicked`] = agg.bio_url_clicked ? 1 : "";
 row[`${id}_mention_clicked`] = agg.mention_clicked ? 1 : "";
+row[`${id}_note_opened`] = agg.note_opened ? 1 : "";
+row[`${id}_note_view_details`] = agg.note_view_details ? 1 : "";
+row[`${id}_note_link_clicked`] = agg.note_link_clicked ? 1 : "";
+row[`${id}_note_helpful_rated`] = agg.note_helpful_rated ? 1 : "";
+row[`${id}_note_helpful_value`] = agg.note_helpful_value || "";
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
@@ -779,28 +811,29 @@ export function extractPerPostFromRosterRow(row) {
       const outEnsure = (id) => {
         if (!clean[id]) {
           clean[id] = {
-            reacted: 0,
-            commented: 0,
-            shared: 0,
-            reported: 0,
-            expandable: 0,
-            expanded: 0,
-            saved: 0,
-            reactions: [],
-            reaction_types: [],
-            reaction_type: "",
-            comment_text: "",
-            comment_count: 0,
-            dwell_s: 0,
-            share_target: "",
-            share_text: "",
-            cta_clicked: 0,
-            bio_opened: 0,
-            bio_url_clicked: 0,
-            mention_clicked: 0,
-            
-            
-          };
+  reacted: 0,
+  commented: 0,
+  shared: 0,
+  reported: 0,
+  expandable: 0,
+  expanded: 0,
+  saved: 0,
+  reactions: [],
+  reaction_types: [],
+  reaction_type: "",
+  comment_text: "",
+  comment_count: 0,
+  dwell_s: 0,
+  share_target: "",
+  share_text: "",
+  cta_clicked: 0,
+  bio_opened: 0,
+  bio_url_clicked: 0,
+  mention_clicked: 0,
+  note_opened: 0,
+  note_view_details: 0,
+  note_link_clicked: 0,
+};
         }
         return clean[id];
       };
@@ -847,6 +880,10 @@ export function extractPerPostFromRosterRow(row) {
         obj.bio_opened = Number(agg?.bio_opened || 0);
 obj.bio_url_clicked = Number(agg?.bio_url_clicked || 0);
 obj.mention_clicked = Number(agg?.mention_clicked || 0);
+
+obj.note_opened = Number(agg?.note_opened || 0);
+obj.note_view_details = Number(agg?.note_view_details || 0);
+obj.note_link_clicked = Number(agg?.note_link_clicked || 0);
 
         obj.dwell_s = Number.isFinite(agg?.dwell_s)
           ? agg.dwell_s
@@ -928,18 +965,24 @@ obj.mention_clicked = Number(agg?.mention_clicked || 0);
   const out = {};
   const ensure = (id) => {
     if (!out[id]) {
-      out[id] = {
-        reacted: 0, commented: 0, shared: 0, reported: 0,
-        expandable: 0, expanded: 0,
-        saved: 0,
-        reactions: [], reaction_types: [], reaction_type: "",
-        comment_text: "", comment_count: 0,
-        share_target: "", share_text: "",
-        cta_clicked: 0,
-        dwell_s: 0,
-        bio_opened: 0,
-        bio_url_clicked: 0
-      };
+     out[id] = {
+  reacted: 0, commented: 0, shared: 0, reported: 0,
+  expandable: 0, expanded: 0,
+  saved: 0,
+  reactions: [], reaction_types: [], reaction_type: "",
+  comment_text: "", comment_count: 0,
+  share_target: "", share_text: "",
+  cta_clicked: 0,
+  dwell_s: 0,
+  bio_opened: 0,
+  bio_url_clicked: 0,
+  mention_clicked: 0,
+  note_opened: 0,
+  note_view_details: 0,
+  note_link_clicked: 0,
+note_helpful_rated: 0,
+note_helpful_value: ""
+};
     }
     return out[id];
   };
@@ -948,7 +991,7 @@ obj.mention_clicked = Number(agg?.mention_clicked || 0);
     let m;
 
     // boolean fields
-   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked)$/.exec(key);
+   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked)$/.exec(key);
 if (m) {
   const obj = ensure(m[1]);
   const metric = m[2];
@@ -1046,8 +1089,8 @@ export function summarizeRoster(rows) {
   const postKeys = new Set();
 rows.forEach(r => {
   Object.keys(r).forEach(k => {
-    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$/.test(k)) {
-      const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked)$/, "");
+    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$/.test(k)) {
+  const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked)$/, "");
       postKeys.add(base);
     }
   });
@@ -1062,6 +1105,9 @@ rows.forEach(r => {
     const saved      = rows.reduce((acc, r) => acc + (Number(r[`${base}_saved`]) || 0), 0);
     const shared     = rows.reduce((acc, r) => acc + (Number(r[`${base}_shared`]) || 0), 0);
     const reported   = rows.reduce((acc, r) => acc + (Number(r[`${base}_reported_misinfo`]) || 0), 0);
+    const noteOpened = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_opened`]) || 0), 0);
+const noteViewDetails = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_view_details`]) || 0), 0);
+const noteLinkClicked = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_link_clicked`]) || 0), 0);
     const expandRate = expandable > 0 ? expanded / expandable : null;
     const dwellSArr = rows
       .map(r => {
@@ -1073,7 +1119,20 @@ rows.forEach(r => {
       .filter(n => Number.isFinite(n));
     const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
 
-    perPost[base] = { reacted, expandable, expanded, expandRate, commented, saved, shared, reported, avgDwellS };
+    perPost[base] = {
+  reacted,
+  expandable,
+  expanded,
+  expandRate,
+  commented,
+  saved,
+  shared,
+  reported,
+  noteOpened,
+  noteViewDetails,
+  noteLinkClicked,
+  avgDwellS
+};
   }
 
   return {
