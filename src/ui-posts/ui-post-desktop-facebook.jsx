@@ -187,7 +187,8 @@ export function FacebookCommentModalDesktop({
   if (!open) return null;
 
   const totalVisibleComments =
-    (shouldShowGhosts ? Math.min(5, baseCommentCount) : 0) + (mySubmittedComment ? 1 : 0);
+    (shouldShowGhosts ? Math.min(5, baseCommentCount) : 0) +
+    (mySubmittedComment ? 1 : 0);
 
   return (
     <DesktopOverlay onClose={onClose}>
@@ -196,13 +197,13 @@ export function FacebookCommentModalDesktop({
           background: "#fff",
           borderRadius: 18,
           width: "100%",
-          maxWidth: 980,
-          height: "min(86vh, 760px)",
+          maxWidth: 760,
+          maxHeight: "88vh",
           boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
           animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
-          display: "grid",
-          gridTemplateColumns: "minmax(320px, 420px) minmax(380px, 1fr)",
           overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
           position: "relative",
         }}
       >
@@ -225,21 +226,35 @@ export function FacebookCommentModalDesktop({
           ×
         </button>
 
-        {/* LEFT: original post */}
         <div
           style={{
+            padding: "18px 20px",
+            borderBottom: "1px solid #e5e7eb",
+            fontWeight: 700,
+            fontSize: 18,
+            textAlign: "center",
+            background: "#fff",
+          }}
+        >
+          Comments
+        </div>
+
+        {/* TOP: original post */}
+        <div
+          style={{
+            padding: 16,
+            borderBottom: "1px solid #e5e7eb",
             background: "#f9fafb",
-            borderRight: "1px solid #e5e7eb",
-            padding: 18,
             overflowY: "auto",
+            maxHeight: "38vh",
           }}
         >
           <div
             style={{
               fontWeight: 700,
-              fontSize: 15,
+              fontSize: 14,
               color: "#111827",
-              marginBottom: 12,
+              marginBottom: 10,
             }}
           >
             Original post
@@ -248,106 +263,38 @@ export function FacebookCommentModalDesktop({
           <FacebookPostPreview postPreview={postPreview} />
         </div>
 
-        {/* RIGHT: comments pane */}
+        {/* MIDDLE: comments */}
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
+            flex: 1,
             minHeight: 0,
+            overflowY: "auto",
+            padding: "16px 18px",
             background: "#fff",
           }}
         >
-          <div
-            style={{
-              padding: "18px 20px",
-              borderBottom: "1px solid #e5e7eb",
-              fontWeight: 700,
-              fontSize: 18,
-              textAlign: "center",
-            }}
-          >
-            Comments
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflowY: "auto",
-              padding: "16px 18px",
-              background: "#fff",
-            }}
-          >
-            {totalVisibleComments === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: "#6b7280",
-                  fontSize: 14,
-                  marginTop: 80,
-                }}
-              >
-                No comments yet. Start the conversation.
-              </div>
-            ) : (
-              <>
-                {shouldShowGhosts &&
-                  Array.from({ length: Math.min(5, baseCommentCount) }).map((_, i) => (
-                    <div
-                      key={`ghost-${i}`}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 10,
-                        marginBottom: 16,
-                      }}
-                    >
-                      <img
-                        src={neutralAvatarDataUrl(34)}
-                        alt=""
-                        width={34}
-                        height={34}
-                        style={{ borderRadius: "50%", flexShrink: 0 }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 14,
-                            marginBottom: 5,
-                            color: "#111827",
-                          }}
-                        >
-                          User {i + 1}
-                        </div>
-                        <div
-                          style={{
-                            height: 10,
-                            width: "78%",
-                            background: "#e5e7eb",
-                            borderRadius: 999,
-                            marginBottom: 6,
-                          }}
-                        />
-                        <div
-                          style={{
-                            height: 10,
-                            width: "48%",
-                            background: "#e5e7eb",
-                            borderRadius: 999,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-
-                {!!mySubmittedComment && (
+          {totalVisibleComments === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                color: "#6b7280",
+                fontSize: 14,
+                marginTop: 40,
+              }}
+            >
+              No comments yet. Start the conversation.
+            </div>
+          ) : (
+            <>
+              {shouldShowGhosts &&
+                Array.from({ length: Math.min(5, baseCommentCount) }).map((_, i) => (
                   <div
+                    key={`ghost-${i}`}
                     style={{
                       display: "flex",
                       alignItems: "flex-start",
                       gap: 10,
-                      marginTop: 6,
+                      marginBottom: 16,
                     }}
                   >
                     <img
@@ -357,94 +304,142 @@ export function FacebookCommentModalDesktop({
                       height={34}
                       style={{ borderRadius: "50%", flexShrink: 0 }}
                     />
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div
                         style={{
                           fontWeight: 700,
                           fontSize: 14,
-                          marginBottom: 3,
+                          marginBottom: 5,
                           color: "#111827",
                         }}
                       >
-                        {String(participantId)}
+                        User {i + 1}
                       </div>
                       <div
                         style={{
-                          fontSize: 14,
-                          color: "#111827",
-                          lineHeight: 1.4,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word",
+                          height: 10,
+                          width: "78%",
+                          background: "#e5e7eb",
+                          borderRadius: 999,
+                          marginBottom: 6,
                         }}
-                      >
-                        {mySubmittedComment}
-                      </div>
+                      />
+                      <div
+                        style={{
+                          height: 10,
+                          width: "48%",
+                          background: "#e5e7eb",
+                          borderRadius: 999,
+                        }}
+                      />
                     </div>
                   </div>
-                )}
-              </>
-            )}
-          </div>
+                ))}
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSubmit?.();
-            }}
+              {!!mySubmittedComment && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginTop: 6,
+                  }}
+                >
+                  <img
+                    src={neutralAvatarDataUrl(34)}
+                    alt=""
+                    width={34}
+                    height={34}
+                    style={{ borderRadius: "50%", flexShrink: 0 }}
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 14,
+                        marginBottom: 3,
+                        color: "#111827",
+                      }}
+                    >
+                      {String(participantId)}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: "#111827",
+                        lineHeight: 1.4,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {mySubmittedComment}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* BOTTOM: composer */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit?.();
+          }}
+          style={{
+            borderTop: "1px solid #e5e7eb",
+            padding: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: "#fff",
+          }}
+        >
+          <img
+            src={neutralAvatarDataUrl(34)}
+            alt=""
+            width={34}
+            height={34}
+            style={{ borderRadius: "50%", flexShrink: 0 }}
+          />
+
+          <input
+            type="text"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder={
+              totalVisibleComments === 0
+                ? "Start the conversation..."
+                : "Write a comment..."
+            }
             style={{
-              borderTop: "1px solid #e5e7eb",
-              padding: 14,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              background: "#fff",
+              flex: 1,
+              border: "none",
+              outline: "none",
+              background: "#f3f4f6",
+              borderRadius: 999,
+              padding: "11px 14px",
+              fontSize: 14,
+            }}
+          />
+
+          <button
+            type="submit"
+            disabled={!commentText.trim()}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: commentText.trim() ? "#1877f2" : "#9ca3af",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: commentText.trim() ? "pointer" : "default",
+              padding: "0 4px",
             }}
           >
-            <img
-              src={neutralAvatarDataUrl(34)}
-              alt=""
-              width={34}
-              height={34}
-              style={{ borderRadius: "50%", flexShrink: 0 }}
-            />
-
-            <input
-              type="text"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder={
-                totalVisibleComments === 0
-                  ? "Start the conversation..."
-                  : "Write a comment..."
-              }
-              style={{
-                flex: 1,
-                border: "none",
-                outline: "none",
-                background: "#f3f4f6",
-                borderRadius: 999,
-                padding: "11px 14px",
-                fontSize: 14,
-              }}
-            />
-
-            <button
-              type="submit"
-              disabled={!commentText.trim()}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: commentText.trim() ? "#1877f2" : "#9ca3af",
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: commentText.trim() ? "pointer" : "default",
-                padding: "0 4px",
-              }}
-            >
-              Post
-            </button>
-          </form>
-        </div>
+            Post
+          </button>
+        </form>
       </div>
     </DesktopOverlay>
   );

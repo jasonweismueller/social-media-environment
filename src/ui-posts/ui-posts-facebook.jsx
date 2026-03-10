@@ -525,7 +525,6 @@ const onSubmitComment = () => {
   setMySubmittedComment(txt);
   setParticipantComments((c) => c + 1);
   setCommentText("");
-  setShowComment(false);
 };
 
   // media (image/video)
@@ -625,6 +624,15 @@ const displayImage = React.useMemo(() => {
   }
   return post.image || null;
 }, [post?.image, post?.imageMode, randImagesOn, randImageUrl]);
+
+const postPreview = useMemo(() => ({
+  author: displayAuthor,
+  avatarUrl: displayAvatar,
+  badge: !!post.badge,
+  timeLabel,
+  text: post.text || "",
+  image: displayImage || null,
+}), [displayAuthor, displayAvatar, post.badge, timeLabel, post.text, displayImage]);
 
   // time formatter
   const fmtTime = (s) => {
@@ -1526,20 +1534,21 @@ const displayImage = React.useMemo(() => {
           participantId={String(myParticipantId)}
         />
       ) : (
-        <FacebookCommentModalDesktop
-          open={showComment}
-          onClose={() => {
-            onAction("comment_cancel", { post_id: post.id });
-            setShowComment(false);
-          }}
-          onSubmit={onSubmitComment}
-          commentText={commentText}
-          setCommentText={setCommentText}
-          mySubmittedComment={mySubmittedComment}
-          shouldShowGhosts={shouldShowGhosts}
-          baseCommentCount={baseCommentCount}
-          participantId={String(myParticipantId)}
-        />
+       <FacebookCommentModalDesktop
+  open={showComment}
+  onClose={() => {
+    onAction("comment_cancel", { post_id: post.id });
+    setShowComment(false);
+  }}
+  onSubmit={onSubmitComment}
+  commentText={commentText}
+  setCommentText={setCommentText}
+  mySubmittedComment={mySubmittedComment}
+  shouldShowGhosts={shouldShowGhosts}
+  baseCommentCount={baseCommentCount}
+  participantId={String(myParticipantId)}
+  postPreview={postPreview}
+/>
       )}
 
       {isMobile ? (
