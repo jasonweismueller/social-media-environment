@@ -1,23 +1,45 @@
 // components-ui-posts.jsx
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
-  REACTION_META, sumSelectedReactions, topReactions, fakeNamesFor,
-  displayTimeForPost, getAvatarPool, pickDeterministic,
-  AVATAR_POOLS_ENDPOINTS,
-  getImagePool,            
+  REACTION_META,
+  sumSelectedReactions,
+  topReactions,
+  fakeNamesFor,
+  displayTimeForPost,
+  getAvatarPool,
+  pickDeterministic,
+  getImagePool,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
-
-import { BottomSheet } from "../ui-core/ui-mobile-facebook";
-import { createPortal } from "react-dom";
 import { InterventionBlock } from "./components-ui-interventions";
 
 import {
-  IconBadge, IconDots, IconGlobe, IconInfo, IconUsers,
-  IconThumb, IconComment, IconShare,
-  ActionBtn, PostText, Modal, NamesPeek, neutralAvatarDataUrl, IconVolume, IconVolumeMute,
+  FacebookCommentModalDesktop,
+  FacebookShareModalDesktop,
+} from "./ui-post-desktop-facebook";
+
+import {
+  FacebookMenuSheet,
+  FacebookCommentSheetMobile,
+  FacebookShareSheetMobile,
+} from "./ui-post-mobile-facebook";
+
+import {
+  IconBadge,
+  IconDots,
+  IconGlobe,
+  IconThumb,
+  IconComment,
+  IconShare,
+  ActionBtn,
+  PostText,
+  NamesPeek,
+  IconVolume,
+  IconVolumeMute,
 } from "../ui-core";
 
 /* --- In-view autoplay hook --- */
@@ -55,7 +77,6 @@ function useIsMobile(breakpoint = 768) {
 function MenuPortal({ anchorRef, open, onClose, children }) {
   const [coords, setCoords] = React.useState({ top: 0, left: 0, ready: false });
 
-  // compute position in a layout effect (safe ref read)
   React.useLayoutEffect(() => {
     if (!open) return;
     const anchor = anchorRef?.current;
@@ -64,14 +85,14 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
     const update = () => {
       const r = anchor.getBoundingClientRect();
       setCoords({
-        top: r.bottom + window.scrollY + 4,
-        left: r.left + window.scrollX,
+        top: r.bottom + 4,
+        left: r.left,
         ready: true,
       });
     };
 
     update();
-    window.addEventListener("scroll", update, true);  // capture to catch scrollable parents
+    window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
 
     return () => {
@@ -80,16 +101,17 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
     };
   }, [open, anchorRef]);
 
-  // close on outside click / Esc
   React.useEffect(() => {
     if (!open) return;
     const onDocMouseDown = (e) => {
       const menuEl = document.querySelector("#post-menu-portal");
       const inMenu = menuEl && menuEl.contains(e.target);
-      const inBtn  = anchorRef?.current && anchorRef.current.contains(e.target);
+      const inBtn = anchorRef?.current && anchorRef.current.contains(e.target);
       if (!inMenu && !inBtn) onClose?.();
     };
-    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -106,7 +128,7 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
       className="menu"
       role="menu"
       style={{
-        position: "fixed",             // fixed is simpler once we compute viewport coords
+        position: "fixed",
         zIndex: 20000,
         top: coords.top,
         left: coords.left,
@@ -123,14 +145,9 @@ export function PostCard({ post, onAction, disabled, registerViewRef, respectSho
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [commentText, setCommentText] = useState("");
-  // right before the meta markup, derive once:
 
-  const NAME_POOLS = {
-  female: FB_FEMALE_NAMES,
-  male: FB_MALE_NAMES,
-  company: FB_COMPANY_NAMES,
-};
 
 const randNamesOn  = !!(flags?.randomize_names);
 const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar); // 👈 accept both
@@ -485,23 +502,31 @@ const isMobile = useIsMobile();  // ⟵ add this
     closeNowAndSuppress();
   };
 
-  const onShare = () => {
-    if (hasShared) return; // only once
-    click("share");
-    setHasShared(true);
-  };
+const onShare = () => {
+  if (hasShared) return;
+  setShowShare(true);
+  click("share_open");
+};
+
+const onConfirmShare = ({ message } = {}) => {
+  if (hasShared) return;
+  click("share", { message: message || "" });
+  setHasShared(true);
+  setShowShare(false);
+};
   const onExpand = () => { setExpanded(true); click("expand_text"); };
   const onOpenComment = () => { setShowComment(true); click("comment_open"); };
 
   // comment submit
-  const onSubmitComment = () => {
-    const txt = commentText.trim();
-    if (!txt) return;
-    click("comment_submit", { text: txt, length: txt.length });
-    setMySubmittedComment(txt);
-    setParticipantComments((c) => c + 1);
-    setCommentText("");
-  };
+const onSubmitComment = () => {
+  const txt = commentText.trim();
+  if (!txt) return;
+  click("comment_submit", { text: txt, length: txt.length });
+  setMySubmittedComment(txt);
+  setParticipantComments((c) => c + 1);
+  setCommentText("");
+  setShowComment(false);
+};
 
   // media (image/video)
   const onImageOpen = () => { if (post.image) click("image_open", { alt: post.image.alt || "" }); };
@@ -977,18 +1002,11 @@ const displayImage = React.useMemo(() => {
       <IconDots />
     </button>
 {isMobile ? (
-  <BottomSheet
+  <FacebookMenuSheet
     open={menuOpen}
     onClose={() => setMenuOpen(false)}
-    title="Post options"
-    height="75vh"
-  >
-    {menuItems}
-    <div style={{ height: 8 }} />
-    <button className="btn ghost" onClick={() => setMenuOpen(false)} style={{ width: "100%" }}>
-      Cancel
-    </button>
-  </BottomSheet>
+    menuItems={menuItems}
+  />
 ) : (
   <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
     {menuItems}
@@ -1410,7 +1428,7 @@ const displayImage = React.useMemo(() => {
         ) : null;
       })()}
 
-      <footer className="footer">
+            <footer className="footer">
         <div className="actions">
           <div
             className="like-wrap"
@@ -1419,7 +1437,6 @@ const displayImage = React.useMemo(() => {
               scheduleClose();
               suppressHoverUntil.current = 0;
             }}
-            // Touch-first behavior: open immediately and mark touch flow
             onPointerDown={(e) => {
               if (e.pointerType === "touch") {
                 touchActiveRef.current = true;
@@ -1432,7 +1449,6 @@ const displayImage = React.useMemo(() => {
             }}
             onPointerUp={(e) => {
               if (e.pointerType === "touch") {
-                // keep open; allow outside tap to close
                 touchActiveRef.current = false;
               }
             }}
@@ -1460,7 +1476,6 @@ const displayImage = React.useMemo(() => {
                 onMouseEnter={scheduleOpen}
                 onMouseLeave={scheduleClose}
                 onPointerDown={(e) => {
-                  // keep taps inside the flyout from bubbling up to the outside-closer
                   e.stopPropagation();
                 }}
               >
@@ -1478,63 +1493,67 @@ const displayImage = React.useMemo(() => {
             )}
           </div>
 
-          <ActionBtn label="Comment" onClick={onOpenComment} Icon={IconComment} disabled={disabled} />
-          <ActionBtn label="Share" onClick={onShare} Icon={IconShare} active={hasShared} disabled={disabled || hasShared} />
+          <ActionBtn
+            label="Comment"
+            onClick={onOpenComment}
+            Icon={IconComment}
+            disabled={disabled}
+          />
+
+          <ActionBtn
+            label="Share"
+            onClick={onShare}
+            Icon={IconShare}
+            active={hasShared}
+            disabled={disabled || hasShared}
+          />
         </div>
       </footer>
 
-      {showComment && (
-        <Modal onClose={() => setShowComment(false)} title="Write a comment">
-          {(shouldShowGhosts || !!mySubmittedComment) && (
-            <div className="ghost-comments" style={{ marginBottom: 12, paddingBottom: 8, borderBottom: "1px solid var(--line)" }}>
-              {shouldShowGhosts && Array.from({ length: Math.min(3, baseCommentCount) }).map((_, i) => (
-                <div key={`ghost-${i}`} className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: i === 0 ? 2 : 10 }}>
-                  <div className="ghost-avatar sm" />
-                  <div className="ghost-lines" style={{ flex: 1, minWidth:0 }}>
-                    <div className="ghost-line w-80" />
-                    <div className="ghost-line w-50" />
-                  </div>
-                </div>
-              ))}
+      {isMobile ? (
+        <FacebookCommentSheetMobile
+          open={showComment}
+          onClose={() => {
+            onAction("comment_cancel", { post_id: post.id });
+            setShowComment(false);
+          }}
+          onSubmit={onSubmitComment}
+          commentText={commentText}
+          setCommentText={setCommentText}
+          mySubmittedComment={mySubmittedComment}
+          shouldShowGhosts={shouldShowGhosts}
+          baseCommentCount={baseCommentCount}
+          participantId={String(myParticipantId)}
+        />
+      ) : (
+        <FacebookCommentModalDesktop
+          open={showComment}
+          onClose={() => {
+            onAction("comment_cancel", { post_id: post.id });
+            setShowComment(false);
+          }}
+          onSubmit={onSubmitComment}
+          commentText={commentText}
+          setCommentText={setCommentText}
+          mySubmittedComment={mySubmittedComment}
+          shouldShowGhosts={shouldShowGhosts}
+          baseCommentCount={baseCommentCount}
+          participantId={String(myParticipantId)}
+        />
+      )}
 
-              {!!mySubmittedComment && (
-                <div className="ghost-row" style={{ alignItems: "flex-start", gap: ".6rem", marginTop: shouldShowGhosts ? 10 : 2 }}>
-                  <img
-                    src={neutralAvatarDataUrl(28)}
-                    alt=""
-                    width={28}
-                    height={28}
-                    style={{ display: "block", borderRadius: "999px", flexShrink: 0 }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: ".9rem", fontWeight: 600, lineHeight: 1.2 }}>
-                      {String(myParticipantId)}
-                    </div>
-                    <div style={{ marginTop: 2, color: "#111827", fontSize: ".95rem", lineHeight: 1.35, whiteSpace: "pre-wrap" }}>
-                      {mySubmittedComment}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <textarea
-            className="textarea"
-            rows={4}
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Write your comment..."
-          />
-          <div className="row-end">
-            <button className="btn" onClick={() => { onAction("comment_cancel", { post_id: post.id }); setShowComment(false); }}>
-              Close
-            </button>
-            <button className="btn primary" onClick={onSubmitComment} disabled={!commentText.trim()}>
-              Post
-            </button>
-          </div>
-        </Modal>
+      {isMobile ? (
+        <FacebookShareSheetMobile
+          open={showShare}
+          onClose={() => setShowShare(false)}
+          onShare={onConfirmShare}
+        />
+      ) : (
+        <FacebookShareModalDesktop
+          open={showShare}
+          onClose={() => setShowShare(false)}
+          onShare={onConfirmShare}
+        />
       )}
     </article>
   );
