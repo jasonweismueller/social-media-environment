@@ -525,6 +525,7 @@ const onSubmitComment = () => {
   setMySubmittedComment(txt);
   setParticipantComments((c) => c + 1);
   setCommentText("");
+  setShowComment(false);
 };
 
   // media (image/video)
@@ -1548,6 +1549,8 @@ const postPreview = useMemo(() => ({
   baseCommentCount={baseCommentCount}
   participantId={String(myParticipantId)}
   postPreview={postPreview}
+  displayedCommentCount={displayedCommentCount}
+  displayedShareCount={displayedShareCount}
 />
       )}
 

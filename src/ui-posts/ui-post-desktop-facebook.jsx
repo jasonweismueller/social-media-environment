@@ -42,7 +42,7 @@ function DesktopOverlay({ children, onClose }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Small Facebook Post Preview                                                */
+/* Facebook Post Preview                                                      */
 /* -------------------------------------------------------------------------- */
 
 function FacebookPostPreview({ postPreview }) {
@@ -64,6 +64,7 @@ function FacebookPostPreview({ postPreview }) {
         border: "1px solid #e5e7eb",
         borderRadius: 14,
         overflow: "hidden",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       <div style={{ padding: 14 }}>
@@ -147,7 +148,7 @@ function FacebookPostPreview({ postPreview }) {
           dangerouslySetInnerHTML={{
             __html: image.svg.replace(
               "<svg ",
-              "<svg preserveAspectRatio='xMidYMid slice' style='display:block;width:100%;height:auto;max-height:360px' "
+              "<svg preserveAspectRatio='xMidYMid slice' style='display:block;width:100%;height:auto;max-height:520px' "
             ),
           }}
         />
@@ -158,7 +159,7 @@ function FacebookPostPreview({ postPreview }) {
           style={{
             display: "block",
             width: "100%",
-            maxHeight: 360,
+            maxHeight: 520,
             objectFit: "cover",
             background: "#f3f4f6",
           }}
@@ -178,36 +179,28 @@ export function FacebookCommentModalDesktop({
   onSubmit,
   commentText,
   setCommentText,
-  mySubmittedComment,
-  shouldShowGhosts,
-  baseCommentCount,
-  participantId,
   postPreview,
 }) {
   if (!open) return null;
 
-  const totalVisibleComments =
-    (shouldShowGhosts ? Math.min(5, baseCommentCount) : 0) +
-    (mySubmittedComment ? 1 : 0);
-
   return (
     <DesktopOverlay onClose={onClose}>
       <div
-  style={{
-    background: "#fff",
-    borderRadius: 18,
-    width: "100%",
-    maxWidth: 760,
-    height: "min(92vh, 900px)",
-    maxHeight: "92vh",
-    boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
-    animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    position: "relative",
-  }}
->
+        style={{
+          background: "#fff",
+          borderRadius: 18,
+          width: "100%",
+          maxWidth: 760,
+          height: "min(92vh, 920px)",
+          maxHeight: "92vh",
+          boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
+          animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+        }}
+      >
         <button
           onClick={onClose}
           aria-label="Close"
@@ -227,162 +220,20 @@ export function FacebookCommentModalDesktop({
           ×
         </button>
 
-        <div
-          style={{
-            padding: "18px 20px",
-            borderBottom: "1px solid #e5e7eb",
-            fontWeight: 700,
-            fontSize: 18,
-            textAlign: "center",
-            background: "#fff",
-          }}
-        >
-          Comments
-        </div>
-
-        {/* TOP: original post */}
-        <div
-  style={{
-    padding: 16,
-    borderBottom: "1px solid #e5e7eb",
-    background: "#f9fafb",
-    overflowY: "auto",
-    maxHeight: "44vh",
-  }}
->
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: 14,
-              color: "#111827",
-              marginBottom: 10,
-            }}
-          >
-            Original post
-          </div>
-
-          <FacebookPostPreview postPreview={postPreview} />
-        </div>
-
-        {/* MIDDLE: comments */}
+        {/* Original post area */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
+            padding: 16,
+            background: "#f9fafb",
             overflowY: "auto",
-            padding: "16px 18px",
-            background: "#fff",
           }}
         >
-          {totalVisibleComments === 0 ? (
-            <div
-              style={{
-                textAlign: "center",
-                color: "#6b7280",
-                fontSize: 14,
-                marginTop: 40,
-              }}
-            >
-              No comments yet. Start the conversation.
-            </div>
-          ) : (
-            <>
-              {shouldShowGhosts &&
-                Array.from({ length: Math.min(5, baseCommentCount) }).map((_, i) => (
-                  <div
-                    key={`ghost-${i}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <img
-                      src={neutralAvatarDataUrl(34)}
-                      alt=""
-                      width={34}
-                      height={34}
-                      style={{ borderRadius: "50%", flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 14,
-                          marginBottom: 5,
-                          color: "#111827",
-                        }}
-                      >
-                        User {i + 1}
-                      </div>
-                      <div
-                        style={{
-                          height: 10,
-                          width: "78%",
-                          background: "#e5e7eb",
-                          borderRadius: 999,
-                          marginBottom: 6,
-                        }}
-                      />
-                      <div
-                        style={{
-                          height: 10,
-                          width: "48%",
-                          background: "#e5e7eb",
-                          borderRadius: 999,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-
-              {!!mySubmittedComment && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    marginTop: 6,
-                  }}
-                >
-                  <img
-                    src={neutralAvatarDataUrl(34)}
-                    alt=""
-                    width={34}
-                    height={34}
-                    style={{ borderRadius: "50%", flexShrink: 0 }}
-                  />
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 14,
-                        marginBottom: 3,
-                        color: "#111827",
-                      }}
-                    >
-                      {String(participantId)}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "#111827",
-                        lineHeight: 1.4,
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {mySubmittedComment}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          <FacebookPostPreview postPreview={postPreview} />
         </div>
 
-        {/* BOTTOM: composer */}
+        {/* Composer */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -395,6 +246,7 @@ export function FacebookCommentModalDesktop({
             alignItems: "center",
             gap: 10,
             background: "#fff",
+            flexShrink: 0,
           }}
         >
           <img
@@ -409,11 +261,7 @@ export function FacebookCommentModalDesktop({
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder={
-              totalVisibleComments === 0
-                ? "Start the conversation..."
-                : "Write a comment..."
-            }
+            placeholder="Write a comment..."
             style={{
               flex: 1,
               border: "none",
