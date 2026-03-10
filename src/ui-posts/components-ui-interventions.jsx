@@ -48,6 +48,21 @@ function NoteRichText({ text, onLinkClick }) {
   );
 }
 
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.className = "study-toast";
+  toast.textContent = message;
+
+  document.body.appendChild(toast);
+
+  setTimeout(() => toast.classList.add("show"), 10);
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
 // --- Simple modal (no dependency on your existing Modal component) ---
 function NoteModal({ open, onClose, children, title = "Note" }) {
   if (!open) return null;
@@ -294,7 +309,10 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
               fontSize: 13,
               padding: 0,
             }}
-            onClick={() => onAction?.("note_view_details", { post_id: post.id })}
+            onClick={() => {
+              onAction?.("note_view_details", { post_id: post.id });
+              showToast?.("We have noted your interest in exploring the note details. We will provide you with further information in the study debrief.");
+            }}
           >
             View details
           </button>
@@ -312,12 +330,17 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
       </div>
 
       {/* Note body */}
-      <div style={{ padding: 14, fontSize: 14, lineHeight: 1.45 }}>
-        <NoteRichText
-          text={post.noteText || ""}
-          onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
-        />
-      </div>
+      <div style={{ marginTop: 10, fontSize: 14, color: "#111827" }}>
+  <NoteRichText
+    text={post.noteText || ""}
+    onLinkClick={(href) => {
+      onAction?.("note_link_open", { post_id: post.id, href });
+      showToast?.(
+        "We have noted your interest in exploring the note link. We will provide you with further information in the study debrief."
+      );
+    }}
+  />
+</div>
 
       <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
 
@@ -327,17 +350,18 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
 
         <div style={{ display: "flex", gap: 10 }}>
           {["Yes", "Somewhat", "No"].map((label) => (
-            <button
-              key={label}
-              type="button"
-              className="btn"
-              onClick={() => {
-                onAction?.("note_helpful_rate", { post_id: post.id, value: label.toLowerCase() });
-                onClose?.();
-              }}
-            >
-              {label}
-            </button>
+           <button
+  key={label}
+  type="button"
+  className="btn"
+  onClick={() => {
+    onAction?.("note_helpful_rate", { post_id: post.id, value: label.toLowerCase() });
+    showToast?.("Thank you for evaluating the helpfulness of the note.");
+    onClose?.();
+  }}
+>
+  {label}
+</button>
           ))}
         </div>
       </div>
