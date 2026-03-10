@@ -193,20 +193,21 @@ export function FacebookCommentModalDesktop({
   return (
     <DesktopOverlay onClose={onClose}>
       <div
-        style={{
-          background: "#fff",
-          borderRadius: 18,
-          width: "100%",
-          maxWidth: 760,
-          maxHeight: "88vh",
-          boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
-          animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-        }}
-      >
+  style={{
+    background: "#fff",
+    borderRadius: 18,
+    width: "100%",
+    maxWidth: 760,
+    height: "min(92vh, 900px)",
+    maxHeight: "92vh",
+    boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
+    animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
+  }}
+>
         <button
           onClick={onClose}
           aria-label="Close"
@@ -241,14 +242,14 @@ export function FacebookCommentModalDesktop({
 
         {/* TOP: original post */}
         <div
-          style={{
-            padding: 16,
-            borderBottom: "1px solid #e5e7eb",
-            background: "#f9fafb",
-            overflowY: "auto",
-            maxHeight: "38vh",
-          }}
-        >
+  style={{
+    padding: 16,
+    borderBottom: "1px solid #e5e7eb",
+    background: "#f9fafb",
+    overflowY: "auto",
+    maxHeight: "44vh",
+  }}
+>
           <div
             style={{
               fontWeight: 700,
