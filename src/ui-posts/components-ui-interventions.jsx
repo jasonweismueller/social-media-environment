@@ -48,21 +48,6 @@ function NoteRichText({ text, onLinkClick }) {
   );
 }
 
-function showToast(message) {
-  const toast = document.createElement("div");
-  toast.className = "study-toast";
-  toast.textContent = message;
-
-  document.body.appendChild(toast);
-
-  setTimeout(() => toast.classList.add("show"), 10);
-
-  setTimeout(() => {
-    toast.classList.remove("show");
-    setTimeout(() => toast.remove(), 300);
-  }, 2500);
-}
-
 // --- Simple modal (no dependency on your existing Modal component) ---
 function NoteModal({ open, onClose, children, title = "Note" }) {
   if (!open) return null;
@@ -311,7 +296,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
             }}
             onClick={() => {
               onAction?.("note_view_details", { post_id: post.id });
-              showToast?.("We have noted your interest in exploring the note details. We will provide you with further information in the study debrief.");
+              alert("We have noted your interest in exploring the note details. We will provide you with further information in the study debrief.");
             }}
           >
             View details
@@ -335,7 +320,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
     text={post.noteText || ""}
     onLinkClick={(href) => {
       onAction?.("note_link_open", { post_id: post.id, href });
-      showToast?.(
+      alert(
         "We have noted your interest in exploring the note link. We will provide you with further information in the study debrief."
       );
     }}
@@ -356,7 +341,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   className="btn"
   onClick={() => {
     onAction?.("note_helpful_rate", { post_id: post.id, value: label.toLowerCase() });
-    showToast?.("Thank you for evaluating the helpfulness of the note.");
+    alert("Thank you for evaluating the helpfulness of the note.");
     onClose?.();
   }}
 >
