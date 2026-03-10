@@ -1512,3 +1512,189 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   border-top: 1px solid rgba(0,0,0,0.12);
   transform: rotate(45deg);
 }
+
+
+/* ======================================================
+   Facebook comment/share modal + sheet enhancements
+   ====================================================== */
+
+/* Desktop comment modal layout */
+.fb-comment-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(380px, 1fr);
+  width: min(980px, calc(100vw - 48px));
+  height: min(86vh, 760px);
+  background: #fff;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.fb-comment-left {
+  background: #f9fafb;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.fb-comment-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+}
+
+.fb-comment-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fb-comment-compose {
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+/* Small post preview inside desktop comment modal */
+.fb-post-preview {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.fb-post-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  object-fit: cover;
+  background: #f3f4f6;
+}
+
+/* Desktop share picker */
+.fb-share-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  justify-items: center;
+  overflow-y: auto;
+}
+
+.fb-share-friend {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.fb-share-friend-name {
+  font-size: 13px;
+  color: #111;
+  text-align: center;
+  margin-top: 6px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-share-avatar {
+  border-radius: 50%;
+  transition: border 0.2s ease;
+}
+
+.fb-share-avatar.is-selected {
+  border: 2px solid var(--blue);
+}
+
+.fb-share-check {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px #fff;
+}
+
+/* Animated message section for share modal/sheet */
+.fb-share-message-wrap {
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.fb-share-message-inner {
+  transition: transform 0.35s cubic-bezier(0.25,1,0.5,1);
+}
+
+/* Mobile comments sheet: make body + composer work like IG */
+.fb-comment-sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 60vh;
+  max-height: 86vh;
+}
+
+.fb-comment-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fb-comment-sheet-compose {
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+/* Slightly nicer modal close button hit area */
+.fb-modal-close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.fb-modal-close:hover {
+  background: #f3f4f6;
+}
+
+/* Mobile: stack safely */
+@media (max-width: 820px) {
+  .fb-comment-modal-grid {
+    grid-template-columns: 1fr;
+    width: min(680px, calc(100vw - 24px));
+    height: min(88vh, 760px);
+  }
+
+  .fb-comment-left {
+    display: none;
+  }
+
+  .fb-share-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Small screens */
+@media (max-width: 520px) {
+  .fb-share-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+}
