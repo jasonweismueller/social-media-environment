@@ -1655,22 +1655,25 @@ const displayedShareCount = baseShareCount + shareCountLocal;
     >
       {postContent}
 
-      {isMobile ? (
-        <FacebookCommentSheetMobile
-          open={showComment}
-          onClose={() => {
-            onAction("comment_cancel", { post_id: post.id });
-            setShowComment(false);
-          }}
-          onSubmit={onSubmitComment}
-          commentText={commentText}
-          setCommentText={setCommentText}
-          mySubmittedComment={mySubmittedComment}
-          shouldShowGhosts={shouldShowGhosts}
-          baseCommentCount={baseCommentCount}
-          participantId={String(myParticipantId)}
-        />
-      ) : (
+      {isMobile
+  ? createPortal(
+      <FacebookCommentSheetMobile
+        open={showComment}
+        onClose={() => {
+          onAction("comment_cancel", { post_id: post.id });
+          setShowComment(false);
+        }}
+        onSubmit={onSubmitComment}
+        commentText={commentText}
+        setCommentText={setCommentText}
+        mySubmittedComment={mySubmittedComment}
+        shouldShowGhosts={shouldShowGhosts}
+        baseCommentCount={baseCommentCount}
+        participantId={String(myParticipantId)}
+      />,
+      document.body
+    )
+  : (
         <FacebookCommentModalDesktop
           open={showComment}
           onClose={() => {
@@ -1693,13 +1696,16 @@ focusTick={commentFocusTick}
         />
       )}
 
-      {isMobile ? (
-        <FacebookShareSheetMobile
-          open={showShare}
-          onClose={() => setShowShare(false)}
-          onShare={onConfirmShare}
-        />
-      ) : (
+      {isMobile
+  ? createPortal(
+      <FacebookShareSheetMobile
+        open={showShare}
+        onClose={() => setShowShare(false)}
+        onShare={onConfirmShare}
+      />,
+      document.body
+    )
+  : (
         <FacebookShareModalDesktop
           open={showShare}
           onClose={() => setShowShare(false)}
