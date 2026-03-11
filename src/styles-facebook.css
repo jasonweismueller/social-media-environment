@@ -1796,10 +1796,12 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 
 /* ======================================================
-   Facebook mobile feed: full-width like Instagram
+   Facebook mobile feed: full-width with sane layering
    ====================================================== */
 @media (max-width: 768px) {
-  html, body, #root {
+  html,
+  body,
+  #root {
     background: #fff !important;
   }
 
@@ -1831,54 +1833,19 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   }
 
   .card,
-.post-card,
-.card.post-card {
-  width: 100% !important;
-  max-width: 100% !important;
-  margin: 0 !important;
-  border: none !important;          /* remove all borders, not just left/right */
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  background: #fff !important;
-  overflow: visible !important;     /* important for reaction flyout */
-}
-
-.like-wrap{
-  position: relative;
-  display: flex;
-  flex: 1;
-  overflow: visible;         /* add */
-  z-index: 20;               /* add */
-}
-
-.footer{
-  padding: .5rem;
-  border-top: 1px solid var(--line);
-  overflow: visible;         /* add */
-  position: relative;        /* add */
-  z-index: 1;                /* add */
-}
-
-.actions {
-  overflow: visible !important;
-}
-
-.react-flyout{
-  position: absolute;
-  bottom: 100%;
-  left: .5rem;
-  transform: translateY(-6px);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .1rem .1rem;
-  box-shadow: var(--shadow);
-  display: flex;
-  gap: 0;
-  white-space: nowrap;
-
-  z-index: 2000;             /* increase a lot */
-}
+  .post-card,
+  .card.post-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 0 !important;
+  }
 
   .page .feed > .card:first-child,
   .container.feed > .card:first-child {
@@ -1900,6 +1867,55 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     padding-right: 12px !important;
   }
 
+  .card-head,
+  .card-body,
+  .bar-stats,
+  .footer,
+  .actions,
+  .like-wrap {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  /* Keep normal post layers low */
+  .card-head,
+  .card-body,
+  .footer,
+  .actions,
+  .like-wrap,
+  .action,
+  .action.active,
+  .menu-wrap,
+  .dots {
+    z-index: auto !important;
+  }
+
+  /* Reaction summary must stay underneath the flyout */
+  .bar-stats,
+  .rx-stack,
+  .rx-stack .rx,
+  .rx-count {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* Only the flyout itself should be high */
+  .react-flyout {
+    position: absolute;
+    bottom: 100%;
+    left: 0.5rem;
+    transform: translateY(-6px);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.1rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    gap: 0;
+    white-space: nowrap;
+    z-index: 25000 !important;
+  }
+
   .image-btn,
   .image-btn img,
   .video-wrap,
@@ -1916,9 +1932,6 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     margin-top: 0 !important;
   }
 }
-
-
-
 
 @media (max-width: 768px) {
   .top-rail-placeholder {
