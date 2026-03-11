@@ -324,39 +324,54 @@ export function FacebookShareModalDesktop({
   return (
     <DesktopOverlay onClose={onClose} topOffset={72}>
       <div
-        style={{
-          position: "relative",
-          background: "#fff",
-          borderRadius: 18,
-          width: "100%",
-          maxWidth: 560,
-          maxHeight: "85vh",
-          padding: "28px 24px 24px",
-          boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
-          fontFamily:
-            "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-          animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            border: "none",
-            background: "transparent",
-            fontSize: 22,
-            cursor: "pointer",
-            color: "#737373",
-            lineHeight: 1,
-          }}
-        >
-          ×
-        </button>
+  style={{
+    background: "#fff",
+    borderRadius: 18,
+    width: "100%",
+    maxWidth: 820,
+    height: "min(calc(100vh - 88px), 980px)",
+    maxHeight: "calc(100vh - 88px)",
+    boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
+    animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
+  }}
+>
+  <div
+    style={{
+      height: 52,
+      minHeight: 52,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      padding: "0 12px",
+      borderBottom: "1px solid #e5e7eb",
+      background: "#fff",
+      flexShrink: 0,
+    }}
+  >
+    <button
+      onClick={onClose}
+      aria-label="Close"
+      style={{
+        width: 34,
+        height: 34,
+        border: "none",
+        background: "transparent",
+        fontSize: 24,
+        lineHeight: 1,
+        cursor: "pointer",
+        color: "#6b7280",
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+      }}
+    >
+      ×
+    </button>
+  </div>
 
         <div
           style={{
