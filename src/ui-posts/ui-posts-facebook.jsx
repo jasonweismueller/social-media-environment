@@ -538,8 +538,10 @@ const displayedShareCount = baseShareCount + shareCountLocal;
     closeNowAndSuppress();
   };
 
-  const onShare = () => {
+ const onShare = () => {
   setFlyoutOpen(false);
+  clearTimeout(openTimer.current);
+  clearTimeout(closeTimer.current);
   setShowShare(true);
   click("share_open");
 };
@@ -557,6 +559,8 @@ const displayedShareCount = baseShareCount + shareCountLocal;
 
   const onOpenComment = () => {
   setFlyoutOpen(false);
+  clearTimeout(openTimer.current);
+  clearTimeout(closeTimer.current);
   setShowComment(true);
   setCommentFocusTick((n) => n + 1);
   click("comment_open");
@@ -1061,9 +1065,11 @@ const displayedShareCount = baseShareCount + shareCountLocal;
           <button
             ref={dotsRef}
             className="dots"
-            onClick={() => {
+           onClick={() => {
   if (!disabled) {
     setFlyoutOpen(false);
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
     setMenuOpen((v) => !v);
     onAction("post_menu_toggle", { post_id: post.id });
   }
