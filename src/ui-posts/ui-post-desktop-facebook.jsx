@@ -5,7 +5,7 @@ import { neutralAvatarDataUrl } from "../ui-core";
 /* Desktop Overlay Wrapper                                                    */
 /* -------------------------------------------------------------------------- */
 
-function DesktopOverlay({ children, onClose }) {
+function DesktopOverlay({ children, onClose, topOffset = 72 }) {
   return (
     <div
       role="dialog"
@@ -18,11 +18,12 @@ function DesktopOverlay({ children, onClose }) {
         backdropFilter: "blur(6px)",
         WebkitBackdropFilter: "blur(6px)",
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "center",
         zIndex: 9999,
         animation: "fadeIn 0.25s ease",
-        padding: 16,
+        padding: `${topOffset}px 16px 16px`,
+        boxSizing: "border-box",
       }}
     >
       {children}
@@ -52,19 +53,26 @@ export function FacebookCommentModalDesktop({
   commentText,
   setCommentText,
   postContent,
+  mySubmittedComment,
+  shouldShowGhosts,
+  baseCommentCount,
+  participantId,
 }) {
   if (!open) return null;
 
+  const ghostCount = shouldShowGhosts ? Math.min(5, baseCommentCount || 0) : 0;
+  const hasParticipantComment = !!String(mySubmittedComment || "").trim();
+
   return (
-    <DesktopOverlay onClose={onClose}>
+    <DesktopOverlay onClose={onClose} topOffset={72}>
       <div
         style={{
           background: "#fff",
           borderRadius: 18,
           width: "100%",
           maxWidth: 820,
-          height: "min(94vh, 980px)",
-          maxHeight: "94vh",
+          height: "min(calc(100vh - 88px), 980px)",
+          maxHeight: "calc(100vh - 88px)",
           boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
           animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
           overflow: "hidden",
@@ -102,7 +110,150 @@ export function FacebookCommentModalDesktop({
           }}
         >
           <div style={{ maxWidth: 760, margin: "0 auto" }}>
-            {postContent}
+            {/* Embedded post */}
+            <div
+              style={{
+                overflow: "hidden",
+                borderRadius: 18,
+                background: "#fff",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+              }}
+            >
+              <div
+                style={{
+                  background: "#fff",
+                }}
+              >
+                {postContent}
+              </div>
+            </div>
+
+            {/* Comments section */}
+            <div
+              style={{
+                marginTop: 12,
+                background: "#fff",
+                borderRadius: 18,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+                padding: "14px 16px 8px",
+              }}
+            >
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: 15,
+                  color: "#111827",
+                  marginBottom: 14,
+                }}
+              >
+                Comments
+              </div>
+
+              {ghostCount === 0 && !hasParticipantComment ? (
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 14,
+                    paddingBottom: 10,
+                  }}
+                >
+                  No comments yet. Start the conversation.
+                </div>
+              ) : (
+                <>
+                  {Array.from({ length: ghostCount }).map((_, i) => (
+                    <div
+                      key={`ghost-${i}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        marginBottom: 16,
+                      }}
+                    >
+                      <img
+                        src={neutralAvatarDataUrl(34)}
+                        alt=""
+                        width={34}
+                        height={34}
+                        style={{ borderRadius: "50%", flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            marginBottom: 5,
+                            color: "#111827",
+                          }}
+                        >
+                          User {i + 1}
+                        </div>
+                        <div
+                          style={{
+                            height: 10,
+                            width: "78%",
+                            background: "#e5e7eb",
+                            borderRadius: 999,
+                            marginBottom: 6,
+                          }}
+                        />
+                        <div
+                          style={{
+                            height: 10,
+                            width: "48%",
+                            background: "#e5e7eb",
+                            borderRadius: 999,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {hasParticipantComment && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <img
+                        src={neutralAvatarDataUrl(34)}
+                        alt=""
+                        width={34}
+                        height={34}
+                        style={{ borderRadius: "50%", flexShrink: 0 }}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            marginBottom: 3,
+                            color: "#111827",
+                          }}
+                        >
+                          {String(participantId || "Participant")}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 14,
+                            color: "#111827",
+                            lineHeight: 1.45,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {mySubmittedComment}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -215,7 +366,7 @@ export function FacebookShareModalDesktop({
   };
 
   return (
-    <DesktopOverlay onClose={onClose}>
+    <DesktopOverlay onClose={onClose} topOffset={72}>
       <div
         style={{
           position: "relative",
