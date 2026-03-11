@@ -1831,17 +1831,33 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   }
 
   .card,
-  .post-card,
-  .card.post-card {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    border-left: none !important;
-    border-right: none !important;
-    background: #fff !important;
-  }
+.post-card,
+.card.post-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  border: none !important;          /* remove all borders, not just left/right */
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #fff !important;
+  overflow: visible !important;     /* important for reaction flyout */
+}
+
+.like-wrap {
+  position: relative !important;
+  overflow: visible !important;
+  z-index: 5 !important;
+}
+
+.footer,
+.actions {
+  overflow: visible !important;
+}
+
+.react-flyout {
+  z-index: 999 !important;
+  bottom: 100% !important;
+}
 
   .page .feed > .card:first-child,
   .container.feed > .card:first-child {
