@@ -394,14 +394,6 @@ export function PostCard({
   const closeTimer = useRef(null);
   const suppressHoverUntil = useRef(0);
 
-  const isTouchDevice =
-    typeof window !== "undefined" &&
-    ((window.matchMedia?.("(hover: none) and (pointer: coarse)")?.matches) ||
-      navigator.maxTouchPoints > 0);
-
-  const touchActiveRef = useRef(false);
-  const lockStateRef = useRef({ y: 0 });
-
   useEffect(() => {
     return () => {
       clearTimeout(openTimer.current);
@@ -412,22 +404,20 @@ export function PostCard({
   const { wrapRef, inView } = useInViewAutoplay(0.6);
 
   const scheduleOpen = () => {
-    if (touchActiveRef.current) return;
+  if (Date.now() < suppressHoverUntil.current) return;
+  clearTimeout(openTimer.current);
+  clearTimeout(closeTimer.current);
+  openTimer.current = setTimeout(() => {
     if (Date.now() < suppressHoverUntil.current) return;
-    clearTimeout(openTimer.current);
-    clearTimeout(closeTimer.current);
-    openTimer.current = setTimeout(() => {
-      if (Date.now() < suppressHoverUntil.current) return;
-      setFlyoutOpen(true);
-    }, OPEN_DELAY);
-  };
+    setFlyoutOpen(true);
+  }, OPEN_DELAY);
+};
 
   const scheduleClose = () => {
-    if (touchActiveRef.current) return;
-    clearTimeout(openTimer.current);
-    clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setFlyoutOpen(false), CLOSE_DELAY);
-  };
+  clearTimeout(openTimer.current);
+  clearTimeout(closeTimer.current);
+  closeTimer.current = setTimeout(() => setFlyoutOpen(false), CLOSE_DELAY);
+};
 
   const closeNowAndSuppress = () => {
     clearTimeout(openTimer.current);
@@ -436,63 +426,24 @@ export function PostCard({
     suppressHoverUntil.current = Date.now() + SUPPRESS_MS;
   };
 
-  useEffect(() => {
-    if (!isTouchDevice) return;
+  
 
-    if (flyoutOpen) {
-      lockStateRef.current.y = window.scrollY || 0;
-      const b = document.body;
-      b.style.position = "fixed";
-      b.style.top = `-${lockStateRef.current.y}px`;
-      b.style.left = "0";
-      b.style.right = "0";
-      b.style.width = "100%";
-      b.style.overscrollBehavior = "contain";
-      b.style.touchAction = "none";
-    } else {
-      const b = document.body;
-      const y = lockStateRef.current.y || 0;
-      b.style.position = "";
-      b.style.top = "";
-      b.style.left = "";
-      b.style.right = "";
-      b.style.width = "";
-      b.style.overscrollBehavior = "";
-      b.style.touchAction = "";
-      window.scrollTo(0, y);
-    }
+ useEffect(() => {
+  if (!flyoutOpen) return;
 
-    return () => {
-      if (document.body.style.position === "fixed") {
-        const y = lockStateRef.current.y || 0;
-        const b = document.body;
-        b.style.position = "";
-        b.style.top = "";
-        b.style.left = "";
-        b.style.right = "";
-        b.style.width = "";
-        b.style.overscrollBehavior = "";
-        b.style.touchAction = "";
-        window.scrollTo(0, y);
-      }
-    };
-  }, [flyoutOpen, isTouchDevice]);
+  const onDocPointerDown = (e) => {
+    const inFlyout = e.target.closest?.(".react-flyout");
+    const inLikeWrap = e.target.closest?.(".like-wrap");
+    if (!inFlyout && !inLikeWrap) setFlyoutOpen(false);
+  };
 
-  useEffect(() => {
-    if (!isTouchDevice || !flyoutOpen) return;
-
-    const onDocPointerDown = (e) => {
-      const inFlyout = e.target.closest?.(".react-flyout");
-      const inLikeWrap = e.target.closest?.(".like-wrap");
-      if (!inFlyout && !inLikeWrap) setFlyoutOpen(false);
-    };
-
-    document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
-    return () =>
-      document.removeEventListener("pointerdown", onDocPointerDown, {
-        capture: true,
-      });
-  }, [flyoutOpen, isTouchDevice]);
+  document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
+  return () => {
+    document.removeEventListener("pointerdown", onDocPointerDown, {
+      capture: true,
+    });
+  };
+}, [flyoutOpen]);
 
   const showReactions = post.showReactions ?? false;
   const ALL_RX_KEYS = useMemo(() => Object.keys(REACTION_META), []);
@@ -557,16 +508,23 @@ const displayedShareCount = baseShareCount + shareCountLocal;
   );
 
   const onLike = () => {
-    closeNowAndSuppress();
-    setMyReaction((prev) => {
-      if (prev == null) {
-        click("react_pick", { type: "like", prev: null });
-        return "like";
-      }
-      click("react_clear", { type: prev, prev });
-      return null;
-    });
-  };
+  // Mobile: tap should open the reaction picker, not instantly like
+  if (isMobile) {
+    setFlyoutOpen((v) => !v);
+    return;
+  }
+
+  // Desktop: normal click toggles Like
+  closeNowAndSuppress();
+  setMyReaction((prev) => {
+    if (prev == null) {
+      click("react_pick", { type: "like", prev: null });
+      return "like";
+    }
+    click("react_clear", { type: prev, prev });
+    return null;
+  });
+};
 
   const onPickReaction = (key) => {
     setMyReaction((prev) => {
@@ -581,6 +539,7 @@ const displayedShareCount = baseShareCount + shareCountLocal;
   };
 
   const onShare = () => {
+  setFlyoutOpen(false);
   setShowShare(true);
   click("share_open");
 };
@@ -597,6 +556,7 @@ const displayedShareCount = baseShareCount + shareCountLocal;
   };
 
   const onOpenComment = () => {
+  setFlyoutOpen(false);
   setShowComment(true);
   setCommentFocusTick((n) => n + 1);
   click("comment_open");
@@ -1102,11 +1062,12 @@ const displayedShareCount = baseShareCount + shareCountLocal;
             ref={dotsRef}
             className="dots"
             onClick={() => {
-              if (!disabled) {
-                setMenuOpen((v) => !v);
-                onAction("post_menu_toggle", { post_id: post.id });
-              }
-            }}
+  if (!disabled) {
+    setFlyoutOpen(false);
+    setMenuOpen((v) => !v);
+    onAction("post_menu_toggle", { post_id: post.id });
+  }
+}}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label="Post menu"
@@ -1614,34 +1575,18 @@ const displayedShareCount = baseShareCount + shareCountLocal;
 
       <footer className="footer">
         <div className="actions">
-          <div
-            className="like-wrap"
-            onMouseEnter={scheduleOpen}
-            onMouseLeave={() => {
-              scheduleClose();
-              suppressHoverUntil.current = 0;
-            }}
-            onPointerDown={(e) => {
-              if (e.pointerType === "touch") {
-                touchActiveRef.current = true;
-                e.preventDefault();
-                e.stopPropagation();
-                clearTimeout(openTimer.current);
-                clearTimeout(closeTimer.current);
-                setFlyoutOpen(true);
-              }
-            }}
-            onPointerUp={(e) => {
-              if (e.pointerType === "touch") {
-                touchActiveRef.current = false;
-              }
-            }}
-            onPointerCancel={(e) => {
-              if (e.pointerType === "touch") {
-                touchActiveRef.current = false;
-              }
-            }}
-          >
+         <div
+  className="like-wrap"
+  onMouseEnter={!isMobile ? scheduleOpen : undefined}
+  onMouseLeave={
+    !isMobile
+      ? () => {
+          scheduleClose();
+          suppressHoverUntil.current = 0;
+        }
+      : undefined
+  }
+>
             <ActionBtn
               label={likeLabel}
               active={!!myReaction}
@@ -1653,23 +1598,24 @@ const displayedShareCount = baseShareCount + shareCountLocal;
             />
 
             {flyoutOpen && (
-              <div
-                className="react-flyout"
-                role="menu"
-                aria-label="Pick a reaction"
-                onMouseEnter={scheduleOpen}
-                onMouseLeave={scheduleClose}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
+  <div
+    className="react-flyout"
+    role="menu"
+    aria-label="Pick a reaction"
+    onMouseEnter={!isMobile ? scheduleOpen : undefined}
+    onMouseLeave={!isMobile ? scheduleClose : undefined}
+    onPointerDown={(e) => e.stopPropagation()}
+  >
                 {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
-                  <button
-                    key={key}
-                    aria-label={key}
-                    onClick={() => onPickReaction(key)}
-                    title={key}
-                  >
-                    {emoji}
-                  </button>
+                <button
+  type="button"
+  key={key}
+  aria-label={key}
+  onClick={() => onPickReaction(key)}
+  title={key}
+>
+  {emoji}
+</button>
                 ))}
               </div>
             )}
