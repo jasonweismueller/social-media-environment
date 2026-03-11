@@ -521,8 +521,8 @@ export function PostCard({
   const displayedCommentCount = baseCommentCount + participantComments;
 
   const baseShareCount = Number(post.metrics?.shares) || 0;
-  const [hasShared, setHasShared] = useState(false);
-  const displayedShareCount = baseShareCount + (hasShared ? 1 : 0);
+const [shareCountLocal, setShareCountLocal] = useState(0);
+const displayedShareCount = baseShareCount + shareCountLocal;
 
   const totalReactions = useMemo(
     () => sumSelectedReactions(liveReactions, ALL_RX_KEYS),
@@ -581,17 +581,15 @@ export function PostCard({
   };
 
   const onShare = () => {
-    if (hasShared) return;
-    setShowShare(true);
-    click("share_open");
-  };
+  setShowShare(true);
+  click("share_open");
+};
 
   const onConfirmShare = ({ message } = {}) => {
-    if (hasShared) return;
-    click("share", { message: message || "" });
-    setHasShared(true);
-    setShowShare(false);
-  };
+  click("share", { message: message || "" });
+  setShareCountLocal((n) => n + 1);
+  setShowShare(false);
+};
 
   const onExpand = () => {
     setExpanded(true);
@@ -1685,12 +1683,12 @@ export function PostCard({
           />
 
           <ActionBtn
-            label="Share"
-            onClick={onShare}
-            Icon={IconShare}
-            active={hasShared}
-            disabled={disabled || hasShared}
-          />
+  label="Share"
+  onClick={onShare}
+  Icon={IconShare}
+  active={false}
+  disabled={disabled}
+/>
         </div>
       </footer>
     </>
