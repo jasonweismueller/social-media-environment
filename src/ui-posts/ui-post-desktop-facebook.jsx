@@ -1,5 +1,5 @@
 import React from "react";
-import { neutralAvatarDataUrl, IconGlobe, IconBadge } from "../ui-core";
+import { neutralAvatarDataUrl } from "../ui-core";
 
 /* -------------------------------------------------------------------------- */
 /* Desktop Overlay Wrapper                                                    */
@@ -42,134 +42,6 @@ function DesktopOverlay({ children, onClose }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Facebook Post Preview                                                      */
-/* -------------------------------------------------------------------------- */
-
-function FacebookPostPreview({ postPreview }) {
-  if (!postPreview) return null;
-
-  const {
-    author,
-    avatarUrl,
-    badge,
-    timeLabel,
-    text,
-    image,
-  } = postPreview;
-
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        overflow: "hidden",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-      }}
-    >
-      <div style={{ padding: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <img
-            src={avatarUrl || neutralAvatarDataUrl(40)}
-            alt=""
-            width={40}
-            height={40}
-            style={{
-              borderRadius: "50%",
-              objectFit: "cover",
-              flexShrink: 0,
-              background: "#e5e7eb",
-            }}
-          />
-
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                fontWeight: 700,
-                fontSize: 14,
-                color: "#111827",
-              }}
-            >
-              <span
-                style={{
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {author || "User"}
-              </span>
-              {badge ? (
-                <span style={{ display: "inline-flex", alignItems: "center" }}>
-                  <IconBadge />
-                </span>
-              ) : null}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                color: "#6b7280",
-                fontSize: 12,
-                marginTop: 2,
-              }}
-            >
-              {timeLabel ? <span>{timeLabel}</span> : null}
-              <span aria-hidden="true">·</span>
-              <IconGlobe style={{ width: 12, height: 12, color: "#6b7280" }} />
-            </div>
-          </div>
-        </div>
-
-        {!!text && (
-          <div
-            style={{
-              marginTop: 12,
-              fontSize: 14,
-              lineHeight: 1.45,
-              color: "#111827",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
-            {text}
-          </div>
-        )}
-      </div>
-
-      {image?.svg ? (
-        <div
-          dangerouslySetInnerHTML={{
-            __html: image.svg.replace(
-              "<svg ",
-              "<svg preserveAspectRatio='xMidYMid slice' style='display:block;width:100%;height:auto;max-height:520px' "
-            ),
-          }}
-        />
-      ) : image?.url ? (
-        <img
-          src={image.url}
-          alt={image.alt || ""}
-          style={{
-            display: "block",
-            width: "100%",
-            maxHeight: 520,
-            objectFit: "cover",
-            background: "#f3f4f6",
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /* Desktop Comment Modal                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -179,7 +51,7 @@ export function FacebookCommentModalDesktop({
   onSubmit,
   commentText,
   setCommentText,
-  postPreview,
+  postContent,
 }) {
   if (!open) return null;
 
@@ -190,9 +62,9 @@ export function FacebookCommentModalDesktop({
           background: "#fff",
           borderRadius: 18,
           width: "100%",
-          maxWidth: 760,
-          height: "min(92vh, 920px)",
-          maxHeight: "92vh",
+          maxWidth: 820,
+          height: "min(94vh, 980px)",
+          maxHeight: "94vh",
           boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
           animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
           overflow: "hidden",
@@ -214,26 +86,33 @@ export function FacebookCommentModalDesktop({
             lineHeight: 1,
             cursor: "pointer",
             color: "#6b7280",
-            zIndex: 5,
+            zIndex: 10,
           }}
         >
           ×
         </button>
 
-        {/* Original post area */}
+        {/* TOP: full original post */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            padding: 16,
-            background: "#f9fafb",
             overflowY: "auto",
+            background: "#f0f2f5",
+            padding: 16,
           }}
         >
-          <FacebookPostPreview postPreview={postPreview} />
+          <div
+            style={{
+              maxWidth: 760,
+              margin: "0 auto",
+            }}
+          >
+            {postContent}
+          </div>
         </div>
 
-        {/* Composer */}
+        {/* BOTTOM: composer only */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
