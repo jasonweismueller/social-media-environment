@@ -570,7 +570,7 @@ export function FacebookShareSheetMobile({ open, onClose, onShare }) {
                 background: "#f3f4f6",
                 borderRadius: 10,
                 padding: "10px 14px",
-                fontSize: 15,
+                fontSize: 16,
                 color: "#111",
               }}
             />
