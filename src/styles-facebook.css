@@ -94,10 +94,6 @@ a:hover{text-decoration:underline}
   user-select: none;
 }
 
-.app-shell.blurred > *:not(.bs-backdrop):not(.bs-panel){
-  filter: blur(6px);
-}
-
 /* “See more” clamp */
 .text-wrap{position:relative}
 .text.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
