@@ -117,7 +117,7 @@ export function FacebookCommentModalDesktop({
     padding: 0,
   }}
 >
-  <div className="fb-comment-modal-inner" style={{ width: "100%", margin: 0, paddingTop: 6 }}>
+  <div className="fb-comment-modal-inner" style={{ width: "100%", margin: 0, paddingTop: 12 }}>
             <div className="fb-comment-modal-post-wrap">
               {postContent}
             </div>
