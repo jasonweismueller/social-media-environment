@@ -107,7 +107,7 @@ function MobileSheetBase({ open, onClose, children, maxHeight = "85vh" }) {
           transform: `translateY(${translateY}px)`,
           transition: dragging ? "none" : "transform 0.3s ease",
           width: "100%",
-          maxWidth: 520,
+          maxWidth: "100vw",
           background: "#fff",
           borderTopLeftRadius: 16,
           borderTopRightRadius: 16,
