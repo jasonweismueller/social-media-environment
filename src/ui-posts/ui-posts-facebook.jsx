@@ -1733,10 +1733,10 @@ export function PostCard({
           baseCommentCount={baseCommentCount}
           participantId={String(myParticipantId)}
           postContent={
-            <div className="card post-card" style={{ margin: 0 }}>
-              {postContent}
-            </div>
-          }
+  <div className="fb-modal-post-shell">
+    {postContent}
+  </div>
+}
         />
       )}
 

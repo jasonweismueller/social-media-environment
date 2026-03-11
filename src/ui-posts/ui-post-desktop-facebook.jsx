@@ -5,7 +5,7 @@ import { neutralAvatarDataUrl } from "../ui-core";
 /* Desktop Overlay Wrapper                                                    */
 /* -------------------------------------------------------------------------- */
 
-function DesktopOverlay({ children, onClose, topOffset = 72 }) {
+function DesktopOverlay({ children, onClose, topOffset = 76 }) {
   return (
     <div
       role="dialog"
@@ -101,24 +101,17 @@ export function FacebookCommentModalDesktop({
         </button>
 
         <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            background: "#f0f2f5",
-            padding: 16,
-          }}
-        >
-          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+  className="fb-comment-modal-body"
+  style={{
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    padding: 0,
+  }}
+>
+  <div className="fb-comment-modal-inner" style={{ maxWidth: 760, margin: "0 auto" }}>
             {/* Embedded post */}
-            <div
-              style={{
-                overflow: "hidden",
-                borderRadius: 18,
-                background: "#fff",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-              }}
-            >
+           <div className="fb-comment-modal-post-wrap">
               <div
                 style={{
                   background: "#fff",
@@ -129,15 +122,7 @@ export function FacebookCommentModalDesktop({
             </div>
 
             {/* Comments section */}
-            <div
-              style={{
-                marginTop: 12,
-                background: "#fff",
-                borderRadius: 18,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-                padding: "14px 16px 8px",
-              }}
-            >
+            <div className="fb-comment-thread">
               <div
                 style={{
                   fontWeight: 700,
@@ -210,47 +195,25 @@ export function FacebookCommentModalDesktop({
                     </div>
                   ))}
 
-                  {hasParticipantComment && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 10,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <img
-                        src={neutralAvatarDataUrl(34)}
-                        alt=""
-                        width={34}
-                        height={34}
-                        style={{ borderRadius: "50%", flexShrink: 0 }}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 14,
-                            marginBottom: 3,
-                            color: "#111827",
-                          }}
-                        >
-                          {String(participantId || "Participant")}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            color: "#111827",
-                            lineHeight: 1.45,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          {mySubmittedComment}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                {hasParticipantComment && (
+  <div className="fb-comment-item">
+    <img
+      src={neutralAvatarDataUrl(34)}
+      alt=""
+      width={34}
+      height={34}
+      style={{ borderRadius: "50%", flexShrink: 0 }}
+    />
+    <div className="fb-comment-bubble">
+      <div className="fb-comment-author">
+        {String(participantId || "Participant")}
+      </div>
+      <div className="fb-comment-text">
+        {mySubmittedComment}
+      </div>
+    </div>
+  </div>
+)}
                 </>
               )}
             </div>

@@ -1698,3 +1698,98 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     gap: 18px;
   }
 }
+
+/* =========================
+   Desktop comment modal unification
+   ========================= */
+
+.fb-comment-modal-body{
+  background: #fff;                /* make the whole modal interior white */
+}
+
+.fb-comment-modal-inner{
+  padding: 0;
+}
+
+.fb-comment-modal-post-wrap{
+  background: #fff;
+  border-radius: 0;                /* no separate rounded card look */
+  box-shadow: none;                /* remove second-box shadow */
+  overflow: hidden;
+}
+
+.fb-modal-post-shell{
+  margin: 0;
+  background: #fff;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+/* Kill card styling inside the desktop comment modal */
+.fb-modal-post-shell.card,
+.fb-modal-post-shell.post-card,
+.fb-modal-post-shell .card,
+.fb-modal-post-shell .post-card{
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 0 !important;
+  background: #fff !important;
+}
+
+/* Make the comments feel like part of the same modal, not a second card */
+.fb-comment-thread{
+  background: #fff;
+  margin-top: 0;
+  padding: 14px 16px 10px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Optional: slightly tighter comments heading */
+.fb-comment-thread > .fb-comment-thread-title{
+  margin-bottom: 12px;
+}
+
+/* Participant comment row */
+.fb-comment-item{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fb-comment-bubble{
+  background: transparent;         /* no bubble/card effect */
+  padding: 0;
+  border-radius: 0;
+}
+
+.fb-comment-author{
+  font-weight: 700;
+  font-size: 14px;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+.fb-comment-text{
+  font-size: 14px;
+  line-height: 1.45;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Composer stays attached visually */
+.fb-comment-composer{
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+/* Make modal clear the sticky top rail a bit more comfortably */
+.fb-desktop-overlay-offset{
+  padding-top: 68px;
+}
