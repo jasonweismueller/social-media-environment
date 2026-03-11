@@ -90,10 +90,12 @@ a:hover{text-decoration:underline}
 /* Gated blur while overlays shown */
 .app-shell{transition:filter .2s ease,opacity .2s ease}
 .app-shell.blurred{
-  filter: blur(6px);
-  /* opacity: .85;  ← delete this */
   pointer-events: none;
   user-select: none;
+}
+
+.app-shell.blurred > *:not(.bs-backdrop):not(.bs-panel){
+  filter: blur(6px);
 }
 
 /* “See more” clamp */
