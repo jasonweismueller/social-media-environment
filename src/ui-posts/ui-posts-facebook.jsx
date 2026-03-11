@@ -1082,17 +1082,20 @@ const displayedShareCount = baseShareCount + shareCountLocal;
             <IconDots />
           </button>
 
-          {isMobile ? (
-            <FacebookMenuSheet
-              open={menuOpen}
-              onClose={() => setMenuOpen(false)}
-              menuItems={menuItems}
-            />
-          ) : (
-            <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
-              {menuItems}
-            </MenuPortal>
-          )}
+          {isMobile
+  ? createPortal(
+      <FacebookMenuSheet
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        menuItems={menuItems}
+      />,
+      document.body
+    )
+  : (
+      <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
+        {menuItems}
+      </MenuPortal>
+    )}
         </div>
       </header>
 
