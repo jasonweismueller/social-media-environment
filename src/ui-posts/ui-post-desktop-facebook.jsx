@@ -57,16 +57,17 @@ export function FacebookCommentModalDesktop({
   shouldShowGhosts,
   baseCommentCount,
   participantId,
+  focusTick
 }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (!open) return;
-    const t = setTimeout(() => {
-      inputRef.current?.focus();
-    }, 60);
-    return () => clearTimeout(t);
-  }, [open]);
+  if (!open) return;
+  const t = setTimeout(() => {
+    inputRef.current?.focus();
+  }, 60);
+  return () => clearTimeout(t);
+}, [open, focusTick]);
 
   if (!open) return null;
 
@@ -107,19 +108,16 @@ export function FacebookCommentModalDesktop({
           ×
         </button>
 
-        <div
-          className="fb-comment-modal-body"
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            padding: 0,
-          }}
-        >
-          <div
-            className="fb-comment-modal-inner"
-            style={{ maxWidth: 760, margin: "0 auto" }}
-          >
+       <div
+  className="fb-comment-modal-body"
+  style={{
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    padding: 0,
+  }}
+>
+  <div className="fb-comment-modal-inner" style={{ width: "100%", margin: 0 }}>
             <div className="fb-comment-modal-post-wrap">
               {postContent}
             </div>
