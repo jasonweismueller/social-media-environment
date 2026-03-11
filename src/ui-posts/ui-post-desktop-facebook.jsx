@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
 
 /* -------------------------------------------------------------------------- */
@@ -58,21 +58,31 @@ export function FacebookCommentModalDesktop({
   baseCommentCount,
   participantId,
 }) {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 60);
+    return () => clearTimeout(t);
+  }, [open]);
+
   if (!open) return null;
 
   const ghostCount = shouldShowGhosts ? Math.min(5, baseCommentCount || 0) : 0;
   const hasParticipantComment = !!String(mySubmittedComment || "").trim();
 
   return (
-    <DesktopOverlay onClose={onClose} topOffset={72}>
+    <DesktopOverlay onClose={onClose} topOffset={76}>
       <div
         style={{
           background: "#fff",
           borderRadius: 18,
           width: "100%",
           maxWidth: 820,
-          height: "min(calc(100vh - 88px), 980px)",
-          maxHeight: "calc(100vh - 88px)",
+          height: "min(calc(100vh - 92px), 980px)",
+          maxHeight: "calc(100vh - 92px)",
           boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
           animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
           overflow: "hidden",
@@ -84,16 +94,13 @@ export function FacebookCommentModalDesktop({
         <button
           onClick={onClose}
           aria-label="Close"
+          className="fb-modal-close"
           style={{
             position: "absolute",
             top: 12,
             right: 12,
-            border: "none",
-            background: "transparent",
             fontSize: 24,
             lineHeight: 1,
-            cursor: "pointer",
-            color: "#6b7280",
             zIndex: 10,
           }}
         >
@@ -101,36 +108,24 @@ export function FacebookCommentModalDesktop({
         </button>
 
         <div
-  className="fb-comment-modal-body"
-  style={{
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    padding: 0,
-  }}
->
-  <div className="fb-comment-modal-inner" style={{ maxWidth: 760, margin: "0 auto" }}>
-            {/* Embedded post */}
-           <div className="fb-comment-modal-post-wrap">
-              <div
-                style={{
-                  background: "#fff",
-                }}
-              >
-                {postContent}
-              </div>
+          className="fb-comment-modal-body"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            padding: 0,
+          }}
+        >
+          <div
+            className="fb-comment-modal-inner"
+            style={{ maxWidth: 760, margin: "0 auto" }}
+          >
+            <div className="fb-comment-modal-post-wrap">
+              {postContent}
             </div>
 
-            {/* Comments section */}
             <div className="fb-comment-thread">
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: 15,
-                  color: "#111827",
-                  marginBottom: 14,
-                }}
-              >
+              <div className="fb-comment-thread-title">
                 Comments
               </div>
 
@@ -195,25 +190,25 @@ export function FacebookCommentModalDesktop({
                     </div>
                   ))}
 
-                {hasParticipantComment && (
-  <div className="fb-comment-item">
-    <img
-      src={neutralAvatarDataUrl(34)}
-      alt=""
-      width={34}
-      height={34}
-      style={{ borderRadius: "50%", flexShrink: 0 }}
-    />
-    <div className="fb-comment-bubble">
-      <div className="fb-comment-author">
-        {String(participantId || "Participant")}
-      </div>
-      <div className="fb-comment-text">
-        {mySubmittedComment}
-      </div>
-    </div>
-  </div>
-)}
+                  {hasParticipantComment && (
+                    <div className="fb-comment-item">
+                      <img
+                        src={neutralAvatarDataUrl(34)}
+                        alt=""
+                        width={34}
+                        height={34}
+                        style={{ borderRadius: "50%", flexShrink: 0 }}
+                      />
+                      <div className="fb-comment-bubble" style={{ minWidth: 0 }}>
+                        <div className="fb-comment-author">
+                          {String(participantId || "Participant")}
+                        </div>
+                        <div className="fb-comment-text">
+                          {mySubmittedComment}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -225,13 +220,12 @@ export function FacebookCommentModalDesktop({
             e.preventDefault();
             onSubmit?.();
           }}
+          className="fb-comment-composer"
           style={{
-            borderTop: "1px solid #e5e7eb",
             padding: 14,
             display: "flex",
             alignItems: "center",
             gap: 10,
-            background: "#fff",
             flexShrink: 0,
           }}
         >
@@ -244,6 +238,7 @@ export function FacebookCommentModalDesktop({
           />
 
           <input
+            ref={inputRef}
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}

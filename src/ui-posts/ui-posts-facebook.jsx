@@ -163,6 +163,7 @@ export function PostCard({
   const [showComment, setShowComment] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [commentFocusTick, setCommentFocusTick] = useState(0);
 
   const randNamesOn = !!flags?.randomize_names;
   const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar);
@@ -598,9 +599,10 @@ export function PostCard({
   };
 
   const onOpenComment = () => {
-    setShowComment(true);
-    click("comment_open");
-  };
+  setShowComment(true);
+  setCommentFocusTick((n) => n + 1);
+  click("comment_open");
+};
 
   const onSubmitComment = () => {
     const txt = commentText.trim();
@@ -1737,6 +1739,7 @@ export function PostCard({
     {postContent}
   </div>
 }
+focusTick={commentFocusTick}
         />
       )}
 
