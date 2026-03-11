@@ -323,20 +323,19 @@ export function FacebookShareModalDesktop({
 
   return (
     <DesktopOverlay onClose={onClose} topOffset={72}>
-      <div
+     <div
   style={{
     background: "#fff",
     borderRadius: 18,
     width: "100%",
     maxWidth: 820,
-    height: "min(calc(100vh - 88px), 980px)",
-    maxHeight: "calc(100vh - 88px)",
+    height: "min(calc(100vh - 92px), 980px)",
+    maxHeight: "calc(100vh - 92px)",
     boxShadow: "0 12px 36px rgba(0,0,0,0.25)",
     animation: "popIn 0.25s cubic-bezier(0.25,1,0.5,1)",
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    position: "relative",
   }}
 >
   <div
@@ -355,18 +354,12 @@ export function FacebookShareModalDesktop({
     <button
       onClick={onClose}
       aria-label="Close"
+      className="fb-modal-close"
       style={{
         width: 34,
         height: 34,
-        border: "none",
-        background: "transparent",
         fontSize: 24,
         lineHeight: 1,
-        cursor: "pointer",
-        color: "#6b7280",
-        borderRadius: 999,
-        display: "grid",
-        placeItems: "center",
       }}
     >
       ×
