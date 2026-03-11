@@ -92,7 +92,6 @@ export function FacebookCommentModalDesktop({
           ×
         </button>
 
-        {/* TOP: full original post */}
         <div
           style={{
             flex: 1,
@@ -102,17 +101,11 @@ export function FacebookCommentModalDesktop({
             padding: 16,
           }}
         >
-          <div
-            style={{
-              maxWidth: 760,
-              margin: "0 auto",
-            }}
-          >
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
             {postContent}
           </div>
         </div>
 
-        {/* BOTTOM: composer only */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
