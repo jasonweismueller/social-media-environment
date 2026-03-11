@@ -1,3 +1,151 @@
+// components-ui-posts.jsx
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+import {
+  REACTION_META,
+  sumSelectedReactions,
+  topReactions,
+  fakeNamesFor,
+  displayTimeForPost,
+  getAvatarPool,
+  pickDeterministic,
+  getImagePool,
+} from "../utils";
+
+import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
+import { InterventionBlock } from "./components-ui-interventions";
+
+import {
+  FacebookCommentModalDesktop,
+  FacebookShareModalDesktop,
+} from "./ui-post-desktop-facebook";
+
+import {
+  FacebookMenuSheet,
+  FacebookCommentSheetMobile,
+  FacebookShareSheetMobile,
+} from "./ui-post-mobile-facebook";
+
+import {
+  IconBadge,
+  IconDots,
+  IconGlobe,
+  IconThumb,
+  IconComment,
+  IconShare,
+  ActionBtn,
+  PostText,
+  NamesPeek,
+  IconVolume,
+  IconVolumeMute,
+} from "../ui-core";
+
+/* --- In-view autoplay hook --- */
+function useInViewAutoplay(threshold = 0.6) {
+  const wrapRef = React.useRef(null);
+  const [inView, setInView] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!wrapRef.current) return;
+    const el = wrapRef.current;
+    const obs = new IntersectionObserver(
+      ([e]) => setInView(!!(e?.isIntersecting && e.intersectionRatio >= threshold)),
+      { root: null, threshold: [0, threshold, 1] }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+
+  return { wrapRef, inView };
+}
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= breakpoint : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= breakpoint);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+function MenuPortal({ anchorRef, open, onClose, children }) {
+  const [coords, setCoords] = React.useState({ top: 0, left: 0, ready: false });
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const anchor = anchorRef?.current;
+    if (!anchor || typeof window === "undefined" || !document?.body) return;
+
+    const update = () => {
+      const r = anchor.getBoundingClientRect();
+      setCoords({
+        top: r.bottom + 4,
+        left: r.left,
+        ready: true,
+      });
+    };
+
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, anchorRef]);
+
+  React.useEffect(() => {
+    if (!open) return;
+
+    const onDocMouseDown = (e) => {
+      const menuEl = document.querySelector("#post-menu-portal");
+      const inMenu = menuEl && menuEl.contains(e.target);
+      const inBtn = anchorRef?.current && anchorRef.current.contains(e.target);
+      if (!inMenu && !inBtn) onClose?.();
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, anchorRef, onClose]);
+
+  if (!open || !coords.ready || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      id="post-menu-portal"
+      className="menu"
+      role="menu"
+      style={{
+        position: "fixed",
+        zIndex: 20000,
+        top: coords.top,
+        left: coords.left,
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+/* ----------------------------- Post Card ---------------------------------- */
 export function PostCard({
   post,
   onAction,
@@ -27,8 +175,7 @@ export function PostCard({
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("forcerand") === "1";
 
-  const randomizeOn =
-    forcedRand || (flags?.randomize_times ?? flags?.random_time) === true;
+  const randomizeOn = forcedRand || (flags?.randomize_times ?? flags?.random_time) === true;
 
   const timeLabel = shouldShowTime
     ? (displayTimeForPost(post, {
@@ -340,7 +487,10 @@ export function PostCard({
     };
 
     document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
-    return () => document.removeEventListener("pointerdown", onDocPointerDown, { capture: true });
+    return () =>
+      document.removeEventListener("pointerdown", onDocPointerDown, {
+        capture: true,
+      });
   }, [flyoutOpen, isTouchDevice]);
 
   const showReactions = post.showReactions ?? false;
@@ -455,11 +605,15 @@ export function PostCard({
   const onSubmitComment = () => {
     const txt = commentText.trim();
     if (!txt) return;
+
     click("comment_submit", { text: txt, length: txt.length });
     setMySubmittedComment(txt);
     setParticipantComments((c) => c + 1);
     setCommentText("");
-    setShowComment(false);
+
+    if (isMobile) {
+      setShowComment(false);
+    }
   };
 
   const onImageOpen = () => {
@@ -641,14 +795,6 @@ export function PostCard({
     } catch {}
   };
 
-  const onVideoToggleMute = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = !v.muted;
-    setIsMuted(v.muted);
-    click(v.muted ? "video_mute" : "video_unmute");
-  };
-
   const onVideoEnded = () => {
     setIsVideoPlaying(false);
     click("video_ended");
@@ -754,6 +900,12 @@ export function PostCard({
     ? REACTION_META[myReaction]?.label || "Like"
     : "Like";
 
+  const myParticipantId =
+    ((typeof window !== "undefined" &&
+      (window.SESSION?.participant_id || window.PARTICIPANT_ID)) ||
+      null) ||
+    "Participant";
+
   function ReactionIconWithNames({ rxKey, count, z, post, idx = 0 }) {
     const [open, setOpen] = React.useState(false);
     const label = REACTION_META[rxKey]?.label || rxKey;
@@ -813,9 +965,7 @@ export function PostCard({
                   ))}
                 </ul>
                 {remaining > 0 && (
-                  <div style={{ opacity: 0.8, marginTop: 4 }}>
-                    and {remaining} more
-                  </div>
+                  <div style={{ opacity: 0.8, marginTop: 4 }}>and {remaining} more</div>
                 )}
               </>
             ) : (
@@ -869,11 +1019,8 @@ export function PostCard({
       width: `${pct}%`,
       background: "#fff",
     }),
-    time: {
-      fontSize: 12,
-      fontWeight: 600,
-      textShadow: "0 1px 2px rgba(0,0,0,.5)",
-    },
+    row: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+    time: { fontSize: 12, fontWeight: 600, textShadow: "0 1px 2px rgba(0,0,0,.5)" },
     settingsWrap: { position: "relative", pointerEvents: "auto" },
     menu: {
       position: "absolute",
@@ -934,13 +1081,17 @@ export function PostCard({
               <>
                 <span className="subtle">Sponsored</span>
                 <span className="sep" aria-hidden="true">·</span>
-                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+                <IconGlobe
+                  style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }}
+                />
               </>
             ) : timeLabel ? (
               <>
                 <span className="subtle">{timeLabel}</span>
                 <span className="sep" aria-hidden="true">·</span>
-                <IconGlobe style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }} />
+                <IconGlobe
+                  style={{ color: "var(--muted)", width: 14, height: 14, flexShrink: 0 }}
+                />
               </>
             ) : null}
           </div>
@@ -971,11 +1122,7 @@ export function PostCard({
               menuItems={menuItems}
             />
           ) : (
-            <MenuPortal
-              anchorRef={dotsRef}
-              open={menuOpen}
-              onClose={() => setMenuOpen(false)}
-            >
+            <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
               {menuItems}
             </MenuPortal>
           )}
@@ -1107,7 +1254,10 @@ export function PostCard({
                         {isVideoPlaying ? "❚❚" : "▶"}
                       </button>
 
-                      <div style={fb.time}>
+                      <div
+                        style={fb.time}
+                        aria-label={`Time ${fmtTime(current)} of ${fmtTime(duration)}`}
+                      >
                         {fmtTime(current)} / {fmtTime(duration)}
                       </div>
                     </div>
@@ -1482,10 +1632,14 @@ export function PostCard({
               }
             }}
             onPointerUp={(e) => {
-              if (e.pointerType === "touch") touchActiveRef.current = false;
+              if (e.pointerType === "touch") {
+                touchActiveRef.current = false;
+              }
             }}
             onPointerCancel={(e) => {
-              if (e.pointerType === "touch") touchActiveRef.current = false;
+              if (e.pointerType === "touch") {
+                touchActiveRef.current = false;
+              }
             }}
           >
             <ActionBtn
@@ -1562,11 +1716,7 @@ export function PostCard({
           mySubmittedComment={mySubmittedComment}
           shouldShowGhosts={shouldShowGhosts}
           baseCommentCount={baseCommentCount}
-          participantId={String(
-            ((typeof window !== "undefined" &&
-              (window.SESSION?.participant_id || window.PARTICIPANT_ID)) ||
-              "Participant")
-          )}
+          participantId={String(myParticipantId)}
         />
       ) : (
         <FacebookCommentModalDesktop
@@ -1578,6 +1728,10 @@ export function PostCard({
           onSubmit={onSubmitComment}
           commentText={commentText}
           setCommentText={setCommentText}
+          mySubmittedComment={mySubmittedComment}
+          shouldShowGhosts={shouldShowGhosts}
+          baseCommentCount={baseCommentCount}
+          participantId={String(myParticipantId)}
           postContent={
             <div className="card post-card" style={{ margin: 0 }}>
               {postContent}
@@ -1600,5 +1754,160 @@ export function PostCard({
         />
       )}
     </article>
+  );
+}
+
+/* Programmatic in-view play/pause for native <video> */
+function InViewVideoController({ inView, videoRef, setIsVideoPlaying, muted }) {
+  useEffect(() => {
+    const v = videoRef?.current;
+    if (!v) return;
+    try {
+      if (inView) {
+        v.muted = muted !== false;
+        v.play().then(() => setIsVideoPlaying(true)).catch(() => {});
+      } else {
+        v.pause();
+        setIsVideoPlaying(false);
+      }
+    } catch {}
+  }, [inView, videoRef, setIsVideoPlaying, muted]);
+
+  return null;
+}
+
+/* ------------------------------- Feed ------------------------------------- */
+export function Feed({
+  posts,
+  registerViewRef,
+  disabled,
+  log,
+  onSubmit,
+  flags,
+  app,
+  projectId,
+  feedId,
+  runSeed,
+}) {
+  const STEP = 6;
+  const FIRST_PAINT = Math.min(8, posts.length || 0);
+  const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
+
+  useEffect(() => {
+    if (!posts?.length) return;
+    const ric =
+      window.requestIdleCallback ||
+      ((fn) => setTimeout(() => fn({ didTimeout: false }), 200));
+    const handle = ric(() => setVisibleCount((c) => Math.min(c + STEP, posts.length)));
+    return () =>
+      window.cancelIdleCallback ? window.cancelIdleCallback(handle) : clearTimeout(handle);
+  }, [posts]);
+
+  const sentinelRef = useRef(null);
+
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const el = sentinelRef.current;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setVisibleCount((c) => Math.min(c + STEP, posts.length));
+          }
+        }
+      },
+      { root: null, rootMargin: "600px 0px 600px 0px", threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.unobserve(el);
+  }, [posts.length]);
+
+  const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
+
+  return (
+    <div className="page">
+      <aside className="rail rail-left" aria-hidden="true" tabIndex={-1}>
+        <div className="ghost-card ghost-profile">
+          <div className="ghost-avatar xl" />
+          <div className="ghost-lines">
+            <div className="ghost-line w-60" />
+            <div className="ghost-line w-35" />
+          </div>
+        </div>
+        <div className="ghost-list">
+          {["Home", "AI", "Friends", "Events", "Memories", "Saved", "Groups", "Marketplace", "Feeds", "Video"].map((t, i) => (
+            <div key={i} className="ghost-item icon">
+              <div className="ghost-icon" />
+              <div className="ghost-line w-70" />
+            </div>
+          ))}
+        </div>
+        <div className="ghost-title" />
+        <div className="ghost-list">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="ghost-item">
+              <div className="ghost-avatar sm" />
+              <div className="ghost-line w-60" />
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <main className="container feed">
+        {renderPosts.map((p) => (
+          <PostCard
+            key={p.id}
+            post={p}
+            onAction={log}
+            disabled={disabled}
+            registerViewRef={registerViewRef}
+            flags={flags}
+            runSeed={runSeed}
+            app={app}
+            projectId={projectId}
+            feedId={feedId}
+          />
+        ))}
+
+        <div ref={sentinelRef} aria-hidden="true" />
+        {visibleCount >= posts.length && <div className="end">End of Feed</div>}
+        <div className="submit-wrap">
+          <button
+            type="button"
+            className="btn primary btn-wide"
+            onClick={onSubmit}
+            disabled={disabled === true}
+          >
+            Submit
+          </button>
+        </div>
+      </main>
+
+      <aside className="rail rail-right" aria-hidden="true" tabIndex={-1}>
+        <div className="ghost-card banner" />
+        <div className="ghost-card banner" />
+        <div className="ghost-card box">
+          <div className="ghost-line w-40" style={{ marginBottom: 8 }} />
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="ghost-row">
+              <div className="ghost-avatar sm" />
+              <div className="ghost-lines">
+                <div className="ghost-line w-70" />
+                <div className="ghost-line w-45" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="ghost-card box">
+          <div className="ghost-line w-35" style={{ marginBottom: 8 }} />
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="ghost-row">
+              <div className="ghost-avatar sm online" />
+              <div className="ghost-line w-60" />
+            </div>
+          ))}
+        </div>
+      </aside>
+    </div>
   );
 }
