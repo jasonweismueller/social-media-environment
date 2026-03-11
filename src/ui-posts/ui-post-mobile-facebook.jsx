@@ -95,7 +95,7 @@ function MobileSheetBase({ open, onClose, children, maxHeight = "85vh" }) {
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
-        zIndex: 9999,
+        zIndex: 30000,
         transition: dragging ? "none" : "background 0.25s ease",
         backdropFilter: "blur(4px)",
         WebkitBackdropFilter: "blur(4px)",
@@ -103,19 +103,21 @@ function MobileSheetBase({ open, onClose, children, maxHeight = "85vh" }) {
     >
       <div
         {...bind}
-        style={{
-          transform: `translateY(${translateY}px)`,
-          transition: dragging ? "none" : "transform 0.3s ease",
-          width: "100%",
-          maxWidth: "100vw",
-          background: "#fff",
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          maxHeight,
-          overflowY: "auto",
-          boxShadow: "0 -8px 24px rgba(0,0,0,.25)",
-          animation: "fbSheetSlideUp 0.45s cubic-bezier(0.25,1,0.5,1)",
-        }}
+       style={{
+  transform: `translateY(${translateY}px)`,
+  transition: dragging ? "none" : "transform 0.3s ease",
+  width: "100%",
+  maxWidth: "100vw",
+  background: "#fff",
+  borderTopLeftRadius: 16,
+  borderTopRightRadius: 16,
+  maxHeight,
+  overflowY: "auto",
+  boxShadow: "0 -8px 24px rgba(0,0,0,.25)",
+  animation: "fbSheetSlideUp 0.45s cubic-bezier(0.25,1,0.5,1)",
+  position: "relative",
+  zIndex: 30001,
+}}
       >
         <div
           style={{

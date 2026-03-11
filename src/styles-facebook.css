@@ -1843,20 +1843,41 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   overflow: visible !important;     /* important for reaction flyout */
 }
 
-.like-wrap {
-  position: relative !important;
-  overflow: visible !important;
-  z-index: 5 !important;
+.like-wrap{
+  position: relative;
+  display: flex;
+  flex: 1;
+  overflow: visible;         /* add */
+  z-index: 20;               /* add */
 }
 
-.footer,
+.footer{
+  padding: .5rem;
+  border-top: 1px solid var(--line);
+  overflow: visible;         /* add */
+  position: relative;        /* add */
+  z-index: 1;                /* add */
+}
+
 .actions {
   overflow: visible !important;
 }
 
-.react-flyout {
-  z-index: 999 !important;
-  bottom: 100% !important;
+.react-flyout{
+  position: absolute;
+  bottom: 100%;
+  left: .5rem;
+  transform: translateY(-6px);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .1rem .1rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 0;
+  white-space: nowrap;
+
+  z-index: 2000;             /* increase a lot */
 }
 
   .page .feed > .card:first-child,
