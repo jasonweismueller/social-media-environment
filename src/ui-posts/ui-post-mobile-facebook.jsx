@@ -188,16 +188,23 @@ export function FacebookCommentSheetMobile({
   if (!open) return null;
 
   const totalVisibleComments =
-    (shouldShowGhosts ? Math.min(5, baseCommentCount) : 0) + (mySubmittedComment ? 1 : 0);
+    (shouldShowGhosts ? Math.min(5, baseCommentCount) : 0) +
+    (mySubmittedComment ? 1 : 0);
+
+  const hasAnyComments = totalVisibleComments > 0;
 
   return (
-    <MobileSheetBase open={open} onClose={onClose} maxHeight="86vh">
+    <MobileSheetBase
+      open={open}
+      onClose={onClose}
+      maxHeight={hasAnyComments ? "72vh" : "40vh"}
+    >
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          minHeight: "60vh",
-          maxHeight: "86vh",
+          minHeight: hasAnyComments ? "52vh" : "auto",
+          maxHeight: hasAnyComments ? "72vh" : "40vh",
         }}
       >
         <div
@@ -208,6 +215,7 @@ export function FacebookCommentSheetMobile({
             paddingBottom: 12,
             borderBottom: "1px solid #e5e7eb",
             margin: "0 16px",
+            flexShrink: 0,
           }}
         >
           Comments
@@ -215,8 +223,8 @@ export function FacebookCommentSheetMobile({
 
         <div
           style={{
-            flex: 1,
-            overflowY: "auto",
+            flex: hasAnyComments ? 1 : "0 1 auto",
+            overflowY: hasAnyComments ? "auto" : "visible",
             padding: "16px",
             minHeight: 0,
           }}
@@ -227,7 +235,8 @@ export function FacebookCommentSheetMobile({
                 textAlign: "center",
                 color: "#6b7280",
                 fontSize: 14,
-                marginTop: 48,
+                marginTop: 20,
+                marginBottom: 12,
               }}
             >
               No comments yet. Start the conversation.
@@ -342,6 +351,7 @@ export function FacebookCommentSheetMobile({
             alignItems: "center",
             gap: 8,
             marginTop: "auto",
+            flexShrink: 0,
           }}
         >
           <img
