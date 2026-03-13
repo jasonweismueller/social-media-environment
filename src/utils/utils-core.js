@@ -24,6 +24,8 @@ export function toCSV(rows, header, headerLabels) {
     return s;
   };
 
+
+
   const lines = [];
   if (header) {
     const firstRow = Array.isArray(headerLabels) && headerLabels.length === header.length
@@ -40,6 +42,8 @@ export const toggleInSet = (setObj, id) => {
   next.has(id) ? next.delete(id) : next.add(id);
   return next;
 };
+
+
 
 export const CF_BASE =
   (window.CONFIG && window.CONFIG.CF_BASE) ||
@@ -123,6 +127,15 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
     const next = url.toString();
     replace ? history.replaceState({}, "", next) : history.pushState({}, "", next);
   } catch {}
+}
+
+export function getTrackingIdsFromUrl() {
+  const sp = getCombinedSearchParams();
+  return {
+    prolific_pid: sp.get("PROLIFIC_PID") || sp.get("prolific_pid") || "",
+    session_id_ext: sp.get("SESSION_ID") || sp.get("session_id") || "",
+    study_id: sp.get("STUDY_ID") || sp.get("study_id") || "",
+  };
 }
 
 export function getAppParam() {
@@ -475,14 +488,17 @@ export function startViewportTracker({
 /* -------- participant row/header builders (client) ------------------------ */
 export function buildMinimalHeader(posts) {
   const base = [
-    "session_id",
-    "participant_id",
-    "entered_at_iso",
-    "submitted_at_iso",
-    "ms_enter_to_submit",
-    "ms_enter_to_last_interaction",
-    "feed_id",
-  ];
+  "session_id",
+  "participant_id",
+  "prolific_pid",
+  "session_id_ext",
+  "study_id",
+  "entered_at_iso",
+  "submitted_at_iso",
+  "ms_enter_to_submit",
+  "ms_enter_to_last_interaction",
+  "feed_id",
+];
 
   const perPost = [];
   posts.forEach((p) => {
@@ -733,16 +749,21 @@ case "note_link_open":
 }
   }
 
-  const row = {
-    session_id,
-    participant_id: participant_id || null,
-    entered_at_iso,
-    submitted_at_iso,
-    ms_enter_to_submit,
-    ms_enter_to_last_interaction,
-    feed_id: feed_id || null,
-    feed_checksum: feed_checksum || null,
-  };
+const tracking = getTrackingIdsFromUrl();
+
+const row = {
+  session_id,
+  participant_id: participant_id || null,
+  prolific_pid: tracking.prolific_pid || null,
+  session_id_ext: tracking.session_id_ext || null,
+  study_id: tracking.study_id || null,
+  entered_at_iso,
+  submitted_at_iso,
+  ms_enter_to_submit,
+  ms_enter_to_last_interaction,
+  feed_id: feed_id || null,
+  feed_checksum: feed_checksum || null,
+};
 
   for (const p of posts) {
     const id = p.id || "unknown";
