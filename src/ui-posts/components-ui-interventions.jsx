@@ -14,30 +14,37 @@ function NoteRichText({ text, onLinkClick }) {
   while ((m = URL_RE.exec(raw)) !== null) {
     const start = m.index;
     const end = start + m[0].length;
-    if (start > last) out.push({ kind: "text", value: raw.slice(last, start) });
+
+    if (start > last) {
+      out.push({ kind: "text", value: raw.slice(last, start) });
+    }
+
     out.push({ kind: "url", value: m[0] });
     last = end;
   }
-  if (last < raw.length) out.push({ kind: "text", value: raw.slice(last) });
+
+  if (last < raw.length) {
+    out.push({ kind: "text", value: raw.slice(last) });
+  }
 
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
       {out.map((p, i) => {
-        if (p.kind === "text") return <React.Fragment key={i}>{p.value}</React.Fragment>;
+        if (p.kind === "text") {
+          return <React.Fragment key={i}>{p.value}</React.Fragment>;
+        }
 
         const href = p.value.startsWith("http") ? p.value : `https://${p.value}`;
+
         return (
           <a
             key={i}
             href={href}
-            target="_blank"
-            rel="noreferrer"
             style={{ color: "#1877F2", textDecoration: "underline" }}
             onClick={(e) => {
-              // ✅ open URL in new tab, but do NOT open the modal
-              e.stopPropagation();
+              e.preventDefault();      // 🚫 stop navigation
+              e.stopPropagation();     // 🚫 stop modal open
               onLinkClick?.(href);
-              // allow default browser open-new-tab behavior
             }}
           >
             {p.value}
@@ -264,7 +271,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
       <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
 
       {/* Note meta rows (like the screenshot) */}
-      <div style={{ padding: 14, display: "grid", gap: 8 }}>
+      <div style={{ padding: "14px 14px 6px 14px", display: "grid", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
           <span
             style={{
@@ -314,10 +321,10 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
         </div>
       </div>
 
-   {/* Note body */}
+{/* Note body */}
 <div
   style={{
-    marginTop: 4,
+    marginTop: 2,
     marginLeft: 26,
     marginRight: 14,
     marginBottom: 14,
@@ -330,6 +337,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
     text={post.noteText || ""}
     onLinkClick={(href) => {
       onAction?.("note_link_open", { post_id: post.id, href });
+
       alert(
         "We have noted your interest in exploring the note link. We will provide you with further information in the study debrief."
       );
@@ -436,9 +444,15 @@ function NoteIntervention({ post, view, onAction }) {
   }}
 >
   <NoteRichText
-    text={post.noteText || ""}
-    onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
-  />
+  text={post.noteText || ""}
+  onLinkClick={(href) => {
+    onAction?.("note_link_open", { post_id: post.id, href });
+
+    alert(
+      "We have noted your interest in exploring the note link. We will provide you with further information in the study debrief."
+    );
+  }}
+/>
 </div>
         </div>
 
