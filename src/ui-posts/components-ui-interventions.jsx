@@ -314,14 +314,16 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
         </div>
       </div>
 
-    {/* Note body */}
+   {/* Note body */}
 <div
   style={{
-    marginTop: 10,
-    marginLeft: 28,   // align with metadata rows inside modal
+    marginTop: 4,
+    marginLeft: 26,
+    marginRight: 14,
+    marginBottom: 14,
     fontSize: 14,
     color: "#111827",
-    lineHeight: 1.4,
+    lineHeight: 1.45,
   }}
 >
   <NoteRichText
@@ -334,6 +336,8 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
     }}
   />
 </div>
+
+<div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
 
       <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
 
