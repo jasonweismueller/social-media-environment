@@ -1205,6 +1205,58 @@ export function pickDeterministic(array, seedParts = []) {
   return arr[idx];
 }
 
+function deterministicShuffle(array, seedParts = []) {
+  const arr = Array.isArray(array) ? [...array] : [];
+  if (arr.length <= 1) return arr;
+
+  const r = rng(seedParts.join("::"));
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+export function pickUniqueDeterministic(array, index, seedParts = []) {
+  const arr = Array.isArray(array) ? array : [];
+  if (!arr.length) return null;
+
+  const shuffled = deterministicShuffle(arr, seedParts);
+
+  // reuse only if the number of posts exceeds the pool size
+  const safeIndex = ((Number(index) || 0) % shuffled.length + shuffled.length) % shuffled.length;
+  return shuffled[safeIndex];
+}
+
+export function buildDeterministicAssignmentMap(items = [], pool = [], seedParts = [], getKey = (x) => x?.id) {
+  const sourceItems = Array.isArray(items) ? items : [];
+  const sourcePool = Array.isArray(pool) ? pool : [];
+  const out = new Map();
+
+  if (!sourceItems.length || !sourcePool.length) return out;
+
+  const shuffledPool = deterministicShuffle(sourcePool, [...seedParts, "pool"]);
+  const shuffledItems = deterministicShuffle(sourceItems, [...seedParts, "items"]);
+
+  shuffledItems.forEach((item, idx) => {
+    const key = getKey(item);
+    if (key == null) return;
+    out.set(key, shuffledPool[idx % shuffledPool.length]);
+  });
+
+  return out;
+}
+
+
+export function getStablePostOrderIndex(posts = [], postId) {
+  const ids = (Array.isArray(posts) ? posts : [])
+    .map((p) => String(p?.id ?? ""))
+    .filter(Boolean)
+    .sort();
+
+  return Math.max(0, ids.indexOf(String(postId ?? "")));
+}
+
 /* ------- Image pools by topic (from S3 manifests) ------- */
 // Legacy: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
 export function topicToFolder(topic = "") {

@@ -12,6 +12,7 @@ import {
   getAvatarPool,
   pickDeterministic,
   getImagePool,
+  buildDeterministicAssignmentMap,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
@@ -157,6 +158,8 @@ export function PostCard({
   projectId,
   feedId,
   runSeed,
+  assignedAuthor,
+  assignedAvatarUrl,
 }) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -404,20 +407,20 @@ export function PostCard({
   const { wrapRef, inView } = useInViewAutoplay(0.6);
 
   const scheduleOpen = () => {
-  if (Date.now() < suppressHoverUntil.current) return;
-  clearTimeout(openTimer.current);
-  clearTimeout(closeTimer.current);
-  openTimer.current = setTimeout(() => {
     if (Date.now() < suppressHoverUntil.current) return;
-    setFlyoutOpen(true);
-  }, OPEN_DELAY);
-};
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
+    openTimer.current = setTimeout(() => {
+      if (Date.now() < suppressHoverUntil.current) return;
+      setFlyoutOpen(true);
+    }, OPEN_DELAY);
+  };
 
   const scheduleClose = () => {
-  clearTimeout(openTimer.current);
-  clearTimeout(closeTimer.current);
-  closeTimer.current = setTimeout(() => setFlyoutOpen(false), CLOSE_DELAY);
-};
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setFlyoutOpen(false), CLOSE_DELAY);
+  };
 
   const closeNowAndSuppress = () => {
     clearTimeout(openTimer.current);
@@ -426,24 +429,22 @@ export function PostCard({
     suppressHoverUntil.current = Date.now() + SUPPRESS_MS;
   };
 
-  
+  useEffect(() => {
+    if (!flyoutOpen) return;
 
- useEffect(() => {
-  if (!flyoutOpen) return;
+    const onDocPointerDown = (e) => {
+      const inFlyout = e.target.closest?.(".react-flyout");
+      const inLikeWrap = e.target.closest?.(".like-wrap");
+      if (!inFlyout && !inLikeWrap) setFlyoutOpen(false);
+    };
 
-  const onDocPointerDown = (e) => {
-    const inFlyout = e.target.closest?.(".react-flyout");
-    const inLikeWrap = e.target.closest?.(".like-wrap");
-    if (!inFlyout && !inLikeWrap) setFlyoutOpen(false);
-  };
-
-  document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
-  return () => {
-    document.removeEventListener("pointerdown", onDocPointerDown, {
-      capture: true,
-    });
-  };
-}, [flyoutOpen]);
+    document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointerDown, {
+        capture: true,
+      });
+    };
+  }, [flyoutOpen]);
 
   const showReactions = post.showReactions ?? false;
   const ALL_RX_KEYS = useMemo(() => Object.keys(REACTION_META), []);
@@ -472,8 +473,8 @@ export function PostCard({
   const displayedCommentCount = baseCommentCount + participantComments;
 
   const baseShareCount = Number(post.metrics?.shares) || 0;
-const [shareCountLocal, setShareCountLocal] = useState(0);
-const displayedShareCount = baseShareCount + shareCountLocal;
+  const [shareCountLocal, setShareCountLocal] = useState(0);
+  const displayedShareCount = baseShareCount + shareCountLocal;
 
   const totalReactions = useMemo(
     () => sumSelectedReactions(liveReactions, ALL_RX_KEYS),
@@ -508,23 +509,21 @@ const displayedShareCount = baseShareCount + shareCountLocal;
   );
 
   const onLike = () => {
-  // Mobile: tap should open the reaction picker, not instantly like
-  if (isMobile) {
-    setFlyoutOpen((v) => !v);
-    return;
-  }
-
-  // Desktop: normal click toggles Like
-  closeNowAndSuppress();
-  setMyReaction((prev) => {
-    if (prev == null) {
-      click("react_pick", { type: "like", prev: null });
-      return "like";
+    if (isMobile) {
+      setFlyoutOpen((v) => !v);
+      return;
     }
-    click("react_clear", { type: prev, prev });
-    return null;
-  });
-};
+
+    closeNowAndSuppress();
+    setMyReaction((prev) => {
+      if (prev == null) {
+        click("react_pick", { type: "like", prev: null });
+        return "like";
+      }
+      click("react_clear", { type: prev, prev });
+      return null;
+    });
+  };
 
   const onPickReaction = (key) => {
     setMyReaction((prev) => {
@@ -538,19 +537,19 @@ const displayedShareCount = baseShareCount + shareCountLocal;
     closeNowAndSuppress();
   };
 
- const onShare = () => {
-  setFlyoutOpen(false);
-  clearTimeout(openTimer.current);
-  clearTimeout(closeTimer.current);
-  setShowShare(true);
-  click("share_open");
-};
+  const onShare = () => {
+    setFlyoutOpen(false);
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
+    setShowShare(true);
+    click("share_open");
+  };
 
   const onConfirmShare = ({ message } = {}) => {
-  click("share", { message: message || "" });
-  setShareCountLocal((n) => n + 1);
-  setShowShare(false);
-};
+    click("share", { message: message || "" });
+    setShareCountLocal((n) => n + 1);
+    setShowShare(false);
+  };
 
   const onExpand = () => {
     setExpanded(true);
@@ -558,13 +557,13 @@ const displayedShareCount = baseShareCount + shareCountLocal;
   };
 
   const onOpenComment = () => {
-  setFlyoutOpen(false);
-  clearTimeout(openTimer.current);
-  clearTimeout(closeTimer.current);
-  setShowComment(true);
-  setCommentFocusTick((n) => n + 1);
-  click("comment_open");
-};
+    setFlyoutOpen(false);
+    clearTimeout(openTimer.current);
+    clearTimeout(closeTimer.current);
+    setShowComment(true);
+    setCommentFocusTick((n) => n + 1);
+    click("comment_open");
+  };
 
   const onSubmitComment = () => {
     const txt = commentText.trim();
@@ -604,40 +603,13 @@ const displayedShareCount = baseShareCount + shareCountLocal;
     String(post.id ?? ""),
   ];
 
-  const poolNames =
-    authorType === "female"
-      ? FB_FEMALE_NAMES
-      : authorType === "male"
-      ? FB_MALE_NAMES
-      : FB_COMPANY_NAMES;
-
   const displayAuthor = React.useMemo(() => {
     if (!randNamesOn && post.author) return post.author;
-    const picked = pickDeterministic(poolNames, [...seedParts, "name"]);
-    return picked || post.author || (authorType === "company" ? "Sponsored" : "User");
-  }, [randNamesOn, authorType, post.author, runSeed, app, projectId, feedId, post.id]);
-
-  const [randAvatarUrl, setRandAvatarUrl] = React.useState(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    if (!randAvatarOn || post.avatarMode === "neutral") {
-      setRandAvatarUrl(null);
-      return;
-    }
-    (async () => {
-      const list = await getAvatarPool(authorType);
-      if (cancelled) return;
-      const pick = pickDeterministic(list, [...seedParts, "avatar"]);
-      setRandAvatarUrl(pick || null);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [randAvatarOn, post.avatarMode, authorType, runSeed, app, projectId, feedId, post.id]);
+    return assignedAuthor || post.author || (authorType === "company" ? "Sponsored" : "User");
+  }, [randNamesOn, assignedAuthor, post.author, authorType]);
 
   const displayAvatar = randAvatarOn
-    ? randAvatarUrl || post.avatarUrl || null
+    ? assignedAvatarUrl || post.avatarUrl || null
     : post.avatarUrl || null;
 
   React.useEffect(() => {
@@ -1065,15 +1037,15 @@ const displayedShareCount = baseShareCount + shareCountLocal;
           <button
             ref={dotsRef}
             className="dots"
-           onClick={() => {
-  if (!disabled) {
-    setFlyoutOpen(false);
-    clearTimeout(openTimer.current);
-    clearTimeout(closeTimer.current);
-    setMenuOpen((v) => !v);
-    onAction("post_menu_toggle", { post_id: post.id });
-  }
-}}
+            onClick={() => {
+              if (!disabled) {
+                setFlyoutOpen(false);
+                clearTimeout(openTimer.current);
+                clearTimeout(closeTimer.current);
+                setMenuOpen((v) => !v);
+                onAction("post_menu_toggle", { post_id: post.id });
+              }
+            }}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label="Post menu"
@@ -1083,19 +1055,19 @@ const displayedShareCount = baseShareCount + shareCountLocal;
           </button>
 
           {isMobile
-  ? createPortal(
-      <FacebookMenuSheet
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        menuItems={menuItems}
-      />,
-      document.body
-    )
-  : (
-      <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
-        {menuItems}
-      </MenuPortal>
-    )}
+            ? createPortal(
+                <FacebookMenuSheet
+                  open={menuOpen}
+                  onClose={() => setMenuOpen(false)}
+                  menuItems={menuItems}
+                />,
+                document.body
+              )
+            : (
+              <MenuPortal anchorRef={dotsRef} open={menuOpen} onClose={() => setMenuOpen(false)}>
+                {menuItems}
+              </MenuPortal>
+            )}
         </div>
       </header>
 
@@ -1584,18 +1556,18 @@ const displayedShareCount = baseShareCount + shareCountLocal;
 
       <footer className="footer">
         <div className="actions">
-         <div
-  className="like-wrap"
-  onMouseEnter={!isMobile ? scheduleOpen : undefined}
-  onMouseLeave={
-    !isMobile
-      ? () => {
-          scheduleClose();
-          suppressHoverUntil.current = 0;
-        }
-      : undefined
-  }
->
+          <div
+            className="like-wrap"
+            onMouseEnter={!isMobile ? scheduleOpen : undefined}
+            onMouseLeave={
+              !isMobile
+                ? () => {
+                    scheduleClose();
+                    suppressHoverUntil.current = 0;
+                  }
+                : undefined
+            }
+          >
             <ActionBtn
               label={likeLabel}
               active={!!myReaction}
@@ -1607,24 +1579,24 @@ const displayedShareCount = baseShareCount + shareCountLocal;
             />
 
             {flyoutOpen && (
-  <div
-    className="react-flyout"
-    role="menu"
-    aria-label="Pick a reaction"
-    onMouseEnter={!isMobile ? scheduleOpen : undefined}
-    onMouseLeave={!isMobile ? scheduleClose : undefined}
-    onPointerDown={(e) => e.stopPropagation()}
-  >
+              <div
+                className="react-flyout"
+                role="menu"
+                aria-label="Pick a reaction"
+                onMouseEnter={!isMobile ? scheduleOpen : undefined}
+                onMouseLeave={!isMobile ? scheduleClose : undefined}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
-                <button
-  type="button"
-  key={key}
-  aria-label={key}
-  onClick={() => onPickReaction(key)}
-  title={key}
->
-  {emoji}
-</button>
+                  <button
+                    type="button"
+                    key={key}
+                    aria-label={key}
+                    onClick={() => onPickReaction(key)}
+                    title={key}
+                  >
+                    {emoji}
+                  </button>
                 ))}
               </div>
             )}
@@ -1638,12 +1610,12 @@ const displayedShareCount = baseShareCount + shareCountLocal;
           />
 
           <ActionBtn
-  label="Share"
-  onClick={onShare}
-  Icon={IconShare}
-  active={false}
-  disabled={disabled}
-/>
+            label="Share"
+            onClick={onShare}
+            Icon={IconShare}
+            active={false}
+            disabled={disabled}
+          />
         </div>
       </footer>
     </>
@@ -1659,62 +1631,62 @@ const displayedShareCount = baseShareCount + shareCountLocal;
       {postContent}
 
       {isMobile
-  ? createPortal(
-      <FacebookCommentSheetMobile
-        open={showComment}
-        onClose={() => {
-          onAction("comment_cancel", { post_id: post.id });
-          setShowComment(false);
-        }}
-        onSubmit={onSubmitComment}
-        commentText={commentText}
-        setCommentText={setCommentText}
-        mySubmittedComment={mySubmittedComment}
-        shouldShowGhosts={shouldShowGhosts}
-        baseCommentCount={baseCommentCount}
-        participantId={String(myParticipantId)}
-      />,
-      document.body
-    )
-  : (
-        <FacebookCommentModalDesktop
-          open={showComment}
-          onClose={() => {
-            onAction("comment_cancel", { post_id: post.id });
-            setShowComment(false);
-          }}
-          onSubmit={onSubmitComment}
-          commentText={commentText}
-          setCommentText={setCommentText}
-          mySubmittedComment={mySubmittedComment}
-          shouldShowGhosts={shouldShowGhosts}
-          baseCommentCount={baseCommentCount}
-          participantId={String(myParticipantId)}
-          postContent={
-  <div className="fb-modal-post-shell">
-    {postContent}
-  </div>
-}
-focusTick={commentFocusTick}
-        />
-      )}
+        ? createPortal(
+            <FacebookCommentSheetMobile
+              open={showComment}
+              onClose={() => {
+                onAction("comment_cancel", { post_id: post.id });
+                setShowComment(false);
+              }}
+              onSubmit={onSubmitComment}
+              commentText={commentText}
+              setCommentText={setCommentText}
+              mySubmittedComment={mySubmittedComment}
+              shouldShowGhosts={shouldShowGhosts}
+              baseCommentCount={baseCommentCount}
+              participantId={String(myParticipantId)}
+            />,
+            document.body
+          )
+        : (
+          <FacebookCommentModalDesktop
+            open={showComment}
+            onClose={() => {
+              onAction("comment_cancel", { post_id: post.id });
+              setShowComment(false);
+            }}
+            onSubmit={onSubmitComment}
+            commentText={commentText}
+            setCommentText={setCommentText}
+            mySubmittedComment={mySubmittedComment}
+            shouldShowGhosts={shouldShowGhosts}
+            baseCommentCount={baseCommentCount}
+            participantId={String(myParticipantId)}
+            postContent={
+              <div className="fb-modal-post-shell">
+                {postContent}
+              </div>
+            }
+            focusTick={commentFocusTick}
+          />
+        )}
 
       {isMobile
-  ? createPortal(
-      <FacebookShareSheetMobile
-        open={showShare}
-        onClose={() => setShowShare(false)}
-        onShare={onConfirmShare}
-      />,
-      document.body
-    )
-  : (
-        <FacebookShareModalDesktop
-          open={showShare}
-          onClose={() => setShowShare(false)}
-          onShare={onConfirmShare}
-        />
-      )}
+        ? createPortal(
+            <FacebookShareSheetMobile
+              open={showShare}
+              onClose={() => setShowShare(false)}
+              onShare={onConfirmShare}
+            />,
+            document.body
+          )
+        : (
+          <FacebookShareModalDesktop
+            open={showShare}
+            onClose={() => setShowShare(false)}
+            onShare={onConfirmShare}
+          />
+        )}
     </article>
   );
 }
@@ -1786,6 +1758,99 @@ export function Feed({
 
   const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
 
+  const femalePosts = useMemo(
+    () => posts.filter((p) => (p.authorType || "female") === "female"),
+    [posts]
+  );
+
+  const malePosts = useMemo(
+    () => posts.filter((p) => p.authorType === "male"),
+    [posts]
+  );
+
+  const companyPosts = useMemo(
+    () => posts.filter((p) => p.authorType === "company"),
+    [posts]
+  );
+
+  const femaleNameMap = useMemo(
+    () =>
+      buildDeterministicAssignmentMap(
+        femalePosts,
+        FB_FEMALE_NAMES,
+        [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "female-names"],
+        (p) => p.id
+      ),
+    [femalePosts, runSeed, app, projectId, feedId]
+  );
+
+  const maleNameMap = useMemo(
+    () =>
+      buildDeterministicAssignmentMap(
+        malePosts,
+        FB_MALE_NAMES,
+        [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "male-names"],
+        (p) => p.id
+      ),
+    [malePosts, runSeed, app, projectId, feedId]
+  );
+
+  const companyNameMap = useMemo(
+    () =>
+      buildDeterministicAssignmentMap(
+        companyPosts,
+        FB_COMPANY_NAMES,
+        [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "company-names"],
+        (p) => p.id
+      ),
+    [companyPosts, runSeed, app, projectId, feedId]
+  );
+
+  const [avatarMaps, setAvatarMaps] = useState({
+    female: new Map(),
+    male: new Map(),
+    company: new Map(),
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const [femalePool, malePool, companyPool] = await Promise.all([
+        getAvatarPool("female"),
+        getAvatarPool("male"),
+        getAvatarPool("company"),
+      ]);
+
+      if (cancelled) return;
+
+      setAvatarMaps({
+        female: buildDeterministicAssignmentMap(
+          femalePosts,
+          femalePool,
+          [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "female-avatars"],
+          (p) => p.id
+        ),
+        male: buildDeterministicAssignmentMap(
+          malePosts,
+          malePool,
+          [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "male-avatars"],
+          (p) => p.id
+        ),
+        company: buildDeterministicAssignmentMap(
+          companyPosts,
+          companyPool,
+          [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "company-avatars"],
+          (p) => p.id
+        ),
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [femalePosts, malePosts, companyPosts, runSeed, app, projectId, feedId]);
+
   return (
     <div className="page">
       <aside className="rail rail-left" aria-hidden="true" tabIndex={-1}>
@@ -1816,20 +1881,38 @@ export function Feed({
       </aside>
 
       <main className="container feed">
-        {renderPosts.map((p) => (
-          <PostCard
-            key={p.id}
-            post={p}
-            onAction={log}
-            disabled={disabled}
-            registerViewRef={registerViewRef}
-            flags={flags}
-            runSeed={runSeed}
-            app={app}
-            projectId={projectId}
-            feedId={feedId}
-          />
-        ))}
+        {renderPosts.map((p) => {
+          const assignedAuthor =
+            p.authorType === "male"
+              ? maleNameMap.get(p.id)
+              : p.authorType === "company"
+              ? companyNameMap.get(p.id)
+              : femaleNameMap.get(p.id);
+
+          const assignedAvatarUrl =
+            p.authorType === "male"
+              ? avatarMaps.male.get(p.id)
+              : p.authorType === "company"
+              ? avatarMaps.company.get(p.id)
+              : avatarMaps.female.get(p.id);
+
+          return (
+            <PostCard
+              key={p.id}
+              post={p}
+              onAction={log}
+              disabled={disabled}
+              registerViewRef={registerViewRef}
+              flags={flags}
+              runSeed={runSeed}
+              app={app}
+              projectId={projectId}
+              feedId={feedId}
+              assignedAuthor={assignedAuthor || null}
+              assignedAvatarUrl={assignedAvatarUrl || null}
+            />
+          );
+        })}
 
         <div ref={sentinelRef} aria-hidden="true" />
         {visibleCount >= posts.length && <div className="end">End of Feed</div>}
