@@ -314,8 +314,16 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
         </div>
       </div>
 
-      {/* Note body */}
-      <div style={{ marginTop: 10, fontSize: 14, color: "#111827" }}>
+    {/* Note body */}
+<div
+  style={{
+    marginTop: 10,
+    marginLeft: 28,   // align with metadata rows inside modal
+    fontSize: 14,
+    color: "#111827",
+    lineHeight: 1.4,
+  }}
+>
   <NoteRichText
     text={post.noteText || ""}
     onLinkClick={(href) => {
@@ -413,13 +421,21 @@ function NoteIntervention({ post, view, onAction }) {
             </div>
           </div>
 
-          {/* note text */}
-          <div style={{ marginTop: 10, fontSize: 14, color: "#111827" }}>
-            <NoteRichText
-              text={post.noteText || ""}
-              onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
-            />
-          </div>
+        {/* note text */}
+<div
+  style={{
+    marginTop: 10,
+    marginLeft: 24,   // align with text column after icon
+    fontSize: 14,
+    color: "#111827",
+    lineHeight: 1.4,
+  }}
+>
+  <NoteRichText
+    text={post.noteText || ""}
+    onLinkClick={(href) => onAction?.("note_link_open", { post_id: post.id, href })}
+  />
+</div>
         </div>
 
         {/* divider inside gray box */}
