@@ -416,8 +416,8 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
                     style={{
                       borderRadius: "50%",
                       border: selected
-                        ? "2px solid #0095f6"
-                        : "2px solid transparent",
+  ? "2px solid #1877f2"
+  : "2px solid transparent",
                       transition: "border 0.2s ease",
                     }}
                   />
@@ -430,7 +430,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
                         width: 22,
                         height: 22,
                         borderRadius: "50%",
-                        background: "#0095f6",
+                        background: "#1877f2",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -507,9 +507,9 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
               disabled={!selectedFriends.length}
               style={{
                 background:
-                  selectedFriends.length > 0 ? "#0095f6" : "#d1d5db",
+  selectedFriends.length > 0 ? "#1877f2" : "#d1d5db",
                 color: "#fff",
-                fontWeight: 600,
+                fontWeight: 700,
                 border: "none",
                 borderRadius: 10,
                 padding: "13px 0",
