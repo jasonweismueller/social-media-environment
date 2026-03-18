@@ -545,11 +545,17 @@ export function PostCard({
     click("share_open");
   };
 
-  const onConfirmShare = ({ message } = {}) => {
-    click("share", { message: message || "" });
-    setShareCountLocal((n) => n + 1);
-    setShowShare(false);
-  };
+  const onConfirmShare = (data = {}) => {
+  setShareCountLocal((n) => n + 1);
+
+  click("share_target", {
+    friend: data.friend || data.friends || "",
+    friends: data.friends || data.friend || "",
+    message: data.message || "",
+  });
+
+  setShowShare(false);
+};
 
   const onExpand = () => {
     setExpanded(true);
