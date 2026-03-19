@@ -1143,8 +1143,8 @@ export function summarizeRoster(rows) {
   const postKeys = new Set();
 rows.forEach(r => {
   Object.keys(r).forEach(k => {
-    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$/.test(k)) {
-  const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked)$/, "");
+    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$|_note_helpful_rated$|_note_helpful_value$/.test(k)) {
+  const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated|note_helpful_value)$/, "");
       postKeys.add(base);
     }
   });
