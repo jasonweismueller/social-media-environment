@@ -624,21 +624,27 @@ export function buildParticipantRow({
   const per = new Map();
   const ensure = (id) => {
     if (!per.has(id)) {
-      per.set(id, {
-  reaction_type: "",
-  expandable: false,
-  expanded: false,
-  commented: false,
-  comment_texts: [],
-  shared: false,
-  saved: false,
-  reported_misinfo: false,
-  note_opened: false,
-  note_view_details: false,
-  note_link_clicked: false,
-  note_helpful_rated: false,
-  note_helpful_value: "",
-});
+           per.set(id, {
+        reaction_type: "",
+        expandable: false,
+        expanded: false,
+        commented: false,
+        comment_texts: [],
+        shared: false,
+        share_target: "",
+        share_text: "",
+        saved: false,
+        reported_misinfo: false,
+        cta_clicked: false,
+        bio_opened: false,
+        bio_url_clicked: false,
+        mention_clicked: false,
+        note_opened: false,
+        note_view_details: false,
+        note_link_clicked: false,
+        note_helpful_rated: false,
+        note_helpful_value: "",
+      });
     }
     return per.get(id);
   };
@@ -767,49 +773,60 @@ const row = {
 
   for (const p of posts) {
     const id = p.id || "unknown";
-    const agg = per.get(id) || {
+       const agg = per.get(id) || {
       reaction_type: "",
       expandable: false,
       expanded: false,
       commented: false,
       comment_texts: [],
       shared: false,
+      share_target: "",
+      share_text: "",
+      saved: false,
       reported_misinfo: false,
+      cta_clicked: false,
+      bio_opened: false,
+      bio_url_clicked: false,
+      mention_clicked: false,
+      note_opened: false,
+      note_view_details: false,
+      note_link_clicked: false,
+      note_helpful_rated: false,
+      note_helpful_value: "",
     };
+        const reactedFlag = agg.reaction_type ? 1 : 0;
+    const shareTargetClean = String(agg.share_target || "").trim();
+    const hasTarget = shareTargetClean !== "";
 
-    const reactedFlag = agg.reaction_type ? 1 : 0;
-    row[`${id}_reacted`]       = reactedFlag ? 1 : "";
-    row[`${id}_reaction_type`] = agg.reaction_type;
-    row[`${id}_reported_misinfo`]  = agg.reported_misinfo ? 1 : "";
+    row[`${id}_reacted`] = reactedFlag;
+    row[`${id}_reaction_type`] = agg.reaction_type || "";
+    row[`${id}_reported_misinfo`] = agg.reported_misinfo ? 1 : 0;
 
-    row[`${id}_expandable`] = agg.expandable ? 1 : "";
-    row[`${id}_expanded`]   = agg.expanded ? 1 : "";
-    row[`${id}_commented`] = agg.commented ? 1 : "";
+    row[`${id}_expandable`] = agg.expandable ? 1 : 0;
+    row[`${id}_expanded`] = agg.expanded ? 1 : 0;
+    row[`${id}_commented`] = agg.commented ? 1 : 0;
     row[`${id}_comment_texts`] = agg.comment_texts.length
       ? agg.comment_texts.join(" | ")
       : "";
 
-    row[`${id}_saved`] = agg.saved ? 1 : "";
+    row[`${id}_saved`] = agg.saved ? 1 : 0;
 
-// IG: shared fields (clean)
-const shareTargetClean = String(agg.share_target || "").trim();
-const hasTarget = shareTargetClean !== "";
+    row[`${id}_shared`] = agg.shared || hasTarget ? 1 : 0;
+    row[`${id}_share_target`] = hasTarget ? shareTargetClean : "";
+    row[`${id}_share_text`] = agg.share_text || "";
 
-row[`${id}_shared`]        = hasTarget ? 1 : "";
-row[`${id}_share_target`]  = hasTarget ? shareTargetClean : "";
-row[`${id}_share_text`]    = agg.share_text || "";
-row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : "";
-row[`${id}_bio_opened`] = agg.bio_opened ? 1 : "";
-row[`${id}_bio_url_clicked`] = agg.bio_url_clicked ? 1 : "";
-row[`${id}_mention_clicked`] = agg.mention_clicked ? 1 : "";
-row[`${id}_note_opened`] = agg.note_opened ? 1 : "";
-row[`${id}_note_view_details`] = agg.note_view_details ? 1 : "";
-row[`${id}_note_link_clicked`] = agg.note_link_clicked ? 1 : "";
-row[`${id}_note_helpful_rated`] = agg.note_helpful_rated ? 1 : "";
-row[`${id}_note_helpful_value`] = agg.note_helpful_value || "";
+    row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : 0;
+    row[`${id}_bio_opened`] = agg.bio_opened ? 1 : 0;
+    row[`${id}_bio_url_clicked`] = agg.bio_url_clicked ? 1 : 0;
+    row[`${id}_mention_clicked`] = agg.mention_clicked ? 1 : 0;
+    row[`${id}_note_opened`] = agg.note_opened ? 1 : 0;
+    row[`${id}_note_view_details`] = agg.note_view_details ? 1 : 0;
+    row[`${id}_note_link_clicked`] = agg.note_link_clicked ? 1 : 0;
+    row[`${id}_note_helpful_rated`] = agg.note_helpful_rated ? 1 : 0;
+    row[`${id}_note_helpful_value`] = agg.note_helpful_value || "";
 
     const aggD = dwellAgg.get(id);
-    row[`${id}_dwell_s`]         = aggD ? aggD.dwell_s : 0;
+    row[`${id}_dwell_s`] = aggD ? aggD.dwell_s : 0;
   }
 
   return row;
@@ -831,7 +848,7 @@ export function extractPerPostFromRosterRow(row) {
 
       const outEnsure = (id) => {
         if (!clean[id]) {
-          clean[id] = {
+         clean[id] = {
   reacted: 0,
   commented: 0,
   shared: 0,
@@ -854,6 +871,8 @@ export function extractPerPostFromRosterRow(row) {
   note_opened: 0,
   note_view_details: 0,
   note_link_clicked: 0,
+  note_helpful_rated: 0,
+  note_helpful_value: "",
 };
         }
         return clean[id];
@@ -905,6 +924,8 @@ obj.mention_clicked = Number(agg?.mention_clicked || 0);
 obj.note_opened = Number(agg?.note_opened || 0);
 obj.note_view_details = Number(agg?.note_view_details || 0);
 obj.note_link_clicked = Number(agg?.note_link_clicked || 0);
+obj.note_helpful_rated = Number(agg?.note_helpful_rated || 0);
+obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
 
         obj.dwell_s = Number.isFinite(agg?.dwell_s)
           ? agg.dwell_s
@@ -962,6 +983,12 @@ obj.note_link_clicked = Number(agg?.note_link_clicked || 0);
           continue;
         }
 
+        m = /^(.+?)_note_helpful_value$/.exec(key);
+if (m) {
+  outEnsure(m[1]).note_helpful_value = String(val || "").trim();
+  continue;
+}
+
         // --- reaction type fallback ---
         m = /^(.+?)_reaction_type$/.exec(key);
         if (m) {
@@ -1012,7 +1039,7 @@ note_helpful_value: ""
     let m;
 
     // boolean fields
-   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked)$/.exec(key);
+   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated)$/.exec(key);
 if (m) {
   const obj = ensure(m[1]);
   const metric = m[2];
@@ -1057,6 +1084,12 @@ if (m) {
       obj.reacted = t ? 1 : 0;
       continue;
     }
+
+    m = /^(.+?)_note_helpful_value$/.exec(key);
+if (m) {
+  ensure(m[1]).note_helpful_value = String(val || "").trim();
+  continue;
+}
 
     // comment text
     m = /^(.+?)_comment_texts$/.exec(key);
