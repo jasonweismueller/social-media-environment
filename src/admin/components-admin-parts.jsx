@@ -379,10 +379,10 @@ const DEFAULT_SIM_CONFIG = {
     noteLinkClickedRate: 0.04,
     noteHelpfulRatedRate: 0.1,
     noteHelpfulMix: {
-  yes: 50,
-  somewhat: 30,
-  no: 20,
-},
+      yes: 50,
+      somewhat: 30,
+      no: 20,
+    },
     savedRate: 0.08,
   },
 };
@@ -767,8 +767,8 @@ function simulateParticipantRows({
         note_link_clicked = note_opened && chance(rng, randomCfg.noteLinkGivenOpen) ? 1 : 0;
         note_helpful_rated = note_opened && chance(rng, randomCfg.noteHelpfulGivenOpen) ? 1 : 0;
         note_helpful_value = note_helpful_rated
-  ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "yes")
-  : "";
+          ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "yes")
+          : "";
       }
 
       row[`${id}_reacted`] = reacted;
@@ -811,6 +811,89 @@ function simulateParticipantRows({
   }
 
   return out;
+}
+
+/* --------------------------- small input helpers --------------------------- */
+function NumericTextInput({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  style,
+  title,
+}) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={String(value ?? "")}
+      onFocus={selectAllOnFocus}
+      onClick={selectAllOnFocus}
+      onChange={(e) => {
+        const raw = String(e.target.value || "").replace(/[^\d]/g, "");
+        if (raw === "") {
+          onChange("");
+          return;
+        }
+        const num = Number(raw);
+        if (!Number.isFinite(num)) return;
+        let next = num;
+        if (min != null) next = Math.max(min, next);
+        if (max != null) next = Math.min(max, next);
+        onChange(next);
+      }}
+      style={style}
+      title={title}
+    />
+  );
+}
+
+function PercentField({ label, value, onChange, style }) {
+  const display = pctInputValue(value);
+  return (
+    <label>
+      <div className="subtle">{label}</div>
+      <NumericTextInput
+        min={0}
+        max={100}
+        step={1}
+        value={display}
+        onChange={(v) => onChange(Number(v || 0) / 100)}
+        style={style}
+      />
+    </label>
+  );
+}
+
+function MixField({ label, value, onChange, style }) {
+  return (
+    <label>
+      <div className="subtle">{label}</div>
+      <NumericTextInput
+        min={0}
+        max={100}
+        step={1}
+        value={Number(value || 0)}
+        onChange={(v) => onChange(Number(v || 0))}
+        style={style}
+      />
+    </label>
+  );
+}
+
+function IntegerField({ value, onChange, style, title }) {
+  return (
+    <NumericTextInput
+      min={1}
+      step={1}
+      value={value}
+      onChange={(v) => onChange(Math.max(1, Number(v || 1)))}
+      style={style}
+      title={title}
+    />
+  );
 }
 
 /* --------------------------- stat card ----------------------------- */
@@ -1017,7 +1100,6 @@ export function ParticipantsPanel({
     }
     refresh(!!cached?.rows?.length);
     return () => abortRef.current?.abort?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedId, projectId]);
 
   const effectiveRows = useMemo(
@@ -1210,12 +1292,9 @@ export function ParticipantsPanel({
             <option value="controlled">Controlled</option>
           </select>
 
-          <input
-            type="number"
-            min="1"
-            step="1"
+          <IntegerField
             value={simCount}
-            onChange={(e) => setSimCount(Math.max(1, Number(e.target.value) || 1))}
+            onChange={setSimCount}
             style={{
               width: 86,
               padding: compact ? ".25rem .45rem" : ".35rem .55rem",
@@ -1276,203 +1355,45 @@ export function ParticipantsPanel({
               gap: ".5rem .75rem",
             }}
           >
-            <label>
-              <div className="subtle">Reacted %</div>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={pctInputValue(simConfig.controlled.reactedRate)}
-                onChange={(e) => updateControlled("reactedRate", Number(e.target.value) / 100)}
-                style={inputStyle}
-              />
-            </label>
+            <PercentField label="Reacted %" value={simConfig.controlled.reactedRate} onChange={(v) => updateControlled("reactedRate", v)} style={inputStyle} />
 
             {caps.hasExpandable && (
-              <label>
-                <div className="subtle">Expanded %</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={pctInputValue(simConfig.controlled.expandedRate)}
-                  onChange={(e) => updateControlled("expandedRate", Number(e.target.value) / 100)}
-                  style={inputStyle}
-                />
-              </label>
+              <PercentField label="Expanded %" value={simConfig.controlled.expandedRate} onChange={(v) => updateControlled("expandedRate", v)} style={inputStyle} />
             )}
 
-            <label>
-              <div className="subtle">Commented %</div>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={pctInputValue(simConfig.controlled.commentedRate)}
-                onChange={(e) => updateControlled("commentedRate", Number(e.target.value) / 100)}
-                style={inputStyle}
-              />
-            </label>
+            <PercentField label="Commented %" value={simConfig.controlled.commentedRate} onChange={(v) => updateControlled("commentedRate", v)} style={inputStyle} />
 
             {caps.hasSaved && (
-              <label>
-                <div className="subtle">Saved %</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={pctInputValue(simConfig.controlled.savedRate)}
-                  onChange={(e) => updateControlled("savedRate", Number(e.target.value) / 100)}
-                  style={inputStyle}
-                />
-              </label>
+              <PercentField label="Saved %" value={simConfig.controlled.savedRate} onChange={(v) => updateControlled("savedRate", v)} style={inputStyle} />
             )}
 
             {caps.hasShare && (
-              <label>
-                <div className="subtle">Shared %</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={pctInputValue(simConfig.controlled.sharedRate)}
-                  onChange={(e) => updateControlled("sharedRate", Number(e.target.value) / 100)}
-                  style={inputStyle}
-                />
-              </label>
+              <PercentField label="Shared %" value={simConfig.controlled.sharedRate} onChange={(v) => updateControlled("sharedRate", v)} style={inputStyle} />
             )}
 
-            <label>
-              <div className="subtle">Reported %</div>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={pctInputValue(simConfig.controlled.reportedRate)}
-                onChange={(e) => updateControlled("reportedRate", Number(e.target.value) / 100)}
-                style={inputStyle}
-              />
-            </label>
+            <PercentField label="Reported %" value={simConfig.controlled.reportedRate} onChange={(v) => updateControlled("reportedRate", v)} style={inputStyle} />
 
             {caps.hasCta && (
-              <label>
-                <div className="subtle">CTA clicked %</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={pctInputValue(simConfig.controlled.ctaClickedRate)}
-                  onChange={(e) => updateControlled("ctaClickedRate", Number(e.target.value) / 100)}
-                  style={inputStyle}
-                />
-              </label>
+              <PercentField label="CTA clicked %" value={simConfig.controlled.ctaClickedRate} onChange={(v) => updateControlled("ctaClickedRate", v)} style={inputStyle} />
             )}
 
             {caps.hasBio && (
               <>
-                <label>
-                  <div className="subtle">Bio opened %</div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={pctInputValue(simConfig.controlled.bioOpenedRate)}
-                    onChange={(e) => updateControlled("bioOpenedRate", Number(e.target.value) / 100)}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <label>
-                  <div className="subtle">Bio URL clicked %</div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={pctInputValue(simConfig.controlled.bioUrlClickedRate)}
-                    onChange={(e) => updateControlled("bioUrlClickedRate", Number(e.target.value) / 100)}
-                    style={inputStyle}
-                  />
-                </label>
+                <PercentField label="Bio opened %" value={simConfig.controlled.bioOpenedRate} onChange={(v) => updateControlled("bioOpenedRate", v)} style={inputStyle} />
+                <PercentField label="Bio URL clicked %" value={simConfig.controlled.bioUrlClickedRate} onChange={(v) => updateControlled("bioUrlClickedRate", v)} style={inputStyle} />
               </>
             )}
 
             {caps.hasMention && (
-              <label>
-                <div className="subtle">Mention clicked %</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={pctInputValue(simConfig.controlled.mentionClickedRate)}
-                  onChange={(e) => updateControlled("mentionClickedRate", Number(e.target.value) / 100)}
-                  style={inputStyle}
-                />
-              </label>
+              <PercentField label="Mention clicked %" value={simConfig.controlled.mentionClickedRate} onChange={(v) => updateControlled("mentionClickedRate", v)} style={inputStyle} />
             )}
 
             {caps.hasNote && (
               <>
-                <label>
-                  <div className="subtle">Note opened %</div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={pctInputValue(simConfig.controlled.noteOpenedRate)}
-                    onChange={(e) => updateControlled("noteOpenedRate", Number(e.target.value) / 100)}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <label>
-                  <div className="subtle">Note details %</div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={pctInputValue(simConfig.controlled.noteViewDetailsRate)}
-                    onChange={(e) => updateControlled("noteViewDetailsRate", Number(e.target.value) / 100)}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <label>
-                  <div className="subtle">Note link clicked %</div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={pctInputValue(simConfig.controlled.noteLinkClickedRate)}
-                    onChange={(e) => updateControlled("noteLinkClickedRate", Number(e.target.value) / 100)}
-                    style={inputStyle}
-                  />
-                </label>
-
-                <label>
-                  <div className="subtle">Note helpful rated %</div>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={pctInputValue(simConfig.controlled.noteHelpfulRatedRate)}
-                    onChange={(e) => updateControlled("noteHelpfulRatedRate", Number(e.target.value) / 100)}
-                    style={inputStyle}
-                  />
-                </label>
+                <PercentField label="Note opened %" value={simConfig.controlled.noteOpenedRate} onChange={(v) => updateControlled("noteOpenedRate", v)} style={inputStyle} />
+                <PercentField label="Note details %" value={simConfig.controlled.noteViewDetailsRate} onChange={(v) => updateControlled("noteViewDetailsRate", v)} style={inputStyle} />
+                <PercentField label="Note link clicked %" value={simConfig.controlled.noteLinkClickedRate} onChange={(v) => updateControlled("noteLinkClickedRate", v)} style={inputStyle} />
+                <PercentField label="Note helpful rated %" value={simConfig.controlled.noteHelpfulRatedRate} onChange={(v) => updateControlled("noteHelpfulRatedRate", v)} style={inputStyle} />
               </>
             )}
           </div>
@@ -1489,18 +1410,13 @@ export function ParticipantsPanel({
             }}
           >
             {REACTION_KEYS.map((k) => (
-              <label key={k}>
-                <div className="subtle">{k}</div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={Number(simConfig.controlled.reactionMix[k] || 0)}
-                  onChange={(e) => updateControlledMix("reactionMix", k, e.target.value)}
-                  style={inputStyle}
-                />
-              </label>
+              <MixField
+                key={k}
+                label={k}
+                value={Number(simConfig.controlled.reactionMix[k] || 0)}
+                onChange={(v) => updateControlledMix("reactionMix", k, v)}
+                style={inputStyle}
+              />
             ))}
           </div>
 
@@ -1518,18 +1434,13 @@ export function ParticipantsPanel({
                 }}
               >
                 {NOTE_HELPFUL_KEYS.map((k) => (
-                  <label key={k}>
-                    <div className="subtle">{k}</div>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
-                      onChange={(e) => updateControlledMix("noteHelpfulMix", k, e.target.value)}
-                      style={inputStyle}
-                    />
-                  </label>
+                  <MixField
+                    key={k}
+                    label={k}
+                    value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
+                    onChange={(v) => updateControlledMix("noteHelpfulMix", k, v)}
+                    style={inputStyle}
+                  />
                 ))}
               </div>
             </>
