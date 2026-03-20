@@ -809,7 +809,7 @@ const row = {
       ? agg.comment_texts.join(" | ")
       : "";
 
-    row[`${id}_saved`] = agg.saved ? 1 : 0;
+    row[`${id}_saved`] = APP === "ig" ? (agg.saved ? 1 : 0) : 0;
 
     row[`${id}_shared`] = agg.shared || hasTarget ? 1 : 0;
     row[`${id}_share_target`] = hasTarget ? shareTargetClean : "";

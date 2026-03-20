@@ -351,6 +351,7 @@ function simulateParticipantRows({
       const note_helpful_rated = note_opened && chance(rng, 0.22) ? 1 : 0;
       const note_helpful_value = note_helpful_rated ? pickOne(rng, ["helpful", "not_helpful"]) : "";
 
+
       row[`${id}_reacted`] = reacted ? 1 : 0;
       row[`${id}_reaction_type`] = reaction_type;
       row[`${id}_expandable`] = expandable;
