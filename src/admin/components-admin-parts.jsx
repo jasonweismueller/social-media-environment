@@ -2,14 +2,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  loadParticipantsRoster,        // GET roster (admin token handled in utils)
-  summarizeRoster,               // builds {counts, timing, perPost}
-  nfCompact,                     // number formatter
-  extractPerPostFromRosterRow,   // per-submission → per-post hash
+  loadParticipantsRoster,
+  summarizeRoster,
+  nfCompact,
+  extractPerPostFromRosterRow,
   APP,
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
-  readPostNames,                 // { [postId]: "Pretty Name" }
+  readPostNames,
 } from "../utils";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -21,7 +21,9 @@ const ms = (n) => {
   return `${m}:${sec}`;
 };
 
-const sShort = (n) => (Number.isFinite(n) ? `${Math.round(n)}s` : "—");
+const sShort = (n) => (Number.isFinite(Number(n)) ? `${Math.round(Number(n))}s` : "—");
+
+const isIGApp = () => String(APP || "").toLowerCase() === "ig";
 
 function labelForKey(key, nameMap) {
   const m = /^(.+?)_([a-z_]+)$/.exec(key);
@@ -96,19 +98,10 @@ function chance(rng, p) {
   return rng() < clamp01(p);
 }
 
-function pickOne(rng, arr) {
-  if (!Array.isArray(arr) || !arr.length) return "";
-  return arr[Math.floor(rng() * arr.length)] || "";
-}
-
 function randomInt(rng, min, max) {
   const lo = Math.ceil(min);
   const hi = Math.floor(max);
   return Math.floor(rng() * (hi - lo + 1)) + lo;
-}
-
-function randomReaction(rng) {
-  return pickOne(rng, ["like", "love", "care", "haha", "wow", "sad", "angry"]) || "like";
 }
 
 function looksExpandable(post) {
@@ -164,113 +157,119 @@ function hasShareableSurface(post) {
   return !!post;
 }
 
-function buildSimulatedParticipantId(index, prolificRows = []) {
-  if (Array.isArray(prolificRows) && prolificRows[index]) {
-    return prolificRows[index].participant_id || prolificRows[index].prolific_pid || `SIM_${String(index + 1).padStart(4, "0")}`;
-  }
+function buildSimulatedParticipantId(index) {
   return `SIM_${String(index + 1).padStart(4, "0")}`;
 }
 
-function parseCsvLine(line) {
-  const out = [];
-  let cur = "";
-  let inQuotes = false;
+function weightedChoice(rng, weightsObj = {}, fallback = "") {
+  const entries = Object.entries(weightsObj)
+    .map(([k, v]) => [k, Math.max(0, Number(v) || 0)])
+    .filter(([, v]) => v > 0);
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    const next = line[i + 1];
+  if (!entries.length) return fallback;
 
-    if (ch === '"') {
-      if (inQuotes && next === '"') {
-        cur += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
+  const total = entries.reduce((a, [, v]) => a + v, 0);
+  let roll = rng() * total;
 
-    if (ch === "," && !inQuotes) {
-      out.push(cur);
-      cur = "";
-      continue;
-    }
-
-    cur += ch;
+  for (const [key, weight] of entries) {
+    roll -= weight;
+    if (roll <= 0) return key;
   }
 
-  out.push(cur);
-  return out;
+  return entries[entries.length - 1][0] || fallback;
 }
 
-function parseSimpleCsv(text = "") {
-  const lines = String(text || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .filter((l) => l.trim().length > 0);
-
-  if (!lines.length) return [];
-
-  const header = parseCsvLine(lines[0]).map((h) => String(h || "").trim());
-  const rows = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const vals = parseCsvLine(lines[i]);
-    const row = {};
-    header.forEach((h, idx) => {
-      row[h] = vals[idx] ?? "";
-    });
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function normalizeProlificRows(csvRows = []) {
-  return csvRows
-    .map((r) => {
-      const prolific_pid =
-        r.Prolific_ID ||
-        r.prolific_id ||
-        r.PROLIFIC_PID ||
-        r.Participant_id ||
-        r.participant_id ||
-        r.ParticipantID ||
-        "";
-
-      const participant_id = String(prolific_pid || "").trim();
-      if (!participant_id) return null;
-
-      return {
-        participant_id,
-        prolific_pid: participant_id,
-        raw: r,
-      };
-    })
-    .filter(Boolean);
-}
+const DEFAULT_SIM_CONFIG = {
+  random: {
+    reactedBase: 0.22,
+    reactedInterestWeight: 0.35,
+    expandedBase: 0.12,
+    expandedInterestWeight: 0.35,
+    commentedBase: 0.03,
+    commentedInterestWeight: 0.10,
+    sharedBase: 0.03,
+    sharedInterestWeight: 0.08,
+    reportedBase: 0.05,
+    reportedNoteBase: 0.03,
+    ctaBase: 0.04,
+    ctaInterestWeight: 0.12,
+    bioOpenBase: 0.08,
+    bioOpenInterestWeight: 0.18,
+    bioUrlGivenOpen: 0.08,
+    mentionClickedBase: 0.05,
+    noteOpenBase: 0.18,
+    noteOpenInterestWeight: 0.25,
+    noteViewDetailsGivenOpen: 0.35,
+    noteLinkGivenOpen: 0.08,
+    noteHelpfulGivenOpen: 0.22,
+    savedBase: 0.04,
+    savedInterestWeight: 0.10,
+  },
+  controlled: {
+    reactedRate: 0.22,
+    reactionMix: {
+      like: 0.55,
+      love: 0.18,
+      care: 0.08,
+      haha: 0.06,
+      wow: 0.05,
+      sad: 0.04,
+      angry: 0.04,
+    },
+    expandedRate: 0.18,
+    commentedRate: 0.06,
+    sharedRate: 0.05,
+    reportedRate: 0.05,
+    ctaClickedRate: 0.08,
+    bioOpenedRate: 0.12,
+    bioUrlClickedRate: 0.04,
+    mentionClickedRate: 0.05,
+    noteOpenedRate: 0.30,
+    noteViewDetailsRate: 0.12,
+    noteLinkClickedRate: 0.04,
+    noteHelpfulRatedRate: 0.10,
+    noteHelpfulMix: {
+      helpful: 0.75,
+      not_helpful: 0.25,
+    },
+    savedRate: 0.08,
+  },
+};
 
 function simulateParticipantRows({
   posts = [],
   participantCount = 50,
-  prolificRows = [],
   feedId = "",
   projectId = "",
   app = "",
   nameStore = {},
+  simMode = "random",
+  simConfig = DEFAULT_SIM_CONFIG,
 }) {
   const out = [];
   const baseNow = Date.now();
   const totalN = Math.max(1, Number(participantCount) || 1);
+  const isIG = String(app || "").toLowerCase() === "ig";
+
+  const randomCfg = {
+    ...DEFAULT_SIM_CONFIG.random,
+    ...(simConfig?.random || {}),
+  };
+  const controlledCfg = {
+    ...DEFAULT_SIM_CONFIG.controlled,
+    ...(simConfig?.controlled || {}),
+    reactionMix: {
+      ...DEFAULT_SIM_CONFIG.controlled.reactionMix,
+      ...(simConfig?.controlled?.reactionMix || {}),
+    },
+    noteHelpfulMix: {
+      ...DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix,
+      ...(simConfig?.controlled?.noteHelpfulMix || {}),
+    },
+  };
 
   for (let i = 0; i < totalN; i++) {
-    const participant_id = buildSimulatedParticipantId(i, prolificRows);
-    const prolific_pid =
-      prolificRows[i]?.prolific_pid ||
-      prolificRows[i]?.participant_id ||
-      "";
-
+    const participant_id = buildSimulatedParticipantId(i);
     const seed = hashStr(`${app}::${projectId}::${feedId}::${participant_id}::${i}`);
     const rng = mulberry32(seed);
 
@@ -280,7 +279,7 @@ function simulateParticipantRows({
     const row = {
       session_id: `sim_session_${String(i + 1).padStart(5, "0")}`,
       participant_id,
-      prolific_pid: prolific_pid || participant_id,
+      prolific_pid: "",
       session_id_ext: "",
       study_id: "",
       entered_at_iso: new Date(enteredTs).toISOString(),
@@ -296,12 +295,13 @@ function simulateParticipantRows({
     for (const post of posts) {
       const id = post?.id || "unknown";
       const txt = String(post?.text || "");
-      const isExpandable = looksExpandable(post);
+      const expandableAvailable = looksExpandable(post);
       const noteAvailable = hasNote(post);
       const bioAvailable = hasBio(post);
       const mentionAvailable = hasMention(post);
       const ctaAvailable = hasCta(post);
       const shareAvailable = hasShareableSurface(post);
+      const savedAvailable = isIG;
 
       const baseInterest =
         post?.adType === "ad"
@@ -314,47 +314,127 @@ function simulateParticipantRows({
       const bioInterestBoost = bioAvailable ? 0.03 : 0;
       const textBoost = txt.length > 80 ? 0.04 : 0;
 
-      const interest = clamp01(baseInterest + noteInterestBoost + bioInterestBoost + textBoost + (rng() - 0.5) * 0.18);
+      const interest = clamp01(
+        baseInterest + noteInterestBoost + bioInterestBoost + textBoost + (rng() - 0.5) * 0.18
+      );
 
       const dwell_s = Math.max(
         1,
-        Math.round((2 + rng() * 12 + (interest * 10)) * feedLevelSpeedFactor + (noteAvailable ? 2 : 0))
+        Math.round((2 + rng() * 12 + interest * 10) * feedLevelSpeedFactor + (noteAvailable ? 2 : 0))
       );
 
-      const reacted = chance(rng, 0.22 + interest * 0.35);
-      const reaction_type = reacted ? randomReaction(rng) : "";
+      let reacted = 0;
+      let reaction_type = "";
+      let expanded = 0;
+      let commented = 0;
+      let comment_texts = "";
+      let saved = 0;
+      let sharedFlag = 0;
+      let share_target = "";
+      let share_text = "";
+      let reported_misinfo = 0;
+      let cta_clicked = 0;
+      let bio_opened = 0;
+      let bio_url_clicked = 0;
+      let mention_clicked = 0;
+      let note_opened = 0;
+      let note_view_details = 0;
+      let note_link_clicked = 0;
+      let note_helpful_rated = 0;
+      let note_helpful_value = "";
 
-      const expandable = isExpandable ? 1 : 0;
-      const expanded = isExpandable && chance(rng, 0.12 + interest * 0.35) ? 1 : 0;
+      if (simMode === "controlled") {
+        reacted = chance(rng, controlledCfg.reactedRate) ? 1 : 0;
+        reaction_type = reacted ? weightedChoice(rng, controlledCfg.reactionMix, "like") : "";
 
-      const commented = chance(rng, 0.03 + interest * 0.10) ? 1 : 0;
-      const comment_texts = commented ? `Simulated comment ${i + 1} on ${nameStore[id] || id}` : "";
+        expanded = expandableAvailable && chance(rng, controlledCfg.expandedRate) ? 1 : 0;
 
-      const saved = chance(rng, 0.04 + interest * 0.10) ? 1 : 0;
+        commented = chance(rng, controlledCfg.commentedRate) ? 1 : 0;
+        comment_texts = commented ? `Simulated comment ${i + 1} on ${nameStore[id] || id}` : "";
 
-      const sharedFlag = shareAvailable && chance(rng, 0.03 + interest * 0.08) ? 1 : 0;
-      const share_target = sharedFlag ? pickOne(rng, ["Friend 1", "Friend 2", "Friend 3", "Friend 4"]) : "";
-      const share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
+        saved = savedAvailable && chance(rng, controlledCfg.savedRate) ? 1 : 0;
 
-      const reported_misinfo =
-        chance(rng, noteAvailable ? 0.03 : 0.05) && post?.adType !== "ad" ? 1 : 0;
+        sharedFlag = shareAvailable && chance(rng, controlledCfg.sharedRate) ? 1 : 0;
+        share_target = sharedFlag ? weightedChoice(rng, {
+          "Friend 1": 1,
+          "Friend 2": 1,
+          "Friend 3": 1,
+          "Friend 4": 1,
+        }, "Friend 1") : "";
+        share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
 
-      const cta_clicked = ctaAvailable && chance(rng, 0.04 + interest * 0.12) ? 1 : 0;
+        reported_misinfo = chance(rng, controlledCfg.reportedRate) && post?.adType !== "ad" ? 1 : 0;
 
-      const bio_opened = bioAvailable && chance(rng, 0.08 + interest * 0.18) ? 1 : 0;
-      const bio_url_clicked = bio_opened && chance(rng, 0.08) ? 1 : 0;
-      const mention_clicked = mentionAvailable && chance(rng, 0.05) ? 1 : 0;
+        cta_clicked = ctaAvailable && chance(rng, controlledCfg.ctaClickedRate) ? 1 : 0;
 
-      const note_opened = noteAvailable && chance(rng, 0.18 + interest * 0.25) ? 1 : 0;
-      const note_view_details = note_opened && chance(rng, 0.35) ? 1 : 0;
-      const note_link_clicked = note_opened && chance(rng, 0.08) ? 1 : 0;
-      const note_helpful_rated = note_opened && chance(rng, 0.22) ? 1 : 0;
-      const note_helpful_value = note_helpful_rated ? pickOne(rng, ["helpful", "not_helpful"]) : "";
+        bio_opened = bioAvailable && chance(rng, controlledCfg.bioOpenedRate) ? 1 : 0;
+        bio_url_clicked = bioAvailable && chance(rng, controlledCfg.bioUrlClickedRate) ? 1 : 0;
+        if (!bio_opened && bio_url_clicked) bio_opened = 1;
 
+        mention_clicked = mentionAvailable && chance(rng, controlledCfg.mentionClickedRate) ? 1 : 0;
 
-      row[`${id}_reacted`] = reacted ? 1 : 0;
+        note_opened = noteAvailable && chance(rng, controlledCfg.noteOpenedRate) ? 1 : 0;
+        note_view_details = noteAvailable && chance(rng, controlledCfg.noteViewDetailsRate) ? 1 : 0;
+        note_link_clicked = noteAvailable && chance(rng, controlledCfg.noteLinkClickedRate) ? 1 : 0;
+        note_helpful_rated = noteAvailable && chance(rng, controlledCfg.noteHelpfulRatedRate) ? 1 : 0;
+        note_helpful_value = note_helpful_rated
+          ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "helpful")
+          : "";
+
+        if (!note_opened && (note_view_details || note_link_clicked || note_helpful_rated)) {
+          note_opened = 1;
+        }
+      } else {
+        reacted = chance(rng, randomCfg.reactedBase + interest * randomCfg.reactedInterestWeight) ? 1 : 0;
+        reaction_type = reacted
+          ? weightedChoice(rng, DEFAULT_SIM_CONFIG.controlled.reactionMix, "like")
+          : "";
+
+        expanded =
+          expandableAvailable &&
+          chance(rng, randomCfg.expandedBase + interest * randomCfg.expandedInterestWeight)
+            ? 1
+            : 0;
+
+        commented = chance(rng, randomCfg.commentedBase + interest * randomCfg.commentedInterestWeight) ? 1 : 0;
+        comment_texts = commented ? `Simulated comment ${i + 1} on ${nameStore[id] || id}` : "";
+
+        saved = savedAvailable && chance(rng, randomCfg.savedBase + interest * randomCfg.savedInterestWeight) ? 1 : 0;
+
+        sharedFlag = shareAvailable && chance(rng, randomCfg.sharedBase + interest * randomCfg.sharedInterestWeight) ? 1 : 0;
+        share_target = sharedFlag ? weightedChoice(rng, {
+          "Friend 1": 1,
+          "Friend 2": 1,
+          "Friend 3": 1,
+          "Friend 4": 1,
+        }, "Friend 1") : "";
+        share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
+
+        reported_misinfo =
+          chance(rng, noteAvailable ? randomCfg.reportedNoteBase : randomCfg.reportedBase) &&
+          post?.adType !== "ad"
+            ? 1
+            : 0;
+
+        cta_clicked = ctaAvailable && chance(rng, randomCfg.ctaBase + interest * randomCfg.ctaInterestWeight) ? 1 : 0;
+
+        bio_opened = bioAvailable && chance(rng, randomCfg.bioOpenBase + interest * randomCfg.bioOpenInterestWeight) ? 1 : 0;
+        bio_url_clicked = bio_opened && chance(rng, randomCfg.bioUrlGivenOpen) ? 1 : 0;
+
+        mention_clicked = mentionAvailable && chance(rng, randomCfg.mentionClickedBase) ? 1 : 0;
+
+        note_opened = noteAvailable && chance(rng, randomCfg.noteOpenBase + interest * randomCfg.noteOpenInterestWeight) ? 1 : 0;
+        note_view_details = note_opened && chance(rng, randomCfg.noteViewDetailsGivenOpen) ? 1 : 0;
+        note_link_clicked = note_opened && chance(rng, randomCfg.noteLinkGivenOpen) ? 1 : 0;
+        note_helpful_rated = note_opened && chance(rng, randomCfg.noteHelpfulGivenOpen) ? 1 : 0;
+        note_helpful_value = note_helpful_rated
+          ? weightedChoice(rng, DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix, "helpful")
+          : "";
+      }
+
+      row[`${id}_reacted`] = reacted;
       row[`${id}_reaction_type`] = reaction_type;
-      row[`${id}_expandable`] = expandable;
+      row[`${id}_expandable`] = expandableAvailable ? 1 : 0;
       row[`${id}_expanded`] = expanded;
       row[`${id}_commented`] = commented;
       row[`${id}_comment_texts`] = comment_texts;
@@ -409,6 +489,7 @@ export function StatCard({ title, value, sub, compact = false }) {
 export function ParticipantDetailModal({ open, onClose, submission }) {
   if (!open) return null;
   const perPost = submission?.perPost || [];
+  const showSavedCol = isIGApp();
 
   return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -441,7 +522,9 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expandable</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expanded</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Commented</th>
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Saved</th>
+                    {showSavedCol && (
+                      <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Saved</th>
+                    )}
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Shared</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Reported</th>
                     <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
@@ -452,8 +535,8 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     const dwellSeconds = Number.isFinite(p?.dwell_s)
                       ? Number(p.dwell_s)
                       : Number.isFinite(p?.dwell_ms)
-                      ? Number(p.dwell_ms) / 1000
-                      : 0;
+                        ? Number(p.dwell_ms) / 1000
+                        : 0;
 
                     return (
                       <tr key={p.post_id} style={{ borderBottom: "1px solid var(--line)" }}>
@@ -463,7 +546,9 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expandable ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expanded ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.commented ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.saved ? "✓" : "—"}</td>
+                        {showSavedCol && (
+                          <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.saved ? "✓" : "—"}</td>
+                        )}
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.shared ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reported ? "✓" : "—"}</td>
                         <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{sShort(dwellSeconds)}</td>
@@ -496,6 +581,7 @@ export function ParticipantsPanel({
   postNamesMap,
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
+  const IG = isIGApp();
 
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -510,11 +596,11 @@ export function ParticipantsPanel({
   const [simCount, setSimCount] = useState(50);
   const [simRows, setSimRows] = useState([]);
   const [usingSimulated, setUsingSimulated] = useState(false);
-  const [simProlificRows, setSimProlificRows] = useState([]);
-  const [simSourceLabel, setSimSourceLabel] = useState("");
+
+  const [simMode, setSimMode] = useState("random");
+  const [simConfig, setSimConfig] = useState(DEFAULT_SIM_CONFIG);
 
   const abortRef = useRef(null);
-  const prolificInputRef = useRef(null);
 
   const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
 
@@ -523,7 +609,7 @@ export function ParticipantsPanel({
   }, [projectId]);
 
   const mkCacheKey = (id, pid = projectId) =>
-    `participants_cache_v10::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
+    `participants_cache_v11::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
   const saveCache = (data, pid = projectId) => {
     try {
@@ -669,6 +755,29 @@ export function ParticipantsPanel({
   const headerGap = compact ? ".35rem" : ".5rem";
   const statsGap = compact ? ".4rem" : ".5rem";
 
+  const updateControlled = (key, value) => {
+    setSimConfig((prev) => ({
+      ...prev,
+      controlled: {
+        ...prev.controlled,
+        [key]: clamp01(value),
+      },
+    }));
+  };
+
+  const updateControlledMix = (group, key, value) => {
+    setSimConfig((prev) => ({
+      ...prev,
+      controlled: {
+        ...prev.controlled,
+        [group]: {
+          ...prev.controlled[group],
+          [key]: Math.max(0, Number(value) || 0),
+        },
+      },
+    }));
+  };
+
   const runSimulation = () => {
     if (!posts?.length) {
       alert("Simulation needs the current feed posts. Pass posts={posts} into ParticipantsPanel.");
@@ -678,11 +787,12 @@ export function ParticipantsPanel({
     const generated = simulateParticipantRows({
       posts,
       participantCount: simCount,
-      prolificRows: simProlificRows,
       feedId,
       projectId,
       app: APP || "app",
       nameStore,
+      simMode,
+      simConfig,
     });
 
     setSimRows(generated);
@@ -694,29 +804,10 @@ export function ParticipantsPanel({
     setSimRows([]);
   };
 
-  const handleProlificUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const parsed = parseSimpleCsv(text);
-      const normalized = normalizeProlificRows(parsed);
-      setSimProlificRows(normalized);
-      setSimSourceLabel(file.name || "Uploaded CSV");
-    } catch (err) {
-      console.error("Failed to parse Prolific CSV:", err);
-      alert("Could not parse the uploaded CSV.");
-    } finally {
-      e.target.value = "";
-    }
-  };
-
   const downloadCsv = () => {
     if (!effectiveRows?.length) return;
 
     const normalizedAll = normalizeRowsForCsv(effectiveRows);
-
     const keySet = new Set();
     normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
     const keys = Array.from(keySet);
@@ -741,14 +832,6 @@ export function ParticipantsPanel({
 
   return (
     <div className="card" style={{ padding: wrapperPad }}>
-      <input
-        ref={prolificInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        style={{ display: "none" }}
-        onChange={handleProlificUpload}
-      />
-
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
           Participants{feedId ? <span className="subtle"> · {feedId}</span> : null}
@@ -765,6 +848,22 @@ export function ParticipantsPanel({
             Refresh
           </button>
 
+          <select
+            value={simMode}
+            onChange={(e) => setSimMode(e.target.value)}
+            style={{
+              padding: compact ? ".25rem .45rem" : ".35rem .55rem",
+              border: "1px solid var(--line)",
+              borderRadius: 8,
+              fontSize: compact ? ".85rem" : ".9rem",
+              background: "var(--card, white)",
+            }}
+            title="Simulation mode"
+          >
+            <option value="random">Random</option>
+            <option value="controlled">Controlled</option>
+          </select>
+
           <input
             type="number"
             min="1"
@@ -780,14 +879,6 @@ export function ParticipantsPanel({
             }}
             title="Number of simulated participants"
           />
-
-          <button
-            className="btn ghost"
-            onClick={() => prolificInputRef.current?.click()}
-            style={{ padding: compact ? ".25rem .6rem" : undefined }}
-          >
-            Upload Prolific CSV
-          </button>
 
           <button
             className="btn"
@@ -818,13 +909,192 @@ export function ParticipantsPanel({
         </div>
       </div>
 
-      {(simProlificRows.length > 0 || usingSimulated) && (
+      {simMode === "controlled" && (
+        <div
+          className="card"
+          style={{
+            marginTop: ".6rem",
+            padding: ".75rem",
+            border: "1px solid var(--line)",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: ".5rem" }}>Controlled simulation settings</div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+              gap: ".5rem .75rem",
+            }}
+          >
+            <label>
+              <div className="subtle">Reacted %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.reactedRate || 0) * 100)}
+                onChange={(e) => updateControlled("reactedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Expanded %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.expandedRate || 0) * 100)}
+                onChange={(e) => updateControlled("expandedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Commented %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.commentedRate || 0) * 100)}
+                onChange={(e) => updateControlled("commentedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            {IG && (
+              <label>
+                <div className="subtle">Saved %</div>
+                <input type="number" min="0" max="100" step="1"
+                  value={Math.round((simConfig.controlled.savedRate || 0) * 100)}
+                  onChange={(e) => updateControlled("savedRate", Number(e.target.value) / 100)}
+                  style={{ width: "100%" }}
+                />
+              </label>
+            )}
+
+            <label>
+              <div className="subtle">Shared %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.sharedRate || 0) * 100)}
+                onChange={(e) => updateControlled("sharedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Reported %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.reportedRate || 0) * 100)}
+                onChange={(e) => updateControlled("reportedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">CTA clicked %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.ctaClickedRate || 0) * 100)}
+                onChange={(e) => updateControlled("ctaClickedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Bio opened %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.bioOpenedRate || 0) * 100)}
+                onChange={(e) => updateControlled("bioOpenedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Bio URL clicked %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.bioUrlClickedRate || 0) * 100)}
+                onChange={(e) => updateControlled("bioUrlClickedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Mention clicked %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.mentionClickedRate || 0) * 100)}
+                onChange={(e) => updateControlled("mentionClickedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Note opened %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.noteOpenedRate || 0) * 100)}
+                onChange={(e) => updateControlled("noteOpenedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Note details %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.noteViewDetailsRate || 0) * 100)}
+                onChange={(e) => updateControlled("noteViewDetailsRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Note link clicked %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.noteLinkClickedRate || 0) * 100)}
+                onChange={(e) => updateControlled("noteLinkClickedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label>
+              <div className="subtle">Note helpful rated %</div>
+              <input type="number" min="0" max="100" step="1"
+                value={Math.round((simConfig.controlled.noteHelpfulRatedRate || 0) * 100)}
+                onChange={(e) => updateControlled("noteHelpfulRatedRate", Number(e.target.value) / 100)}
+                style={{ width: "100%" }}
+              />
+            </label>
+          </div>
+
+          <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Reaction mix</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: ".5rem", marginTop: ".35rem" }}>
+            {Object.keys(simConfig.controlled.reactionMix).map((k) => (
+              <label key={k}>
+                <div className="subtle">{k}</div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={Number(simConfig.controlled.reactionMix[k] || 0)}
+                  onChange={(e) => updateControlledMix("reactionMix", k, e.target.value)}
+                  style={{ width: "100%" }}
+                />
+              </label>
+            ))}
+          </div>
+
+          <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Note helpful mix</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: ".5rem", marginTop: ".35rem" }}>
+            {Object.keys(simConfig.controlled.noteHelpfulMix).map((k) => (
+              <label key={k}>
+                <div className="subtle">{k}</div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
+                  onChange={(e) => updateControlledMix("noteHelpfulMix", k, e.target.value)}
+                  style={{ width: "100%" }}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {usingSimulated && (
         <div className="subtle" style={{ marginTop: ".5rem", fontSize: compact ? ".78rem" : ".84rem" }}>
-          {simProlificRows.length > 0
-            ? `Prolific pool loaded: ${simProlificRows.length} IDs${simSourceLabel ? ` (${simSourceLabel})` : ""}.`
-            : null}
-          {simProlificRows.length > 0 && usingSimulated ? " " : null}
-          {usingSimulated ? `Currently viewing ${effectiveRows.length} simulated rows.` : null}
+          Currently viewing {effectiveRows.length} simulated rows.
         </div>
       )}
 
@@ -865,7 +1135,7 @@ export function ParticipantsPanel({
                 <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Commented</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Saved</th>
+                {IG && <th style={{ textAlign: "right", padding: padCell }}>Saved</th>}
                 <th style={{ textAlign: "right", padding: padCell }}>Shared</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Avg dwell (s)</th>
@@ -880,7 +1150,7 @@ export function ParticipantsPanel({
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.saved)}</td>
+                  {IG && <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.saved)}</td>}
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
                   <td style={{ padding: padCell, textAlign: "right" }}>{sShort(p.avgDwellS)}</td>
@@ -943,8 +1213,8 @@ export function ParticipantsPanel({
                             const dwell_s = Number.isFinite(agg.dwell_s)
                               ? Number(agg.dwell_s)
                               : Number.isFinite(agg.dwell_ms)
-                              ? Number(agg.dwell_ms) / 1000
-                              : 0;
+                                ? Number(agg.dwell_ms) / 1000
+                                : 0;
 
                             const rawComment = String(agg.comment_text || "").trim();
                             const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
@@ -956,7 +1226,7 @@ export function ParticipantsPanel({
                               expandable: Number(agg.expandable) === 1,
                               expanded: Number(agg.expanded) === 1,
                               commented: Number(agg.commented) === 1 || hasRealComment,
-                              saved: Number(agg.saved) === 1,
+                              saved: IG ? Number(agg.saved) === 1 : false,
                               shared: !!(
                                 agg.shared ||
                                 (
