@@ -74,7 +74,7 @@ function normalizeRowsForCsv(rows = []) {
 function mulberry32(seed) {
   let t = seed >>> 0;
   return function () {
-    t += 0x6D2B79F5;
+    t += 0x6d2b79f5;
     let r = Math.imul(t ^ (t >>> 15), 1 | t);
     r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
     return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
@@ -179,6 +179,18 @@ function weightedChoice(rng, weightsObj = {}, fallback = "") {
   return entries[entries.length - 1][0] || fallback;
 }
 
+function capabilitySummary(posts = [], isIG = false) {
+  return {
+    hasExpandable: posts.some((p) => looksExpandable(p)),
+    hasNote: posts.some((p) => hasNote(p)),
+    hasBio: posts.some((p) => hasBio(p)),
+    hasMention: posts.some((p) => hasMention(p)),
+    hasCta: posts.some((p) => hasCta(p)),
+    hasShare: posts.some((p) => hasShareableSurface(p)),
+    hasSaved: !!isIG,
+  };
+}
+
 const DEFAULT_SIM_CONFIG = {
   random: {
     reactedBase: 0.22,
@@ -186,7 +198,7 @@ const DEFAULT_SIM_CONFIG = {
     expandedBase: 0.12,
     expandedInterestWeight: 0.35,
     commentedBase: 0.03,
-    commentedInterestWeight: 0.10,
+    commentedInterestWeight: 0.1,
     sharedBase: 0.03,
     sharedInterestWeight: 0.08,
     reportedBase: 0.05,
@@ -203,7 +215,7 @@ const DEFAULT_SIM_CONFIG = {
     noteLinkGivenOpen: 0.08,
     noteHelpfulGivenOpen: 0.22,
     savedBase: 0.04,
-    savedInterestWeight: 0.10,
+    savedInterestWeight: 0.1,
   },
   controlled: {
     reactedRate: 0.22,
@@ -224,10 +236,10 @@ const DEFAULT_SIM_CONFIG = {
     bioOpenedRate: 0.12,
     bioUrlClickedRate: 0.04,
     mentionClickedRate: 0.05,
-    noteOpenedRate: 0.30,
+    noteOpenedRate: 0.3,
     noteViewDetailsRate: 0.12,
     noteLinkClickedRate: 0.04,
-    noteHelpfulRatedRate: 0.10,
+    noteHelpfulRatedRate: 0.1,
     noteHelpfulMix: {
       helpful: 0.75,
       not_helpful: 0.25,
@@ -255,6 +267,7 @@ function simulateParticipantRows({
     ...DEFAULT_SIM_CONFIG.random,
     ...(simConfig?.random || {}),
   };
+
   const controlledCfg = {
     ...DEFAULT_SIM_CONFIG.controlled,
     ...(simConfig?.controlled || {}),
@@ -307,8 +320,8 @@ function simulateParticipantRows({
         post?.adType === "ad"
           ? 0.42
           : post?.adType === "influencer"
-          ? 0.52
-          : 0.48;
+            ? 0.52
+            : 0.48;
 
       const noteInterestBoost = noteAvailable ? 0.08 : 0;
       const bioInterestBoost = bioAvailable ? 0.03 : 0;
@@ -355,12 +368,13 @@ function simulateParticipantRows({
         saved = savedAvailable && chance(rng, controlledCfg.savedRate) ? 1 : 0;
 
         sharedFlag = shareAvailable && chance(rng, controlledCfg.sharedRate) ? 1 : 0;
-        share_target = sharedFlag ? weightedChoice(rng, {
-          "Friend 1": 1,
-          "Friend 2": 1,
-          "Friend 3": 1,
-          "Friend 4": 1,
-        }, "Friend 1") : "";
+        share_target = sharedFlag
+          ? weightedChoice(
+              rng,
+              { "Friend 1": 1, "Friend 2": 1, "Friend 3": 1, "Friend 4": 1 },
+              "Friend 1"
+            )
+          : "";
         share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
 
         reported_misinfo = chance(rng, controlledCfg.reportedRate) && post?.adType !== "ad" ? 1 : 0;
@@ -402,12 +416,13 @@ function simulateParticipantRows({
         saved = savedAvailable && chance(rng, randomCfg.savedBase + interest * randomCfg.savedInterestWeight) ? 1 : 0;
 
         sharedFlag = shareAvailable && chance(rng, randomCfg.sharedBase + interest * randomCfg.sharedInterestWeight) ? 1 : 0;
-        share_target = sharedFlag ? weightedChoice(rng, {
-          "Friend 1": 1,
-          "Friend 2": 1,
-          "Friend 3": 1,
-          "Friend 4": 1,
-        }, "Friend 1") : "";
+        share_target = sharedFlag
+          ? weightedChoice(
+              rng,
+              { "Friend 1": 1, "Friend 2": 1, "Friend 3": 1, "Friend 4": 1 },
+              "Friend 1"
+            )
+          : "";
         share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
 
         reported_misinfo =
@@ -440,7 +455,11 @@ function simulateParticipantRows({
       row[`${id}_comment_texts`] = comment_texts;
       row[`${id}_reported_misinfo`] = reported_misinfo;
       row[`${id}_dwell_s`] = dwell_s;
-      row[`${id}_saved`] = saved;
+
+      if (savedAvailable) {
+        row[`${id}_saved`] = saved;
+      }
+
       row[`${id}_shared`] = sharedFlag;
       row[`${id}_share_target`] = share_target;
       row[`${id}_share_text`] = share_text;
@@ -457,7 +476,7 @@ function simulateParticipantRows({
       runningMs += dwell_s * 1000 + randomInt(rng, 250, 2200);
     }
 
-    const submitMs = Math.max(runningMs, randomInt(rng, 30_000, 240_000));
+    const submitMs = Math.max(runningMs, randomInt(rng, 30000, 240000));
     const submittedTs = enteredTs + submitMs;
 
     row.submitted_at_iso = new Date(submittedTs).toISOString();
@@ -522,9 +541,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expandable</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expanded</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Commented</th>
-                    {showSavedCol && (
-                      <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Saved</th>
-                    )}
+                    {showSavedCol && <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Saved</th>}
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Shared</th>
                     <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Reported</th>
                     <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
@@ -601,15 +618,16 @@ export function ParticipantsPanel({
   const [simConfig, setSimConfig] = useState(DEFAULT_SIM_CONFIG);
 
   const abortRef = useRef(null);
-
   const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
+
+  const caps = useMemo(() => capabilitySummary(posts, IG), [posts, IG]);
 
   useEffect(() => {
     setProjectIdUtil(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
 
   const mkCacheKey = (id, pid = projectId) =>
-    `participants_cache_v11::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
+    `participants_cache_v12::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
   const saveCache = (data, pid = projectId) => {
     try {
@@ -830,6 +848,8 @@ export function ParticipantsPanel({
     URL.revokeObjectURL(url);
   };
 
+  const inputStyle = { width: "100%" };
+
   return (
     <div className="card" style={{ padding: wrapperPad }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
@@ -929,135 +949,214 @@ export function ParticipantsPanel({
           >
             <label>
               <div className="subtle">Reacted %</div>
-              <input type="number" min="0" max="100" step="1"
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
                 value={Math.round((simConfig.controlled.reactedRate || 0) * 100)}
                 onChange={(e) => updateControlled("reactedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
+                style={inputStyle}
               />
             </label>
 
-            <label>
-              <div className="subtle">Expanded %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.expandedRate || 0) * 100)}
-                onChange={(e) => updateControlled("expandedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
-
-            <label>
-              <div className="subtle">Commented %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.commentedRate || 0) * 100)}
-                onChange={(e) => updateControlled("commentedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
-
-            {IG && (
+            {caps.hasExpandable && (
               <label>
-                <div className="subtle">Saved %</div>
-                <input type="number" min="0" max="100" step="1"
-                  value={Math.round((simConfig.controlled.savedRate || 0) * 100)}
-                  onChange={(e) => updateControlled("savedRate", Number(e.target.value) / 100)}
-                  style={{ width: "100%" }}
+                <div className="subtle">Expanded %</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((simConfig.controlled.expandedRate || 0) * 100)}
+                  onChange={(e) => updateControlled("expandedRate", Number(e.target.value) / 100)}
+                  style={inputStyle}
                 />
               </label>
             )}
 
             <label>
-              <div className="subtle">Shared %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.sharedRate || 0) * 100)}
-                onChange={(e) => updateControlled("sharedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
+              <div className="subtle">Commented %</div>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={Math.round((simConfig.controlled.commentedRate || 0) * 100)}
+                onChange={(e) => updateControlled("commentedRate", Number(e.target.value) / 100)}
+                style={inputStyle}
               />
             </label>
+
+            {caps.hasSaved && (
+              <label>
+                <div className="subtle">Saved %</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((simConfig.controlled.savedRate || 0) * 100)}
+                  onChange={(e) => updateControlled("savedRate", Number(e.target.value) / 100)}
+                  style={inputStyle}
+                />
+              </label>
+            )}
+
+            {caps.hasShare && (
+              <label>
+                <div className="subtle">Shared %</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((simConfig.controlled.sharedRate || 0) * 100)}
+                  onChange={(e) => updateControlled("sharedRate", Number(e.target.value) / 100)}
+                  style={inputStyle}
+                />
+              </label>
+            )}
 
             <label>
               <div className="subtle">Reported %</div>
-              <input type="number" min="0" max="100" step="1"
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
                 value={Math.round((simConfig.controlled.reportedRate || 0) * 100)}
                 onChange={(e) => updateControlled("reportedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
+                style={inputStyle}
               />
             </label>
 
-            <label>
-              <div className="subtle">CTA clicked %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.ctaClickedRate || 0) * 100)}
-                onChange={(e) => updateControlled("ctaClickedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+            {caps.hasCta && (
+              <label>
+                <div className="subtle">CTA clicked %</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((simConfig.controlled.ctaClickedRate || 0) * 100)}
+                  onChange={(e) => updateControlled("ctaClickedRate", Number(e.target.value) / 100)}
+                  style={inputStyle}
+                />
+              </label>
+            )}
 
-            <label>
-              <div className="subtle">Bio opened %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.bioOpenedRate || 0) * 100)}
-                onChange={(e) => updateControlled("bioOpenedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+            {caps.hasBio && (
+              <>
+                <label>
+                  <div className="subtle">Bio opened %</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((simConfig.controlled.bioOpenedRate || 0) * 100)}
+                    onChange={(e) => updateControlled("bioOpenedRate", Number(e.target.value) / 100)}
+                    style={inputStyle}
+                  />
+                </label>
 
-            <label>
-              <div className="subtle">Bio URL clicked %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.bioUrlClickedRate || 0) * 100)}
-                onChange={(e) => updateControlled("bioUrlClickedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+                <label>
+                  <div className="subtle">Bio URL clicked %</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((simConfig.controlled.bioUrlClickedRate || 0) * 100)}
+                    onChange={(e) => updateControlled("bioUrlClickedRate", Number(e.target.value) / 100)}
+                    style={inputStyle}
+                  />
+                </label>
+              </>
+            )}
 
-            <label>
-              <div className="subtle">Mention clicked %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.mentionClickedRate || 0) * 100)}
-                onChange={(e) => updateControlled("mentionClickedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+            {caps.hasMention && (
+              <label>
+                <div className="subtle">Mention clicked %</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round((simConfig.controlled.mentionClickedRate || 0) * 100)}
+                  onChange={(e) => updateControlled("mentionClickedRate", Number(e.target.value) / 100)}
+                  style={inputStyle}
+                />
+              </label>
+            )}
 
-            <label>
-              <div className="subtle">Note opened %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.noteOpenedRate || 0) * 100)}
-                onChange={(e) => updateControlled("noteOpenedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+            {caps.hasNote && (
+              <>
+                <label>
+                  <div className="subtle">Note opened %</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((simConfig.controlled.noteOpenedRate || 0) * 100)}
+                    onChange={(e) => updateControlled("noteOpenedRate", Number(e.target.value) / 100)}
+                    style={inputStyle}
+                  />
+                </label>
 
-            <label>
-              <div className="subtle">Note details %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.noteViewDetailsRate || 0) * 100)}
-                onChange={(e) => updateControlled("noteViewDetailsRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+                <label>
+                  <div className="subtle">Note details %</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((simConfig.controlled.noteViewDetailsRate || 0) * 100)}
+                    onChange={(e) => updateControlled("noteViewDetailsRate", Number(e.target.value) / 100)}
+                    style={inputStyle}
+                  />
+                </label>
 
-            <label>
-              <div className="subtle">Note link clicked %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.noteLinkClickedRate || 0) * 100)}
-                onChange={(e) => updateControlled("noteLinkClickedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+                <label>
+                  <div className="subtle">Note link clicked %</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((simConfig.controlled.noteLinkClickedRate || 0) * 100)}
+                    onChange={(e) => updateControlled("noteLinkClickedRate", Number(e.target.value) / 100)}
+                    style={inputStyle}
+                  />
+                </label>
 
-            <label>
-              <div className="subtle">Note helpful rated %</div>
-              <input type="number" min="0" max="100" step="1"
-                value={Math.round((simConfig.controlled.noteHelpfulRatedRate || 0) * 100)}
-                onChange={(e) => updateControlled("noteHelpfulRatedRate", Number(e.target.value) / 100)}
-                style={{ width: "100%" }}
-              />
-            </label>
+                <label>
+                  <div className="subtle">Note helpful rated %</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={Math.round((simConfig.controlled.noteHelpfulRatedRate || 0) * 100)}
+                    onChange={(e) => updateControlled("noteHelpfulRatedRate", Number(e.target.value) / 100)}
+                    style={inputStyle}
+                  />
+                </label>
+              </>
+            )}
           </div>
 
           <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Reaction mix</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: ".5rem", marginTop: ".35rem" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+              gap: ".5rem",
+              marginTop: ".35rem",
+            }}
+          >
             {Object.keys(simConfig.controlled.reactionMix).map((k) => (
               <label key={k}>
                 <div className="subtle">{k}</div>
@@ -1067,28 +1166,39 @@ export function ParticipantsPanel({
                   step="1"
                   value={Number(simConfig.controlled.reactionMix[k] || 0)}
                   onChange={(e) => updateControlledMix("reactionMix", k, e.target.value)}
-                  style={{ width: "100%" }}
+                  style={inputStyle}
                 />
               </label>
             ))}
           </div>
 
-          <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Note helpful mix</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: ".5rem", marginTop: ".35rem" }}>
-            {Object.keys(simConfig.controlled.noteHelpfulMix).map((k) => (
-              <label key={k}>
-                <div className="subtle">{k}</div>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
-                  onChange={(e) => updateControlledMix("noteHelpfulMix", k, e.target.value)}
-                  style={{ width: "100%" }}
-                />
-              </label>
-            ))}
-          </div>
+          {caps.hasNote && (
+            <>
+              <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Note helpful mix</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: ".5rem",
+                  marginTop: ".35rem",
+                }}
+              >
+                {Object.keys(simConfig.controlled.noteHelpfulMix).map((k) => (
+                  <label key={k}>
+                    <div className="subtle">{k}</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
+                      onChange={(e) => updateControlledMix("noteHelpfulMix", k, e.target.value)}
+                      style={inputStyle}
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
