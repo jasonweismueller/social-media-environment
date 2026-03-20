@@ -20,10 +20,10 @@ const ms = (n) => {
   const sec = String(s % 60).padStart(2, "0");
   return `${m}:${sec}`;
 };
+
 const sShort = (n) => (Number.isFinite(n) ? `${Math.round(n)}s` : "—");
 
 function labelForKey(key, nameMap) {
-  // turns "<postId>_<suffix>" → "<prettyName>_<suffix>" in CSV header
   const m = /^(.+?)_([a-z_]+)$/.exec(key);
   if (!m) return key;
   const [, base, suf] = m;
@@ -40,6 +40,353 @@ function makeCsvWithPrettyHeaders(rows, keys, labels) {
   const head = (labels?.length === keys.length ? labels : keys).map(esc).join(",");
   const body = rows.map((r) => keys.map((k) => esc(r[k])).join(",")).join("\n");
   return head + "\n" + body;
+}
+
+function normalizeRowsForCsv(rows = []) {
+  const BOOL_SUFFIX =
+    /(_reacted|_expandable|_expanded|_commented|_saved|_shared|_reported_misinfo|_cta_clicked|_bio_opened|_bio_url_clicked|_mention_clicked|_note_opened|_note_view_details|_note_link_clicked|_note_helpful_rated)$/;
+
+  return rows.map((raw) => {
+    const out = { ...raw };
+
+    for (const k of Object.keys(out)) {
+      if (k.endsWith("_dwell_ms")) {
+        const base = k.replace("_dwell_ms", "");
+        const msVal = Number(out[k] || 0);
+        const sKey = `${base}_dwell_s`;
+        if (out[sKey] == null) out[sKey] = Math.round(msVal / 1000);
+        delete out[k];
+        continue;
+      }
+
+      if (BOOL_SUFFIX.test(k)) {
+        const v = Number(out[k]);
+        out[k] = Number.isFinite(v) && v > 0 ? 1 : 0;
+      }
+    }
+
+    return out;
+  });
+}
+
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function () {
+    t += 0x6D2B79F5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashStr(str = "") {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function clamp01(n) {
+  return Math.max(0, Math.min(1, Number(n) || 0));
+}
+
+function chance(rng, p) {
+  return rng() < clamp01(p);
+}
+
+function pickOne(rng, arr) {
+  if (!Array.isArray(arr) || !arr.length) return "";
+  return arr[Math.floor(rng() * arr.length)] || "";
+}
+
+function randomInt(rng, min, max) {
+  const lo = Math.ceil(min);
+  const hi = Math.floor(max);
+  return Math.floor(rng() * (hi - lo + 1)) + lo;
+}
+
+function randomReaction(rng) {
+  return pickOne(rng, ["like", "love", "care", "haha", "wow", "sad", "angry"]) || "like";
+}
+
+function looksExpandable(post) {
+  if (!post) return false;
+  if (post.expandable === true) return true;
+  const txt = String(post.text || "");
+  return txt.length > 140;
+}
+
+function hasNote(post) {
+  if (!post) return false;
+  return !!(
+    post.note ||
+    post.noteText ||
+    post.note_text ||
+    post.communityNote ||
+    post.community_note ||
+    post.interventionType === "note" ||
+    post.intervention_type === "note" ||
+    post.showNote === true
+  );
+}
+
+function hasBio(post) {
+  if (!post) return false;
+  return !!(
+    post.showBio ||
+    post.bio_text ||
+    post.bio_url ||
+    post.bio_followers ||
+    post.bio_posts ||
+    post.bio_following
+  );
+}
+
+function hasMention(post) {
+  const txt = String(post?.text || "");
+  return /(^|\s)@\w+/.test(txt);
+}
+
+function hasCta(post) {
+  if (!post) return false;
+  return !!(
+    post.adType === "ad" ||
+    post.adButtonText ||
+    post.cta ||
+    post.ctaLabel ||
+    post.adUrl
+  );
+}
+
+function hasShareableSurface(post) {
+  return !!post;
+}
+
+function buildSimulatedParticipantId(index, prolificRows = []) {
+  if (Array.isArray(prolificRows) && prolificRows[index]) {
+    return prolificRows[index].participant_id || prolificRows[index].prolific_pid || `SIM_${String(index + 1).padStart(4, "0")}`;
+  }
+  return `SIM_${String(index + 1).padStart(4, "0")}`;
+}
+
+function parseCsvLine(line) {
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+
+    cur += ch;
+  }
+
+  out.push(cur);
+  return out;
+}
+
+function parseSimpleCsv(text = "") {
+  const lines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
+
+  if (!lines.length) return [];
+
+  const header = parseCsvLine(lines[0]).map((h) => String(h || "").trim());
+  const rows = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseCsvLine(lines[i]);
+    const row = {};
+    header.forEach((h, idx) => {
+      row[h] = vals[idx] ?? "";
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function normalizeProlificRows(csvRows = []) {
+  return csvRows
+    .map((r) => {
+      const prolific_pid =
+        r.Prolific_ID ||
+        r.prolific_id ||
+        r.PROLIFIC_PID ||
+        r.Participant_id ||
+        r.participant_id ||
+        r.ParticipantID ||
+        "";
+
+      const participant_id = String(prolific_pid || "").trim();
+      if (!participant_id) return null;
+
+      return {
+        participant_id,
+        prolific_pid: participant_id,
+        raw: r,
+      };
+    })
+    .filter(Boolean);
+}
+
+function simulateParticipantRows({
+  posts = [],
+  participantCount = 50,
+  prolificRows = [],
+  feedId = "",
+  projectId = "",
+  app = "",
+  nameStore = {},
+}) {
+  const out = [];
+  const baseNow = Date.now();
+  const totalN = Math.max(1, Number(participantCount) || 1);
+
+  for (let i = 0; i < totalN; i++) {
+    const participant_id = buildSimulatedParticipantId(i, prolificRows);
+    const prolific_pid =
+      prolificRows[i]?.prolific_pid ||
+      prolificRows[i]?.participant_id ||
+      "";
+
+    const seed = hashStr(`${app}::${projectId}::${feedId}::${participant_id}::${i}`);
+    const rng = mulberry32(seed);
+
+    const enteredTs = baseNow - randomInt(rng, 2 * 3600 * 1000, 14 * 24 * 3600 * 1000);
+    let runningMs = 0;
+
+    const row = {
+      session_id: `sim_session_${String(i + 1).padStart(5, "0")}`,
+      participant_id,
+      prolific_pid: prolific_pid || participant_id,
+      session_id_ext: "",
+      study_id: "",
+      entered_at_iso: new Date(enteredTs).toISOString(),
+      submitted_at_iso: "",
+      ms_enter_to_submit: 0,
+      ms_enter_to_last_interaction: 0,
+      feed_id: feedId || null,
+      feed_checksum: "",
+    };
+
+    const feedLevelSpeedFactor = 0.8 + rng() * 0.8;
+
+    for (const post of posts) {
+      const id = post?.id || "unknown";
+      const txt = String(post?.text || "");
+      const isExpandable = looksExpandable(post);
+      const noteAvailable = hasNote(post);
+      const bioAvailable = hasBio(post);
+      const mentionAvailable = hasMention(post);
+      const ctaAvailable = hasCta(post);
+      const shareAvailable = hasShareableSurface(post);
+
+      const baseInterest =
+        post?.adType === "ad"
+          ? 0.42
+          : post?.adType === "influencer"
+          ? 0.52
+          : 0.48;
+
+      const noteInterestBoost = noteAvailable ? 0.08 : 0;
+      const bioInterestBoost = bioAvailable ? 0.03 : 0;
+      const textBoost = txt.length > 80 ? 0.04 : 0;
+
+      const interest = clamp01(baseInterest + noteInterestBoost + bioInterestBoost + textBoost + (rng() - 0.5) * 0.18);
+
+      const dwell_s = Math.max(
+        1,
+        Math.round((2 + rng() * 12 + (interest * 10)) * feedLevelSpeedFactor + (noteAvailable ? 2 : 0))
+      );
+
+      const reacted = chance(rng, 0.22 + interest * 0.35);
+      const reaction_type = reacted ? randomReaction(rng) : "";
+
+      const expandable = isExpandable ? 1 : 0;
+      const expanded = isExpandable && chance(rng, 0.12 + interest * 0.35) ? 1 : 0;
+
+      const commented = chance(rng, 0.03 + interest * 0.10) ? 1 : 0;
+      const comment_texts = commented ? `Simulated comment ${i + 1} on ${nameStore[id] || id}` : "";
+
+      const saved = chance(rng, 0.04 + interest * 0.10) ? 1 : 0;
+
+      const sharedFlag = shareAvailable && chance(rng, 0.03 + interest * 0.08) ? 1 : 0;
+      const share_target = sharedFlag ? pickOne(rng, ["Friend 1", "Friend 2", "Friend 3", "Friend 4"]) : "";
+      const share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
+
+      const reported_misinfo =
+        chance(rng, noteAvailable ? 0.03 : 0.05) && post?.adType !== "ad" ? 1 : 0;
+
+      const cta_clicked = ctaAvailable && chance(rng, 0.04 + interest * 0.12) ? 1 : 0;
+
+      const bio_opened = bioAvailable && chance(rng, 0.08 + interest * 0.18) ? 1 : 0;
+      const bio_url_clicked = bio_opened && chance(rng, 0.08) ? 1 : 0;
+      const mention_clicked = mentionAvailable && chance(rng, 0.05) ? 1 : 0;
+
+      const note_opened = noteAvailable && chance(rng, 0.18 + interest * 0.25) ? 1 : 0;
+      const note_view_details = note_opened && chance(rng, 0.35) ? 1 : 0;
+      const note_link_clicked = note_opened && chance(rng, 0.08) ? 1 : 0;
+      const note_helpful_rated = note_opened && chance(rng, 0.22) ? 1 : 0;
+      const note_helpful_value = note_helpful_rated ? pickOne(rng, ["helpful", "not_helpful"]) : "";
+
+      row[`${id}_reacted`] = reacted ? 1 : 0;
+      row[`${id}_reaction_type`] = reaction_type;
+      row[`${id}_expandable`] = expandable;
+      row[`${id}_expanded`] = expanded;
+      row[`${id}_commented`] = commented;
+      row[`${id}_comment_texts`] = comment_texts;
+      row[`${id}_reported_misinfo`] = reported_misinfo;
+      row[`${id}_dwell_s`] = dwell_s;
+      row[`${id}_saved`] = saved;
+      row[`${id}_shared`] = sharedFlag;
+      row[`${id}_share_target`] = share_target;
+      row[`${id}_share_text`] = share_text;
+      row[`${id}_cta_clicked`] = cta_clicked;
+      row[`${id}_bio_opened`] = bio_opened;
+      row[`${id}_bio_url_clicked`] = bio_url_clicked;
+      row[`${id}_mention_clicked`] = mention_clicked;
+      row[`${id}_note_opened`] = note_opened;
+      row[`${id}_note_view_details`] = note_view_details;
+      row[`${id}_note_link_clicked`] = note_link_clicked;
+      row[`${id}_note_helpful_rated`] = note_helpful_rated;
+      row[`${id}_note_helpful_value`] = note_helpful_value;
+
+      runningMs += dwell_s * 1000 + randomInt(rng, 250, 2200);
+    }
+
+    const submitMs = Math.max(runningMs, randomInt(rng, 30_000, 240_000));
+    const submittedTs = enteredTs + submitMs;
+
+    row.submitted_at_iso = new Date(submittedTs).toISOString();
+    row.ms_enter_to_submit = submitMs;
+    row.ms_enter_to_last_interaction = Math.max(0, submitMs - randomInt(rng, 0, 4000));
+
+    out.push(row);
+  }
+
+  return out;
 }
 
 /* --------------------------- stat card ----------------------------- */
@@ -87,15 +434,15 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".9rem" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                    <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Post ID</th>
-                    <th style={{ textAlign: "left",  padding: ".4rem .25rem" }}>Name</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Reacted</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Expandable</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Expanded</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Commented</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Saved</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Shared</th>
-                    <th style={{ textAlign: "center",padding: ".4rem .25rem" }}>Reported</th>
+                    <th style={{ textAlign: "left", padding: ".4rem .25rem" }}>Post ID</th>
+                    <th style={{ textAlign: "left", padding: ".4rem .25rem" }}>Name</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Reacted</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expandable</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expanded</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Commented</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Saved</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Shared</th>
+                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Reported</th>
                     <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
                   </tr>
                 </thead>
@@ -104,8 +451,9 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                     const dwellSeconds = Number.isFinite(p?.dwell_s)
                       ? Number(p.dwell_s)
                       : Number.isFinite(p?.dwell_ms)
-                        ? Number(p.dwell_ms) / 1000
-                        : 0;
+                      ? Number(p.dwell_ms) / 1000
+                      : 0;
+
                     return (
                       <tr key={p.post_id} style={{ borderBottom: "1px solid var(--line)" }}>
                         <td style={{ padding: ".35rem .25rem", fontFamily: "monospace" }}>{p.post_id}</td>
@@ -140,34 +488,41 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
 export function ParticipantsPanel({
   feedId,
   projectId: projectIdProp,
+  posts = [],
   compact = false,
   limit,
   onCountChange,
   postNamesMap,
 }) {
-  // Effective project id: prefer prop, else util, else "global"
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
+
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [pageSize, setPageSize] = useState(25);
   const [showPerPost, setShowPerPost] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailSubmission, setDetailSubmission] = useState(null);
-  const abortRef = useRef(null);
 
-  // post-name mappings for pretty headers and UI tables
+  const [simCount, setSimCount] = useState(50);
+  const [simRows, setSimRows] = useState([]);
+  const [usingSimulated, setUsingSimulated] = useState(false);
+  const [simProlificRows, setSimProlificRows] = useState([]);
+  const [simSourceLabel, setSimSourceLabel] = useState("");
+
+  const abortRef = useRef(null);
+  const prolificInputRef = useRef(null);
+
   const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
 
-  // keep utils project in sync so roster GET includes ?project_id
   useEffect(() => {
     setProjectIdUtil(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
 
-// cache key includes APP + projectId + feedId to scope correctly
-const mkCacheKey = (id, pid = projectId) =>
-  `participants_cache_v9::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
+  const mkCacheKey = (id, pid = projectId) =>
+    `participants_cache_v10::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
   const saveCache = (data, pid = projectId) => {
     try {
@@ -187,7 +542,9 @@ const mkCacheKey = (id, pid = projectId) =>
 
   const computeSummaryIdle = (data) => {
     const run = () => {
-      try { setSummary(summarizeRoster(data)); } catch {}
+      try {
+        setSummary(summarizeRoster(data || []));
+      } catch {}
     };
     (window.requestIdleCallback || ((fn) => setTimeout(fn, 0)))(run);
   };
@@ -205,7 +562,7 @@ const mkCacheKey = (id, pid = projectId) =>
       const data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
       if (!ctrl.signal.aborted && Array.isArray(data)) {
         setRows(data);
-        computeSummaryIdle(data);
+        if (!usingSimulated) computeSummaryIdle(data);
         saveCache(data, pid);
       }
     } catch (e) {
@@ -216,63 +573,75 @@ const mkCacheKey = (id, pid = projectId) =>
     }
   };
 
-  // initial load from cache then network
   useEffect(() => {
     const cached = readCache(projectId);
     if (cached?.rows?.length) {
       setRows(cached.rows);
       setLoading(false);
-      computeSummaryIdle(cached.rows);
+      if (!usingSimulated) computeSummaryIdle(cached.rows);
     }
     refresh(!!cached?.rows?.length);
     return () => abortRef.current?.abort?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedId, projectId]);
 
-  // bubble up row count
-  useEffect(() => {
-    onCountChange?.(rows?.length || 0);
-  }, [rows, onCountChange]);
+  const effectiveRows = useMemo(
+    () => (usingSimulated ? (simRows || []) : (rows || [])),
+    [usingSimulated, simRows, rows]
+  );
 
-  // sorted submissions by submitted_at_iso desc
+  useEffect(() => {
+    computeSummaryIdle(effectiveRows);
+  }, [effectiveRows]);
+
+  useEffect(() => {
+    onCountChange?.(effectiveRows?.length || 0);
+  }, [effectiveRows, onCountChange]);
+
   const sorted = useMemo(() => {
-    if (!rows?.length) return [];
-    const a = [...rows];
+    if (!effectiveRows?.length) return [];
+    const a = [...effectiveRows];
     a.sort((x, y) => String(y.submitted_at_iso).localeCompare(String(x.submitted_at_iso)));
     return a;
-  }, [rows]);
+  }, [effectiveRows]);
 
-  // visible slice
-  const effectivePageSize = typeof limit === "number" && limit >= 0 ? Math.min(limit, sorted.length) : pageSize;
+  const effectivePageSize =
+    typeof limit === "number" && limit >= 0 ? Math.min(limit, sorted.length) : pageSize;
+
   const visible = useMemo(() => sorted.slice(0, effectivePageSize), [sorted, effectivePageSize]);
 
-  // avg dwell seconds per post (supports _dwell_s and legacy _dwell_ms)
   const avgDwellSByPost = useMemo(() => {
     const acc = new Map();
-    if (!rows?.length) return acc;
-    for (const r of rows) {
+    if (!effectiveRows?.length) return acc;
+
+    for (const r of effectiveRows) {
       for (const k of Object.keys(r)) {
         let m = k.match(/^(.*)_dwell_s$/);
         if (m) {
           const id = m[1];
           const s = Number(r[k] || 0);
           if (!acc.has(id)) acc.set(id, { sum: 0, count: 0 });
-          const a = acc.get(id); a.sum += s; a.count += 1;
+          const a = acc.get(id);
+          a.sum += s;
+          a.count += 1;
           continue;
         }
+
         m = k.match(/^(.*)_dwell_ms$/);
         if (m) {
           const id = m[1];
           const s = Math.round(Number(r[k] || 0) / 1000);
           if (!acc.has(id)) acc.set(id, { sum: 0, count: 0 });
-          const a = acc.get(id); a.sum += s; a.count += 1;
+          const a = acc.get(id);
+          a.sum += s;
+          a.count += 1;
         }
       }
     }
-    return acc;
-  }, [rows]);
 
-  // per-post aggregate table (includes saved)
+    return acc;
+  }, [effectiveRows]);
+
   const perPostList = useMemo(() => {
     if (!showPerPost || !summary?.perPost) return [];
     return Object.entries(summary.perPost).map(([id, agg]) => {
@@ -293,78 +662,154 @@ const mkCacheKey = (id, pid = projectId) =>
     });
   }, [showPerPost, summary, avgDwellSByPost, nameStore]);
 
-  // compact spacing
   const padCell = compact ? ".3rem .25rem" : ".4rem .25rem";
   const fsTable = compact ? ".85rem" : ".9rem";
   const wrapperPad = compact ? ".75rem 1rem" : "1rem";
   const headerGap = compact ? ".35rem" : ".5rem";
   const statsGap = compact ? ".4rem" : ".5rem";
 
+  const runSimulation = () => {
+    if (!posts?.length) {
+      alert("Simulation needs the current feed posts. Pass posts={posts} into ParticipantsPanel.");
+      return;
+    }
+
+    const generated = simulateParticipantRows({
+      posts,
+      participantCount: simCount,
+      prolificRows: simProlificRows,
+      feedId,
+      projectId,
+      app: APP || "app",
+      nameStore,
+    });
+
+    setSimRows(generated);
+    setUsingSimulated(true);
+  };
+
+  const clearSimulation = () => {
+    setUsingSimulated(false);
+    setSimRows([]);
+  };
+
+  const handleProlificUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseSimpleCsv(text);
+      const normalized = normalizeProlificRows(parsed);
+      setSimProlificRows(normalized);
+      setSimSourceLabel(file.name || "Uploaded CSV");
+    } catch (err) {
+      console.error("Failed to parse Prolific CSV:", err);
+      alert("Could not parse the uploaded CSV.");
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const downloadCsv = () => {
+    if (!effectiveRows?.length) return;
+
+    const normalizedAll = normalizeRowsForCsv(effectiveRows);
+
+    const keySet = new Set();
+    normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
+    const keys = Array.from(keySet);
+    const labels = keys.map((k) => labelForKey(k, nameStore));
+    const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download =
+      `${APP}_participants` +
+      `${projectId ? `_${projectId}` : ""}` +
+      `${feedId ? `_${feedId}` : ""}` +
+      `${usingSimulated ? "_SIMULATED" : ""}.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="card" style={{ padding: wrapperPad }}>
-      {/* header */}
+      <input
+        ref={prolificInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        style={{ display: "none" }}
+        onChange={handleProlificUpload}
+      />
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
           Participants{feedId ? <span className="subtle"> · {feedId}</span> : null}
           <span className="subtle"> · {APP} · {projectId || "global"}</span>
+          {usingSimulated ? <span className="subtle"> · SIMULATED</span> : null}
         </h4>
-        <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap" }}>
-          <button className="btn" onClick={() => refresh(false)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
+
+        <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            className="btn"
+            onClick={() => refresh(false)}
+            style={{ padding: compact ? ".25rem .6rem" : undefined }}
+          >
             Refresh
           </button>
 
-          {/* ========= CLEANED CSV EXPORT ========= */}
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={simCount}
+            onChange={(e) => setSimCount(Math.max(1, Number(e.target.value) || 1))}
+            style={{
+              width: 86,
+              padding: compact ? ".25rem .45rem" : ".35rem .55rem",
+              border: "1px solid var(--line)",
+              borderRadius: 8,
+              fontSize: compact ? ".85rem" : ".9rem",
+            }}
+            title="Number of simulated participants"
+          />
+
+          <button
+            className="btn ghost"
+            onClick={() => prolificInputRef.current?.click()}
+            style={{ padding: compact ? ".25rem .6rem" : undefined }}
+          >
+            Upload Prolific CSV
+          </button>
+
           <button
             className="btn"
-            onClick={() => {
-              if (!rows?.length) return;
+            onClick={runSimulation}
+            style={{ padding: compact ? ".25rem .6rem" : undefined }}
+          >
+            Simulate
+          </button>
 
-              const BOOL_SUFFIX = /(reacted|expandable|expanded|commented|saved|shared|reported_misinfo|share_opened|cta_clicked)$/;
+          {usingSimulated && (
+            <button
+              className="btn ghost"
+              onClick={clearSimulation}
+              style={{ padding: compact ? ".25rem .6rem" : undefined }}
+            >
+              Clear simulation
+            </button>
+          )}
 
-              const normalizedAll = rows.map(raw => {
-                const out = { ...raw };
-
-                for (const k of Object.keys(out)) {
-                  // Normalize dwell_ms to dwell_s if any legacy data exists
-                  if (k.endsWith("_dwell_ms")) {
-                    const base = k.replace("_dwell_ms", "");
-                    const msVal = Number(out[k] || 0);
-                    const sKey = base + "_dwell_s";
-                    if (out[sKey] == null) {
-                      out[sKey] = Math.round(msVal / 1000);
-                    }
-                    delete out[k];
-                    continue;
-                  }
-
-                  // Normalize boolean-like fields to 0/1
-                  if (BOOL_SUFFIX.test(k)) {
-                    const v = Number(out[k]);
-                    out[k] = Number.isFinite(v) && v > 0 ? 1 : 0;
-                  }
-                }
-
-                return out;
-              });
-
-              const keySet = new Set();
-              normalizedAll.forEach(r => Object.keys(r).forEach(k => keySet.add(k)));
-              const keys = Array.from(keySet);
-
-              const labels = keys.map(k => labelForKey(k, nameStore));
-              const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
-
-              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${APP}_participants${projectId ? `_${projectId}` : ""}${feedId ? `_${feedId}` : ""}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              URL.revokeObjectURL(url);
-            }}
-            disabled={!rows?.length}
+          <button
+            className="btn"
+            onClick={downloadCsv}
+            disabled={!effectiveRows?.length}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Download CSV
@@ -372,14 +817,25 @@ const mkCacheKey = (id, pid = projectId) =>
         </div>
       </div>
 
-      {/* stats */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-        gap: statsGap,
-        marginTop: compact ? ".5rem" : ".75rem"
-      }}>
-        <StatCard compact={compact} title="Total" value={nfCompact.format(summary?.counts?.total ?? (rows?.length || 0))} />
+      {(simProlificRows.length > 0 || usingSimulated) && (
+        <div className="subtle" style={{ marginTop: ".5rem", fontSize: compact ? ".78rem" : ".84rem" }}>
+          {simProlificRows.length > 0
+            ? `Prolific pool loaded: ${simProlificRows.length} IDs${simSourceLabel ? ` (${simSourceLabel})` : ""}.`
+            : null}
+          {simProlificRows.length > 0 && usingSimulated ? " " : null}
+          {usingSimulated ? `Currently viewing ${effectiveRows.length} simulated rows.` : null}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+          gap: statsGap,
+          marginTop: compact ? ".5rem" : ".75rem",
+        }}
+      >
+        <StatCard compact={compact} title="Total" value={nfCompact.format(summary?.counts?.total ?? (effectiveRows?.length || 0))} />
         <StatCard compact={compact} title="Completed" value={nfCompact.format(summary?.counts?.completed ?? 0)} sub={`${(((summary?.counts?.completionRate ?? 0) * 100).toFixed(1))}% completion`} />
         <StatCard compact={compact} title="Avg time to submit" value={ms(summary?.timing?.avgEnterToSubmit)} />
         <StatCard compact={compact} title="Median time to submit" value={ms(summary?.timing?.medEnterToSubmit)} />
@@ -387,21 +843,23 @@ const mkCacheKey = (id, pid = projectId) =>
         <StatCard compact={compact} title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
       </div>
 
-      {/* per-post toggle */}
       <div style={{ marginTop: compact ? ".6rem" : "1rem" }}>
-        <button className="btn ghost" onClick={() => setShowPerPost(v => !v)} style={{ padding: compact ? ".25rem .6rem" : undefined }}>
+        <button
+          className="btn ghost"
+          onClick={() => setShowPerPost((v) => !v)}
+          style={{ padding: compact ? ".25rem .6rem" : undefined }}
+        >
           {showPerPost ? "Hide per-post interactions" : "Show per-post interactions"}
         </button>
       </div>
 
-      {/* per-post table */}
       {showPerPost && perPostList.length > 0 && (
         <div style={{ marginTop: ".5rem", overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: fsTable }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th style={{ textAlign: "left",  padding: padCell }}>Post ID</th>
-                <th style={{ textAlign: "left",  padding: padCell }}>Name</th>
+                <th style={{ textAlign: "left", padding: padCell }}>Post ID</th>
+                <th style={{ textAlign: "left", padding: padCell }}>Name</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Reacted</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
@@ -432,10 +890,10 @@ const mkCacheKey = (id, pid = projectId) =>
         </div>
       )}
 
-      {/* latest submissions */}
       <h5 style={{ margin: compact ? ".75rem 0 .4rem" : "1rem 0 .5rem", fontSize: compact ? ".95rem" : "1rem" }}>
         Latest submissions
       </h5>
+
       {visible.length === 0 ? (
         <div className="subtle" style={{ padding: ".5rem 0", fontSize: compact ? ".85rem" : ".9rem" }}>
           No submissions yet.
@@ -451,8 +909,8 @@ const mkCacheKey = (id, pid = projectId) =>
             </colgroup>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th style={{ textAlign: "left",  padding: padCell }}>Participant</th>
-                <th style={{ textAlign: "left",  padding: padCell }}>Submitted At</th>
+                <th style={{ textAlign: "left", padding: padCell }}>Participant</th>
+                <th style={{ textAlign: "left", padding: padCell }}>Submitted At</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Time to Submit</th>
                 <th style={{ textAlign: "right", padding: padCell }} />
               </tr>
@@ -484,37 +942,32 @@ const mkCacheKey = (id, pid = projectId) =>
                             const dwell_s = Number.isFinite(agg.dwell_s)
                               ? Number(agg.dwell_s)
                               : Number.isFinite(agg.dwell_ms)
-                                ? Number(agg.dwell_ms) / 1000
-                                : 0;
+                              ? Number(agg.dwell_ms) / 1000
+                              : 0;
 
                             const rawComment = String(agg.comment_text || "").trim();
                             const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
 
                             return {
-  post_id,
-  name: names[post_id] || "",
-
-  reacted: Number(agg.reacted) === 1,
-  expandable: Number(agg.expandable) === 1,
-  expanded: Number(agg.expanded) === 1,
-  commented: Number(agg.commented) === 1 || hasRealComment,
-  saved: Number(agg.saved) === 1,
-
-  shared: !!(
-    agg.shared ||
-    (
-      agg.share_target &&
-      String(agg.share_target).trim() &&
-      !String(agg.share_target).trim().startsWith("[Ljava.lang.Object;@")
-    )
-  ),
-
-  reported: Number(agg.reported) === 1,
-
-
-  comment_text: rawComment,
-  dwell_s,
-};
+                              post_id,
+                              name: names[post_id] || "",
+                              reacted: Number(agg.reacted) === 1,
+                              expandable: Number(agg.expandable) === 1,
+                              expanded: Number(agg.expanded) === 1,
+                              commented: Number(agg.commented) === 1 || hasRealComment,
+                              saved: Number(agg.saved) === 1,
+                              shared: !!(
+                                agg.shared ||
+                                (
+                                  agg.share_target &&
+                                  String(agg.share_target).trim() &&
+                                  !String(agg.share_target).trim().startsWith("[Ljava.lang.Object;@")
+                                )
+                              ),
+                              reported: Number(agg.reported) === 1,
+                              comment_text: rawComment,
+                              dwell_s,
+                            };
                           });
 
                           setDetailSubmission({
@@ -553,16 +1006,17 @@ const mkCacheKey = (id, pid = projectId) =>
         </>
       )}
 
-      {/* footer: status */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: ".5rem" }}>
         {error ? <div style={{ color: "crimson", fontSize: ".85rem" }}>{error}</div> : <span />}
-        {loading && <div className="subtle" style={{ fontSize: ".85rem" }}>Refreshing…</div>}
+        {loading && !usingSimulated && <div className="subtle" style={{ fontSize: ".85rem" }}>Refreshing…</div>}
       </div>
 
-      {/* detail modal */}
       <ParticipantDetailModal
         open={detailOpen}
-        onClose={() => { setDetailOpen(false); setDetailSubmission(null); }}
+        onClose={() => {
+          setDetailOpen(false);
+          setDetailSubmission(null);
+        }}
         submission={detailSubmission}
       />
     </div>
