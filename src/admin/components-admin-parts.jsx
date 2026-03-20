@@ -94,6 +94,10 @@ function clamp01(n) {
   return Math.max(0, Math.min(1, Number(n) || 0));
 }
 
+function clampPct(n) {
+  return Math.max(0, Math.min(100, Number(n) || 0));
+}
+
 function chance(rng, p) {
   return rng() < clamp01(p);
 }
@@ -191,6 +195,134 @@ function capabilitySummary(posts = [], isIG = false) {
   };
 }
 
+function deterministicShuffle(arr, seedStr) {
+  const out = [...arr];
+  const rng = mulberry32(hashStr(seedStr));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function makeIndexList(total) {
+  return Array.from({ length: Math.max(0, total) }, (_, i) => i);
+}
+
+function selectExactIndices(indices = [], count = 0, seedStr = "") {
+  const clean = Array.isArray(indices) ? [...indices] : [];
+  const n = Math.max(0, Math.min(clean.length, Math.round(Number(count) || 0)));
+  if (n <= 0) return [];
+  return deterministicShuffle(clean, seedStr).slice(0, n);
+}
+
+function roundToTarget(valuesByKey = {}, target = 100) {
+  const entries = Object.entries(valuesByKey).map(([k, v]) => [k, Math.max(0, Number(v) || 0)]);
+  if (!entries.length) return {};
+
+  const floors = {};
+  const fracs = [];
+  let sumFloor = 0;
+
+  for (const [k, v] of entries) {
+    const fl = Math.floor(v);
+    floors[k] = fl;
+    sumFloor += fl;
+    fracs.push({ key: k, frac: v - fl });
+  }
+
+  let remainder = Math.max(0, Math.round(target - sumFloor));
+  fracs.sort((a, b) => b.frac - a.frac);
+
+  for (let i = 0; i < fracs.length && remainder > 0; i++, remainder--) {
+    floors[fracs[i].key] += 1;
+  }
+
+  return floors;
+}
+
+function normalizeMixToPercentages(mix = {}, allowedKeys = []) {
+  const keys = allowedKeys.length ? allowedKeys : Object.keys(mix || {});
+  const clean = {};
+  let total = 0;
+
+  keys.forEach((k) => {
+    const v = Math.max(0, Number(mix?.[k]) || 0);
+    clean[k] = v;
+    total += v;
+  });
+
+  if (total <= 0) {
+    const even = 100 / Math.max(1, keys.length);
+    return roundToTarget(
+      Object.fromEntries(keys.map((k) => [k, even])),
+      100
+    );
+  }
+
+  const asPct = {};
+  keys.forEach((k) => {
+    asPct[k] = (clean[k] / total) * 100;
+  });
+
+  return roundToTarget(asPct, 100);
+}
+
+function rebalancePercentageMix(prevMix = {}, changedKey, nextValue) {
+  const keys = Object.keys(prevMix || {});
+  if (!keys.length) return prevMix || {};
+
+  const nextClamped = clampPct(nextValue);
+  const otherKeys = keys.filter((k) => k !== changedKey);
+  const remaining = Math.max(0, 100 - nextClamped);
+
+  const baseOthers = {};
+  let totalOthers = 0;
+  otherKeys.forEach((k) => {
+    const v = Math.max(0, Number(prevMix[k]) || 0);
+    baseOthers[k] = v;
+    totalOthers += v;
+  });
+
+  let redistributed = {};
+  if (!otherKeys.length) {
+    redistributed = {};
+  } else if (totalOthers <= 0) {
+    const even = remaining / otherKeys.length;
+    redistributed = roundToTarget(
+      Object.fromEntries(otherKeys.map((k) => [k, even])),
+      remaining
+    );
+  } else {
+    const floats = {};
+    otherKeys.forEach((k) => {
+      floats[k] = (baseOthers[k] / totalOthers) * remaining;
+    });
+    redistributed = roundToTarget(floats, remaining);
+  }
+
+  return {
+    ...redistributed,
+    [changedKey]: Math.round(nextClamped),
+  };
+}
+
+function allocateCountsFromPercentages(total, mix = {}, allowedKeys = []) {
+  const cleanPct = normalizeMixToPercentages(mix, allowedKeys);
+  const floats = {};
+  Object.keys(cleanPct).forEach((k) => {
+    floats[k] = (Math.max(0, total) * cleanPct[k]) / 100;
+  });
+  return roundToTarget(floats, Math.max(0, total));
+}
+
+function pctInputValue(prob) {
+  return Math.round(clamp01(prob) * 100);
+}
+
+const REACTION_KEYS = ["like", "love", "care", "haha", "wow", "sad", "angry"];
+const NOTE_HELPFUL_KEYS = ["helpful", "not_helpful"];
+
 const DEFAULT_SIM_CONFIG = {
   random: {
     reactedBase: 0.22,
@@ -220,13 +352,13 @@ const DEFAULT_SIM_CONFIG = {
   controlled: {
     reactedRate: 0.22,
     reactionMix: {
-      like: 0.55,
-      love: 0.18,
-      care: 0.08,
-      haha: 0.06,
-      wow: 0.05,
-      sad: 0.04,
-      angry: 0.04,
+      like: 55,
+      love: 18,
+      care: 8,
+      haha: 6,
+      wow: 5,
+      sad: 4,
+      angry: 4,
     },
     expandedRate: 0.18,
     commentedRate: 0.06,
@@ -241,12 +373,174 @@ const DEFAULT_SIM_CONFIG = {
     noteLinkClickedRate: 0.04,
     noteHelpfulRatedRate: 0.1,
     noteHelpfulMix: {
-      helpful: 0.75,
-      not_helpful: 0.25,
+      helpful: 75,
+      not_helpful: 25,
     },
     savedRate: 0.08,
   },
 };
+
+function buildControlledAssignments({
+  posts = [],
+  participantCount = 0,
+  feedId = "",
+  projectId = "",
+  app = "",
+  simConfig = DEFAULT_SIM_CONFIG,
+  isIG = false,
+}) {
+  const assignments = {};
+  const allIdx = makeIndexList(participantCount);
+  const controlledCfg = {
+    ...DEFAULT_SIM_CONFIG.controlled,
+    ...(simConfig?.controlled || {}),
+    reactionMix: normalizeMixToPercentages(
+      {
+        ...DEFAULT_SIM_CONFIG.controlled.reactionMix,
+        ...(simConfig?.controlled?.reactionMix || {}),
+      },
+      REACTION_KEYS
+    ),
+    noteHelpfulMix: normalizeMixToPercentages(
+      {
+        ...DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix,
+        ...(simConfig?.controlled?.noteHelpfulMix || {}),
+      },
+      NOTE_HELPFUL_KEYS
+    ),
+  };
+
+  posts.forEach((post) => {
+    const postId = post?.id || "unknown";
+    const baseSeed = `${app}::${projectId}::${feedId}::${postId}`;
+
+    const expandableAvailable = looksExpandable(post);
+    const noteAvailable = hasNote(post);
+    const bioAvailable = hasBio(post);
+    const mentionAvailable = hasMention(post);
+    const ctaAvailable = hasCta(post);
+    const shareAvailable = hasShareableSurface(post);
+    const savedAvailable = !!isIG;
+
+    const reactedCount = Math.round(participantCount * clamp01(controlledCfg.reactedRate));
+    const reactedIdx = selectExactIndices(allIdx, reactedCount, `${baseSeed}::reacted`);
+    const reactedSet = new Set(reactedIdx);
+
+    const reactionTypeByIdx = {};
+    const reactionAlloc = allocateCountsFromPercentages(
+      reactedIdx.length,
+      controlledCfg.reactionMix,
+      REACTION_KEYS
+    );
+    const reactedShuffled = deterministicShuffle(reactedIdx, `${baseSeed}::reaction_mix`);
+    let rxCursor = 0;
+    REACTION_KEYS.forEach((key) => {
+      const n = Math.max(0, Math.round(reactionAlloc[key] || 0));
+      for (let i = 0; i < n && rxCursor < reactedShuffled.length; i++, rxCursor++) {
+        reactionTypeByIdx[reactedShuffled[rxCursor]] = key;
+      }
+    });
+
+    const expandedIdx = expandableAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.expandedRate)), `${baseSeed}::expanded`)
+      : [];
+    const commentedIdx = selectExactIndices(
+      allIdx,
+      Math.round(participantCount * clamp01(controlledCfg.commentedRate)),
+      `${baseSeed}::commented`
+    );
+    const sharedIdx = shareAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.sharedRate)), `${baseSeed}::shared`)
+      : [];
+    const reportedIdx = selectExactIndices(
+      allIdx,
+      Math.round(participantCount * clamp01(controlledCfg.reportedRate)),
+      `${baseSeed}::reported`
+    );
+    const ctaIdx = ctaAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.ctaClickedRate)), `${baseSeed}::cta`)
+      : [];
+    const bioOpenedIdx = bioAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.bioOpenedRate)), `${baseSeed}::bio_opened`)
+      : [];
+    const bioUrlIdx = bioAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.bioUrlClickedRate)), `${baseSeed}::bio_url`)
+      : [];
+    const mentionIdx = mentionAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.mentionClickedRate)), `${baseSeed}::mention`)
+      : [];
+    const noteOpenedIdx = noteAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.noteOpenedRate)), `${baseSeed}::note_opened`)
+      : [];
+    const noteDetailsIdx = noteAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.noteViewDetailsRate)), `${baseSeed}::note_details`)
+      : [];
+    const noteLinkIdx = noteAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.noteLinkClickedRate)), `${baseSeed}::note_link`)
+      : [];
+    const noteHelpfulIdx = noteAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.noteHelpfulRatedRate)), `${baseSeed}::note_helpful`)
+      : [];
+    const savedIdx = savedAvailable
+      ? selectExactIndices(allIdx, Math.round(participantCount * clamp01(controlledCfg.savedRate)), `${baseSeed}::saved`)
+      : [];
+
+    const bioOpenedSet = new Set(bioOpenedIdx);
+    bioUrlIdx.forEach((idx) => bioOpenedSet.add(idx));
+
+    const noteOpenedSet = new Set(noteOpenedIdx);
+    noteDetailsIdx.forEach((idx) => noteOpenedSet.add(idx));
+    noteLinkIdx.forEach((idx) => noteOpenedSet.add(idx));
+    noteHelpfulIdx.forEach((idx) => noteOpenedSet.add(idx));
+
+    const noteHelpfulByIdx = {};
+    const noteHelpfulOpenIdx = Array.from(new Set(noteHelpfulIdx));
+    const noteHelpfulAlloc = allocateCountsFromPercentages(
+      noteHelpfulOpenIdx.length,
+      controlledCfg.noteHelpfulMix,
+      NOTE_HELPFUL_KEYS
+    );
+    const helpfulShuffled = deterministicShuffle(noteHelpfulOpenIdx, `${baseSeed}::note_helpful_mix`);
+    let helpfulCursor = 0;
+    NOTE_HELPFUL_KEYS.forEach((key) => {
+      const n = Math.max(0, Math.round(noteHelpfulAlloc[key] || 0));
+      for (let i = 0; i < n && helpfulCursor < helpfulShuffled.length; i++, helpfulCursor++) {
+        noteHelpfulByIdx[helpfulShuffled[helpfulCursor]] = key;
+      }
+    });
+
+    const shareTargetByIdx = {};
+    const shareTextByIdx = {};
+    const shareTargets = ["Friend 1", "Friend 2", "Friend 3", "Friend 4"];
+    deterministicShuffle(sharedIdx, `${baseSeed}::share_targets`).forEach((idx, pos) => {
+      shareTargetByIdx[idx] = shareTargets[pos % shareTargets.length];
+      shareTextByIdx[idx] = pos % 2 === 0 ? "Check this out" : "";
+    });
+
+    assignments[postId] = {
+      reactedSet,
+      reactionTypeByIdx,
+      expandedSet: new Set(expandedIdx),
+      commentedSet: new Set(commentedIdx),
+      sharedSet: new Set(sharedIdx),
+      shareTargetByIdx,
+      shareTextByIdx,
+      reportedSet: new Set(reportedIdx),
+      ctaSet: new Set(ctaIdx),
+      bioOpenedSet,
+      bioUrlSet: new Set(bioUrlIdx),
+      mentionSet: new Set(mentionIdx),
+      noteOpenedSet,
+      noteDetailsSet: new Set(noteDetailsIdx),
+      noteLinkSet: new Set(noteLinkIdx),
+      noteHelpfulSet: new Set(noteHelpfulIdx),
+      noteHelpfulByIdx,
+      savedSet: new Set(savedIdx),
+    };
+  });
+
+  return assignments;
+}
 
 function simulateParticipantRows({
   posts = [],
@@ -271,15 +565,37 @@ function simulateParticipantRows({
   const controlledCfg = {
     ...DEFAULT_SIM_CONFIG.controlled,
     ...(simConfig?.controlled || {}),
-    reactionMix: {
-      ...DEFAULT_SIM_CONFIG.controlled.reactionMix,
-      ...(simConfig?.controlled?.reactionMix || {}),
-    },
-    noteHelpfulMix: {
-      ...DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix,
-      ...(simConfig?.controlled?.noteHelpfulMix || {}),
-    },
+    reactionMix: normalizeMixToPercentages(
+      {
+        ...DEFAULT_SIM_CONFIG.controlled.reactionMix,
+        ...(simConfig?.controlled?.reactionMix || {}),
+      },
+      REACTION_KEYS
+    ),
+    noteHelpfulMix: normalizeMixToPercentages(
+      {
+        ...DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix,
+        ...(simConfig?.controlled?.noteHelpfulMix || {}),
+      },
+      NOTE_HELPFUL_KEYS
+    ),
   };
+
+  const controlledAssignments =
+    simMode === "controlled"
+      ? buildControlledAssignments({
+          posts,
+          participantCount: totalN,
+          feedId,
+          projectId,
+          app,
+          simConfig: {
+            ...simConfig,
+            controlled: controlledCfg,
+          },
+          isIG,
+        })
+      : null;
 
   for (let i = 0; i < totalN; i++) {
     const participant_id = buildSimulatedParticipantId(i);
@@ -357,51 +673,40 @@ function simulateParticipantRows({
       let note_helpful_value = "";
 
       if (simMode === "controlled") {
-        reacted = chance(rng, controlledCfg.reactedRate) ? 1 : 0;
-        reaction_type = reacted ? weightedChoice(rng, controlledCfg.reactionMix, "like") : "";
+        const a = controlledAssignments?.[id] || {};
 
-        expanded = expandableAvailable && chance(rng, controlledCfg.expandedRate) ? 1 : 0;
+        reacted = a.reactedSet?.has(i) ? 1 : 0;
+        reaction_type = reacted ? (a.reactionTypeByIdx?.[i] || "like") : "";
 
-        commented = chance(rng, controlledCfg.commentedRate) ? 1 : 0;
+        expanded = expandableAvailable && a.expandedSet?.has(i) ? 1 : 0;
+
+        commented = a.commentedSet?.has(i) ? 1 : 0;
         comment_texts = commented ? `Simulated comment ${i + 1} on ${nameStore[id] || id}` : "";
 
-        saved = savedAvailable && chance(rng, controlledCfg.savedRate) ? 1 : 0;
+        saved = savedAvailable && a.savedSet?.has(i) ? 1 : 0;
 
-        sharedFlag = shareAvailable && chance(rng, controlledCfg.sharedRate) ? 1 : 0;
-        share_target = sharedFlag
-          ? weightedChoice(
-              rng,
-              { "Friend 1": 1, "Friend 2": 1, "Friend 3": 1, "Friend 4": 1 },
-              "Friend 1"
-            )
-          : "";
-        share_text = sharedFlag && chance(rng, 0.45) ? "Check this out" : "";
+        sharedFlag = shareAvailable && a.sharedSet?.has(i) ? 1 : 0;
+        share_target = sharedFlag ? a.shareTargetByIdx?.[i] || "Friend 1" : "";
+        share_text = sharedFlag ? a.shareTextByIdx?.[i] || "" : "";
 
-        reported_misinfo = chance(rng, controlledCfg.reportedRate) && post?.adType !== "ad" ? 1 : 0;
+        reported_misinfo = a.reportedSet?.has(i) && post?.adType !== "ad" ? 1 : 0;
 
-        cta_clicked = ctaAvailable && chance(rng, controlledCfg.ctaClickedRate) ? 1 : 0;
+        cta_clicked = ctaAvailable && a.ctaSet?.has(i) ? 1 : 0;
 
-        bio_opened = bioAvailable && chance(rng, controlledCfg.bioOpenedRate) ? 1 : 0;
-        bio_url_clicked = bioAvailable && chance(rng, controlledCfg.bioUrlClickedRate) ? 1 : 0;
-        if (!bio_opened && bio_url_clicked) bio_opened = 1;
+        bio_opened = bioAvailable && a.bioOpenedSet?.has(i) ? 1 : 0;
+        bio_url_clicked = bioAvailable && a.bioUrlSet?.has(i) ? 1 : 0;
 
-        mention_clicked = mentionAvailable && chance(rng, controlledCfg.mentionClickedRate) ? 1 : 0;
+        mention_clicked = mentionAvailable && a.mentionSet?.has(i) ? 1 : 0;
 
-        note_opened = noteAvailable && chance(rng, controlledCfg.noteOpenedRate) ? 1 : 0;
-        note_view_details = noteAvailable && chance(rng, controlledCfg.noteViewDetailsRate) ? 1 : 0;
-        note_link_clicked = noteAvailable && chance(rng, controlledCfg.noteLinkClickedRate) ? 1 : 0;
-        note_helpful_rated = noteAvailable && chance(rng, controlledCfg.noteHelpfulRatedRate) ? 1 : 0;
-        note_helpful_value = note_helpful_rated
-          ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "helpful")
-          : "";
-
-        if (!note_opened && (note_view_details || note_link_clicked || note_helpful_rated)) {
-          note_opened = 1;
-        }
+        note_opened = noteAvailable && a.noteOpenedSet?.has(i) ? 1 : 0;
+        note_view_details = noteAvailable && a.noteDetailsSet?.has(i) ? 1 : 0;
+        note_link_clicked = noteAvailable && a.noteLinkSet?.has(i) ? 1 : 0;
+        note_helpful_rated = noteAvailable && a.noteHelpfulSet?.has(i) ? 1 : 0;
+        note_helpful_value = note_helpful_rated ? a.noteHelpfulByIdx?.[i] || "helpful" : "";
       } else {
         reacted = chance(rng, randomCfg.reactedBase + interest * randomCfg.reactedInterestWeight) ? 1 : 0;
         reaction_type = reacted
-          ? weightedChoice(rng, DEFAULT_SIM_CONFIG.controlled.reactionMix, "like")
+          ? weightedChoice(rng, controlledCfg.reactionMix, "like")
           : "";
 
         expanded =
@@ -419,7 +724,7 @@ function simulateParticipantRows({
         share_target = sharedFlag
           ? weightedChoice(
               rng,
-              { "Friend 1": 1, "Friend 2": 1, "Friend 3": 1, "Friend 4": 1 },
+              { "Friend 1": 25, "Friend 2": 25, "Friend 3": 25, "Friend 4": 25 },
               "Friend 1"
             )
           : "";
@@ -431,19 +736,31 @@ function simulateParticipantRows({
             ? 1
             : 0;
 
-        cta_clicked = ctaAvailable && chance(rng, randomCfg.ctaBase + interest * randomCfg.ctaInterestWeight) ? 1 : 0;
+        cta_clicked =
+          ctaAvailable &&
+          chance(rng, randomCfg.ctaBase + interest * randomCfg.ctaInterestWeight)
+            ? 1
+            : 0;
 
-        bio_opened = bioAvailable && chance(rng, randomCfg.bioOpenBase + interest * randomCfg.bioOpenInterestWeight) ? 1 : 0;
+        bio_opened =
+          bioAvailable &&
+          chance(rng, randomCfg.bioOpenBase + interest * randomCfg.bioOpenInterestWeight)
+            ? 1
+            : 0;
         bio_url_clicked = bio_opened && chance(rng, randomCfg.bioUrlGivenOpen) ? 1 : 0;
 
         mention_clicked = mentionAvailable && chance(rng, randomCfg.mentionClickedBase) ? 1 : 0;
 
-        note_opened = noteAvailable && chance(rng, randomCfg.noteOpenBase + interest * randomCfg.noteOpenInterestWeight) ? 1 : 0;
+        note_opened =
+          noteAvailable &&
+          chance(rng, randomCfg.noteOpenBase + interest * randomCfg.noteOpenInterestWeight)
+            ? 1
+            : 0;
         note_view_details = note_opened && chance(rng, randomCfg.noteViewDetailsGivenOpen) ? 1 : 0;
         note_link_clicked = note_opened && chance(rng, randomCfg.noteLinkGivenOpen) ? 1 : 0;
         note_helpful_rated = note_opened && chance(rng, randomCfg.noteHelpfulGivenOpen) ? 1 : 0;
         note_helpful_value = note_helpful_rated
-          ? weightedChoice(rng, DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix, "helpful")
+          ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "helpful")
           : "";
       }
 
@@ -615,11 +932,17 @@ export function ParticipantsPanel({
   const [usingSimulated, setUsingSimulated] = useState(false);
 
   const [simMode, setSimMode] = useState("random");
-  const [simConfig, setSimConfig] = useState(DEFAULT_SIM_CONFIG);
+  const [simConfig, setSimConfig] = useState(() => ({
+    ...DEFAULT_SIM_CONFIG,
+    controlled: {
+      ...DEFAULT_SIM_CONFIG.controlled,
+      reactionMix: { ...DEFAULT_SIM_CONFIG.controlled.reactionMix },
+      noteHelpfulMix: { ...DEFAULT_SIM_CONFIG.controlled.noteHelpfulMix },
+    },
+  }));
 
   const abortRef = useRef(null);
   const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
-
   const caps = useMemo(() => capabilitySummary(posts, IG), [posts, IG]);
 
   useEffect(() => {
@@ -627,7 +950,7 @@ export function ParticipantsPanel({
   }, [projectId]);
 
   const mkCacheKey = (id, pid = projectId) =>
-    `participants_cache_v12::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
+    `participants_cache_v13::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
   const saveCache = (data, pid = projectId) => {
     try {
@@ -772,6 +1095,7 @@ export function ParticipantsPanel({
   const wrapperPad = compact ? ".75rem 1rem" : "1rem";
   const headerGap = compact ? ".35rem" : ".5rem";
   const statsGap = compact ? ".4rem" : ".5rem";
+  const inputStyle = { width: "100%" };
 
   const updateControlled = (key, value) => {
     setSimConfig((prev) => ({
@@ -788,10 +1112,7 @@ export function ParticipantsPanel({
       ...prev,
       controlled: {
         ...prev.controlled,
-        [group]: {
-          ...prev.controlled[group],
-          [key]: Math.max(0, Number(value) || 0),
-        },
+        [group]: rebalancePercentageMix(prev.controlled[group], key, value),
       },
     }));
   };
@@ -847,8 +1168,6 @@ export function ParticipantsPanel({
     a.remove();
     URL.revokeObjectURL(url);
   };
-
-  const inputStyle = { width: "100%" };
 
   return (
     <div className="card" style={{ padding: wrapperPad }}>
@@ -939,6 +1258,9 @@ export function ParticipantsPanel({
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: ".5rem" }}>Controlled simulation settings</div>
+          <div className="subtle" style={{ marginBottom: ".6rem" }}>
+            Controlled mode uses exact whole-person counts based on your sample size. Mixes are kept at 100%.
+          </div>
 
           <div
             style={{
@@ -954,7 +1276,7 @@ export function ParticipantsPanel({
                 min="0"
                 max="100"
                 step="1"
-                value={Math.round((simConfig.controlled.reactedRate || 0) * 100)}
+                value={pctInputValue(simConfig.controlled.reactedRate)}
                 onChange={(e) => updateControlled("reactedRate", Number(e.target.value) / 100)}
                 style={inputStyle}
               />
@@ -968,7 +1290,7 @@ export function ParticipantsPanel({
                   min="0"
                   max="100"
                   step="1"
-                  value={Math.round((simConfig.controlled.expandedRate || 0) * 100)}
+                  value={pctInputValue(simConfig.controlled.expandedRate)}
                   onChange={(e) => updateControlled("expandedRate", Number(e.target.value) / 100)}
                   style={inputStyle}
                 />
@@ -982,7 +1304,7 @@ export function ParticipantsPanel({
                 min="0"
                 max="100"
                 step="1"
-                value={Math.round((simConfig.controlled.commentedRate || 0) * 100)}
+                value={pctInputValue(simConfig.controlled.commentedRate)}
                 onChange={(e) => updateControlled("commentedRate", Number(e.target.value) / 100)}
                 style={inputStyle}
               />
@@ -996,7 +1318,7 @@ export function ParticipantsPanel({
                   min="0"
                   max="100"
                   step="1"
-                  value={Math.round((simConfig.controlled.savedRate || 0) * 100)}
+                  value={pctInputValue(simConfig.controlled.savedRate)}
                   onChange={(e) => updateControlled("savedRate", Number(e.target.value) / 100)}
                   style={inputStyle}
                 />
@@ -1011,7 +1333,7 @@ export function ParticipantsPanel({
                   min="0"
                   max="100"
                   step="1"
-                  value={Math.round((simConfig.controlled.sharedRate || 0) * 100)}
+                  value={pctInputValue(simConfig.controlled.sharedRate)}
                   onChange={(e) => updateControlled("sharedRate", Number(e.target.value) / 100)}
                   style={inputStyle}
                 />
@@ -1025,7 +1347,7 @@ export function ParticipantsPanel({
                 min="0"
                 max="100"
                 step="1"
-                value={Math.round((simConfig.controlled.reportedRate || 0) * 100)}
+                value={pctInputValue(simConfig.controlled.reportedRate)}
                 onChange={(e) => updateControlled("reportedRate", Number(e.target.value) / 100)}
                 style={inputStyle}
               />
@@ -1039,7 +1361,7 @@ export function ParticipantsPanel({
                   min="0"
                   max="100"
                   step="1"
-                  value={Math.round((simConfig.controlled.ctaClickedRate || 0) * 100)}
+                  value={pctInputValue(simConfig.controlled.ctaClickedRate)}
                   onChange={(e) => updateControlled("ctaClickedRate", Number(e.target.value) / 100)}
                   style={inputStyle}
                 />
@@ -1055,7 +1377,7 @@ export function ParticipantsPanel({
                     min="0"
                     max="100"
                     step="1"
-                    value={Math.round((simConfig.controlled.bioOpenedRate || 0) * 100)}
+                    value={pctInputValue(simConfig.controlled.bioOpenedRate)}
                     onChange={(e) => updateControlled("bioOpenedRate", Number(e.target.value) / 100)}
                     style={inputStyle}
                   />
@@ -1068,7 +1390,7 @@ export function ParticipantsPanel({
                     min="0"
                     max="100"
                     step="1"
-                    value={Math.round((simConfig.controlled.bioUrlClickedRate || 0) * 100)}
+                    value={pctInputValue(simConfig.controlled.bioUrlClickedRate)}
                     onChange={(e) => updateControlled("bioUrlClickedRate", Number(e.target.value) / 100)}
                     style={inputStyle}
                   />
@@ -1084,7 +1406,7 @@ export function ParticipantsPanel({
                   min="0"
                   max="100"
                   step="1"
-                  value={Math.round((simConfig.controlled.mentionClickedRate || 0) * 100)}
+                  value={pctInputValue(simConfig.controlled.mentionClickedRate)}
                   onChange={(e) => updateControlled("mentionClickedRate", Number(e.target.value) / 100)}
                   style={inputStyle}
                 />
@@ -1100,7 +1422,7 @@ export function ParticipantsPanel({
                     min="0"
                     max="100"
                     step="1"
-                    value={Math.round((simConfig.controlled.noteOpenedRate || 0) * 100)}
+                    value={pctInputValue(simConfig.controlled.noteOpenedRate)}
                     onChange={(e) => updateControlled("noteOpenedRate", Number(e.target.value) / 100)}
                     style={inputStyle}
                   />
@@ -1113,7 +1435,7 @@ export function ParticipantsPanel({
                     min="0"
                     max="100"
                     step="1"
-                    value={Math.round((simConfig.controlled.noteViewDetailsRate || 0) * 100)}
+                    value={pctInputValue(simConfig.controlled.noteViewDetailsRate)}
                     onChange={(e) => updateControlled("noteViewDetailsRate", Number(e.target.value) / 100)}
                     style={inputStyle}
                   />
@@ -1126,7 +1448,7 @@ export function ParticipantsPanel({
                     min="0"
                     max="100"
                     step="1"
-                    value={Math.round((simConfig.controlled.noteLinkClickedRate || 0) * 100)}
+                    value={pctInputValue(simConfig.controlled.noteLinkClickedRate)}
                     onChange={(e) => updateControlled("noteLinkClickedRate", Number(e.target.value) / 100)}
                     style={inputStyle}
                   />
@@ -1139,7 +1461,7 @@ export function ParticipantsPanel({
                     min="0"
                     max="100"
                     step="1"
-                    value={Math.round((simConfig.controlled.noteHelpfulRatedRate || 0) * 100)}
+                    value={pctInputValue(simConfig.controlled.noteHelpfulRatedRate)}
                     onChange={(e) => updateControlled("noteHelpfulRatedRate", Number(e.target.value) / 100)}
                     style={inputStyle}
                   />
@@ -1148,7 +1470,9 @@ export function ParticipantsPanel({
             )}
           </div>
 
-          <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Reaction mix</div>
+          <div style={{ marginTop: ".75rem", fontWeight: 600 }}>
+            Reaction mix <span className="subtle">({Object.values(simConfig.controlled.reactionMix).reduce((a, b) => a + (Number(b) || 0), 0)} total)</span>
+          </div>
           <div
             style={{
               display: "grid",
@@ -1157,12 +1481,13 @@ export function ParticipantsPanel({
               marginTop: ".35rem",
             }}
           >
-            {Object.keys(simConfig.controlled.reactionMix).map((k) => (
+            {REACTION_KEYS.map((k) => (
               <label key={k}>
                 <div className="subtle">{k}</div>
                 <input
                   type="number"
                   min="0"
+                  max="100"
                   step="1"
                   value={Number(simConfig.controlled.reactionMix[k] || 0)}
                   onChange={(e) => updateControlledMix("reactionMix", k, e.target.value)}
@@ -1174,7 +1499,9 @@ export function ParticipantsPanel({
 
           {caps.hasNote && (
             <>
-              <div style={{ marginTop: ".75rem", fontWeight: 600 }}>Note helpful mix</div>
+              <div style={{ marginTop: ".75rem", fontWeight: 600 }}>
+                Note helpful mix <span className="subtle">({Object.values(simConfig.controlled.noteHelpfulMix).reduce((a, b) => a + (Number(b) || 0), 0)} total)</span>
+              </div>
               <div
                 style={{
                   display: "grid",
@@ -1183,12 +1510,13 @@ export function ParticipantsPanel({
                   marginTop: ".35rem",
                 }}
               >
-                {Object.keys(simConfig.controlled.noteHelpfulMix).map((k) => (
+                {NOTE_HELPFUL_KEYS.map((k) => (
                   <label key={k}>
                     <div className="subtle">{k}</div>
                     <input
                       type="number"
                       min="0"
+                      max="100"
                       step="1"
                       value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
                       onChange={(e) => updateControlledMix("noteHelpfulMix", k, e.target.value)}
