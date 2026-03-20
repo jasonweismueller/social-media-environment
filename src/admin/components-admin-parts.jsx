@@ -23,6 +23,12 @@ const ms = (n) => {
 
 const sShort = (n) => (Number.isFinite(Number(n)) ? `${Math.round(Number(n))}s` : "—");
 
+function selectAllOnFocus(e) {
+  try {
+    e.target.select();
+  } catch {}
+}
+
 const isIGApp = () => String(APP || "").toLowerCase() === "ig";
 
 function labelForKey(key, nameMap) {
@@ -321,7 +327,7 @@ function pctInputValue(prob) {
 }
 
 const REACTION_KEYS = ["like", "love", "care", "haha", "wow", "sad", "angry"];
-const NOTE_HELPFUL_KEYS = ["helpful", "not_helpful"];
+const NOTE_HELPFUL_KEYS = ["yes", "somewhat", "no"];
 
 const DEFAULT_SIM_CONFIG = {
   random: {
@@ -373,9 +379,10 @@ const DEFAULT_SIM_CONFIG = {
     noteLinkClickedRate: 0.04,
     noteHelpfulRatedRate: 0.1,
     noteHelpfulMix: {
-      helpful: 75,
-      not_helpful: 25,
-    },
+  yes: 50,
+  somewhat: 30,
+  no: 20,
+},
     savedRate: 0.08,
   },
 };
@@ -702,7 +709,7 @@ function simulateParticipantRows({
         note_view_details = noteAvailable && a.noteDetailsSet?.has(i) ? 1 : 0;
         note_link_clicked = noteAvailable && a.noteLinkSet?.has(i) ? 1 : 0;
         note_helpful_rated = noteAvailable && a.noteHelpfulSet?.has(i) ? 1 : 0;
-        note_helpful_value = note_helpful_rated ? a.noteHelpfulByIdx?.[i] || "helpful" : "";
+        note_helpful_value = note_helpful_rated ? a.noteHelpfulByIdx?.[i] || "yes" : "";
       } else {
         reacted = chance(rng, randomCfg.reactedBase + interest * randomCfg.reactedInterestWeight) ? 1 : 0;
         reaction_type = reacted
@@ -760,8 +767,8 @@ function simulateParticipantRows({
         note_link_clicked = note_opened && chance(rng, randomCfg.noteLinkGivenOpen) ? 1 : 0;
         note_helpful_rated = note_opened && chance(rng, randomCfg.noteHelpfulGivenOpen) ? 1 : 0;
         note_helpful_value = note_helpful_rated
-          ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "helpful")
-          : "";
+  ? weightedChoice(rng, controlledCfg.noteHelpfulMix, "yes")
+  : "";
       }
 
       row[`${id}_reacted`] = reacted;
