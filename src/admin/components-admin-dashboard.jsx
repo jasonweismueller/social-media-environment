@@ -1340,14 +1340,15 @@ const randomBioBusy = !!ff.savingBio;
             >
               <div className="section-collapse-inner">
                 <ParticipantsPanel
-                  key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
-                  projectId={projectId}
-                  feedId={feedId}
-                  postNamesMap={postNames}
-                  compact
-                  limit={showAllParticipants ? undefined : 5}
-                  onCountChange={setParticipantsCount}
-                />
+  key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
+  projectId={projectId}
+  feedId={feedId}
+  postNamesMap={postNames}
+  posts={posts}
+  compact
+  limit={showAllParticipants ? undefined : 5}
+  onCountChange={setParticipantsCount}
+/>
               </div>
             </div>
           </Section>
