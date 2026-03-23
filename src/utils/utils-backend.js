@@ -739,7 +739,7 @@ function sniffFileMeta(file) {
   return { contentType, ext, nameNoExt };
 }
 
-export async function getPresignedPutUrl({ key, contentType, timeoutMs = 15000 }) {
+export async function getPresignedPutUrl({ key, contentType, timeoutMs = 30000 }) {
   const url = new URL(joinUrl(SIGNER_BASE, SIGNER_PATH));
   url.searchParams.set("key", key);
   url.searchParams.set("contentType", contentType);
@@ -772,7 +772,7 @@ export async function putToS3({ file, signedPutUrl, onProgress, contentType }) {
   await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", signedPutUrl);
-    xhr.timeout = 120000;
+    xhr.timeout = 10 * 60 * 1000;
     xhr.setRequestHeader("Content-Type", contentType || file.type || "application/octet-stream");
 
     xhr.upload.onprogress = (evt) => {
