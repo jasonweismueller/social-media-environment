@@ -847,28 +847,28 @@ const displayBio = useMemo(() => {
   {/* ORIGINAL IMAGE / VIDEO / CAROUSEL BLOCK HERE */}
             {hasVideo ? (
               <video
-  ref={videoRef}
-  data-ig-video="1"
-  src={video?.url || video}
-  poster={videoPosterUrl || undefined}
-  controls={post.videoShowControls !== false}
-  playsInline
-  muted={!!post.videoAutoplayMuted}
-  autoPlay={!!post.videoAutoplayMuted}
-  loop={!!post.videoLoop}
-  preload="auto"
-  style={{
-    position: "absolute",
-    inset: 0,
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  }}
-  onPlay={handlePlay}
-  onPause={() => onAction("video_pause", { post_id: id })}
-  onEnded={() => onAction("video_ended", { post_id: id })}
-/>
+                ref={videoRef}
+                data-ig-video="1"
+                src={video?.url || video}
+                poster={videoPosterUrl || undefined}
+                controls
+                playsInline
+                muted
+                autoPlay
+                loop
+                preload="auto"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+                onPlay={handlePlay}
+                onPause={() => onAction("video_pause", {post_id : id })}
+                onEnded={() => onAction("video_ended", {post_id : id })}
+              />
             ) : hasCarousel ? (
               <IGCarousel items={imgs} />
             ) : imageMode === "multi" && imgs.length === 1 ? (
@@ -1380,28 +1380,24 @@ marginTop: "auto",
           <div className="ig-comment-media">
   {hasVideo ? (
     <video
-  ref={videoRef}
-  data-ig-video="1"
-  src={video?.url || video}
-  poster={videoPosterUrl || undefined}
-  controls={post.videoShowControls !== false}
-  playsInline
-  muted={!!post.videoAutoplayMuted}
-  autoPlay={!!post.videoAutoplayMuted}
-  loop={!!post.videoLoop}
-  preload="auto"
-  style={{
-    position: "absolute",
-    inset: 0,
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    display: "block",
-  }}
-  onPlay={handlePlay}
-  onPause={() => onAction("video_pause", { post_id: id })}
-  onEnded={() => onAction("video_ended", { post_id: id })}
-/>
+      src={video?.url || video}
+      poster={videoPosterUrl || undefined}
+      controls
+      playsInline
+      preload="metadata"
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        display: "block",
+        background: "#000",
+      }}
+      onPlay={handlePlay}
+      onPause={() => onAction("video_pause", { post_id: id })}
+      onEnded={() => onAction("video_ended", { post_id: id })}
+    />
   ) : (displayImageObj?.url || image?.url) ? (
     <img
       src={displayImageObj?.url || image?.url}
