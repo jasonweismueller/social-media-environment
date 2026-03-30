@@ -282,6 +282,7 @@ export function PostCard({
 const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
 const likeButtonRef = useRef(null);
 const [videoMuted, setVideoMuted] = useState(!!post.videoAutoplayMuted);
+const userHasUnmutedRef = useRef(!post.videoAutoplayMuted);
 
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
 
@@ -291,7 +292,9 @@ const isAd        = post.adType === "ad";
 let effectiveRandFlags;
 
 useEffect(() => {
-  setVideoMuted(!!post.videoAutoplayMuted);
+  const startsMuted = !!post.videoAutoplayMuted;
+  setVideoMuted(startsMuted);
+  userHasUnmutedRef.current = !startsMuted;
 }, [id, post.videoAutoplayMuted]);
 
 if (isSponsored) {
@@ -578,6 +581,26 @@ return () => document.removeEventListener("pointerdown", handleTapOutside);
 
   // Autoplay in view (keeps native controls)
   const videoRef = useInViewAutoplay(0.6, { startMuted: true, unmuteOnFirstGesture: true });
+
+  const syncVideoMuteState = () => {
+  const el = videoRef.current;
+  if (!el) return;
+
+  if (userHasUnmutedRef.current) {
+    if (el.muted) el.muted = false;
+    if (videoMuted) setVideoMuted(false);
+  } else {
+    const shouldBeMuted = !!post.videoAutoplayMuted;
+    if (el.muted !== shouldBeMuted) el.muted = shouldBeMuted;
+    if (videoMuted !== shouldBeMuted) setVideoMuted(shouldBeMuted);
+  }
+};
+
+  useEffect(() => {
+  requestAnimationFrame(() => {
+    syncVideoMuteState();
+  });
+}, [expanded, menuOpenMobile, menuOpenDesktop, shareSheetOpen, bioOpen]);
 
 const toggleLike = () => {
   if (disabled) return;
@@ -874,7 +897,9 @@ const displayBio = useMemo(() => {
   onPause={() => onAction("video_pause", { post_id: id })}
   onEnded={() => onAction("video_ended", { post_id: id })}
   onVolumeChange={(e) => {
-    setVideoMuted(e.currentTarget.muted);
+    const isMuted = e.currentTarget.muted || e.currentTarget.volume === 0;
+    setVideoMuted(isMuted);
+    userHasUnmutedRef.current = !isMuted;
   }}
 />
             ) : hasCarousel ? (
@@ -1082,10 +1107,14 @@ const displayBio = useMemo(() => {
   }
   text={text}
   expanded={expanded}
-  onExpand={() => {
-    setExpanded(true);
-    onAction?.("expand_text", { post_id: id });
-  }}
+onExpand={() => {
+  setExpanded(true);
+  onAction?.("expand_text", { post_id: id });
+
+  requestAnimationFrame(() => {
+    syncVideoMuteState();
+  });
+}}
   onClamp={() => onAction("text_clamped", { post_id: id })}
   onAction={onAction} 
   postId={id}
@@ -1387,7 +1416,7 @@ marginTop: "auto",
           {/* LEFT: media */}
           <div className="ig-comment-media">
   {hasVideo ? (
-    <video
+   <video
   src={video?.url || video}
   poster={videoPosterUrl || undefined}
   controls={post.videoShowControls !== false}
@@ -1409,7 +1438,9 @@ marginTop: "auto",
   onPause={() => onAction("video_pause", { post_id: id })}
   onEnded={() => onAction("video_ended", { post_id: id })}
   onVolumeChange={(e) => {
-    setVideoMuted(e.currentTarget.muted);
+    const isMuted = e.currentTarget.muted || e.currentTarget.volume === 0;
+    setVideoMuted(isMuted);
+    userHasUnmutedRef.current = !isMuted;
   }}
 />
   ) : (displayImageObj?.url || image?.url) ? (
