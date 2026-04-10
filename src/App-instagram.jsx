@@ -169,6 +169,7 @@ function RailList({ rows = 4 }) {
   );
 }
 
+
 function RailStack({ children }) {
   return <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>{children}</div>;
 }
@@ -866,6 +867,20 @@ export default function App() {
     !!linkedSurvey &&
     (surveyPhase === "ready" || surveyPhase === "submitting" || surveyPhase === "error");
 
+    useEffect(() => {
+  if (typeof document === "undefined") return;
+
+  if (shouldShowSurvey) {
+    document.body.classList.add("survey-mode");
+  } else {
+    document.body.classList.remove("survey-mode");
+  }
+
+  return () => {
+    document.body.classList.remove("survey-mode");
+  };
+}, [shouldShowSurvey]);
+
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
@@ -1217,143 +1232,149 @@ export default function App() {
   return (
     <Router>
       <div
-        className={`app-shell ${(!onAdmin && (!hasEntered || (feedPhase !== "ready" && !shouldShowSurvey) || submitted || !flagsReady || !assetsReady || !minDelayDone)) ? "blurred" : ""}`}
+        className={`app-shell ${
+  !onAdmin &&
+  !shouldShowSurvey &&
+  (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)
+    ? "blurred"
+    : ""
+}`}
       >
         <RouteAwareTopbar />
 
         <Routes>
           <Route
-            path="/"
-            element={
-              <PageWithRails>
-                <div style={{ position: "relative", minHeight: "calc(100vh - var(--vp-top, 0px))" }}>
-                  {shouldShowSurvey ? (
-                    <SurveyScreen
-                      survey={linkedSurvey}
-                      responses={surveyResponses}
-                      errors={surveyErrors}
-                      errorMsg={surveyErrorMsg}
-                      participantSeed={participantId || sessionIdRef.current}
-                      onChange={handleSurveyResponseChange}
-                      onSubmit={handleSurveySubmit}
-                      submitting={surveyPhase === "submitting"}
-                    />
-                  ) : (
-                    <>
-                      <div
-                        aria-hidden={!canShowFeed}
-                        style={{
-                          opacity: canShowFeed ? (gateOpen ? 1 : 0) : 0,
-                          pointerEvents: gateOpen ? "auto" : "none",
-                          transition: "opacity 320ms ease",
-                          position: showSkeletonLayer ? "absolute" : "relative",
-                          inset: showSkeletonLayer ? 0 : "auto",
-                          zIndex: 1,
-                        }}
-                      >
-                        {canShowFeed ? (
-                          <IGFeed
-                            posts={orderedPosts}
-                            registerViewRef={registerViewRef}
-                            disabled={disabled}
-                            log={log}
-                            showComposer={false}
-                            loading={false}
-                            flags={flags}
-                            runSeed={runSeed}
-                            app={APP}
-                            projectId={projectId}
-                            feedId={activeFeedId}
-                            avatarPools={avatarPools}
-                            onSubmit={async () => {
-                              if (feedSubmitted || submitted || disabled) return;
-                              setDisabled(true);
+  path="/"
+  element={
+    shouldShowSurvey ? (
+      <div className="survey-page">
+        <SurveyScreen
+          survey={linkedSurvey}
+          responses={surveyResponses}
+          errors={surveyErrors}
+          errorMsg={surveyErrorMsg}
+          participantSeed={participantId || sessionIdRef.current}
+          onChange={handleSurveyResponseChange}
+          onSubmit={handleSurveySubmit}
+          submitting={surveyPhase === "submitting"}
+        />
+      </div>
+    ) : (
+      <PageWithRails>
+        <div style={{ position: "relative", minHeight: "calc(100vh - var(--vp-top, 0px))" }}>
+          <div
+            aria-hidden={!canShowFeed}
+            style={{
+              opacity: canShowFeed ? (gateOpen ? 1 : 0) : 0,
+              pointerEvents: gateOpen ? "auto" : "none",
+              transition: "opacity 320ms ease",
+              position: showSkeletonLayer ? "absolute" : "relative",
+              inset: showSkeletonLayer ? 0 : "auto",
+              zIndex: 1,
+            }}
+          >
+            {canShowFeed ? (
+              <IGFeed
+                posts={orderedPosts}
+                registerViewRef={registerViewRef}
+                disabled={disabled}
+                log={log}
+                showComposer={false}
+                loading={false}
+                flags={flags}
+                runSeed={runSeed}
+                app={APP}
+                projectId={projectId}
+                feedId={activeFeedId}
+                avatarPools={avatarPools}
+                onSubmit={async () => {
+                  if (feedSubmitted || submitted || disabled) return;
+                  setDisabled(true);
 
-                              const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
-                                ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
-                                : 0.5;
-                              const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
-                                ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
-                                : ENTER_FRAC;
+                  const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                    ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+                    : 0.5;
+                  const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                    ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                    : ENTER_FRAC;
 
-                              for (const [post_id, elNode] of viewRefs.current) {
-                                const m = measureVis(post_id);
-                                if (!m) continue;
-                                const { vis_frac } = m;
-                                const isImg = elementHasImage(elNode);
-                                const TH = isImg ? IMG_FRAC : ENTER_FRAC;
-                                if (vis_frac >= TH) {
-                                  log("vp_exit", {
-                                    post_id,
-                                    vis_frac,
-                                    reason: "submit",
-                                    feed_id: activeFeedId || null,
-                                  });
-                                }
-                              }
+                  for (const [post_id, elNode] of viewRefs.current) {
+                    const m = measureVis(post_id);
+                    if (!m) continue;
+                    const { vis_frac } = m;
+                    const isImg = elementHasImage(elNode);
+                    const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+                    if (vis_frac >= TH) {
+                      log("vp_exit", {
+                        post_id,
+                        vis_frac,
+                        reason: "submit",
+                        feed_id: activeFeedId || null,
+                      });
+                    }
+                  }
 
-                              const ts = now();
-                              submitTsRef.current = ts;
+                  const ts = now();
+                  submitTsRef.current = ts;
 
-                              const submitEvent = {
-                                session_id: sessionIdRef.current,
-                                participant_id: participantId || null,
-                                timestamp_iso: fmtTime(ts),
-                                elapsed_ms: ts - t0Ref.current,
-                                ts_ms: ts,
-                                action: "feed_submit",
-                                feed_id: activeFeedId || null,
-                                project_id: projectId || null,
-                              };
+                  const submitEvent = {
+                    session_id: sessionIdRef.current,
+                    participant_id: participantId || null,
+                    timestamp_iso: fmtTime(ts),
+                    elapsed_ms: ts - t0Ref.current,
+                    ts_ms: ts,
+                    action: "feed_submit",
+                    feed_id: activeFeedId || null,
+                    project_id: projectId || null,
+                  };
 
-                              const eventsWithSubmit = [...events, submitEvent];
-                              const feed_id = activeFeedId || null;
-                              const feed_checksum = computeFeedId(posts);
-                              const row = buildParticipantRow({
-                                session_id: sessionIdRef.current,
-                                participant_id: participantId,
-                                events: eventsWithSubmit,
-                                posts,
-                                feed_id,
-                                feed_checksum,
-                              });
-                              const header = buildMinimalHeader(posts);
-                              const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+                  const eventsWithSubmit = [...events, submitEvent];
+                  const feed_id = activeFeedId || null;
+                  const feed_checksum = computeFeedId(posts);
+                  const row = buildParticipantRow({
+                    session_id: sessionIdRef.current,
+                    participant_id: participantId,
+                    events: eventsWithSubmit,
+                    posts,
+                    feed_id,
+                    feed_checksum,
+                  });
+                  const header = buildMinimalHeader(posts);
+                  const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
 
-                              showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
+                  showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
 
-                              if (ok) {
-                                setFeedSubmitted(true);
-                                if (!linkedSurvey) {
-                                  setSubmitted(true);
-                                }
-                              }
+                  if (ok) {
+                    setFeedSubmitted(true);
+                    if (!linkedSurvey) {
+                      setSubmitted(true);
+                    }
+                  }
 
-                              setDisabled(false);
-                            }}
-                          />
-                        ) : null}
-                      </div>
+                  setDisabled(false);
+                }}
+              />
+            ) : null}
+          </div>
 
-                      {showSkeletonLayer && !feedSubmitted && (
-                        <div
-                          aria-hidden={gateOpen}
-                          style={{
-                            position: "relative",
-                            zIndex: 2,
-                            opacity: gateOpen ? 0 : 1,
-                            transition: "opacity 320ms ease",
-                          }}
-                        >
-                          <SkeletonFeed />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </PageWithRails>
-            }
-          />
+          {showSkeletonLayer && !feedSubmitted && (
+            <div
+              aria-hidden={gateOpen}
+              style={{
+                position: "relative",
+                zIndex: 2,
+                opacity: gateOpen ? 0 : 1,
+                transition: "opacity 320ms ease",
+              }}
+            >
+              <SkeletonFeed />
+            </div>
+          )}
+        </div>
+      </PageWithRails>
+    )
+  }
+/>
 
           <Route
             path="/admin"

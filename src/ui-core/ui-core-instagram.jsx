@@ -563,12 +563,16 @@ export function RouteAwareTopbar() {
     onAdmin = window.location.hash.startsWith("#/admin");
   }
 
+  const onSurvey =
+    typeof document !== "undefined" &&
+    document.body.classList.contains("survey-mode");
+
   useEffect(() => {
     if (onAdmin) document.body.classList.add("admin-mode");
     else document.body.classList.remove("admin-mode");
   }, [onAdmin]);
 
-  if (onAdmin || isMobile) return null;
+  if (onAdmin || onSurvey || isMobile) return null;
   return <TopRailPlaceholder />;
 }
 

@@ -1696,3 +1696,76 @@ body.admin-mode .nav {
     line-height: 1.25;
   }
 }
+
+
+/* =========================
+   Full-page survey mode
+   ========================= */
+
+body.survey-mode .top-rail-placeholder,
+body.survey-mode .ig-topbar,
+body.survey-mode .rail,
+body.survey-mode .rail-left,
+body.survey-mode .rail-right {
+  display: none !important;
+}
+
+.survey-page {
+  min-height: 100vh;
+  width: 100%;
+  padding: 32px 20px 56px;
+  background:
+    radial-gradient(1200px 600px at 10% -20%, rgba(237,73,86,.08), transparent 60%),
+    radial-gradient(1200px 600px at 110% 120%, rgba(79,91,213,.08), transparent 60%),
+    linear-gradient(#fafbfc, #f4f5f7);
+}
+
+.survey-shell {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.survey-card {
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(229,229,229,.95);
+  border-radius: 20px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.08);
+  overflow: hidden;
+}
+
+.survey-head {
+  padding: 28px 32px 18px;
+  border-bottom: 1px solid var(--ig-line);
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(255,255,255,.88));
+}
+
+.survey-body {
+  padding: 24px 32px 32px;
+}
+
+@media (max-width: 700px) {
+  .survey-page {
+    padding: 0;
+    background: #fff;
+  }
+
+  .survey-shell {
+    max-width: 100%;
+  }
+
+  .survey-card {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 100vh;
+  }
+
+  .survey-head {
+    padding: 20px 16px 14px;
+  }
+
+  .survey-body {
+    padding: 18px 16px 32px;
+  }
+}
