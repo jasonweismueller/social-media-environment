@@ -48,14 +48,14 @@ function makeSequentialValue(prefix, index) {
 function ensureChoiceArray(items = []) {
   return (Array.isArray(items) ? items : []).map((item, i) => ({
     value: String(item?.value ?? makeSequentialValue("opt", i)).trim(),
-    label: String(item?.label ?? "").trim(),
+    label: String(item?.label ?? ""),
   }));
 }
 
 function ensureMatrixArray(items = [], prefix = "item") {
   return (Array.isArray(items) ? items : []).map((item, i) => ({
     value: String(item?.value ?? makeSequentialValue(prefix, i)).trim(),
-    label: String(item?.label ?? "").trim(),
+    label: String(item?.label ?? ""),
   }));
 }
 
