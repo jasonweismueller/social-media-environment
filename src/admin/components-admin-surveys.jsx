@@ -65,11 +65,51 @@ function normalizeLinkedFeedIds(input) {
 }
 
 function getQuestionList(survey) {
-  return surveyQuestions(survey);
+  return surveyQuestions(survey || {});
 }
 
 function setQuestionList(survey, questions) {
-  return setSurveyQuestions(survey, questions);
+  return setSurveyQuestions(survey || makeEmptySurvey(), questions);
+}
+
+function getQuestionText(q) {
+  return String(q?.text ?? q?.label ?? "");
+}
+
+function getChoiceLabels(q) {
+  if (Array.isArray(q?.choices) && q.choices.length) {
+    return q.choices
+      .map((choice) => String(choice?.label ?? choice?.value ?? "").trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(q?.options) && q.options.length) {
+    return q.options.map((x) => String(x ?? "").trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getMatrixLabels(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object") return String(item.label ?? item.value ?? "").trim();
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function makeChoicesFromLabels(labels = []) {
+  return cleanStringArray(labels).map((label, i) => ({
+    value: `opt_${i + 1}`,
+    label,
+  }));
+}
+
+function makeMatrixItemsFromLabels(labels = [], prefix = "item") {
+  return cleanStringArray(labels).map((label, i) => ({
+    value: `${prefix}_${i + 1}`,
+    label,
+  }));
 }
 
 /* =========================
@@ -242,8 +282,8 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
         <div>
           <FieldBlock label={`Question ${index + 1}`}>
             <TextInput
-              value={q.label}
-              onChange={(v) => updateQuestion(index, { label: v })}
+              value={getQuestionText(q)}
+              onChange={(v) => updateQuestion(index, { text: v })}
               placeholder="Question text"
             />
           </FieldBlock>
@@ -258,9 +298,10 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
                 updateQuestion(index, {
                   ...next,
                   id: q.id,
-                  label: q.label || next.label,
+                  text: getQuestionText(q) || next.text || next.label || "",
                   description: q.description || "",
-                  required: q.required,
+                  required:
+                    nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
                   visible_if: q.visible_if || null,
                 });
               }}
@@ -294,7 +335,7 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
 
       <FieldBlock label="Help text / description">
         <TextAreaInput
-          value={q.description}
+          value={q.description || ""}
           onChange={(v) => updateQuestion(index, { description: v })}
           placeholder="Optional description"
           rows={2}
@@ -315,8 +356,12 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
         <>
           <ArrayEditor
             label="Options"
-            value={q.options}
-            onChange={(arr) => updateQuestion(index, { options: arr })}
+            value={getChoiceLabels(q)}
+            onChange={(arr) =>
+              updateQuestion(index, {
+                choices: makeChoicesFromLabels(arr),
+              })
+            }
             rows={5}
           />
 
@@ -340,14 +385,22 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
         >
           <ArrayEditor
             label="Rows / items"
-            value={q.rows}
-            onChange={(arr) => updateQuestion(index, { rows: arr })}
+            value={getMatrixLabels(q.rows)}
+            onChange={(arr) =>
+              updateQuestion(index, {
+                rows: makeMatrixItemsFromLabels(arr, "row"),
+              })
+            }
             rows={5}
           />
           <ArrayEditor
             label="Columns / scale points"
-            value={q.columns}
-            onChange={(arr) => updateQuestion(index, { columns: arr })}
+            value={getMatrixLabels(q.columns)}
+            onChange={(arr) =>
+              updateQuestion(index, {
+                columns: makeMatrixItemsFromLabels(arr, "col"),
+              })
+            }
             rows={5}
           />
         </div>
@@ -390,16 +443,16 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
 
           <FieldBlock label="Min label">
             <TextInput
-              value={q.min_label}
-              onChange={(v) => updateQuestion(index, { min_label: v })}
+              value={q.left_label ?? q.min_label ?? ""}
+              onChange={(v) => updateQuestion(index, { left_label: v })}
               placeholder="e.g. Negative"
             />
           </FieldBlock>
 
           <FieldBlock label="Max label">
             <TextInput
-              value={q.max_label}
-              onChange={(v) => updateQuestion(index, { max_label: v })}
+              value={q.right_label ?? q.max_label ?? ""}
+              onChange={(v) => updateQuestion(index, { right_label: v })}
               placeholder="e.g. Positive"
             />
           </FieldBlock>
@@ -451,16 +504,15 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       const safeSurveyList = Array.isArray(surveyList) ? surveyList : [];
       const safeFeedList = Array.isArray(feedList) ? feedList : [];
 
-      // Enrich survey list with actual question counts from full definitions
       const enrichedSurveyList = await Promise.all(
         safeSurveyList.map(async (s) => {
           if (!s?.survey_id) return s;
           try {
             const full = await loadSurveyFromBackend(s.survey_id, { projectId });
-            const normalizedFull = normalizeSurvey(full);
+            const normalizedFull = normalizeSurvey(full || {});
             return {
               ...s,
-              pages: normalizedFull.pages,
+              pages: normalizedFull.pages || [],
             };
           } catch {
             return s;
@@ -490,7 +542,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
     try {
       const s = await loadSurveyFromBackend(id, { projectId });
-      const normalized = normalizeSurvey(s);
+      const normalized = normalizeSurvey(s || {});
 
       setSurvey({
         ...normalized,
@@ -534,7 +586,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         });
 
         const normalizedFresh = normalizeSurvey({
-          ...fresh,
+          ...(fresh || {}),
           linked_feed_ids: normalizeLinkedFeedIds(
             fresh?.linked_feed_ids || normalized.linked_feed_ids
           ),
@@ -602,7 +654,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
   function toggleFeed(nextFeedId) {
     setSurvey((prev) => {
-      const set = new Set(normalizeLinkedFeedIds(prev.linked_feed_ids));
+      const set = new Set(normalizeLinkedFeedIds(prev?.linked_feed_ids));
       if (set.has(nextFeedId)) set.delete(nextFeedId);
       else set.add(nextFeedId);
 
@@ -710,7 +762,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             >
               <div style={{ fontWeight: 600 }}>{s.name || s.survey_id}</div>
               <div style={{ fontSize: 12, color: "#6b7280" }}>
-                {surveyQuestionCount(s)} questions
+                {surveyQuestionCount(s || {})} questions
               </div>
             </button>
           ))}
