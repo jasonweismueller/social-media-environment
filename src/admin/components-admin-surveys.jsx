@@ -4,7 +4,7 @@ import {
   makeQuestionByType,
   normalizeSurvey,
   SURVEY_QUESTION_TYPES,
-} from "../utils-survey";
+} from "../utils/utils-survey";
 
 import { getProjectId } from "../utils-core";
 
