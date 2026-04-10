@@ -23,6 +23,10 @@ export function isValidSurveyQuestionType(type) {
   return Object.values(SURVEY_QUESTION_TYPES).includes(type);
 }
 
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function cleanStringArray(arr = []) {
   return (Array.isArray(arr) ? arr : [])
     .map((x) => String(x ?? "").trim())
@@ -60,59 +64,65 @@ function normalizeMatrixArray(rawItems = []) {
    ========================= */
 
 export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) {
+  const safeOverrides = asObject(overrides);
   const safeType = isValidSurveyQuestionType(type)
     ? type
     : SURVEY_QUESTION_TYPES.TEXT;
 
   return {
-    id: overrides.id || `q_${uid()}`,
+    id: safeOverrides.id || `q_${uid()}`,
     type: safeType,
-    label: overrides.label || "Untitled question",
-    description: overrides.description || "",
-    required: safeType === SURVEY_QUESTION_TYPES.INFO ? false : !!overrides.required,
-    randomize_options: !!overrides.randomize_options,
-    options: cleanStringArray(overrides.options),
-    rows: cleanStringArray(overrides.rows),
-    columns: cleanStringArray(overrides.columns),
-    min: Number.isFinite(overrides.min) ? overrides.min : 1,
-    max: Number.isFinite(overrides.max) ? overrides.max : 7,
-    min_label: overrides.min_label || "",
-    max_label: overrides.max_label || "",
-    visible_if: overrides.visible_if || null,
+    label: safeOverrides.label || "Untitled question",
+    description: safeOverrides.description || "",
+    required: safeType === SURVEY_QUESTION_TYPES.INFO ? false : !!safeOverrides.required,
+    randomize_options: !!safeOverrides.randomize_options,
+    options: cleanStringArray(safeOverrides.options),
+    rows: cleanStringArray(safeOverrides.rows),
+    columns: cleanStringArray(safeOverrides.columns),
+    min: Number.isFinite(safeOverrides.min) ? safeOverrides.min : 1,
+    max: Number.isFinite(safeOverrides.max) ? safeOverrides.max : 7,
+    min_label: safeOverrides.min_label || "",
+    max_label: safeOverrides.max_label || "",
+    visible_if: safeOverrides.visible_if || null,
   };
 }
 
 export function normalizeQuestion(raw = {}) {
-  const type = isValidSurveyQuestionType(raw.type)
-    ? raw.type
+  const safeRaw = asObject(raw);
+  const type = isValidSurveyQuestionType(safeRaw.type)
+    ? safeRaw.type
     : SURVEY_QUESTION_TYPES.TEXT;
 
   return {
-    id: raw.id || `q_${uid()}`,
+    id: safeRaw.id || `q_${uid()}`,
     type,
-    label: String(raw.label ?? raw.text ?? "Untitled question"),
-    description: String(raw.description || ""),
-    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!raw.required,
-    randomize_options: !!raw.randomize_options,
+    label: String(safeRaw.label ?? safeRaw.text ?? "Untitled question"),
+    description: String(safeRaw.description || ""),
+    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!safeRaw.required,
+    randomize_options: !!safeRaw.randomize_options,
 
     // frontend shape: options
     // backend shape: choices [{value,label}]
-    options: cleanStringArray(raw.options?.length ? raw.options : normalizeChoiceArray(raw.choices)),
+    options: cleanStringArray(
+      Array.isArray(safeRaw.options) && safeRaw.options.length
+        ? safeRaw.options
+        : normalizeChoiceArray(safeRaw.choices)
+    ),
 
     // frontend shape: rows/columns as strings
     // backend shape: rows/columns as [{value,label}]
-    rows: cleanStringArray(raw.rows?.length ? normalizeMatrixArray(raw.rows) : []),
-    columns: cleanStringArray(raw.columns?.length ? normalizeMatrixArray(raw.columns) : []),
+    rows: cleanStringArray(normalizeMatrixArray(safeRaw.rows)),
+    columns: cleanStringArray(normalizeMatrixArray(safeRaw.columns)),
 
-    min: Number.isFinite(raw.min) ? raw.min : 1,
-    max: Number.isFinite(raw.max) ? raw.max : 7,
+    min: Number.isFinite(safeRaw.min) ? safeRaw.min : 1,
+    max: Number.isFinite(safeRaw.max) ? safeRaw.max : 7,
 
     // frontend shape: min_label / max_label
     // backend shape: left_label / right_label
-    min_label: String(raw.min_label ?? raw.left_label ?? ""),
-    max_label: String(raw.max_label ?? raw.right_label ?? ""),
+    min_label: String(safeRaw.min_label ?? safeRaw.left_label ?? ""),
+    max_label: String(safeRaw.max_label ?? safeRaw.right_label ?? ""),
 
-    visible_if: raw.visible_if || null,
+    visible_if: safeRaw.visible_if || null,
   };
 }
 
@@ -178,34 +188,40 @@ export function frontendQuestionToBackend(question = {}) {
    ========================= */
 
 export function makePage(overrides = {}) {
+  const safeOverrides = asObject(overrides);
+
   return {
-    id: overrides.id || `page_${uid()}`,
-    title: String(overrides.title || ""),
-    description: String(overrides.description || ""),
-    questions: Array.isArray(overrides.questions)
-      ? overrides.questions.map(normalizeQuestion).filter(Boolean)
+    id: safeOverrides.id || `page_${uid()}`,
+    title: String(safeOverrides.title || ""),
+    description: String(safeOverrides.description || ""),
+    questions: Array.isArray(safeOverrides.questions)
+      ? safeOverrides.questions.map(normalizeQuestion).filter(Boolean)
       : [],
   };
 }
 
 export function normalizePage(raw = {}) {
+  const safeRaw = asObject(raw);
+
   return {
-    id: raw.id || `page_${uid()}`,
-    title: String(raw.title || ""),
-    description: String(raw.description || ""),
-    questions: Array.isArray(raw.questions)
-      ? raw.questions.map(normalizeQuestion).filter(Boolean)
+    id: safeRaw.id || `page_${uid()}`,
+    title: String(safeRaw.title || ""),
+    description: String(safeRaw.description || ""),
+    questions: Array.isArray(safeRaw.questions)
+      ? safeRaw.questions.map(normalizeQuestion).filter(Boolean)
       : [],
   };
 }
 
 function coerceQuestionsIntoPages(raw = {}) {
-  if (Array.isArray(raw.pages) && raw.pages.length > 0) {
-    return raw.pages.map(normalizePage).filter(Boolean);
+  const safeRaw = asObject(raw);
+
+  if (Array.isArray(safeRaw.pages) && safeRaw.pages.length > 0) {
+    return safeRaw.pages.map(normalizePage).filter(Boolean);
   }
 
-  const legacyQuestions = Array.isArray(raw.questions)
-    ? raw.questions.map(normalizeQuestion).filter(Boolean)
+  const legacyQuestions = Array.isArray(safeRaw.questions)
+    ? safeRaw.questions.map(normalizeQuestion).filter(Boolean)
     : [];
 
   return [
@@ -236,44 +252,46 @@ export function frontendPagesToBackend(pages = []) {
    ========================= */
 
 export function makeEmptySurvey(overrides = {}) {
-  const pages = coerceQuestionsIntoPages(overrides);
+  const safeOverrides = asObject(overrides);
+  const pages = coerceQuestionsIntoPages(safeOverrides);
 
   return {
-    survey_id: overrides.survey_id || `survey_${uid()}`,
-    name: overrides.name || "Untitled Survey",
-    description: overrides.description || "",
+    survey_id: safeOverrides.survey_id || `survey_${uid()}`,
+    name: safeOverrides.name || "Untitled Survey",
+    description: safeOverrides.description || "",
     pages,
-    version: Number.isFinite(overrides.version) ? overrides.version : 1,
-    status: overrides.status || "draft",
-    created_at: overrides.created_at || null,
-    updated_at: overrides.updated_at || null,
+    version: Number.isFinite(safeOverrides.version) ? safeOverrides.version : 1,
+    status: safeOverrides.status || "draft",
+    created_at: safeOverrides.created_at || null,
+    updated_at: safeOverrides.updated_at || null,
 
-    linked_feed_ids: Array.isArray(overrides.linked_feed_ids)
-      ? overrides.linked_feed_ids.map(String)
+    linked_feed_ids: Array.isArray(safeOverrides.linked_feed_ids)
+      ? safeOverrides.linked_feed_ids.map(String)
       : [],
-    linked_project_id: overrides.linked_project_id || "",
-    trigger: overrides.trigger || "after_feed",
+    linked_project_id: safeOverrides.linked_project_id || "",
+    trigger: safeOverrides.trigger || "after_feed",
   };
 }
 
 export function normalizeSurvey(raw = {}) {
-  const pages = coerceQuestionsIntoPages(raw);
+  const safeRaw = asObject(raw);
+  const pages = coerceQuestionsIntoPages(safeRaw);
 
   return {
-    survey_id: raw.survey_id || `survey_${uid()}`,
-    name: String(raw.name || "Untitled Survey"),
-    description: String(raw.description || ""),
+    survey_id: safeRaw.survey_id || `survey_${uid()}`,
+    name: String(safeRaw.name || "Untitled Survey"),
+    description: String(safeRaw.description || ""),
     pages,
-    version: Number.isFinite(raw.version) ? raw.version : 1,
-    status: String(raw.status || "draft"),
-    created_at: raw.created_at || null,
-    updated_at: raw.updated_at || null,
+    version: Number.isFinite(safeRaw.version) ? safeRaw.version : 1,
+    status: String(safeRaw.status || "draft"),
+    created_at: safeRaw.created_at || null,
+    updated_at: safeRaw.updated_at || null,
 
-    linked_feed_ids: Array.isArray(raw.linked_feed_ids)
-      ? raw.linked_feed_ids.map(String)
+    linked_feed_ids: Array.isArray(safeRaw.linked_feed_ids)
+      ? safeRaw.linked_feed_ids.map(String)
       : [],
-    linked_project_id: raw.linked_project_id || "",
-    trigger: raw.trigger || "after_feed",
+    linked_project_id: safeRaw.linked_project_id || "",
+    trigger: safeRaw.trigger || "after_feed",
   };
 }
 
