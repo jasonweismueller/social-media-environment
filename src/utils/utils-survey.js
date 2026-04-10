@@ -23,26 +23,10 @@ export function isValidSurveyQuestionType(type) {
   return Object.values(SURVEY_QUESTION_TYPES).includes(type);
 }
 
-export function makeEmptySurvey(overrides = {}) {
-  return {
-    survey_id: overrides.survey_id || `survey_${uid()}`,
-    name: overrides.name || "Untitled Survey",
-    description: overrides.description || "",
-    questions: Array.isArray(overrides.questions)
-      ? overrides.questions.map(normalizeQuestion)
-      : [],
-    version: Number.isFinite(overrides.version) ? overrides.version : 1,
-    status: overrides.status || "draft",
-    created_at: overrides.created_at || null,
-    updated_at: overrides.updated_at || null,
-
-    // optional linking metadata
-    linked_feed_ids: Array.isArray(overrides.linked_feed_ids)
-      ? overrides.linked_feed_ids
-      : [],
-    linked_project_id: overrides.linked_project_id || "",
-    trigger: overrides.trigger || "after_feed",
-  };
+function cleanStringArray(arr = []) {
+  return (Array.isArray(arr) ? arr : [])
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
 }
 
 export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) {
@@ -57,9 +41,9 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     description: overrides.description || "",
     required: safeType === SURVEY_QUESTION_TYPES.INFO ? false : !!overrides.required,
     randomize_options: !!overrides.randomize_options,
-    options: Array.isArray(overrides.options) ? overrides.options.map(String) : [],
-    rows: Array.isArray(overrides.rows) ? overrides.rows.map(String) : [],
-    columns: Array.isArray(overrides.columns) ? overrides.columns.map(String) : [],
+    options: cleanStringArray(overrides.options),
+    rows: cleanStringArray(overrides.rows),
+    columns: cleanStringArray(overrides.columns),
     min: Number.isFinite(overrides.min) ? overrides.min : 1,
     max: Number.isFinite(overrides.max) ? overrides.max : 7,
     min_label: overrides.min_label || "",
@@ -80,9 +64,9 @@ export function normalizeQuestion(raw = {}) {
     description: String(raw.description || ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
-    options: Array.isArray(raw.options) ? raw.options.map(String) : [],
-    rows: Array.isArray(raw.rows) ? raw.rows.map(String) : [],
-    columns: Array.isArray(raw.columns) ? raw.columns.map(String) : [],
+    options: cleanStringArray(raw.options),
+    rows: cleanStringArray(raw.rows),
+    columns: cleanStringArray(raw.columns),
     min: Number.isFinite(raw.min) ? raw.min : 1,
     max: Number.isFinite(raw.max) ? raw.max : 7,
     min_label: String(raw.min_label || ""),
@@ -91,26 +75,113 @@ export function normalizeQuestion(raw = {}) {
   };
 }
 
-export function normalizeSurvey(raw = {}) {
-  const questions = Array.isArray(raw.questions)
+export function makePage(overrides = {}) {
+  return {
+    id: overrides.id || `page_${uid()}`,
+    title: String(overrides.title || ""),
+    description: String(overrides.description || ""),
+    questions: Array.isArray(overrides.questions)
+      ? overrides.questions.map(normalizeQuestion).filter(Boolean)
+      : [],
+  };
+}
+
+export function normalizePage(raw = {}) {
+  return {
+    id: raw.id || `page_${uid()}`,
+    title: String(raw.title || ""),
+    description: String(raw.description || ""),
+    questions: Array.isArray(raw.questions)
+      ? raw.questions.map(normalizeQuestion).filter(Boolean)
+      : [],
+  };
+}
+
+function coerceQuestionsIntoPages(raw = {}) {
+  if (Array.isArray(raw.pages) && raw.pages.length > 0) {
+    return raw.pages.map(normalizePage).filter(Boolean);
+  }
+
+  const legacyQuestions = Array.isArray(raw.questions)
     ? raw.questions.map(normalizeQuestion).filter(Boolean)
     : [];
+
+  return [
+    makePage({
+      id: "page_1",
+      title: "",
+      description: "",
+      questions: legacyQuestions,
+    }),
+  ];
+}
+
+export function makeEmptySurvey(overrides = {}) {
+  const pages = coerceQuestionsIntoPages(overrides);
+
+  return {
+    survey_id: overrides.survey_id || `survey_${uid()}`,
+    name: overrides.name || "Untitled Survey",
+    description: overrides.description || "",
+    pages,
+    version: Number.isFinite(overrides.version) ? overrides.version : 1,
+    status: overrides.status || "draft",
+    created_at: overrides.created_at || null,
+    updated_at: overrides.updated_at || null,
+
+    linked_feed_ids: Array.isArray(overrides.linked_feed_ids)
+      ? overrides.linked_feed_ids.map(String)
+      : [],
+    linked_project_id: overrides.linked_project_id || "",
+    trigger: overrides.trigger || "after_feed",
+  };
+}
+
+export function normalizeSurvey(raw = {}) {
+  const pages = coerceQuestionsIntoPages(raw);
 
   return {
     survey_id: raw.survey_id || `survey_${uid()}`,
     name: String(raw.name || "Untitled Survey"),
     description: String(raw.description || ""),
-    questions,
+    pages,
     version: Number.isFinite(raw.version) ? raw.version : 1,
     status: String(raw.status || "draft"),
     created_at: raw.created_at || null,
     updated_at: raw.updated_at || null,
 
-    // useful for linking / display later
-    linked_feed_ids: Array.isArray(raw.linked_feed_ids) ? raw.linked_feed_ids : [],
+    linked_feed_ids: Array.isArray(raw.linked_feed_ids)
+      ? raw.linked_feed_ids.map(String)
+      : [],
     linked_project_id: raw.linked_project_id || "",
     trigger: raw.trigger || "after_feed",
   };
+}
+
+export function surveyQuestions(survey) {
+  const normalized = normalizeSurvey(survey);
+  return normalized.pages?.[0]?.questions || [];
+}
+
+export function setSurveyQuestions(survey, questions = []) {
+  const normalized = normalizeSurvey(survey);
+  const firstPage = normalizePage(normalized.pages?.[0] || { id: "page_1" });
+
+  const nextFirstPage = {
+    ...firstPage,
+    questions: (Array.isArray(questions) ? questions : [])
+      .map(normalizeQuestion)
+      .filter(Boolean),
+  };
+
+  return {
+    ...normalized,
+    pages: [nextFirstPage, ...(normalized.pages || []).slice(1)],
+  };
+}
+
+export function surveyQuestionCount(survey) {
+  return surveyQuestions(survey).length;
 }
 
 /* =========================
@@ -227,8 +298,10 @@ export function makeEmptySurveyResponses(survey) {
   const normalized = normalizeSurvey(survey);
   const out = {};
 
-  for (const q of normalized.questions || []) {
-    out[q.id] = emptyValueForQuestion(q);
+  for (const page of normalized.pages || []) {
+    for (const q of page.questions || []) {
+      out[q.id] = emptyValueForQuestion(q);
+    }
   }
 
   return out;
@@ -300,12 +373,14 @@ export function validateSurveyResponses(survey, responses) {
   const normalized = normalizeSurvey(survey);
   const errors = {};
 
-  for (const q of normalized.questions || []) {
-    if (!isQuestionVisible(q, responses)) continue;
+  for (const page of normalized.pages || []) {
+    for (const q of page.questions || []) {
+      if (!isQuestionVisible(q, responses)) continue;
 
-    const value = responses?.[q.id];
-    if (!isQuestionAnswered(q, value)) {
-      errors[q.id] = "This question is required.";
+      const value = responses?.[q.id];
+      if (!isQuestionAnswered(q, value)) {
+        errors[q.id] = "This question is required.";
+      }
     }
   }
 
@@ -361,29 +436,31 @@ export function flattenSurveyResponses(survey, responses) {
   const normalized = normalizeSurvey(survey);
   const row = {};
 
-  for (const q of normalized.questions || []) {
-    const value = responses?.[q.id];
+  for (const page of normalized.pages || []) {
+    for (const q of page.questions || []) {
+      const value = responses?.[q.id];
 
-    switch (q.type) {
-      case SURVEY_QUESTION_TYPES.MULTI:
-        row[q.id] = Array.isArray(value) ? value.join(" | ") : "";
-        break;
+      switch (q.type) {
+        case SURVEY_QUESTION_TYPES.MULTI:
+          row[q.id] = Array.isArray(value) ? value.join(" | ") : "";
+          break;
 
-      case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
-      case SURVEY_QUESTION_TYPES.MATRIX_MULTI: {
-        const obj = value && typeof value === "object" ? value : {};
-        for (const [k, v] of Object.entries(obj)) {
-          row[`${q.id}__${k}`] = Array.isArray(v) ? v.join(" | ") : String(v ?? "");
+        case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
+        case SURVEY_QUESTION_TYPES.MATRIX_MULTI: {
+          const obj = value && typeof value === "object" ? value : {};
+          for (const [k, v] of Object.entries(obj)) {
+            row[`${q.id}__${k}`] = Array.isArray(v) ? v.join(" | ") : String(v ?? "");
+          }
+          break;
         }
-        break;
+
+        case SURVEY_QUESTION_TYPES.INFO:
+          break;
+
+        default:
+          row[q.id] = value == null ? "" : String(value);
+          break;
       }
-
-      case SURVEY_QUESTION_TYPES.INFO:
-        break;
-
-      default:
-        row[q.id] = value == null ? "" : String(value);
-        break;
     }
   }
 
@@ -394,38 +471,40 @@ export function unflattenSurveyResponses(survey, row = {}) {
   const normalized = normalizeSurvey(survey);
   const responses = {};
 
-  for (const q of normalized.questions || []) {
-    switch (q.type) {
-      case SURVEY_QUESTION_TYPES.MULTI: {
-        const raw = row[q.id];
-        responses[q.id] = raw ? String(raw).split(" | ").filter(Boolean) : [];
-        break;
-      }
-
-      case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
-      case SURVEY_QUESTION_TYPES.MATRIX_MULTI: {
-        const obj = {};
-        for (const key of Object.keys(row)) {
-          if (key.startsWith(`${q.id}__`)) {
-            const subKey = key.slice(`${q.id}__`.length);
-            const raw = row[key];
-            obj[subKey] =
-              q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-                ? (raw ? String(raw).split(" | ").filter(Boolean) : [])
-                : String(raw ?? "");
-          }
+  for (const page of normalized.pages || []) {
+    for (const q of page.questions || []) {
+      switch (q.type) {
+        case SURVEY_QUESTION_TYPES.MULTI: {
+          const raw = row[q.id];
+          responses[q.id] = raw ? String(raw).split(" | ").filter(Boolean) : [];
+          break;
         }
-        responses[q.id] = obj;
-        break;
+
+        case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
+        case SURVEY_QUESTION_TYPES.MATRIX_MULTI: {
+          const obj = {};
+          for (const key of Object.keys(row)) {
+            if (key.startsWith(`${q.id}__`)) {
+              const subKey = key.slice(`${q.id}__`.length);
+              const raw = row[key];
+              obj[subKey] =
+                q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+                  ? (raw ? String(raw).split(" | ").filter(Boolean) : [])
+                  : String(raw ?? "");
+            }
+          }
+          responses[q.id] = obj;
+          break;
+        }
+
+        case SURVEY_QUESTION_TYPES.INFO:
+          responses[q.id] = null;
+          break;
+
+        default:
+          responses[q.id] = row[q.id] ?? "";
+          break;
       }
-
-      case SURVEY_QUESTION_TYPES.INFO:
-        responses[q.id] = null;
-        break;
-
-      default:
-        responses[q.id] = row[q.id] ?? "";
-        break;
     }
   }
 

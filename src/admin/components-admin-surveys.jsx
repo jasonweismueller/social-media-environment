@@ -4,6 +4,9 @@ import {
   makeQuestionByType,
   normalizeSurvey,
   SURVEY_QUESTION_TYPES,
+  surveyQuestions,
+  setSurveyQuestions,
+  surveyQuestionCount,
   getProjectId,
   listFeedsFromBackend,
   listSurveysFromBackend,
@@ -55,6 +58,18 @@ function clampInt(value, min, max, fallback) {
 
 function stopEditorKeyBubbling(e) {
   e.stopPropagation();
+}
+
+function normalizeLinkedFeedIds(input) {
+  return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
+}
+
+function getQuestionList(survey) {
+  return surveyQuestions(survey);
+}
+
+function setQuestionList(survey, questions) {
+  return setSurveyQuestions(survey, questions);
 }
 
 /* =========================
@@ -412,6 +427,8 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   const [selectedSurveyId, setSelectedSurveyId] = useState(null);
   const [survey, setSurvey] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [savingSurvey, setSavingSurvey] = useState(false);
+  const [savingLinks, setSavingLinks] = useState(false);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -452,8 +469,14 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     }
 
     try {
-      const s = await loadSurveyFromBackend(id);
-      setSurvey(normalizeSurvey(s));
+      const s = await loadSurveyFromBackend(id, { projectId });
+      const normalized = normalizeSurvey(s);
+
+      setSurvey({
+        ...normalized,
+        linked_feed_ids: normalizeLinkedFeedIds(normalized.linked_feed_ids),
+        linked_project_id: normalized.linked_project_id || projectId,
+      });
     } catch (e) {
       console.warn("Failed to load survey:", e);
       setSurvey(null);
@@ -463,6 +486,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   function handleCreateSurvey() {
     const s = makeEmptySurvey({
       linked_project_id: projectId,
+      linked_feed_ids: [],
     });
     setSurvey(normalizeSurvey(s));
     setSelectedSurveyId(null);
@@ -471,21 +495,47 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   async function handleSaveSurvey() {
     if (!survey) return;
 
-    const ok = await saveSurveyToBackend({
-      ...survey,
-      linked_project_id: projectId,
-    });
+    setSavingSurvey(true);
+    try {
+      const normalized = normalizeSurvey({
+        ...survey,
+        linked_project_id: projectId,
+        linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
+      });
 
-    if (ok) {
-      await loadAll();
+      const res = await saveSurveyToBackend(normalized, { projectId });
 
-      if (!selectedSurveyId && survey?.survey_id) {
-        setSelectedSurveyId(survey.survey_id);
+      if (res?.ok) {
+        const savedSurveyId = res.survey_id || normalized.survey_id;
+
+        await loadAll();
+
+        setSelectedSurveyId(savedSurveyId);
+
+        const fresh = await loadSurveyFromBackend(savedSurveyId, {
+          projectId,
+          force: true,
+        });
+
+        setSurvey(
+          normalizeSurvey({
+            ...fresh,
+            linked_feed_ids: normalizeLinkedFeedIds(
+              fresh?.linked_feed_ids || normalized.linked_feed_ids
+            ),
+            linked_project_id: fresh?.linked_project_id || projectId,
+          })
+        );
+
+        alert("Survey saved");
+      } else {
+        alert(res?.err || "Failed to save survey");
       }
-
-      alert("Survey saved");
-    } else {
+    } catch (e) {
+      console.warn("Failed to save survey:", e);
       alert("Failed to save survey");
+    } finally {
+      setSavingSurvey(false);
     }
   }
 
@@ -493,45 +543,54 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     if (!survey?.survey_id) return;
     if (!window.confirm("Delete this survey?")) return;
 
-    const ok = await deleteSurveyOnBackend(survey.survey_id);
-    if (ok) {
-      setSurvey(null);
-      setSelectedSurveyId(null);
-      await loadAll();
-    } else {
+    try {
+      const res = await deleteSurveyOnBackend(survey.survey_id, { projectId });
+      if (res?.ok) {
+        setSurvey(null);
+        setSelectedSurveyId(null);
+        await loadAll();
+      } else {
+        alert(res?.err || "Failed to delete survey");
+      }
+    } catch (e) {
+      console.warn("Failed to delete survey:", e);
       alert("Failed to delete survey");
     }
   }
 
   function addQuestion(type) {
-    setSurvey((prev) => ({
-      ...prev,
-      questions: [...(prev.questions || []), makeQuestionByType(type)],
-    }));
+    setSurvey((prev) => {
+      const currentQuestions = getQuestionList(prev);
+      return setQuestionList(prev, [...currentQuestions, makeQuestionByType(type)]);
+    });
   }
 
   function updateQuestion(index, patch) {
     setSurvey((prev) => {
-      const qs = [...(prev.questions || [])];
-      qs[index] = { ...qs[index], ...patch };
-      return { ...prev, questions: qs };
+      const currentQuestions = [...getQuestionList(prev)];
+      currentQuestions[index] = { ...currentQuestions[index], ...patch };
+      return setQuestionList(prev, currentQuestions);
     });
   }
 
   function removeQuestion(index) {
     setSurvey((prev) => {
-      const qs = [...(prev.questions || [])];
-      qs.splice(index, 1);
-      return { ...prev, questions: qs };
+      const currentQuestions = [...getQuestionList(prev)];
+      currentQuestions.splice(index, 1);
+      return setQuestionList(prev, currentQuestions);
     });
   }
 
   function toggleFeed(nextFeedId) {
     setSurvey((prev) => {
-      const set = new Set(prev.linked_feed_ids || []);
+      const set = new Set(normalizeLinkedFeedIds(prev.linked_feed_ids));
       if (set.has(nextFeedId)) set.delete(nextFeedId);
       else set.add(nextFeedId);
-      return { ...prev, linked_feed_ids: Array.from(set) };
+
+      return {
+        ...prev,
+        linked_feed_ids: Array.from(set),
+      };
     });
   }
 
@@ -541,18 +600,43 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       return;
     }
 
-    const ok = await linkSurveyToFeedsOnBackend({
-      survey_id: survey.survey_id,
-      feed_ids: survey.linked_feed_ids || [],
-      project_id: projectId,
-    });
+    setSavingLinks(true);
+    try {
+      const res = await linkSurveyToFeedsOnBackend({
+        surveyId: survey.survey_id,
+        feedIds: normalizeLinkedFeedIds(survey.linked_feed_ids),
+        projectId,
+      });
 
-    if (ok) alert("Feeds linked");
-    else alert("Failed to link feeds");
+      if (res?.ok) {
+        const linkedIds = normalizeLinkedFeedIds(
+          res.linked_feed_ids || survey.linked_feed_ids
+        );
+
+        setSurvey((prev) => ({
+          ...prev,
+          linked_feed_ids: linkedIds,
+        }));
+
+        alert("Feeds linked");
+      } else {
+        alert(res?.err || "Failed to link feeds");
+      }
+    } catch (e) {
+      console.warn("Failed to link feeds:", e);
+      alert("Failed to link feeds");
+    } finally {
+      setSavingLinks(false);
+    }
   }
 
   const linkedFeedCount = useMemo(
-    () => (survey?.linked_feed_ids || []).length,
+    () => normalizeLinkedFeedIds(survey?.linked_feed_ids).length,
+    [survey]
+  );
+
+  const currentQuestions = useMemo(
+    () => getQuestionList(survey),
     [survey]
   );
 
@@ -606,7 +690,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             >
               <div style={{ fontWeight: 600 }}>{s.name || s.survey_id}</div>
               <div style={{ fontSize: 12, color: "#6b7280" }}>
-                {(s.questions || []).length} questions
+                {surveyQuestionCount(s)} questions
               </div>
             </button>
           ))}
@@ -648,7 +732,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Questions</h4>
 
-            {survey.questions?.map((q, i) => (
+            {currentQuestions.map((q, i) => (
               <QuestionCard
                 key={q.id}
                 q={q}
@@ -692,7 +776,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                     <input
                       type="checkbox"
-                      checked={(survey.linked_feed_ids || []).includes(f.feed_id)}
+                      checked={normalizeLinkedFeedIds(survey.linked_feed_ids).includes(f.feed_id)}
                       onChange={() => toggleFeed(f.feed_id)}
                       onKeyDown={stopEditorKeyBubbling}
                     />
@@ -705,12 +789,24 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               ))}
             </div>
 
-            <button type="button" onClick={handleSaveFeedLinks} style={{ marginBottom: 20 }}>
-              Save Feed Links
+            <button
+              type="button"
+              onClick={handleSaveFeedLinks}
+              disabled={savingLinks}
+              style={{ marginBottom: 20 }}
+            >
+              {savingLinks ? "Saving Feed Links..." : "Save Feed Links"}
             </button>
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button type="button" onClick={handleSaveSurvey}>Save Survey</button>
+              <button
+                type="button"
+                onClick={handleSaveSurvey}
+                disabled={savingSurvey}
+              >
+                {savingSurvey ? "Saving Survey..." : "Save Survey"}
+              </button>
+
               <button type="button" onClick={handleDeleteSurvey}>
                 Delete Survey
               </button>
