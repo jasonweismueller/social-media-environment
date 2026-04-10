@@ -287,11 +287,11 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
       >
         <div>
           <FieldBlock label={`Question ${index + 1}`}>
-            <TextInput
-              value={getQuestionText(q)}
-              onChange={(v) => updateQuestion(index, { text: v, label: v })}
-              placeholder="Question text"
-            />
+           <TextInput
+  value={q.text ?? q.label ?? ""}
+  onChange={(v) => updateQuestion(index, { text: v, label: v })}
+  placeholder="Question text"
+/>
           </FieldBlock>
         </div>
 
@@ -299,19 +299,21 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
           <FieldBlock label="Type">
             <SelectInput
               value={q.type}
-              onChange={(nextType) => {
-                const next = makeQuestionByType(nextType);
-                updateQuestion(index, {
-                  ...next,
-                  id: q.id,
-                  text: getQuestionText(q) || getQuestionText(next),
-                  label: getQuestionText(q) || getQuestionText(next),
-                  description: q.description || "",
-                  required:
-                    nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
-                  visible_if: q.visible_if || null,
-                });
-              }}
+             onChange={(nextType) => {
+  const next = makeQuestionByType(nextType);
+  const currentText = q.text ?? q.label ?? "";
+  const nextText = next.text ?? next.label ?? "";
+
+  updateQuestion(index, {
+    ...next,
+    id: q.id,
+    text: currentText || nextText,
+    label: currentText || nextText,
+    description: q.description || "",
+    required: nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
+    visible_if: q.visible_if || null,
+  });
+}}
             >
               {Object.values(SURVEY_QUESTION_TYPES).map((t) => (
                 <option key={t} value={t}>

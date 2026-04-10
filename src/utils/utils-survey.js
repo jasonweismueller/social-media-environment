@@ -64,68 +64,64 @@ function normalizeMatrixArray(rawItems = []) {
    ========================= */
 
 export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) {
-  const safeOverrides = asObject(overrides);
   const safeType = isValidSurveyQuestionType(type)
     ? type
     : SURVEY_QUESTION_TYPES.TEXT;
 
+  const text = String(overrides.text ?? overrides.label ?? "Untitled question");
+
   return {
-    id: safeOverrides.id || `q_${uid()}`,
+    id: overrides.id || `q_${uid()}`,
     type: safeType,
-    label: safeOverrides.label || "Untitled question",
-    description: safeOverrides.description || "",
-    required: safeType === SURVEY_QUESTION_TYPES.INFO ? false : !!safeOverrides.required,
-    randomize_options: !!safeOverrides.randomize_options,
-    options: cleanStringArray(safeOverrides.options),
-    rows: cleanStringArray(safeOverrides.rows),
-    columns: cleanStringArray(safeOverrides.columns),
-    min: Number.isFinite(safeOverrides.min) ? safeOverrides.min : 1,
-    max: Number.isFinite(safeOverrides.max) ? safeOverrides.max : 7,
-    min_label: safeOverrides.min_label || "",
-    max_label: safeOverrides.max_label || "",
-    visible_if: safeOverrides.visible_if || null,
+    text,
+    label: text,
+    description: overrides.description || "",
+    required: safeType === SURVEY_QUESTION_TYPES.INFO ? false : !!overrides.required,
+    randomize_options: !!overrides.randomize_options,
+    options: cleanStringArray(overrides.options),
+    rows: cleanStringArray(overrides.rows),
+    columns: cleanStringArray(overrides.columns),
+    min: Number.isFinite(overrides.min) ? overrides.min : 1,
+    max: Number.isFinite(overrides.max) ? overrides.max : 7,
+    min_label: overrides.min_label || "",
+    max_label: overrides.max_label || "",
+    left_label: overrides.left_label ?? overrides.min_label ?? "",
+    right_label: overrides.right_label ?? overrides.max_label ?? "",
+    visible_if: overrides.visible_if || null,
   };
 }
 
 export function normalizeQuestion(raw = {}) {
-  const safeRaw = asObject(raw);
-  const type = isValidSurveyQuestionType(safeRaw.type)
-    ? safeRaw.type
+  const type = isValidSurveyQuestionType(raw.type)
+    ? raw.type
     : SURVEY_QUESTION_TYPES.TEXT;
 
+  const text = String(raw.text ?? raw.label ?? "Untitled question");
+
   return {
-    id: safeRaw.id || `q_${uid()}`,
+    id: raw.id || `q_${uid()}`,
     type,
-    label: String(safeRaw.label ?? safeRaw.text ?? "Untitled question"),
-    description: String(safeRaw.description || ""),
-    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!safeRaw.required,
-    randomize_options: !!safeRaw.randomize_options,
-
-    // frontend shape: options
-    // backend shape: choices [{value,label}]
+    text,
+    label: text,
+    description: String(raw.description || ""),
+    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!raw.required,
+    randomize_options: !!raw.randomize_options,
     options: cleanStringArray(
-      Array.isArray(safeRaw.options) && safeRaw.options.length
-        ? safeRaw.options
-        : normalizeChoiceArray(safeRaw.choices)
+      Array.isArray(raw.options) && raw.options.length
+        ? raw.options
+        : normalizeChoiceArray(raw.choices)
     ),
-
-    // frontend shape: rows/columns as strings
-    // backend shape: rows/columns as [{value,label}]
-    rows: cleanStringArray(normalizeMatrixArray(safeRaw.rows)),
-    columns: cleanStringArray(normalizeMatrixArray(safeRaw.columns)),
-
-    min: Number.isFinite(safeRaw.min) ? safeRaw.min : 1,
-    max: Number.isFinite(safeRaw.max) ? safeRaw.max : 7,
-
-    // frontend shape: min_label / max_label
-    // backend shape: left_label / right_label
-    min_label: String(safeRaw.min_label ?? safeRaw.left_label ?? ""),
-    max_label: String(safeRaw.max_label ?? safeRaw.right_label ?? ""),
-
-    visible_if: safeRaw.visible_if || null,
+    rows: normalizeMatrixArray(raw.rows),
+    columns: normalizeMatrixArray(raw.columns),
+    min: Number.isFinite(raw.min) ? raw.min : 1,
+    max: Number.isFinite(raw.max) ? raw.max : 7,
+    min_label: String(raw.min_label ?? raw.left_label ?? ""),
+    max_label: String(raw.max_label ?? raw.right_label ?? ""),
+    left_label: String(raw.left_label ?? raw.min_label ?? ""),
+    right_label: String(raw.right_label ?? raw.max_label ?? ""),
+    visible_if: raw.visible_if || null,
   };
 }
-
 export function frontendQuestionToBackend(question = {}) {
   const q = normalizeQuestion(question);
 
