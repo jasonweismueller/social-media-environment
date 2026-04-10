@@ -4,18 +4,14 @@ import {
   makeQuestionByType,
   normalizeSurvey,
   SURVEY_QUESTION_TYPES,
-} from "../utils/utils-survey";
-
-import { getProjectId } from "../utils-core";
-
-import {
+  getProjectId,
   listFeedsFromBackend,
   listSurveysFromBackend,
   loadSurveyFromBackend,
   saveSurveyToBackend,
   deleteSurveyOnBackend,
-  linkSurveyToFeedsOnBackend,
-} from "../utils-backend";
+  linkSurveyToFeedsOnBackend
+} from "../utils";
 
 /* =========================
    Small helpers
