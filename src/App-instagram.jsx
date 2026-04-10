@@ -528,7 +528,6 @@ function SurveyScreen({
 
 /* =============================== MAIN APP ================================ */
 
-// Helper: inline image detection (parity with FB)
 function elementHasImage(el) {
   if (!el) return false;
   if (el.dataset?.hasImage === "1") return true;
@@ -554,13 +553,11 @@ export default function App() {
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
 
-  // === Project ID: source of truth from utils (URL/localStorage)
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
   useEffect(() => {
     setProjectIdUtil(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
 
-  // Watch URL for project changes (deep-link friendly)
   useEffect(() => {
     const syncFromUrl = () => {
       const q = new URLSearchParams(window.location.search);
@@ -604,7 +601,9 @@ export default function App() {
   const [surveyErrors, setSurveyErrors] = useState({});
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
 
-  // Flags + assets readiness (parity with FB)
+  // Feed completion state
+  const [feedSubmitted, setFeedSubmitted] = useState(false);
+
   const [flags, setFlags] = useState({
     randomize_times: false,
     randomize_avatars: false,
@@ -616,18 +615,15 @@ export default function App() {
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
 
-  // Minimum delay gate when randomization implies background preloading
   const [minDelayDone, setMinDelayDone] = useState(true);
   const minDelayStartedRef = useRef(false);
   const minDelayTimerRef = useRef(null);
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
-  // Force clear any debug viewport leftovers at startup
   if (typeof document !== "undefined") {
     document.body.classList.remove("debug-vp");
   }
 
-  // Debug viewport overlay support — explicit opt-in only
   useEffect(() => {
     const apply = () => {
       const isAdmin = window.location.hash.startsWith("#/admin");
@@ -661,7 +657,6 @@ export default function App() {
     };
   }, []);
 
-  // ===== Effective viewport offsets (sticky rails/topbar) — same as FB =====
   const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
   useEffect(() => {
     const readOffsets = () => {
@@ -692,7 +687,6 @@ export default function App() {
     };
   }, []);
 
-  // ---------- Centralized, abortable feed loader with caching + flags + survey ----------
   const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
 
@@ -709,6 +703,8 @@ export default function App() {
     setSurveyResponses({});
     setSurveyErrors({});
     setSurveyErrorMsg("");
+    setFeedSubmitted(false);
+    setSubmitted(false);
 
     clearTimeout(minDelayTimerRef.current);
     minDelayStartedRef.current = false;
@@ -735,7 +731,6 @@ export default function App() {
         setFeedIdInUrl(chosen.feed_id, { replace: true });
       } catch {}
 
-      // Try local cache keyed by project+feed and checksum
       let cached = null;
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
@@ -822,7 +817,6 @@ export default function App() {
     }
   }, [onAdmin, projectId]);
 
-  // Watch URL for feed/project changes and react
   useEffect(() => {
     const onUrlChange = () => {
       const fid = getFeedIdFromUrl();
@@ -850,18 +844,16 @@ export default function App() {
     return () => feedAbortRef.current?.abort?.();
   }, [onAdmin, startLoadFeed, projectId]);
 
-  // Admin session autodetect
   const [adminAuthed, setAdminAuthed] = useState(false);
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
 
-  // Local UI toggles
   const [randomize, setRandomize] = useState(true);
   const [showComposer, setShowComposer] = useState(false);
   const [participantId, setParticipantId] = useState("");
   const [hasEntered, setHasEntered] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // final completion only
   const [disabled, setDisabled] = useState(false);
   const [toast, setToast] = useState(null);
   const [events, setEvents] = useState([]);
@@ -869,11 +861,11 @@ export default function App() {
   const shouldShowSurvey =
     !onAdmin &&
     hasEntered &&
+    feedSubmitted &&
     !submitted &&
     !!linkedSurvey &&
     (surveyPhase === "ready" || surveyPhase === "submitting" || surveyPhase === "error");
 
-  // Effective viewport lock (account for overlays + readiness gates)
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
@@ -887,7 +879,6 @@ export default function App() {
     };
   }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
 
-  // iOS zoom + viewport guards
   const overlayActive = !onAdmin && !hasEntered;
   useIOSInputZoomFix(
     ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea, .comment-sheet input, .comment-sheet textarea, .share-sheet input, .share-sheet textarea, .survey-shell input, .survey-shell textarea, .survey-shell select"
@@ -899,14 +890,12 @@ export default function App() {
       ".participant-overlay input, .comment-sheet input, .comment-sheet textarea, .share-sheet input, .share-sheet textarea, .survey-shell input, .survey-shell textarea, .survey-shell select",
   });
 
-  // Random order toggle affects visual sequence only (not IDs)
   const orderedPosts = useMemo(() => {
     const arr = posts.map((p) => ({ ...p }));
     if (randomize) arr.sort(() => Math.random() - 0.5);
     return arr;
   }, [posts, randomize]);
 
-  // Minimum delay when assets will be randomized (gives pools time to warm)
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
     const randOn = !!flags?.randomize_avatars || !!flags?.randomize_images;
@@ -922,7 +911,6 @@ export default function App() {
     }
   }, [onAdmin, hasEntered, feedPhase, submitted, flags?.randomize_avatars, flags?.randomize_images]);
 
-  // Preload avatar/image pools
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
@@ -992,7 +980,6 @@ export default function App() {
     };
   }, [onAdmin, hasEntered, feedPhase, submitted, posts, flags]);
 
-  // Logging infra
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 1500);
@@ -1081,9 +1068,6 @@ export default function App() {
     }
   }, [linkedSurvey, surveyResponses, activeFeedId, projectId, participantId]);
 
-  /* =========================
-     Viewport ref wiring
-     ========================= */
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
   const elToId = useRef(new WeakMap());
@@ -1125,8 +1109,7 @@ export default function App() {
     return { vis_frac, post_h_px, viewport_h_px: effectiveVH, el };
   };
 
-  // ===== Feed mount & cross-fade gate =====
-  const canShowFeed = hasEntered && feedPhase === "ready";
+  const canShowFeed = hasEntered && feedPhase === "ready" && !feedSubmitted;
   const gateOpen = canShowFeed && flagsReady && assetsReady && minDelayDone;
   const [showSkeletonLayer, setShowSkeletonLayer] = useState(true);
 
@@ -1142,16 +1125,12 @@ export default function App() {
     setShowSkeletonLayer(true);
   }, [gateOpen]);
 
-  // ===== Admin login state =====
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
 
-  /* =====================
-     VIEWPORT TRACKING
-     ===================== */
   useEffect(() => {
-    if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin || shouldShowSurvey) return;
+    if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin || shouldShowSurvey || feedSubmitted) return;
 
     const DEBUG_VP =
       new URLSearchParams(window.location.search).get("debugvp") === "1" ||
@@ -1233,12 +1212,12 @@ export default function App() {
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("beforeunload", onHide);
     };
-  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom, activeFeedId, shouldShowSurvey]);
+  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom, activeFeedId, shouldShowSurvey, feedSubmitted]);
 
   return (
     <Router>
       <div
-        className={`app-shell ${(!onAdmin && (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)) ? "blurred" : ""}`}
+        className={`app-shell ${(!onAdmin && (!hasEntered || (feedPhase !== "ready" && !shouldShowSurvey) || submitted || !flagsReady || !assetsReady || !minDelayDone)) ? "blurred" : ""}`}
       >
         <RouteAwareTopbar />
 
@@ -1287,7 +1266,7 @@ export default function App() {
                             feedId={activeFeedId}
                             avatarPools={avatarPools}
                             onSubmit={async () => {
-                              if (submitted || disabled) return;
+                              if (feedSubmitted || submitted || disabled) return;
                               setDisabled(true);
 
                               const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
@@ -1344,9 +1323,8 @@ export default function App() {
                               showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
 
                               if (ok) {
-                                if (linkedSurvey) {
-                                  setSurveyPhase("ready");
-                                } else {
+                                setFeedSubmitted(true);
+                                if (!linkedSurvey) {
                                   setSubmitted(true);
                                 }
                               }
@@ -1357,7 +1335,7 @@ export default function App() {
                         ) : null}
                       </div>
 
-                      {showSkeletonLayer && (
+                      {showSkeletonLayer && !feedSubmitted && (
                         <div
                           aria-hidden={gateOpen}
                           style={{
@@ -1424,7 +1402,6 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {/* Overlays */}
       {!onAdmin && !hasEntered && (
         <ParticipantOverlay
           onSubmit={(id) => {
@@ -1450,14 +1427,14 @@ export default function App() {
         />
       )}
 
-      {!onAdmin && hasEntered && !submitted && !shouldShowSurvey && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
+      {!onAdmin && hasEntered && !feedSubmitted && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
         <LoadingOverlay
           title="Preparing your feed…"
           subtitle={(flags.randomize_avatars || flags.randomize_images) ? "Almost ready..." : "Fetching posts and setting things up."}
         />
       )}
 
-      {!onAdmin && hasEntered && !submitted && feedPhase === "error" && (
+      {!onAdmin && hasEntered && !feedSubmitted && feedPhase === "error" && (
         <div className="modal-backdrop modal-backdrop-dim" role="dialog" aria-modal="true" aria-live="assertive">
           <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
             <div className="spinner-ring" aria-hidden="true" style={{ display: "none" }} />
