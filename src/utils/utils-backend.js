@@ -16,10 +16,9 @@ export const getApp = () => {
   const fromUrl = (q.get("app") || "").toLowerCase();
   const fromWin = (window.APP || "").toLowerCase();
 
-  // Normalize: support both ?app=instagram and ?app=ig
   if (["instagram", "ig"].includes(fromUrl) || ["instagram", "ig"].includes(fromWin)) return "ig";
   if (["facebook", "fb"].includes(fromUrl) || ["facebook", "fb"].includes(fromWin)) return "fb";
-  return "fb"; // default fallback
+  return "fb";
 };
 export const APP = getApp();
 
@@ -36,7 +35,6 @@ function joinUrl(base, path) {
   return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
 }
 
-// Prefer a single absolute API_BASE if provided; else fall back to base+path
 export const GS_ENDPOINT =
   (window.CONFIG && window.CONFIG.API_BASE) ||
   joinUrl(
@@ -44,18 +42,19 @@ export const GS_ENDPOINT =
     (window.CONFIG && window.CONFIG.GAS_PROXY_PATH) || GAS_PROXY_PATH
   );
 
-// NOTE: This token is ONLY for participant logging. Admin actions use admin_token from login.
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
 /* ---------------------- Dynamic GET URL builders -------------------------- */
-const FEEDS_GET_URL             = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}${qProject()}`;
-const DEFAULT_FEED_GET_URL      = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}${qProject()}`;
-const POSTS_GET_URL             = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}${qProject()}`;
-const PARTICIPANTS_GET_URL      = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}${qProject()}`;
-const WIPE_POLICY_GET_URL       = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}${qProject()}`;
-const PROJECTS_GET_URL          = () => `${GS_ENDPOINT}?path=projects&app=${APP}${qProject()}`;
-const SURVEYS_GET_URL           = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}${qProject()}`;
-const SURVEY_RESPONSES_GET_URL  = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}${qProject()}`;
+const FEEDS_GET_URL = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}${qProject()}`;
+const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}${qProject()}`;
+const POSTS_GET_URL = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}${qProject()}`;
+const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}${qProject()}`;
+const WIPE_POLICY_GET_URL = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}${qProject()}`;
+const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects&app=${APP}${qProject()}`;
+const SURVEYS_GET_URL = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}${qProject()}`;
+const SURVEY_DEFINITION_GET_URL = () => `${GS_ENDPOINT}?path=survey_definition&app=${getApp()}${qProject()}`;
+const FEED_SURVEY_GET_URL = () => `${GS_ENDPOINT}?path=feed_survey&app=${getApp()}${qProject()}`;
+const SURVEY_RESPONSES_GET_URL = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}${qProject()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -112,6 +111,16 @@ function buildQueryUrl(base, params = {}) {
     url.searchParams.set(k, String(v));
   });
   return url.toString();
+}
+
+function uniqueStrings(arr = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(arr) ? arr : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 /* ======================= Admin User Management APIs ======================= */
@@ -531,27 +540,45 @@ export async function sendToSheet(header, row, _events, feed_id) {
 }
 
 /* --------------------- Surveys: participant submit ------------------------ */
-export async function sendSurveyResponseToBackend({
-  header,
-  row,
-  survey_id,
-  feed_id,
-  project_id,
-}) {
+/*
+  Supports either:
+  1) direct fields expected by code.gs
+  2) legacy { header, row, survey_id, feed_id, project_id }
+*/
+export async function sendSurveyResponseToBackend(args = {}) {
+  const survey_id = String(args.survey_id || "");
   if (!survey_id) {
     console.warn("sendSurveyResponseToBackend: survey_id required");
     return false;
   }
+
+  const legacyRow = args.row && typeof args.row === "object" ? args.row : {};
+  const directResponses = args.responses && typeof args.responses === "object" ? args.responses : null;
+  const rowResponses =
+    legacyRow.responses && typeof legacyRow.responses === "object"
+      ? legacyRow.responses
+      : legacyRow.response_json
+        ? (() => {
+            try { return JSON.parse(legacyRow.response_json); } catch { return {}; }
+          })()
+        : {};
 
   const payload = {
     token: GS_TOKEN,
     action: "log_survey_response",
     app: APP,
     survey_id,
-    feed_id: feed_id || "",
-    project_id: project_id || getProjectId() || undefined,
-    header: Array.isArray(header) ? header : [],
-    row: row && typeof row === "object" ? row : {},
+    feed_id: args.feed_id || legacyRow.feed_id || "",
+    project_id: args.project_id || legacyRow.project_id || getProjectId() || undefined,
+    session_id: args.session_id || legacyRow.session_id || "",
+    participant_id: args.participant_id || legacyRow.participant_id || "",
+    submitted_at_iso: args.submitted_at_iso || legacyRow.submitted_at_iso || new Date().toISOString(),
+    duration_ms: Number(args.duration_ms ?? legacyRow.duration_ms ?? 0) || 0,
+    responses: directResponses || rowResponses || {},
+    ip_address: args.ip_address || legacyRow.ip_address || "",
+    prolific_pid: args.prolific_pid || legacyRow.prolific_pid || "",
+    prolific_session_id: args.prolific_session_id || legacyRow.prolific_session_id || "",
+    prolific_study_id: args.prolific_study_id || legacyRow.prolific_study_id || "",
   };
 
   const body = JSON.stringify(payload);
@@ -652,7 +679,7 @@ export async function deleteFeedOnBackend(feedId) {
 }
 
 /* ------------------------- POSTS API (multi-feed + cache) ----------------- */
-const __postsCache = new Map(); // key: `${APP}::${projectId}::${feedId||''}` -> { at, data }
+const __postsCache = new Map();
 const POSTS_STALE_MS = 60_000;
 
 function __cacheKey(feedId) {
@@ -714,7 +741,6 @@ export async function loadPostsFromBackend(arg1, arg2) {
     );
     const arr = Array.isArray(data) ? data : [];
 
-    // Preload streamable video URLs (skip Drive/iframe)
     arr
       .filter((p) => p?.videoMode !== "none" && p?.video?.url && !DRIVE_RE.test(p.video.url))
       .forEach((p) => {
@@ -733,7 +759,6 @@ export async function loadPostsFromBackend(arg1, arg2) {
 
 /**
  * savePostsToBackend(posts, { feedId, name } = {})
- * (includes friendly-name injection from local storage)
  */
 export async function savePostsToBackend(rawPosts, ctx = {}) {
   const { feedId = null, name = null } = ctx || {};
@@ -806,7 +831,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
 }
 
 /* --------------------------- Surveys API (admin) --------------------------- */
-const __surveysCache = new Map(); // key: `${APP}::${projectId}::surveys`
+const __surveysCache = new Map();
 const SURVEYS_STALE_MS = 30_000;
 
 function __surveyListCacheKey(projectId = getProjectId()) {
@@ -814,6 +839,9 @@ function __surveyListCacheKey(projectId = getProjectId()) {
 }
 function __surveyItemCacheKey(surveyId, projectId = getProjectId()) {
   return `${APP}::${projectId || ""}::survey::${surveyId || ""}`;
+}
+function __feedSurveyCacheKey(feedId, projectId = getProjectId()) {
+  return `${APP}::${projectId || ""}::feed_survey::${feedId || ""}`;
 }
 function __getCachedSurveyList(projectId = getProjectId()) {
   const rec = __surveysCache.get(__surveyListCacheKey(projectId));
@@ -833,18 +861,38 @@ function __getCachedSurvey(surveyId, projectId = getProjectId()) {
 function __setCachedSurvey(surveyId, projectId = getProjectId(), data) {
   __surveysCache.set(__surveyItemCacheKey(surveyId, projectId), { at: Date.now(), data });
 }
-export function invalidateSurveysCache({ surveyId = null, projectId = getProjectId() } = {}) {
+function __getCachedFeedSurvey(feedId, projectId = getProjectId()) {
+  const rec = __surveysCache.get(__feedSurveyCacheKey(feedId, projectId));
+  if (!rec) return null;
+  if (Date.now() - rec.at > SURVEYS_STALE_MS) return null;
+  return rec.data;
+}
+function __setCachedFeedSurvey(feedId, projectId = getProjectId(), data) {
+  __surveysCache.set(__feedSurveyCacheKey(feedId, projectId), { at: Date.now(), data });
+}
+export function invalidateSurveysCache({ surveyId = null, projectId = getProjectId(), feedId = null } = {}) {
   const pid = String(projectId || "");
   const sid = String(surveyId || "");
+  const fid = String(feedId || "");
 
   for (const k of __surveysCache.keys()) {
     const matchesProject = k.startsWith(`${APP}::${pid}::`);
     const matchesSurvey = !sid || k.endsWith(`::${sid}`);
-    if (matchesProject && matchesSurvey) __surveysCache.delete(k);
+    const matchesFeed = !fid || k.endsWith(`::${fid}`);
+    if (!matchesProject) continue;
+    if (sid && matchesSurvey) __surveysCache.delete(k);
+    else if (fid && matchesFeed) __surveysCache.delete(k);
+    else if (!sid && !fid) __surveysCache.delete(k);
   }
 }
 
 export async function listSurveysFromBackend({ projectId = getProjectId(), signal, force = false } = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("listSurveysFromBackend: missing admin_token");
+    return [];
+  }
+
   if (!force) {
     const cached = __getCachedSurveyList(projectId);
     if (cached) return cached;
@@ -853,6 +901,7 @@ export async function listSurveysFromBackend({ projectId = getProjectId(), signa
   try {
     const url = buildQueryUrl(SURVEYS_GET_URL(), {
       project_id: projectId || undefined,
+      admin_token,
       _ts: Date.now(),
     });
 
@@ -872,6 +921,11 @@ export async function listSurveysFromBackend({ projectId = getProjectId(), signa
 }
 
 export async function loadSurveyFromBackend(surveyId, { projectId = getProjectId(), signal, force = false } = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("loadSurveyFromBackend: missing admin_token");
+    return null;
+  }
   if (!surveyId) return null;
 
   if (!force) {
@@ -880,9 +934,10 @@ export async function loadSurveyFromBackend(surveyId, { projectId = getProjectId
   }
 
   try {
-    const url = buildQueryUrl(SURVEYS_GET_URL(), {
+    const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
       survey_id: surveyId,
       project_id: projectId || undefined,
+      admin_token,
       _ts: Date.now(),
     });
 
@@ -901,25 +956,56 @@ export async function loadSurveyFromBackend(surveyId, { projectId = getProjectId
   }
 }
 
-export async function getSurveyForFeedFromBackend(feedId, { projectId = getProjectId(), signal } = {}) {
+export async function getSurveyForFeedFromBackend(feedId, { projectId = getProjectId(), signal, force = false } = {}) {
   if (!feedId) return null;
 
+  if (!force) {
+    const cached = __getCachedFeedSurvey(feedId, projectId);
+    if (cached) return cached;
+  }
+
   try {
-    const url = buildQueryUrl(SURVEYS_GET_URL(), {
+    const linkUrl = buildQueryUrl(FEED_SURVEY_GET_URL(), {
       feed_id: feedId,
       project_id: projectId || undefined,
       _ts: Date.now(),
     });
 
-    const data = await getJsonWithRetry(
-      url,
+    const link = await getJsonWithRetry(
+      linkUrl,
       { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
 
-    if (!data) return null;
-    if (Array.isArray(data)) return data[0] || null;
-    return data;
+    if (!link || !link.survey_id) {
+      __setCachedFeedSurvey(feedId, projectId, null);
+      return null;
+    }
+
+    const defUrl = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
+      survey_id: link.survey_id,
+      feed_id: feedId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const def = await getJsonWithRetry(
+      defUrl,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    const out = def && !Array.isArray(def)
+      ? {
+          ...def,
+          survey_id: def.survey_id || link.survey_id,
+          linked_feed_id: feedId,
+          trigger: link.trigger || "after_feed_submit",
+        }
+      : null;
+
+    __setCachedFeedSurvey(feedId, projectId, out);
+    return out;
   } catch (e) {
     console.warn("getSurveyForFeedFromBackend failed:", e);
     return null;
@@ -930,27 +1016,36 @@ export async function saveSurveyToBackend(survey, { projectId = getProjectId() }
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
+  const surveyId = String(survey?.survey_id || "").trim();
+  const action = surveyId ? "survey_update" : "survey_create";
+
   try {
-    const { res, data } = await postJson({
-      action: "save_survey",
+    const payload = {
+      action,
       app: APP,
       admin_token,
       project_id: projectId || undefined,
-      survey,
-    });
+      definition: survey,
+    };
+    if (surveyId) payload.survey_id = surveyId;
+
+    const { res, data } = await postJson(payload);
 
     if (!res.ok || data.ok === false) {
       return { ok: false, err: data?.err || `HTTP ${res.status}` };
     }
 
+    const finalSurveyId = data?.survey_id || surveyId || null;
+
     invalidateSurveysCache({
       projectId,
-      surveyId: survey?.survey_id || data?.survey_id || null,
+      surveyId: finalSurveyId,
     });
 
     return {
       ok: true,
-      survey_id: data?.survey_id || survey?.survey_id || null,
+      survey_id: finalSurveyId,
+      checksum: data?.checksum || null,
     };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
@@ -964,7 +1059,7 @@ export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId
 
   try {
     const { res, data } = await postJson({
-      action: "delete_survey",
+      action: "survey_delete",
       app: APP,
       admin_token,
       project_id: projectId || undefined,
@@ -982,31 +1077,105 @@ export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId
   }
 }
 
+/*
+  code.gs only supports linking one feed at a time:
+  - link_survey_to_feed
+  - unlink_survey_from_feed
+
+  So this helper synchronizes the survey across multiple feeds by:
+  1) discovering current feeds linked to this survey in the current project
+  2) unlinking removed feeds
+  3) linking newly selected feeds
+*/
 export async function linkSurveyToFeedsOnBackend({
   surveyId,
   feedIds = [],
   projectId = getProjectId(),
+  allFeeds = null,
+  trigger = "after_feed_submit",
 } = {}) {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
   if (!surveyId) return { ok: false, err: "survey_id required" };
 
-  try {
-    const { res, data } = await postJson({
-      action: "link_survey_feeds",
-      app: APP,
-      admin_token,
-      project_id: projectId || undefined,
-      survey_id: surveyId,
-      feed_ids: Array.isArray(feedIds) ? feedIds : [],
-    });
+  const desiredFeedIds = uniqueStrings(feedIds);
 
-    if (!res.ok || data.ok === false) {
-      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+  try {
+    const feedList = Array.isArray(allFeeds) && allFeeds.length
+      ? allFeeds
+      : await listFeedsFromBackend();
+
+    const candidateFeedIds = uniqueStrings(
+      (feedList || []).map((f) => f?.feed_id).filter(Boolean)
+    );
+
+    const currentLinkedFeedIds = [];
+    await Promise.all(
+      candidateFeedIds.map(async (fid) => {
+        try {
+          const url = buildQueryUrl(FEED_SURVEY_GET_URL(), {
+            feed_id: fid,
+            project_id: projectId || undefined,
+            _ts: Date.now(),
+          });
+          const link = await getJsonWithRetry(
+            url,
+            { method: "GET", mode: "cors", cache: "no-store" },
+            { retries: 1, timeoutMs: 8000 }
+          );
+          if (link && String(link.survey_id || "") === String(surveyId)) {
+            currentLinkedFeedIds.push(fid);
+          }
+        } catch {
+          // ignore per-feed lookup failures
+        }
+      })
+    );
+
+    const currentSet = new Set(uniqueStrings(currentLinkedFeedIds));
+    const desiredSet = new Set(desiredFeedIds);
+
+    const toUnlink = [...currentSet].filter((fid) => !desiredSet.has(fid));
+    const toLink = [...desiredSet].filter((fid) => !currentSet.has(fid));
+
+    for (const fid of toUnlink) {
+      const { res, data } = await postJson({
+        action: "unlink_survey_from_feed",
+        app: APP,
+        admin_token,
+        project_id: projectId || undefined,
+        feed_id: fid,
+      });
+      if (!res.ok || data.ok === false) {
+        return { ok: false, err: data?.err || `Failed unlinking ${fid}` };
+      }
+      invalidateSurveysCache({ projectId, feedId: fid });
+    }
+
+    for (const fid of toLink) {
+      const { res, data } = await postJson({
+        action: "link_survey_to_feed",
+        app: APP,
+        admin_token,
+        project_id: projectId || undefined,
+        survey_id: surveyId,
+        feed_id: fid,
+        trigger,
+      });
+      if (!res.ok || data.ok === false) {
+        return { ok: false, err: data?.err || `Failed linking ${fid}` };
+      }
+      invalidateSurveysCache({ projectId, feedId: fid });
     }
 
     invalidateSurveysCache({ projectId, surveyId });
-    return { ok: true, linked_feed_ids: Array.isArray(data?.linked_feed_ids) ? data.linked_feed_ids : feedIds };
+
+    return {
+      ok: true,
+      linked_feed_ids: desiredFeedIds,
+      added_feed_ids: toLink,
+      removed_feed_ids: toUnlink,
+    };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }
