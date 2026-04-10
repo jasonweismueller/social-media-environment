@@ -48,18 +48,23 @@ export const GS_ENDPOINT =
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
 /* ---------------------- Dynamic GET URL builders -------------------------- */
-const FEEDS_GET_URL        = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}${qProject()}`;
-const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}${qProject()}`;
-const POSTS_GET_URL        = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}${qProject()}`;
-const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}${qProject()}`;
-const WIPE_POLICY_GET_URL  = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}${qProject()}`;
+const FEEDS_GET_URL             = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}${qProject()}`;
+const DEFAULT_FEED_GET_URL      = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}${qProject()}`;
+const POSTS_GET_URL             = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}${qProject()}`;
+const PARTICIPANTS_GET_URL      = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}${qProject()}`;
+const WIPE_POLICY_GET_URL       = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}${qProject()}`;
+const PROJECTS_GET_URL          = () => `${GS_ENDPOINT}?path=projects&app=${APP}${qProject()}`;
+const SURVEYS_GET_URL           = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}${qProject()}`;
+const SURVEY_RESPONSES_GET_URL  = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}${qProject()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
   try {
-    const res = await fetch(url, { ...opts, signal: opts.signal || ctrl.signal });
+    const signal = opts.signal || ctrl.signal;
+    const res = await fetch(url, { ...opts, signal });
     return res;
   } finally {
     clearTimeout(t);
@@ -68,6 +73,7 @@ async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
 
 async function getJsonWithRetry(url, opts = {}, { retries = 1, timeoutMs = 8000 } = {}) {
   let lastErr;
+
   for (let i = 0; i <= retries; i++) {
     try {
       const res = await fetchWithTimeout(url, opts, { timeoutMs });
@@ -75,25 +81,54 @@ async function getJsonWithRetry(url, opts = {}, { retries = 1, timeoutMs = 8000 
       return await res.json();
     } catch (e) {
       lastErr = e;
-      if (i < retries) await new Promise(r => setTimeout(r, 250 * (i + 1)));
+      if (i < retries) await new Promise((r) => setTimeout(r, 250 * (i + 1)));
     }
   }
+
   throw lastErr;
+}
+
+async function postJson(payload, { timeoutMs = 12000, mode = "cors", keepalive = false } = {}) {
+  const res = await fetchWithTimeout(
+    GS_ENDPOINT,
+    {
+      method: "POST",
+      mode,
+      keepalive,
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(payload),
+    },
+    { timeoutMs }
+  );
+
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+
+function buildQueryUrl(base, params = {}) {
+  const url = new URL(base, window.location.origin);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v == null || v === "") return;
+    url.searchParams.set(k, String(v));
+  });
+  return url.toString();
 }
 
 /* ======================= Admin User Management APIs ======================= */
 export async function adminListUsers() {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
+
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ action: "admin_list_users", admin_token }),
+    const { res, data } = await postJson({
+      action: "admin_list_users",
+      admin_token,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) return { ok: false, err: data?.err || `HTTP ${res.status}` };
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
     return { ok: true, users: Array.isArray(data.users) ? data.users : [] };
   } catch (e) {
     return { ok: false, err: String(e.message || e) };
@@ -103,21 +138,20 @@ export async function adminListUsers() {
 export async function adminCreateUser(email, password, role = "viewer") {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
+
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({
-        action: "admin_create_user",
-        admin_token,
-        email,
-        password,
-        role,
-      }),
+    const { res, data } = await postJson({
+      action: "admin_create_user",
+      admin_token,
+      email,
+      password,
+      role,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) return { ok: false, err: data?.err || `HTTP ${res.status}` };
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
     return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e.message || e) };
@@ -127,20 +161,19 @@ export async function adminCreateUser(email, password, role = "viewer") {
 export async function adminUpdateUser({ email, role, password, disabled }) {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
+
   try {
     const payload = { action: "admin_update_user", admin_token, email };
     if (role != null) payload.role = role;
     if (password != null) payload.password = password;
     if (typeof disabled === "boolean") payload.disabled = !!disabled;
 
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    const { res, data } = await postJson(payload);
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
     return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e.message || e) };
@@ -150,19 +183,18 @@ export async function adminUpdateUser({ email, role, password, disabled }) {
 export async function adminDeleteUser(email) {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
+
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({
-        action: "admin_delete_user",
-        admin_token,
-        email,
-      }),
+    const { res, data } = await postJson({
+      action: "admin_delete_user",
+      admin_token,
+      email,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) return { ok: false, err: data?.err || `HTTP ${res.status}` };
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
     return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e.message || e) };
@@ -170,11 +202,16 @@ export async function adminDeleteUser(email) {
 }
 
 /* ======================= Flags (backend) ======================= */
-export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
-  const qp = new URLSearchParams({ path: "get_feed_flags", app });
+export async function fetchFeedFlags({ app, projectId, feedId, endpoint = GS_ENDPOINT, signal } = {}) {
+  const qp = new URLSearchParams({ path: "get_feed_flags", app: app || APP });
   if (projectId) qp.append("project_id", projectId);
   if (feedId) qp.append("feed_id", feedId);
-  const res = await fetch(`${endpoint}?${qp.toString()}`, { credentials: "omit" });
+
+  const res = await fetch(`${endpoint}?${qp.toString()}`, {
+    credentials: "omit",
+    signal,
+  });
+
   const j = await res.json().catch(() => ({}));
   const raw = (j && j.flags) ? j.flags : { random_time: false };
   return normalizeFlagsForRead(raw);
@@ -183,6 +220,7 @@ export async function fetchFeedFlags({ app, projectId, feedId, endpoint }) {
 export function normalizeFlagsForStore(flags) {
   const out = {};
   if (!flags) return out;
+
   if (typeof flags.randomize_times !== "undefined" || typeof flags.random_time !== "undefined") {
     out.random_time = !!(flags.randomize_times ?? flags.random_time);
   }
@@ -196,32 +234,34 @@ export function normalizeFlagsForStore(flags) {
     out.random_image = !!(flags.randomize_images ?? flags.random_image);
   }
   if (typeof flags.randomize_bios !== "undefined" || typeof flags.random_bio !== "undefined") {
-  out.random_bio = !!(flags.randomize_bios ?? flags.random_bio);
-}
+    out.random_bio = !!(flags.randomize_bios ?? flags.random_bio);
+  }
 
   return out;
 }
 
 export function normalizeFlagsForRead(flags) {
   const out = { ...(flags || {}) };
-  out.randomize_times   = !!(out.randomize_times   ?? out.random_time);
+  out.randomize_times = !!(out.randomize_times ?? out.random_time);
   out.randomize_avatars = !!(out.randomize_avatars ?? out.random_avatar);
-  out.randomize_names   = !!(out.randomize_names   ?? out.random_name);
-  out.randomize_images  = !!(out.randomize_images  ?? out.random_image);
-  out.randomize_bios    = !!(out.randomize_bios    ?? out.random_bio);
+  out.randomize_names = !!(out.randomize_names ?? out.random_name);
+  out.randomize_images = !!(out.randomize_images ?? out.random_image);
+  out.randomize_bios = !!(out.randomize_bios ?? out.random_bio);
+
   delete out.random_time;
   delete out.random_avatar;
   delete out.random_name;
   delete out.random_image;
   delete out.random_bio;
+
   return out;
 }
 
 /* ====================== Admin auth (session token + role/email) ============ */
-const ADMIN_TOKEN_KEY     = `${APP}_admin_token_v1`;
+const ADMIN_TOKEN_KEY = `${APP}_admin_token_v1`;
 const ADMIN_TOKEN_EXP_KEY = `${APP}_admin_token_exp_v1`;
-const ADMIN_ROLE_KEY      = `${APP}_admin_role_v1`;
-const ADMIN_EMAIL_KEY     = `${APP}_admin_email_v1`;
+const ADMIN_ROLE_KEY = `${APP}_admin_role_v1`;
+const ADMIN_EMAIL_KEY = `${APP}_admin_email_v1`;
 
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
 
@@ -232,17 +272,17 @@ export function hasAdminRole(minRole = "viewer") {
 
 export async function touchAdminSession() {
   const admin_token = getAdminToken();
-  if (!admin_token) return { ok:false, err:"admin auth required" };
+  if (!admin_token) return { ok: false, err: "admin auth required" };
 
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ action: "admin_touch", admin_token }),
+    const { res, data } = await postJson({
+      action: "admin_touch",
+      admin_token,
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.ok === false) return { ok:false, err: data?.err || `HTTP ${res.status}` };
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
 
     if (data.ttl_s && data.ttl_s > 0) {
       setAdminSession({
@@ -252,9 +292,15 @@ export async function touchAdminSession() {
         email: data.email || getAdminEmail(),
       });
     }
-    return { ok:true, ttl_s: Number(data.ttl_s || 0), role: data.role, email: data.email };
+
+    return {
+      ok: true,
+      ttl_s: Number(data.ttl_s || 0),
+      role: data.role,
+      email: data.email,
+    };
   } catch (e) {
-    return { ok:false, err: String(e?.message || e) };
+    return { ok: false, err: String(e?.message || e) };
   }
 }
 
@@ -262,9 +308,14 @@ export function getAdminExpiryMs() {
   try {
     const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
     if (!exp) return null;
-    if (Date.now() > exp) { clearAdminSession(); return null; }
+    if (Date.now() > exp) {
+      clearAdminSession();
+      return null;
+    }
     return exp;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export function getAdminSecondsLeft() {
@@ -279,11 +330,17 @@ export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, 
   const tick = () => {
     const left = getAdminSecondsLeft();
     if (left == null) {
-      if (!firedExpired) { firedExpired = true; onExpired?.(); }
+      if (!firedExpired) {
+        firedExpired = true;
+        onExpired?.();
+      }
       return;
     }
     if (left <= 0) {
-      if (!firedExpired) { firedExpired = true; onExpired?.(); }
+      if (!firedExpired) {
+        firedExpired = true;
+        onExpired?.();
+      }
     } else if (left <= warnAtSec) {
       onExpiring?.(left);
     }
@@ -296,14 +353,20 @@ export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, 
 
 export function setAdminSession({ token, ttlSec, role, email } = {}) {
   try {
-    if (!token) { clearAdminSession(); return; }
+    if (!token) {
+      clearAdminSession();
+      return;
+    }
+
     localStorage.setItem(ADMIN_TOKEN_KEY, token);
+
     if (Number.isFinite(Number(ttlSec)) && ttlSec > 0) {
       localStorage.setItem(ADMIN_TOKEN_EXP_KEY, String(Date.now() + Number(ttlSec) * 1000));
     } else {
       localStorage.removeItem(ADMIN_TOKEN_EXP_KEY);
     }
-    if (role)  localStorage.setItem(ADMIN_ROLE_KEY, String(role));
+
+    if (role) localStorage.setItem(ADMIN_ROLE_KEY, String(role));
     if (email) localStorage.setItem(ADMIN_EMAIL_KEY, String(email));
   } catch {}
 }
@@ -320,25 +383,40 @@ export function getAdminToken() {
     const t = localStorage.getItem(ADMIN_TOKEN_KEY);
     const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
     if (!t || !t.trim()) return null;
-    if (exp && Date.now() > exp) { clearAdminSession(); return null; }
+    if (exp && Date.now() > exp) {
+      clearAdminSession();
+      return null;
+    }
     return t;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export function getAdminRole() {
   try {
     const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
-    if (exp && Date.now() > exp) { clearAdminSession(); return "viewer"; }
+    if (exp && Date.now() > exp) {
+      clearAdminSession();
+      return "viewer";
+    }
     return (localStorage.getItem(ADMIN_ROLE_KEY) || "viewer").toLowerCase();
-  } catch { return "viewer"; }
+  } catch {
+    return "viewer";
+  }
 }
 
 export function getAdminEmail() {
   try {
     const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
-    if (exp && Date.now() > exp) { clearAdminSession(); return null; }
+    if (exp && Date.now() > exp) {
+      clearAdminSession();
+      return null;
+    }
     return localStorage.getItem(ADMIN_EMAIL_KEY) || null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export function hasAdminSession() {
@@ -347,13 +425,11 @@ export function hasAdminSession() {
 
 export async function adminLogin(password) {
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ action: "admin_login", password }),
+    const { res, data } = await postJson({
+      action: "admin_login",
+      password,
     });
-    const data = await res.json().catch(() => ({}));
+
     if (res.ok && data?.ok && data.admin_token) {
       setAdminSession({
         token: data.admin_token,
@@ -363,6 +439,7 @@ export async function adminLogin(password) {
       });
       return { ok: true };
     }
+
     return { ok: false, err: data?.err || `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
@@ -371,13 +448,12 @@ export async function adminLogin(password) {
 
 export async function adminLoginUser(email, password) {
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({ action: "admin_login_user", email, password }),
+    const { res, data } = await postJson({
+      action: "admin_login_user",
+      email,
+      password,
     });
-    const data = await res.json().catch(() => ({}));
+
     if (res.ok && data?.ok && data.admin_token) {
       setAdminSession({
         token: data.admin_token,
@@ -387,6 +463,7 @@ export async function adminLoginUser(email, password) {
       });
       return { ok: true };
     }
+
     return { ok: false, err: data?.err || `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
@@ -396,7 +473,9 @@ export async function adminLoginUser(email, password) {
 export async function adminLogout() {
   const admin_token = getAdminToken();
   clearAdminSession();
+
   if (!admin_token) return { ok: true };
+
   try {
     await fetch(GS_ENDPOINT, {
       method: "POST",
@@ -406,12 +485,16 @@ export async function adminLogout() {
       keepalive: true,
     });
   } catch {}
+
   return { ok: true };
 }
 
 /* --------------------- Logging participants & events ---------------------- */
 export async function sendToSheet(header, row, _events, feed_id) {
-  if (!feed_id) { console.warn("sendToSheet: feed_id required"); return false; }
+  if (!feed_id) {
+    console.warn("sendToSheet: feed_id required");
+    return false;
+  }
 
   const payload = {
     token: GS_TOKEN,
@@ -447,12 +530,60 @@ export async function sendToSheet(header, row, _events, feed_id) {
   }
 }
 
+/* --------------------- Surveys: participant submit ------------------------ */
+export async function sendSurveyResponseToBackend({
+  header,
+  row,
+  survey_id,
+  feed_id,
+  project_id,
+}) {
+  if (!survey_id) {
+    console.warn("sendSurveyResponseToBackend: survey_id required");
+    return false;
+  }
+
+  const payload = {
+    token: GS_TOKEN,
+    action: "log_survey_response",
+    app: APP,
+    survey_id,
+    feed_id: feed_id || "",
+    project_id: project_id || getProjectId() || undefined,
+    header: Array.isArray(header) ? header : [],
+    row: row && typeof row === "object" ? row : {},
+  };
+
+  const body = JSON.stringify(payload);
+
+  if (navigator.sendBeacon && body.length < 60000) {
+    try {
+      const blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+      const ok = navigator.sendBeacon(GS_ENDPOINT, blob);
+      if (ok) return true;
+    } catch {}
+  }
+
+  try {
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body,
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn("sendSurveyResponseToBackend(fetch) failed:", err);
+    return false;
+  }
+}
+
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
-export async function listFeedsFromBackend() {
+export async function listFeedsFromBackend({ signal } = {}) {
   try {
     const data = await getJsonWithRetry(
       FEEDS_GET_URL() + "&_ts=" + Date.now(),
-      { method: "GET", mode: "cors", cache: "no-store" },
+      { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
     return Array.isArray(data) ? data : [];
@@ -463,11 +594,11 @@ export async function listFeedsFromBackend() {
 }
 
 /* -------- default feed helpers (persisted on backend) --------------------- */
-export async function getDefaultFeedFromBackend() {
+export async function getDefaultFeedFromBackend({ signal } = {}) {
   try {
     const data = await getJsonWithRetry(
       DEFAULT_FEED_GET_URL() + "&_ts=" + Date.now(),
-      { method: "GET", mode: "cors", cache: "no-store" },
+      { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
     return (data && typeof data === "object") ? (data.feed_id || null) : null;
@@ -479,19 +610,20 @@ export async function getDefaultFeedFromBackend() {
 
 export async function setDefaultFeedOnBackend(feedId) {
   const admin_token = getAdminToken();
-  if (!admin_token) { console.warn("setDefaultFeedOnBackend: missing admin_token"); return false; }
+  if (!admin_token) {
+    console.warn("setDefaultFeedOnBackend: missing admin_token");
+    return false;
+  }
+
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "set_default_feed",
-        app: APP,
-        feed_id: feedId || "",
-        admin_token,
-        project_id: getProjectId() || undefined,
-      }),
+    const { res } = await postJson({
+      action: "set_default_feed",
+      app: APP,
+      feed_id: feedId || "",
+      admin_token,
+      project_id: getProjectId() || undefined,
     });
+
     return res.ok;
   } catch (e) {
     console.warn("setDefaultFeedOnBackend failed:", e);
@@ -502,19 +634,16 @@ export async function setDefaultFeedOnBackend(feedId) {
 export async function deleteFeedOnBackend(feedId) {
   const admin_token = getAdminToken();
   if (!admin_token) return false;
+
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "delete_feed",
-        app: APP,
-        admin_token,
-        feed_id: feedId,
-        project_id: getProjectId() || undefined,
-      }),
+    const { res } = await postJson({
+      action: "delete_feed",
+      app: APP,
+      admin_token,
+      feed_id: feedId,
+      project_id: getProjectId() || undefined,
     });
+
     return res.ok;
   } catch (e) {
     console.error("deleteFeedOnBackend failed", e);
@@ -549,16 +678,22 @@ export function invalidatePostsCache(feedId = null) {
 export async function loadPostsFromBackend(arg1, arg2) {
   let feedId = null;
   let force = false;
+  let signal;
 
   if (typeof arg1 === "string") {
     feedId = arg1 || null;
-    if (arg2 && typeof arg2 === "object") force = !!arg2.force;
+    if (arg2 && typeof arg2 === "object") {
+      force = !!arg2.force;
+      signal = arg2.signal;
+    }
   } else if (arg1 && typeof arg1 === "object") {
+    feedId = arg1.feedId || null;
     force = !!arg1.force;
+    signal = arg1.signal;
   }
 
   if (!feedId) {
-    feedId = await getDefaultFeedFromBackend();
+    feedId = await getDefaultFeedFromBackend({ signal });
   }
 
   if (!force) {
@@ -574,15 +709,15 @@ export async function loadPostsFromBackend(arg1, arg2) {
 
     const data = await getJsonWithRetry(
       url,
-      { method: "GET", mode: "cors", cache: "no-store" },
+      { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
     const arr = Array.isArray(data) ? data : [];
 
     // Preload streamable video URLs (skip Drive/iframe)
     arr
-      .filter(p => p?.videoMode !== "none" && p?.video?.url && !DRIVE_RE.test(p.video.url))
-      .forEach(p => {
+      .filter((p) => p?.videoMode !== "none" && p?.video?.url && !DRIVE_RE.test(p.video.url))
+      .forEach((p) => {
         injectVideoPreload(p.video.url, p.video?.mime || "video/mp4");
         primeVideoCache(p.video.url);
       });
@@ -603,7 +738,10 @@ export async function loadPostsFromBackend(arg1, arg2) {
 export async function savePostsToBackend(rawPosts, ctx = {}) {
   const { feedId = null, name = null } = ctx || {};
   const admin_token = getAdminToken();
-  if (!admin_token) { console.warn("savePostsToBackend: missing admin_token"); return false; }
+  if (!admin_token) {
+    console.warn("savePostsToBackend: missing admin_token");
+    return false;
+  }
 
   const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
 
@@ -614,8 +752,9 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     if (p?.video?.url?.startsWith?.("data:")) offenders.push({ id, field: "video.url" });
     if (p?.videoPosterUrl?.startsWith?.("data:")) offenders.push({ id, field: "videoPosterUrl" });
   });
+
   if (offenders.length) {
-    const lines = offenders.map(o => `• Post ${o.id}: ${o.field}`).join("\n");
+    const lines = offenders.map((o) => `• Post ${o.id}: ${o.field}`).join("\n");
     alert(
       "One or more posts still contain local data URLs.\n\n" +
       "Please upload images/videos so they use https URLs, then try saving again.\n\n" +
@@ -648,13 +787,15 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
         project_id: getProjectId() || undefined,
       }),
     });
+
     if (!res.ok) {
-      const text = await res.text().catch(()=> "");
+      const text = await res.text().catch(() => "");
       console.warn("savePostsToBackend: HTTP error", res.status, text);
       alert(`Save failed: HTTP ${res.status}${text ? ` — ${text}` : ""}`);
       return false;
     }
-    await res.json().catch(()=>null);
+
+    await res.json().catch(() => null);
     invalidatePostsCache(feedId);
     return true;
   } catch (err) {
@@ -664,9 +805,267 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
   }
 }
 
+/* --------------------------- Surveys API (admin) --------------------------- */
+const __surveysCache = new Map(); // key: `${APP}::${projectId}::surveys`
+const SURVEYS_STALE_MS = 30_000;
+
+function __surveyListCacheKey(projectId = getProjectId()) {
+  return `${APP}::${projectId || ""}::surveys`;
+}
+function __surveyItemCacheKey(surveyId, projectId = getProjectId()) {
+  return `${APP}::${projectId || ""}::survey::${surveyId || ""}`;
+}
+function __getCachedSurveyList(projectId = getProjectId()) {
+  const rec = __surveysCache.get(__surveyListCacheKey(projectId));
+  if (!rec) return null;
+  if (Date.now() - rec.at > SURVEYS_STALE_MS) return null;
+  return rec.data;
+}
+function __setCachedSurveyList(projectId = getProjectId(), data) {
+  __surveysCache.set(__surveyListCacheKey(projectId), { at: Date.now(), data });
+}
+function __getCachedSurvey(surveyId, projectId = getProjectId()) {
+  const rec = __surveysCache.get(__surveyItemCacheKey(surveyId, projectId));
+  if (!rec) return null;
+  if (Date.now() - rec.at > SURVEYS_STALE_MS) return null;
+  return rec.data;
+}
+function __setCachedSurvey(surveyId, projectId = getProjectId(), data) {
+  __surveysCache.set(__surveyItemCacheKey(surveyId, projectId), { at: Date.now(), data });
+}
+export function invalidateSurveysCache({ surveyId = null, projectId = getProjectId() } = {}) {
+  const pid = String(projectId || "");
+  const sid = String(surveyId || "");
+
+  for (const k of __surveysCache.keys()) {
+    const matchesProject = k.startsWith(`${APP}::${pid}::`);
+    const matchesSurvey = !sid || k.endsWith(`::${sid}`);
+    if (matchesProject && matchesSurvey) __surveysCache.delete(k);
+  }
+}
+
+export async function listSurveysFromBackend({ projectId = getProjectId(), signal, force = false } = {}) {
+  if (!force) {
+    const cached = __getCachedSurveyList(projectId);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = buildQueryUrl(SURVEYS_GET_URL(), {
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    const arr = Array.isArray(data) ? data : [];
+    __setCachedSurveyList(projectId, arr);
+    return arr;
+  } catch (e) {
+    console.warn("listSurveysFromBackend failed:", e);
+    return [];
+  }
+}
+
+export async function loadSurveyFromBackend(surveyId, { projectId = getProjectId(), signal, force = false } = {}) {
+  if (!surveyId) return null;
+
+  if (!force) {
+    const cached = __getCachedSurvey(surveyId, projectId);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = buildQueryUrl(SURVEYS_GET_URL(), {
+      survey_id: surveyId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    const survey = data && !Array.isArray(data) ? data : null;
+    if (survey) __setCachedSurvey(surveyId, projectId, survey);
+    return survey;
+  } catch (e) {
+    console.warn("loadSurveyFromBackend failed:", e);
+    return null;
+  }
+}
+
+export async function getSurveyForFeedFromBackend(feedId, { projectId = getProjectId(), signal } = {}) {
+  if (!feedId) return null;
+
+  try {
+    const url = buildQueryUrl(SURVEYS_GET_URL(), {
+      feed_id: feedId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    if (!data) return null;
+    if (Array.isArray(data)) return data[0] || null;
+    return data;
+  } catch (e) {
+    console.warn("getSurveyForFeedFromBackend failed:", e);
+    return null;
+  }
+}
+
+export async function saveSurveyToBackend(survey, { projectId = getProjectId() } = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+
+  try {
+    const { res, data } = await postJson({
+      action: "save_survey",
+      app: APP,
+      admin_token,
+      project_id: projectId || undefined,
+      survey,
+    });
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
+    invalidateSurveysCache({
+      projectId,
+      surveyId: survey?.survey_id || data?.survey_id || null,
+    });
+
+    return {
+      ok: true,
+      survey_id: data?.survey_id || survey?.survey_id || null,
+    };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId() } = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+  if (!surveyId) return { ok: false, err: "survey_id required" };
+
+  try {
+    const { res, data } = await postJson({
+      action: "delete_survey",
+      app: APP,
+      admin_token,
+      project_id: projectId || undefined,
+      survey_id: surveyId,
+    });
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
+    invalidateSurveysCache({ projectId, surveyId });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+export async function linkSurveyToFeedsOnBackend({
+  surveyId,
+  feedIds = [],
+  projectId = getProjectId(),
+} = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+  if (!surveyId) return { ok: false, err: "survey_id required" };
+
+  try {
+    const { res, data } = await postJson({
+      action: "link_survey_feeds",
+      app: APP,
+      admin_token,
+      project_id: projectId || undefined,
+      survey_id: surveyId,
+      feed_ids: Array.isArray(feedIds) ? feedIds : [],
+    });
+
+    if (!res.ok || data.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
+    invalidateSurveysCache({ projectId, surveyId });
+    return { ok: true, linked_feed_ids: Array.isArray(data?.linked_feed_ids) ? data.linked_feed_ids : feedIds };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+export async function loadSurveyResponsesRoster(arg1, arg2) {
+  let surveyId = null;
+  let opts = {};
+
+  if (typeof arg1 === "string") {
+    surveyId = arg1 || null;
+    opts = arg2 || {};
+  } else if (arg1 && typeof arg1 === "object") {
+    surveyId = arg1.surveyId || null;
+    opts = arg1;
+  }
+
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("loadSurveyResponsesRoster: missing admin_token");
+    return [];
+  }
+
+  const projectId = opts.projectId || getProjectId();
+  const feedId = opts.feedId || null;
+  const app = typeof APP !== "undefined" ? APP : "";
+
+  try {
+    const url = buildQueryUrl(SURVEY_RESPONSES_GET_URL(), {
+      app,
+      project_id: projectId || undefined,
+      survey_id: surveyId || undefined,
+      feed_id: feedId || undefined,
+      admin_token,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal: opts.signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn("loadSurveyResponsesRoster failed:", e);
+    return [];
+  }
+}
+
 /* --------------------------- File upload: local signer (legacy) ------------ */
-export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "video/mp4", signerBase = "http://localhost:4000") {
+export async function uploadVideoToBackend(
+  fileOrDataUrl,
+  filename,
+  mime = "video/mp4",
+  signerBase = "http://localhost:4000"
+) {
   let blob;
+
   if (typeof fileOrDataUrl === "string" && fileOrDataUrl.startsWith("data:")) {
     const base64 = fileOrDataUrl.split(",")[1] || "";
     const binStr = atob(base64);
@@ -686,11 +1085,13 @@ export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "vide
     filename: filename || `video-${Date.now()}.mp4`,
     type: mime || "video/mp4",
   });
+
   const signRes = await fetch(`${signerBase}/sign-upload?${q.toString()}`);
   if (!signRes.ok) {
     const txt = await signRes.text().catch(() => "");
     throw new Error(`Signer failed: HTTP ${signRes.status} ${txt}`);
   }
+
   const { uploadUrl, fileUrl, error } = await signRes.json();
   if (!uploadUrl || !fileUrl || error) {
     throw new Error(error || "Signer did not return uploadUrl/fileUrl");
@@ -701,6 +1102,7 @@ export async function uploadVideoToBackend(fileOrDataUrl, filename, mime = "vide
     headers: { "Content-Type": mime },
     body: blob,
   });
+
   if (!putRes.ok) {
     const txt = await putRes.text().catch(() => "");
     throw new Error(`S3 PUT failed: HTTP ${putRes.status} ${txt}`);
@@ -746,6 +1148,7 @@ export async function getPresignedPutUrl({ key, contentType, timeoutMs = 30000 }
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
   try {
     const res = await fetch(url.toString(), {
       method: "GET",
@@ -754,10 +1157,12 @@ export async function getPresignedPutUrl({ key, contentType, timeoutMs = 30000 }
       cache: "no-store",
       signal: ctrl.signal,
     });
+
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       throw new Error(`HTTP ${res.status} ${res.statusText} ${txt}`.trim());
     }
+
     const j = await res.json();
     const uploadUrl = j.url || j.uploadUrl;
     const fileUrl = j.cdnUrl || j.fileUrl || null;
@@ -812,13 +1217,13 @@ export async function uploadFileToS3ViaSigner({
   if (typeof onProgress === "function") onProgress(0);
   await putToS3({ file, signedPutUrl: uploadUrl, onProgress, contentType });
 
-  // CF_BASE is defined in utils-core; we avoid importing it to keep backend small.
-  // If your presigner returns a CDN URL, use that; otherwise use the fileUrl it returns.
   const cdnUrl =
     fileUrl ||
     `${String(CF_BASE).replace(/\/+$/, "")}/${encodePathKeepSlashes(key)}`;
 
-  try { console.log("[S3] uploaded", { key, cdnUrl }); } catch {}
+  try {
+    console.log("[S3] uploaded", { key, cdnUrl });
+  } catch {}
 
   if (typeof onProgress === "function") onProgress(100);
   return { key, cdnUrl };
@@ -834,6 +1239,7 @@ export async function uploadJsonToS3ViaSigner({ data, feedId, prefix = "backups"
 export async function loadParticipantsRoster(arg1, arg2) {
   let feedId = null;
   let opts = {};
+
   if (typeof arg1 === "string") {
     feedId = arg1 || null;
     opts = arg2 || {};
@@ -852,16 +1258,14 @@ export async function loadParticipantsRoster(arg1, arg2) {
   const app = typeof APP !== "undefined" ? APP : "";
 
   try {
-    const params = new URLSearchParams();
-    params.set("path", "participants");
-    if (app)        params.set("app", app);
-    if (projectId)  params.set("project_id", projectId);
-    if (feedId)     params.set("feed_id", feedId);
-    params.set("admin_token", admin_token);
-    params.set("_ts", String(Date.now()));
-
-    const base = PARTICIPANTS_GET_URL();
-    const url = base.includes("?") ? `${base}&${params}` : `${base}?${params}`;
+    const url = buildQueryUrl(PARTICIPANTS_GET_URL(), {
+      path: "participants",
+      app,
+      project_id: projectId || undefined,
+      feed_id: feedId || undefined,
+      admin_token,
+      _ts: Date.now(),
+    });
 
     const data = await getJsonWithRetry(
       url,
@@ -881,21 +1285,17 @@ export async function wipeParticipantsOnBackend(feedId) {
   if (!admin_token || !feedId) return false;
 
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({
+    const { res, data } = await postJson(
+      {
         action: "wipe_participants",
         app: APP,
         feed_id: feedId,
         admin_token,
         project_id: getProjectId() || undefined,
-      }),
-      keepalive: true,
-    });
+      },
+      { keepalive: true }
+    );
 
-    const data = await res.json().catch(() => ({}));
     return !!(res.ok && data.ok !== false);
   } catch {
     return false;
@@ -905,6 +1305,7 @@ export async function wipeParticipantsOnBackend(feedId) {
 export async function getWipePolicyFromBackend() {
   const admin_token = getAdminToken();
   if (!admin_token) return null;
+
   try {
     const url = `${WIPE_POLICY_GET_URL()}&admin_token=${encodeURIComponent(admin_token)}&_ts=${Date.now()}`;
     const data = await getJsonWithRetry(
@@ -912,9 +1313,11 @@ export async function getWipePolicyFromBackend() {
       { method: "GET", mode: "cors", cache: "no-store" },
       { retries: 1, timeoutMs: 8000 }
     );
+
     if (data && data.ok !== false && typeof data.wipe_on_change !== "undefined") {
       return !!data.wipe_on_change;
     }
+
     return null;
   } catch (e) {
     console.warn("getWipePolicyFromBackend failed:", e);
@@ -927,22 +1330,19 @@ export async function setWipePolicyOnBackend(wipeOnChange) {
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify({
+    const { res, data } = await postJson(
+      {
         action: "set_wipe_policy",
         admin_token,
         wipe_on_change: !!wipeOnChange,
-      }),
-      keepalive: true,
-    });
+      },
+      { keepalive: true }
+    );
 
-    const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
       return { ok: false, err: data?.err || `HTTP ${res.status}` };
     }
+
     return { ok: true, wipe_on_change: !!data.wipe_on_change };
   } catch (e) {
     return { ok: false, err: String(e.message || e) };
@@ -950,8 +1350,6 @@ export async function setWipePolicyOnBackend(wipeOnChange) {
 }
 
 /* ============================ Project helpers (backend) ============================ */
-const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects&app=${APP}${qProject()}`;
-
 export async function listProjectsFromBackend({ signal } = {}) {
   try {
     const data = await getJsonWithRetry(
@@ -959,9 +1357,11 @@ export async function listProjectsFromBackend({ signal } = {}) {
       { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
+
     if (!Array.isArray(data) || data.length === 0) {
       return [{ project_id: "global", name: "Global" }];
     }
+
     return data;
   } catch (e) {
     console.warn("listProjectsFromBackend failed:", e);
@@ -986,19 +1386,15 @@ export async function createProjectOnBackend({ projectId, name, notes } = {}) {
   if (!admin_token) return false;
 
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "project_create",
-        admin_token,
-        project_id: projectId,
-        name,
-        notes,
-      }),
+    const { data } = await postJson({
+      action: "project_create",
+      admin_token,
+      project_id: projectId,
+      name,
+      notes,
     });
-    const json = await res.json().catch(() => ({}));
-    return !!json?.ok;
+
+    return !!data?.ok;
   } catch (e) {
     console.warn("createProjectOnBackend failed:", e);
     return false;
@@ -1010,17 +1406,13 @@ export async function deleteProjectOnBackend(projectId) {
   if (!admin_token) return false;
 
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "project_delete",
-        admin_token,
-        project_id: projectId,
-      }),
+    const { data } = await postJson({
+      action: "project_delete",
+      admin_token,
+      project_id: projectId,
     });
-    const json = await res.json().catch(() => ({}));
-    return !!json?.ok;
+
+    return !!data?.ok;
   } catch (e) {
     console.warn("deleteProjectOnBackend failed:", e);
     return false;
@@ -1035,7 +1427,9 @@ export function readPostNames(projectId = getProjectId(), feedId = getFeedIdFrom
   try {
     const raw = localStorage.getItem(POST_NAMES_KEY(projectId, feedId));
     return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 export function writePostNames(projectId = getProjectId(), feedId = getFeedIdFromUrl(), map = {}) {
@@ -1063,13 +1457,13 @@ export function postDisplayName(p, { projectId = getProjectId(), feedId = getFee
 
 export function headerLabelsForKeys(keys, posts, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
   const nameMap = {};
-  (posts || []).forEach(p => {
+  (posts || []).forEach((p) => {
     const id = p?.id;
     if (!id) return;
     nameMap[id] = postDisplayName(p, { projectId, feedId });
   });
 
-  return keys.map(k => {
+  return keys.map((k) => {
     const m = /^(.+?)_(.+)$/.exec(k);
     if (!m) return nameMap[k] || k;
     const [, id, suffix] = m;
@@ -1080,12 +1474,18 @@ export function headerLabelsForKeys(keys, posts, { projectId = getProjectId(), f
 
 export function seedNamesFromPosts(posts, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
   if (!Array.isArray(posts)) return;
+
   const map = readPostNames(projectId, feedId);
   let changed = false;
+
   for (const p of posts) {
     const id = p?.id;
     const nm = (p?.name || "").trim();
-    if (id && nm && !map[id]) { map[id] = nm; changed = true; }
+    if (id && nm && !map[id]) {
+      map[id] = nm;
+      changed = true;
+    }
   }
+
   if (changed) writePostNames(projectId, feedId, map);
 }

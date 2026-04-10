@@ -2023,3 +2023,46 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     min-height: 40px;
   }
 }
+
+/* =========================
+   Admin section layout
+   ========================= */
+
+.admin-section {
+  padding: 1rem;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: .5rem;
+}
+
+.admin-section-title-wrap {
+  min-width: 0;
+}
+
+.admin-section-title-wrap h3 {
+  margin: 0;
+}
+
+.admin-section-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.admin-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.admin-section-subtitle {
+  margin-top: 4px;
+}

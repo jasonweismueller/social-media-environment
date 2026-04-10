@@ -38,6 +38,7 @@ import {
 import { Modal, LoadingOverlay } from "../ui-core";
 import { ParticipantsPanel } from "./components-admin-parts";
 import { AdminUsersPanel } from "./components-admin-users";
+import { AdminSurveysPanel } from "./components-admin-surveys";
 import { randomAvatarByKind } from "../avatar-utils";
 
 // Dynamically choose correct editor (FB or IG)
@@ -202,15 +203,27 @@ function setCachedPosts(projectId, feedId, checksum, posts) {
 /* ------------------------------- UI Bits --------------------------------- */
 function Section({ title, subtitle, right = null, children }) {
   return (
-    <section className="card" style={{ padding: "1rem" }}>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:".75rem", flexWrap:"wrap", marginBottom:".5rem" }}>
-        <div>
-          <h3 style={{ margin: 0 }}>{title}</h3>
-          {subtitle && <div className="subtle" style={{ marginTop: 4 }}>{subtitle}</div>}
+    <section className="card admin-section">
+      <div className="admin-section-header">
+        <div className="admin-section-title-wrap">
+          <h3>{title}</h3>
+          {subtitle && (
+            <div className="subtle admin-section-subtitle">
+              {subtitle}
+            </div>
+          )}
         </div>
-        {!!right && <div style={{ display:"flex", gap:".5rem", flexWrap:"wrap" }}>{right}</div>}
+
+        {!!right && (
+          <div className="admin-section-actions">
+            {right}
+          </div>
+        )}
       </div>
-      {children}
+
+      <div className="admin-section-body">
+        {children}
+      </div>
     </section>
   );
 }
@@ -273,11 +286,12 @@ export function AdminDashboard({
   const projectsAbortRef = useRef(null);
 
   // collapse toggles
-  const [feedsCollapsed] = useState(true); // intentionally unused
-  const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
-  const [postsCollapsed, setPostsCollapsed] = useState(true);
-  const [usersCollapsed, setUsersCollapsed] = useState(true);
-  const [showAllParticipants, setShowAllParticipants] = useState(false);
+const [feedsCollapsed] = useState(true); // intentionally unused
+const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
+const [postsCollapsed, setPostsCollapsed] = useState(true);
+const [surveysCollapsed, setSurveysCollapsed] = useState(true);
+const [usersCollapsed, setUsersCollapsed] = useState(true);
+const [showAllParticipants, setShowAllParticipants] = useState(false);
 
   // global wipe policy
   const [wipeOnChange, setWipeOnChange] = useState(null);
@@ -1267,6 +1281,46 @@ const randomBioBusy = !!ff.savingBio;
               </table>
             </div>
           </Section>
+
+
+          {/* Surveys */}
+          <Section
+            title="Surveys"
+            subtitle="Create post-feed surveys and link one survey to one or more feeds in this project."
+            right={
+              <button
+                type="button"
+                className="btn ghost section-chev"
+                onClick={() => setSurveysCollapsed(v => !v)}
+                aria-expanded={!surveysCollapsed}
+                aria-controls="surveys-body"
+                title={surveysCollapsed ? "Expand" : "Collapse"}
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                </svg>
+              </button>
+            }
+          >
+            <div
+              id="surveys-body"
+              className={`section-collapse ${surveysCollapsed ? "is-collapsed" : ""}`}
+              aria-hidden={surveysCollapsed}
+            >
+              <div className="section-collapse-inner">
+                <AdminSurveysPanel
+                  projectId={projectId}
+                  feedId={feedId}
+                  feeds={feeds}
+                />
+              </div>
+            </div>
+          </Section>
+
+
+
+
+
 
           {/* Participants */}
           <Section
