@@ -106,13 +106,36 @@ export function normalizeQuestion(raw = {}) {
     description: String(raw.description || ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
+
+    // preserve backend/editor structured arrays
+    choices: Array.isArray(raw.choices)
+      ? raw.choices.map((c, i) => ({
+          value: String(c?.value ?? `opt_${i + 1}`),
+          label: String(c?.label ?? ""),
+        }))
+      : [],
+
+    rows: Array.isArray(raw.rows)
+      ? raw.rows.map((r, i) => ({
+          value: String(r?.value ?? `row_${i + 1}`),
+          label: String(r?.label ?? ""),
+        }))
+      : [],
+
+    columns: Array.isArray(raw.columns)
+      ? raw.columns.map((c, i) => ({
+          value: String(c?.value ?? `col_${i + 1}`),
+          label: String(c?.label ?? ""),
+        }))
+      : [],
+
+    // keep legacy string arrays too if needed elsewhere
     options: cleanStringArray(
       Array.isArray(raw.options) && raw.options.length
         ? raw.options
         : normalizeChoiceArray(raw.choices)
     ),
-    rows: normalizeMatrixArray(raw.rows),
-    columns: normalizeMatrixArray(raw.columns),
+
     min: Number.isFinite(raw.min) ? raw.min : 1,
     max: Number.isFinite(raw.max) ? raw.max : 7,
     min_label: String(raw.min_label ?? raw.left_label ?? ""),
@@ -120,6 +143,8 @@ export function normalizeQuestion(raw = {}) {
     left_label: String(raw.left_label ?? raw.min_label ?? ""),
     right_label: String(raw.right_label ?? raw.max_label ?? ""),
     visible_if: raw.visible_if || null,
+    placeholder: String(raw.placeholder || ""),
+    meta: raw.meta || {},
   };
 }
 export function frontendQuestionToBackend(question = {}) {
@@ -128,10 +153,10 @@ export function frontendQuestionToBackend(question = {}) {
   const base = {
     id: q.id,
     type: q.type,
-    text: q.label,
+    text: q.text,
     description: q.description,
     required: !!q.required,
-    meta: {},
+    meta: q.meta || {},
   };
 
   switch (q.type) {
@@ -140,10 +165,15 @@ export function frontendQuestionToBackend(question = {}) {
     case SURVEY_QUESTION_TYPES.DROPDOWN:
       return {
         ...base,
-        choices: q.options.map((opt, i) => ({
-          value: `opt_${i + 1}`,
-          label: opt,
-        })),
+        choices: Array.isArray(q.choices) && q.choices.length
+          ? q.choices.map((choice, i) => ({
+              value: String(choice?.value ?? `opt_${i + 1}`),
+              label: String(choice?.label ?? ""),
+            }))
+          : q.options.map((opt, i) => ({
+              value: `opt_${i + 1}`,
+              label: opt,
+            })),
         randomize_options: !!q.randomize_options,
       };
 
@@ -151,14 +181,18 @@ export function frontendQuestionToBackend(question = {}) {
     case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
       return {
         ...base,
-        rows: q.rows.map((row, i) => ({
-          value: `row_${i + 1}`,
-          label: row,
-        })),
-        columns: q.columns.map((col, i) => ({
-          value: `col_${i + 1}`,
-          label: col,
-        })),
+        rows: Array.isArray(q.rows)
+          ? q.rows.map((row, i) => ({
+              value: String(row?.value ?? `row_${i + 1}`),
+              label: String(row?.label ?? ""),
+            }))
+          : [],
+        columns: Array.isArray(q.columns)
+          ? q.columns.map((col, i) => ({
+              value: String(col?.value ?? `col_${i + 1}`),
+              label: String(col?.label ?? ""),
+            }))
+          : [],
       };
 
     case SURVEY_QUESTION_TYPES.BIPOLAR:
@@ -167,8 +201,8 @@ export function frontendQuestionToBackend(question = {}) {
         ...base,
         min: q.min,
         max: q.max,
-        left_label: q.min_label,
-        right_label: q.max_label,
+        left_label: q.left_label ?? q.min_label ?? "",
+        right_label: q.right_label ?? q.max_label ?? "",
       };
 
     case SURVEY_QUESTION_TYPES.TEXT:

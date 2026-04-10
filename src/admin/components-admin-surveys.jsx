@@ -707,11 +707,11 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
     setSavingSurvey(true);
     try {
-      const normalized = normalizeSurvey({
-        ...survey,
-        linked_project_id: projectId,
-        linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
-      });
+      const normalized = {
+  ...survey,
+  linked_project_id: projectId,
+  linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
+};
 
       const cleanedQuestions = getQuestionList(normalized).map((q, i) => {
         const cleanQ = normalizeQuestionForEditor(q, i);
