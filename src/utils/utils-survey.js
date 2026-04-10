@@ -29,6 +29,36 @@ function cleanStringArray(arr = []) {
     .filter(Boolean);
 }
 
+function normalizeChoiceArray(rawChoices = []) {
+  if (!Array.isArray(rawChoices)) return [];
+  return rawChoices
+    .map((c) => {
+      if (typeof c === "string") return c.trim();
+      if (c && typeof c === "object") {
+        return String(c.label ?? c.value ?? "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function normalizeMatrixArray(rawItems = []) {
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems
+    .map((x) => {
+      if (typeof x === "string") return x.trim();
+      if (x && typeof x === "object") {
+        return String(x.label ?? x.value ?? "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+/* =========================
+   Question mapping
+   ========================= */
+
 export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) {
   const safeType = isValidSurveyQuestionType(type)
     ? type
@@ -60,20 +90,92 @@ export function normalizeQuestion(raw = {}) {
   return {
     id: raw.id || `q_${uid()}`,
     type,
-    label: String(raw.label || "Untitled question"),
+    label: String(raw.label ?? raw.text ?? "Untitled question"),
     description: String(raw.description || ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
-    options: cleanStringArray(raw.options),
-    rows: cleanStringArray(raw.rows),
-    columns: cleanStringArray(raw.columns),
+
+    // frontend shape: options
+    // backend shape: choices [{value,label}]
+    options: cleanStringArray(raw.options?.length ? raw.options : normalizeChoiceArray(raw.choices)),
+
+    // frontend shape: rows/columns as strings
+    // backend shape: rows/columns as [{value,label}]
+    rows: cleanStringArray(raw.rows?.length ? normalizeMatrixArray(raw.rows) : []),
+    columns: cleanStringArray(raw.columns?.length ? normalizeMatrixArray(raw.columns) : []),
+
     min: Number.isFinite(raw.min) ? raw.min : 1,
     max: Number.isFinite(raw.max) ? raw.max : 7,
-    min_label: String(raw.min_label || ""),
-    max_label: String(raw.max_label || ""),
+
+    // frontend shape: min_label / max_label
+    // backend shape: left_label / right_label
+    min_label: String(raw.min_label ?? raw.left_label ?? ""),
+    max_label: String(raw.max_label ?? raw.right_label ?? ""),
+
     visible_if: raw.visible_if || null,
   };
 }
+
+export function frontendQuestionToBackend(question = {}) {
+  const q = normalizeQuestion(question);
+
+  const base = {
+    id: q.id,
+    type: q.type,
+    text: q.label,
+    description: q.description,
+    required: !!q.required,
+    meta: {},
+  };
+
+  switch (q.type) {
+    case SURVEY_QUESTION_TYPES.SINGLE:
+    case SURVEY_QUESTION_TYPES.MULTI:
+    case SURVEY_QUESTION_TYPES.DROPDOWN:
+      return {
+        ...base,
+        choices: q.options.map((opt, i) => ({
+          value: `opt_${i + 1}`,
+          label: opt,
+        })),
+        randomize_options: !!q.randomize_options,
+      };
+
+    case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
+    case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
+      return {
+        ...base,
+        rows: q.rows.map((row, i) => ({
+          value: `row_${i + 1}`,
+          label: row,
+        })),
+        columns: q.columns.map((col, i) => ({
+          value: `col_${i + 1}`,
+          label: col,
+        })),
+      };
+
+    case SURVEY_QUESTION_TYPES.BIPOLAR:
+    case SURVEY_QUESTION_TYPES.SLIDER:
+      return {
+        ...base,
+        min: q.min,
+        max: q.max,
+        left_label: q.min_label,
+        right_label: q.max_label,
+      };
+
+    case SURVEY_QUESTION_TYPES.TEXT:
+    case SURVEY_QUESTION_TYPES.TEXTAREA:
+    case SURVEY_QUESTION_TYPES.INFO:
+    default:
+      return base;
+  }
+}
+
+/* =========================
+   Page mapping
+   ========================= */
 
 export function makePage(overrides = {}) {
   return {
@@ -116,6 +218,23 @@ function coerceQuestionsIntoPages(raw = {}) {
   ];
 }
 
+export function frontendPagesToBackend(pages = []) {
+  const safePages = Array.isArray(pages) ? pages : [];
+  return safePages.map((page, pIdx) => {
+    const pg = normalizePage(page);
+    return {
+      id: pg.id || `page_${pIdx + 1}`,
+      title: pg.title || "",
+      description: pg.description || "",
+      questions: (pg.questions || []).map(frontendQuestionToBackend),
+    };
+  });
+}
+
+/* =========================
+   Survey mapping
+   ========================= */
+
 export function makeEmptySurvey(overrides = {}) {
   const pages = coerceQuestionsIntoPages(overrides);
 
@@ -155,6 +274,19 @@ export function normalizeSurvey(raw = {}) {
       : [],
     linked_project_id: raw.linked_project_id || "",
     trigger: raw.trigger || "after_feed",
+  };
+}
+
+export function frontendSurveyToBackend(survey = {}) {
+  const s = normalizeSurvey(survey);
+
+  return {
+    survey_id: s.survey_id,
+    name: s.name,
+    description: s.description,
+    version: s.version,
+    status: s.status,
+    pages: frontendPagesToBackend(s.pages),
   };
 }
 

@@ -448,8 +448,28 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
           : listFeedsFromBackend({ projectId }),
       ]);
 
-      setSurveys(Array.isArray(surveyList) ? surveyList : []);
-      setFeeds(Array.isArray(feedList) ? feedList : []);
+      const safeSurveyList = Array.isArray(surveyList) ? surveyList : [];
+      const safeFeedList = Array.isArray(feedList) ? feedList : [];
+
+      // Enrich survey list with actual question counts from full definitions
+      const enrichedSurveyList = await Promise.all(
+        safeSurveyList.map(async (s) => {
+          if (!s?.survey_id) return s;
+          try {
+            const full = await loadSurveyFromBackend(s.survey_id, { projectId });
+            const normalizedFull = normalizeSurvey(full);
+            return {
+              ...s,
+              pages: normalizedFull.pages,
+            };
+          } catch {
+            return s;
+          }
+        })
+      );
+
+      setSurveys(enrichedSurveyList);
+      setFeeds(safeFeedList);
     } catch (e) {
       console.warn("Failed to load surveys:", e);
     } finally {
@@ -508,24 +528,23 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       if (res?.ok) {
         const savedSurveyId = res.survey_id || normalized.survey_id;
 
-        await loadAll();
-
-        setSelectedSurveyId(savedSurveyId);
-
         const fresh = await loadSurveyFromBackend(savedSurveyId, {
           projectId,
           force: true,
         });
 
-        setSurvey(
-          normalizeSurvey({
-            ...fresh,
-            linked_feed_ids: normalizeLinkedFeedIds(
-              fresh?.linked_feed_ids || normalized.linked_feed_ids
-            ),
-            linked_project_id: fresh?.linked_project_id || projectId,
-          })
-        );
+        const normalizedFresh = normalizeSurvey({
+          ...fresh,
+          linked_feed_ids: normalizeLinkedFeedIds(
+            fresh?.linked_feed_ids || normalized.linked_feed_ids
+          ),
+          linked_project_id: fresh?.linked_project_id || projectId,
+        });
+
+        setSelectedSurveyId(savedSurveyId);
+        setSurvey(normalizedFresh);
+
+        await loadAll();
 
         alert("Survey saved");
       } else {
@@ -606,6 +625,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         surveyId: survey.survey_id,
         feedIds: normalizeLinkedFeedIds(survey.linked_feed_ids),
         projectId,
+        allFeeds: feeds,
       });
 
       if (res?.ok) {
