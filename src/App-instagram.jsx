@@ -236,9 +236,9 @@ function PageWithRails({ children }) {
 }
 
 /* =============================== SURVEY UI ================================ */
-
 function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   const qType = question?.type;
+  const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
 
   const choiceItems = Array.isArray(question?.choices)
     ? question.choices
@@ -253,18 +253,22 @@ function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   const columns = Array.isArray(question?.columns) ? question.columns : [];
 
   return (
-    <div className={`survey-question ${error ? "has-error" : ""}`}>
-      <div className="survey-question-title">
-        <span>{index + 1}. {question.text}</span>
-        {question.required ? <span className="survey-required">*</span> : null}
-      </div>
+    <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
+      {!isInfo && (
+        <div className="survey-question-title">
+          <span>{index + 1}. {question.text}</span>
+          {question.required ? <span className="survey-required">*</span> : null}
+        </div>
+      )}
 
-      {question.description ? (
+      {!isInfo && question.description ? (
         <div className="survey-question-description">{question.description}</div>
       ) : null}
 
-      {qType === SURVEY_QUESTION_TYPES.INFO && (
-        <div className="survey-info-block">{question.text}</div>
+      {isInfo && (
+        <div className="survey-info-block">
+          {question.text}
+        </div>
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -420,9 +424,10 @@ function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
             <tbody>
               {rows.map((row) => {
                 const rowKey = row?.value || row?.label || "";
-                const rowValues = value && typeof value === "object" && Array.isArray(value[rowKey])
-                  ? value[rowKey]
-                  : [];
+                const rowValues =
+                  value && typeof value === "object" && Array.isArray(value[rowKey])
+                    ? value[rowKey]
+                    : [];
 
                 return (
                   <tr key={rowKey}>
@@ -481,14 +486,7 @@ function SurveyScreen({
   return (
     <div className="survey-shell">
       <div className="survey-card">
-        <div className="survey-head">
-          <h2 className="survey-title">{survey?.name || "Survey"}</h2>
-          {!!survey?.description && (
-            <p className="survey-description">{survey.description}</p>
-          )}
-        </div>
-
-        <div className="survey-body">
+        <div className="survey-body survey-body-standalone">
           {visibleQuestions.map((question, idx) => {
             const q = getRenderedQuestion(question, {
               participantSeed: participantSeed || "",
@@ -1285,6 +1283,7 @@ export default function App() {
                 runSeed={runSeed}
                 app={APP}
                 projectId={projectId}
+                submitButtonLabel={linkedSurvey ? "Submit Feed & Continue to Questions" : "Submit Feed"}
                 feedId={activeFeedId}
                 avatarPools={avatarPools}
                 onSubmit={async () => {
