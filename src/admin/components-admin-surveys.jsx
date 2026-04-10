@@ -31,23 +31,6 @@ const QUESTION_TYPE_LABELS = {
   [SURVEY_QUESTION_TYPES.INFO]: "Info text",
 };
 
-function cleanStringArray(arr = []) {
-  return (Array.isArray(arr) ? arr : [])
-    .map((x) => String(x ?? "").trim())
-    .filter(Boolean);
-}
-
-function splitLines(value = "") {
-  return String(value || "")
-    .split("\n")
-    .map((x) => x.trim())
-    .filter(Boolean);
-}
-
-function joinLines(arr = []) {
-  return cleanStringArray(arr).join("\n");
-}
-
 function clampInt(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -58,8 +41,59 @@ function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
 }
 
+function makeItem(value = "", label = "") {
+  return {
+    value: String(value || "").trim(),
+    label: String(label || "").trim(),
+  };
+}
+
+function makeSequentialValue(prefix, index) {
+  return `${prefix}_${index + 1}`;
+}
+
+function ensureChoiceArray(items = []) {
+  return (Array.isArray(items) ? items : []).map((item, i) => ({
+    value: String(item?.value ?? makeSequentialValue("opt", i)).trim(),
+    label: String(item?.label ?? "").trim(),
+  }));
+}
+
+function ensureMatrixArray(items = [], prefix = "item") {
+  return (Array.isArray(items) ? items : []).map((item, i) => ({
+    value: String(item?.value ?? makeSequentialValue(prefix, i)).trim(),
+    label: String(item?.label ?? "").trim(),
+  }));
+}
+
+function normalizeQuestionForEditor(q = {}, index = 0) {
+  const type = q?.type || SURVEY_QUESTION_TYPES.TEXT;
+
+  return {
+    id: q?.id || `q_${index + 1}`,
+    type,
+    text: String(q?.text ?? ""),
+    description: String(q?.description ?? ""),
+    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
+    randomize_options: !!q?.randomize_options,
+    choices: ensureChoiceArray(q?.choices),
+    rows: ensureMatrixArray(q?.rows, "row"),
+    columns: ensureMatrixArray(q?.columns, "col"),
+    min: Number.isFinite(q?.min) ? q.min : 1,
+    max: Number.isFinite(q?.max) ? q.max : 7,
+    left_label: String(q?.left_label ?? ""),
+    right_label: String(q?.right_label ?? ""),
+    placeholder: String(q?.placeholder ?? ""),
+    visible_if: q?.visible_if || null,
+    meta: q?.meta || {},
+  };
+}
+
 function getQuestionList(survey) {
-  return Array.isArray(survey?.pages?.[0]?.questions) ? survey.pages[0].questions : [];
+  const questions = Array.isArray(survey?.pages?.[0]?.questions)
+    ? survey.pages[0].questions
+    : [];
+  return questions.map((q, i) => normalizeQuestionForEditor(q, i));
 }
 
 function setQuestionList(survey, questions) {
@@ -76,51 +110,73 @@ function setQuestionList(survey, questions) {
     pages: [
       {
         ...firstPage,
-        questions: Array.isArray(questions) ? questions : [],
+        questions: (Array.isArray(questions) ? questions : []).map((q, i) =>
+          normalizeQuestionForEditor(q, i)
+        ),
       },
       ...(safeSurvey.pages || []).slice(1),
     ],
   };
 }
 
-function getQuestionText(q) {
-  return String(q?.text ?? q?.label ?? "");
-}
+function makeBackendQuestionFromType(type) {
+  const base = makeQuestionByType(type);
 
-function getChoiceLabels(q) {
-  if (Array.isArray(q?.choices)) {
-    return q.choices
-      .map((choice) => String(choice?.label ?? choice?.value ?? "").trim())
-      .filter(Boolean);
+  const question = {
+    id: base?.id || `q_${Date.now()}`,
+    type,
+    text: String(base?.text ?? base?.label ?? ""),
+    description: String(base?.description ?? ""),
+    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!base?.required,
+    randomize_options: !!base?.randomize_options,
+    choices: [],
+    rows: [],
+    columns: [],
+    min: Number.isFinite(base?.min) ? base.min : 1,
+    max: Number.isFinite(base?.max) ? base.max : 7,
+    left_label: String(base?.left_label ?? base?.min_label ?? ""),
+    right_label: String(base?.right_label ?? base?.max_label ?? ""),
+    placeholder: String(base?.placeholder ?? ""),
+    visible_if: base?.visible_if || null,
+    meta: base?.meta || {},
+  };
+
+  if (
+    type === SURVEY_QUESTION_TYPES.SINGLE ||
+    type === SURVEY_QUESTION_TYPES.MULTI ||
+    type === SURVEY_QUESTION_TYPES.DROPDOWN
+  ) {
+    const source =
+      Array.isArray(base?.choices) && base.choices.length
+        ? base.choices
+        : Array.isArray(base?.options)
+          ? base.options.map((label, i) => ({
+              value: makeSequentialValue("opt", i),
+              label: String(label || ""),
+            }))
+          : [];
+
+    question.choices = ensureChoiceArray(source);
   }
-  if (Array.isArray(q?.options)) {
-    return q.options.map((x) => String(x ?? "").trim()).filter(Boolean);
+
+  if (
+    type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+    type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+  ) {
+    const srcRows =
+      Array.isArray(base?.rows) && base.rows.length
+        ? base.rows
+        : [];
+    const srcCols =
+      Array.isArray(base?.columns) && base.columns.length
+        ? base.columns
+        : [];
+
+    question.rows = ensureMatrixArray(srcRows, "row");
+    question.columns = ensureMatrixArray(srcCols, "col");
   }
-  return [];
-}
 
-function getMatrixLabels(items = []) {
-  return (Array.isArray(items) ? items : [])
-    .map((item) => {
-      if (typeof item === "string") return item.trim();
-      if (item && typeof item === "object") return String(item.label ?? item.value ?? "").trim();
-      return "";
-    })
-    .filter(Boolean);
-}
-
-function makeChoicesFromLabels(labels = []) {
-  return cleanStringArray(labels).map((label, i) => ({
-    value: `opt_${i + 1}`,
-    label,
-  }));
-}
-
-function makeMatrixItemsFromLabels(labels = [], prefix = "item") {
-  return cleanStringArray(labels).map((label, i) => ({
-    value: `${prefix}_${i + 1}`,
-    label,
-  }));
+  return normalizeQuestionForEditor(question);
 }
 
 /* =========================
@@ -224,25 +280,107 @@ function FieldBlock({ label, children }) {
   );
 }
 
-function ArrayEditor({
-  label,
-  value,
+function ItemTableEditor({
+  title,
+  items,
   onChange,
-  placeholder = "One item per line",
-  rows = 4,
+  prefix = "opt",
+  addLabel = "Add row",
 }) {
+  const safeItems = Array.isArray(items) ? items : [];
+
+  function updateItem(index, patch) {
+    const next = safeItems.map((item, i) =>
+      i === index ? { ...item, ...patch } : item
+    );
+    onChange(next);
+  }
+
+  function addItem() {
+    onChange([
+      ...safeItems,
+      {
+        value: makeSequentialValue(prefix, safeItems.length),
+        label: "",
+      },
+    ]);
+  }
+
+  function removeItem(index) {
+    onChange(safeItems.filter((_, i) => i !== index));
+  }
+
   return (
-    <FieldBlock label={label}>
-      <TextAreaInput
-        value={joinLines(value)}
-        onChange={(text) => onChange(splitLines(text))}
-        placeholder={placeholder}
-        rows={rows}
-      />
-      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-        One item per line
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: 10,
+        padding: 10,
+        background: "#fafafa",
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{title}</div>
+
+      {safeItems.length === 0 && (
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+          No items yet.
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {safeItems.map((item, i) => (
+          <div
+            key={`${prefix}_${i}`}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px 1fr auto",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            <TextInput
+              value={item?.value ?? ""}
+              onChange={(v) => updateItem(i, { value: v })}
+              placeholder="Value"
+            />
+            <TextInput
+              value={item?.label ?? ""}
+              onChange={(v) => updateItem(i, { label: v })}
+              placeholder="Label"
+            />
+            <button
+              type="button"
+              onClick={() => removeItem(i)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #dc2626",
+                background: "#fff",
+                color: "#dc2626",
+                cursor: "pointer",
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        ))}
       </div>
-    </FieldBlock>
+
+      <button
+        type="button"
+        onClick={addItem}
+        style={{
+          marginTop: 10,
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: "1px solid #d1d5db",
+          background: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        + {addLabel}
+      </button>
+    </div>
   );
 }
 
@@ -287,11 +425,11 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
       >
         <div>
           <FieldBlock label={`Question ${index + 1}`}>
-           <TextInput
-  value={q.text ?? q.label ?? ""}
-  onChange={(v) => updateQuestion(index, { text: v, label: v })}
-  placeholder="Question text"
-/>
+            <TextInput
+              value={q.text || ""}
+              onChange={(v) => updateQuestion(index, { text: v })}
+              placeholder="Question text"
+            />
           </FieldBlock>
         </div>
 
@@ -299,21 +437,18 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
           <FieldBlock label="Type">
             <SelectInput
               value={q.type}
-             onChange={(nextType) => {
-  const next = makeQuestionByType(nextType);
-  const currentText = q.text ?? q.label ?? "";
-  const nextText = next.text ?? next.label ?? "";
-
-  updateQuestion(index, {
-    ...next,
-    id: q.id,
-    text: currentText || nextText,
-    label: currentText || nextText,
-    description: q.description || "",
-    required: nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
-    visible_if: q.visible_if || null,
-  });
-}}
+              onChange={(nextType) => {
+                const next = makeBackendQuestionFromType(nextType);
+                updateQuestion(index, {
+                  ...next,
+                  id: q.id,
+                  text: q.text || next.text,
+                  description: q.description || "",
+                  required: nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
+                  visible_if: q.visible_if || null,
+                  meta: q.meta || {},
+                });
+              }}
             >
               {Object.values(SURVEY_QUESTION_TYPES).map((t) => (
                 <option key={t} value={t}>
@@ -363,19 +498,15 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
 
       {isChoice && (
         <>
-          <ArrayEditor
-            label="Options"
-            value={getChoiceLabels(q)}
-            onChange={(arr) =>
-              updateQuestion(index, {
-                choices: makeChoicesFromLabels(arr),
-                options: arr,
-              })
-            }
-            rows={5}
+          <ItemTableEditor
+            title="Options"
+            items={q.choices}
+            onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
+            prefix="opt"
+            addLabel="Add option"
           />
 
-          <div style={{ marginBottom: 12 }}>
+          <div style={{ marginTop: 12, marginBottom: 12 }}>
             <CheckboxInput
               checked={q.randomize_options}
               onChange={(v) => updateQuestion(index, { randomize_options: v })}
@@ -393,25 +524,19 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
             gap: 12,
           }}
         >
-          <ArrayEditor
-            label="Rows / items"
-            value={getMatrixLabels(q.rows)}
-            onChange={(arr) =>
-              updateQuestion(index, {
-                rows: makeMatrixItemsFromLabels(arr, "row"),
-              })
-            }
-            rows={5}
+          <ItemTableEditor
+            title="Rows / items"
+            items={q.rows}
+            onChange={(items) => updateQuestion(index, { rows: ensureMatrixArray(items, "row") })}
+            prefix="row"
+            addLabel="Add row"
           />
-          <ArrayEditor
-            label="Columns / scale points"
-            value={getMatrixLabels(q.columns)}
-            onChange={(arr) =>
-              updateQuestion(index, {
-                columns: makeMatrixItemsFromLabels(arr, "col"),
-              })
-            }
-            rows={5}
+          <ItemTableEditor
+            title="Columns / scale points"
+            items={q.columns}
+            onChange={(items) => updateQuestion(index, { columns: ensureMatrixArray(items, "col") })}
+            prefix="col"
+            addLabel="Add column"
           />
         </div>
       )}
@@ -451,19 +576,19 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
             />
           </FieldBlock>
 
-          <FieldBlock label="Min label">
+          <FieldBlock label="Left label">
             <TextInput
-              value={q.left_label ?? q.min_label ?? ""}
-              onChange={(v) => updateQuestion(index, { left_label: v, min_label: v })}
-              placeholder="e.g. Negative"
+              value={q.left_label ?? ""}
+              onChange={(v) => updateQuestion(index, { left_label: v })}
+              placeholder="e.g. Strongly disagree"
             />
           </FieldBlock>
 
-          <FieldBlock label="Max label">
+          <FieldBlock label="Right label">
             <TextInput
-              value={q.right_label ?? q.max_label ?? ""}
-              onChange={(v) => updateQuestion(index, { right_label: v, max_label: v })}
-              placeholder="e.g. Positive"
+              value={q.right_label ?? ""}
+              onChange={(v) => updateQuestion(index, { right_label: v })}
+              placeholder="e.g. Strongly agree"
             />
           </FieldBlock>
         </div>
@@ -505,7 +630,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       const incomingFeeds = Array.isArray(propFeeds) ? propFeeds : [];
 
       const [surveyList, feedList] = await Promise.all([
-        listSurveysFromBackend({ projectId }),
+        listSurveysFromBackend({ projectId, force: true }),
         incomingFeeds.length
           ? Promise.resolve(incomingFeeds)
           : listFeedsFromBackend({ projectId }),
@@ -518,7 +643,10 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         safeSurveyList.map(async (s) => {
           if (!s?.survey_id) return s;
           try {
-            const full = await loadSurveyFromBackend(s.survey_id, { projectId });
+            const full = await loadSurveyFromBackend(s.survey_id, {
+              projectId,
+              force: true,
+            });
             const normalizedFull = normalizeSurvey(full || {});
             return {
               ...s,
@@ -551,7 +679,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     }
 
     try {
-      const s = await loadSurveyFromBackend(id, { projectId });
+      const s = await loadSurveyFromBackend(id, { projectId, force: true });
       const normalized = normalizeSurvey(s || {});
 
       setSurvey({
@@ -585,10 +713,56 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
       });
 
-      const res = await saveSurveyToBackend(normalized, { projectId });
+      const cleanedQuestions = getQuestionList(normalized).map((q, i) => {
+        const cleanQ = normalizeQuestionForEditor(q, i);
+
+        return {
+          id: cleanQ.id,
+          type: cleanQ.type,
+          text: cleanQ.text,
+          description: cleanQ.description,
+          required: cleanQ.type === SURVEY_QUESTION_TYPES.INFO ? false : !!cleanQ.required,
+          choices:
+            cleanQ.type === SURVEY_QUESTION_TYPES.SINGLE ||
+            cleanQ.type === SURVEY_QUESTION_TYPES.MULTI ||
+            cleanQ.type === SURVEY_QUESTION_TYPES.DROPDOWN
+              ? ensureChoiceArray(cleanQ.choices)
+              : [],
+          rows:
+            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+              ? ensureMatrixArray(cleanQ.rows, "row")
+              : [],
+          columns:
+            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+              ? ensureMatrixArray(cleanQ.columns, "col")
+              : [],
+          left_label: cleanQ.left_label || "",
+          right_label: cleanQ.right_label || "",
+          min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
+          max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
+          placeholder: cleanQ.placeholder || "",
+          meta: cleanQ.meta || {},
+          randomize_options: !!cleanQ.randomize_options,
+        };
+      });
+
+      const payload = {
+        ...normalized,
+        pages: [
+          {
+            ...(normalized.pages?.[0] || { id: "page_1", title: "", description: "" }),
+            questions: cleanedQuestions,
+          },
+          ...(normalized.pages || []).slice(1),
+        ],
+      };
+
+      const res = await saveSurveyToBackend(payload, { projectId });
 
       if (res?.ok) {
-        const savedSurveyId = res.survey_id || normalized.survey_id;
+        const savedSurveyId = res.survey_id || payload.survey_id;
 
         const fresh = await loadSurveyFromBackend(savedSurveyId, {
           projectId,
@@ -642,14 +816,17 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   function addQuestion(type) {
     setSurvey((prev) => {
       const currentQuestions = getQuestionList(prev);
-      return setQuestionList(prev, [...currentQuestions, makeQuestionByType(type)]);
+      return setQuestionList(prev, [...currentQuestions, makeBackendQuestionFromType(type)]);
     });
   }
 
   function updateQuestion(index, patch) {
     setSurvey((prev) => {
       const currentQuestions = [...getQuestionList(prev)];
-      currentQuestions[index] = { ...currentQuestions[index], ...patch };
+      currentQuestions[index] = normalizeQuestionForEditor(
+        { ...currentQuestions[index], ...patch },
+        index
+      );
       return setQuestionList(prev, currentQuestions);
     });
   }
