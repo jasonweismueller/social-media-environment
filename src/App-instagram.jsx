@@ -1357,7 +1357,7 @@ export default function App() {
             ) : null}
           </div>
 
-          {showSkeletonLayer && !feedSubmitted && (
+          {showSkeletonLayer && !feedSubmitted && !shouldShowSurvey && (
             <div
               aria-hidden={gateOpen}
               style={{
