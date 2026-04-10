@@ -60,6 +60,23 @@ function ensureMatrixArray(items = [], prefix = "item") {
   }));
 }
 
+function reorderArray(list = [], fromIndex, toIndex) {
+  const arr = [...list];
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= arr.length ||
+    toIndex >= arr.length
+  ) {
+    return arr;
+  }
+
+  const [moved] = arr.splice(fromIndex, 1);
+  arr.splice(toIndex, 0, moved);
+  return arr;
+}
+
 function normalizeQuestionForEditor(q = {}, index = 0) {
   const type = q?.type || SURVEY_QUESTION_TYPES.TEXT;
 
@@ -376,7 +393,20 @@ function ItemTableEditor({
    Question editor
    ========================= */
 
-function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
+function QuestionCard({
+  q,
+  index,
+  totalQuestions,
+  updateQuestion,
+  removeQuestion,
+  moveQuestion,
+  draggingId,
+  dragOverId,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}) {
   const type = q?.type;
 
   const isChoice =
@@ -392,25 +422,54 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
     type === SURVEY_QUESTION_TYPES.BIPOLAR ||
     type === SURVEY_QUESTION_TYPES.SLIDER;
 
+  const isDragging = draggingId === q.id;
+  const isDragOver = dragOverId === q.id;
+
   return (
     <div
+      draggable
+      onDragStart={(e) => onDragStart(e, q.id)}
+      onDragOver={(e) => onDragOver(e, q.id)}
+      onDrop={(e) => onDrop(e, q.id)}
+      onDragEnd={onDragEnd}
       style={{
-        border: "1px solid #d1d5db",
+        border: isDragOver ? "2px solid #6366f1" : "1px solid #d1d5db",
         borderRadius: 12,
         padding: 14,
         marginBottom: 12,
-        background: "#fff",
+        background: isDragging ? "#f8fafc" : "#fff",
+        opacity: isDragging ? 0.65 : 1,
+        boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
       }}
     >
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 220px auto",
+          gridTemplateColumns: "44px 1fr 220px auto",
           gap: 10,
           alignItems: "start",
           marginBottom: 10,
         }}
       >
+        <div
+          title="Drag to reorder"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: 40,
+            border: "1px solid #d1d5db",
+            borderRadius: 8,
+            background: "#f9fafb",
+            cursor: "grab",
+            fontSize: 18,
+            color: "#6b7280",
+            userSelect: "none",
+          }}
+        >
+          ⋮⋮
+        </div>
+
         <div>
           <FieldBlock label={`Question ${index + 1}`}>
             <TextInput
@@ -447,7 +506,39 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
           </FieldBlock>
         </div>
 
-        <div style={{ paddingTop: 23 }}>
+        <div style={{ paddingTop: 23, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => moveQuestion(index, index - 1)}
+            disabled={index === 0}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: index === 0 ? "#9ca3af" : "#111827",
+              cursor: index === 0 ? "not-allowed" : "pointer",
+            }}
+          >
+            ↑
+          </button>
+
+          <button
+            type="button"
+            onClick={() => moveQuestion(index, index + 1)}
+            disabled={index === totalQuestions - 1}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: index === totalQuestions - 1 ? "#9ca3af" : "#111827",
+              cursor: index === totalQuestions - 1 ? "not-allowed" : "pointer",
+            }}
+          >
+            ↓
+          </button>
+
           <button
             type="button"
             onClick={() => removeQuestion(index)}
@@ -605,6 +696,9 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   const [loading, setLoading] = useState(false);
   const [savingSurvey, setSavingSurvey] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
+
+  const [draggingQuestionId, setDraggingQuestionId] = useState(null);
+  const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -866,6 +960,59 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     });
   }
 
+  function moveQuestion(fromIndex, toIndex) {
+    setSurvey((prev) => {
+      const currentQuestions = getQuestionList(prev);
+      const reordered = reorderArray(currentQuestions, fromIndex, toIndex);
+      return setQuestionList(prev, reordered);
+    });
+  }
+
+  function handleQuestionDragStart(e, questionId) {
+    setDraggingQuestionId(questionId);
+    setDragOverQuestionId(questionId);
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(questionId));
+    } catch {}
+  }
+
+  function handleQuestionDragOver(e, questionId) {
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "move";
+    } catch {}
+    if (dragOverQuestionId !== questionId) {
+      setDragOverQuestionId(questionId);
+    }
+  }
+
+  function handleQuestionDrop(e, targetQuestionId) {
+    e.preventDefault();
+
+    if (!survey || !draggingQuestionId || draggingQuestionId === targetQuestionId) {
+      setDraggingQuestionId(null);
+      setDragOverQuestionId(null);
+      return;
+    }
+
+    const questions = getQuestionList(survey);
+    const fromIndex = questions.findIndex((q) => q.id === draggingQuestionId);
+    const toIndex = questions.findIndex((q) => q.id === targetQuestionId);
+
+    if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
+      moveQuestion(fromIndex, toIndex);
+    }
+
+    setDraggingQuestionId(null);
+    setDragOverQuestionId(null);
+  }
+
+  function handleQuestionDragEnd() {
+    setDraggingQuestionId(null);
+    setDragOverQuestionId(null);
+  }
+
   function toggleFeed(nextFeedId) {
     setSurvey((prev) => {
       const set = new Set(normalizeLinkedFeedIds(prev?.linked_feed_ids));
@@ -1022,13 +1169,25 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Questions</h4>
 
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+              Drag questions by the dotted handle to reorder them, or use ↑ / ↓.
+            </div>
+
             {currentQuestions.map((q, i) => (
               <QuestionCard
                 key={q.id}
                 q={q}
                 index={i}
+                totalQuestions={currentQuestions.length}
                 updateQuestion={updateQuestion}
                 removeQuestion={removeQuestion}
+                moveQuestion={moveQuestion}
+                draggingId={draggingQuestionId}
+                dragOverId={dragOverQuestionId}
+                onDragStart={handleQuestionDragStart}
+                onDragOver={handleQuestionDragOver}
+                onDrop={handleQuestionDrop}
+                onDragEnd={handleQuestionDragEnd}
               />
             ))}
 
