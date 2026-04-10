@@ -23,6 +23,52 @@ export const getApp = () => {
 
 export const APP = getApp();
 
+
+export async function getLinkedFeedIdsForSurveyFromBackend({
+  surveyId,
+  projectId = getProjectId(),
+  allFeeds = null,
+  signal,
+} = {}) {
+  if (!surveyId) return [];
+
+  const feedList = Array.isArray(allFeeds) && allFeeds.length
+    ? allFeeds
+    : await listFeedsFromBackend({ projectId, signal });
+
+  const candidateFeedIds = uniqueStrings(
+    (feedList || []).map((f) => f?.feed_id).filter(Boolean)
+  );
+
+  const linkedFeedIds = [];
+
+  await Promise.all(
+    candidateFeedIds.map(async (fid) => {
+      try {
+        const url = buildQueryUrl(FEED_SURVEY_GET_URL(), {
+          feed_id: fid,
+          project_id: projectId || undefined,
+          _ts: Date.now(),
+        });
+
+        const link = await getJsonWithRetry(
+          url,
+          { method: "GET", mode: "cors", cache: "no-store", signal },
+          { retries: 1, timeoutMs: 8000 }
+        );
+
+        if (link && String(link.survey_id || "") === String(surveyId)) {
+          linkedFeedIds.push(fid);
+        }
+      } catch {
+        // ignore individual lookup failures
+      }
+    })
+  );
+
+  return uniqueStrings(linkedFeedIds);
+}
+
 /* --------------------- Backend config (via API Gateway proxy) ------------- */
 export const GAS_PROXY_BASE =
   (window.CONFIG && window.CONFIG.GAS_PROXY_BASE) ||
@@ -1777,3 +1823,5 @@ export function seedNamesFromPosts(posts, { projectId = getProjectId(), feedId =
 
   if (changed) writePostNames(projectId, feedId, map);
 }
+
+

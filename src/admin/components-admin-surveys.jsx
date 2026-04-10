@@ -12,6 +12,7 @@ import {
   saveSurveyToBackend,
   deleteSurveyOnBackend,
   linkSurveyToFeedsOnBackend,
+  getLinkedFeedIdsForSurveyFromBackend,
 } from "../utils";
 
 /* =========================
@@ -629,18 +630,35 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       const enrichedSurveyList = await Promise.all(
         safeSurveyList.map(async (s) => {
           if (!s?.survey_id) return s;
+
           try {
-            const full = await loadSurveyFromBackend(s.survey_id, {
-              projectId,
-              force: true,
-            });
+            const [full, linkedFeedIds] = await Promise.all([
+              loadSurveyFromBackend(s.survey_id, {
+                projectId,
+                force: true,
+              }),
+              getLinkedFeedIdsForSurveyFromBackend({
+                surveyId: s.survey_id,
+                projectId,
+                allFeeds: safeFeedList,
+              }),
+            ]);
+
             const normalizedFull = normalizeSurvey(full || {});
             return {
               ...s,
-              pages: normalizedFull.pages || [],
+              ...normalizedFull,
+              linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+              linked_project_id: projectId,
+              trigger: normalizedFull.trigger || "after_feed_submit",
             };
           } catch {
-            return s;
+            return {
+              ...s,
+              linked_feed_ids: [],
+              linked_project_id: projectId,
+              trigger: "after_feed_submit",
+            };
           }
         })
       );
@@ -656,7 +674,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
   useEffect(() => {
     loadAll();
-  }, [projectId]);
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSelectSurvey(id) {
     setSelectedSurveyId(id);
@@ -666,13 +684,21 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     }
 
     try {
-      const s = await loadSurveyFromBackend(id, { projectId, force: true });
+      const [s, linkedFeedIds] = await Promise.all([
+        loadSurveyFromBackend(id, { projectId, force: true }),
+        getLinkedFeedIdsForSurveyFromBackend({
+          surveyId: id,
+          projectId,
+          allFeeds: feeds,
+        }),
+      ]);
+
       const normalized = normalizeSurvey(s || {});
 
       setSurvey({
         ...normalized,
-        linked_feed_ids: normalizeLinkedFeedIds(normalized.linked_feed_ids),
-        linked_project_id: normalized.linked_project_id || projectId,
+        linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+        linked_project_id: projectId,
         trigger: normalized.trigger || "after_feed_submit",
       });
     } catch (e) {
@@ -760,17 +786,22 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       if (res?.ok) {
         const savedSurveyId = res.survey_id || payload.survey_id;
 
-        const fresh = await loadSurveyFromBackend(savedSurveyId, {
-          projectId,
-          force: true,
-        });
+        const [fresh, linkedFeedIds] = await Promise.all([
+          loadSurveyFromBackend(savedSurveyId, {
+            projectId,
+            force: true,
+          }),
+          getLinkedFeedIdsForSurveyFromBackend({
+            surveyId: savedSurveyId,
+            projectId,
+            allFeeds: feeds,
+          }),
+        ]);
 
         const normalizedFresh = normalizeSurvey({
           ...(fresh || {}),
-          linked_feed_ids: normalizeLinkedFeedIds(
-            fresh?.linked_feed_ids || normalized.linked_feed_ids
-          ),
-          linked_project_id: fresh?.linked_project_id || projectId,
+          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+          linked_project_id: projectId,
           trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
         });
 
@@ -778,7 +809,6 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         setSurvey(normalizedFresh);
 
         await loadAll();
-
         alert("Survey saved");
       } else {
         alert(res?.err || "Failed to save survey");
@@ -866,15 +896,18 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       });
 
       if (res?.ok) {
-        const linkedIds = normalizeLinkedFeedIds(
-          res.linked_feed_ids || survey.linked_feed_ids
-        );
+        const linkedIds = await getLinkedFeedIdsForSurveyFromBackend({
+          surveyId: survey.survey_id,
+          projectId,
+          allFeeds: feeds,
+        });
 
         setSurvey((prev) => ({
           ...prev,
-          linked_feed_ids: linkedIds,
+          linked_feed_ids: normalizeLinkedFeedIds(linkedIds),
         }));
 
+        await loadAll();
         alert("Feeds linked");
       } else {
         alert(res?.err || "Failed to link feeds");
