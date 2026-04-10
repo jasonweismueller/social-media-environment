@@ -41,13 +41,6 @@ function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
 }
 
-function makeItem(value = "", label = "") {
-  return {
-    value: String(value || "").trim(),
-    label: String(label || "").trim(),
-  };
-}
-
 function makeSequentialValue(prefix, index) {
   return `${prefix}_${index + 1}`;
 }
@@ -163,14 +156,8 @@ function makeBackendQuestionFromType(type) {
     type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
     type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
   ) {
-    const srcRows =
-      Array.isArray(base?.rows) && base.rows.length
-        ? base.rows
-        : [];
-    const srcCols =
-      Array.isArray(base?.columns) && base.columns.length
-        ? base.columns
-        : [];
+    const srcRows = Array.isArray(base?.rows) && base.rows.length ? base.rows : [];
+    const srcCols = Array.isArray(base?.columns) && base.columns.length ? base.columns : [];
 
     question.rows = ensureMatrixArray(srcRows, "row");
     question.columns = ensureMatrixArray(srcCols, "col");
@@ -686,6 +673,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         ...normalized,
         linked_feed_ids: normalizeLinkedFeedIds(normalized.linked_feed_ids),
         linked_project_id: normalized.linked_project_id || projectId,
+        trigger: normalized.trigger || "after_feed_submit",
       });
     } catch (e) {
       console.warn("Failed to load survey:", e);
@@ -697,8 +685,14 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     const s = makeEmptySurvey({
       linked_project_id: projectId,
       linked_feed_ids: [],
+      trigger: "after_feed_submit",
     });
-    setSurvey(normalizeSurvey(s));
+    setSurvey(
+      normalizeSurvey({
+        ...s,
+        trigger: s.trigger || "after_feed_submit",
+      })
+    );
     setSelectedSurveyId(null);
   }
 
@@ -708,10 +702,11 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     setSavingSurvey(true);
     try {
       const normalized = {
-  ...survey,
-  linked_project_id: projectId,
-  linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
-};
+        ...survey,
+        linked_project_id: projectId,
+        linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
+        trigger: survey.trigger || "after_feed_submit",
+      };
 
       const cleanedQuestions = getQuestionList(normalized).map((q, i) => {
         const cleanQ = normalizeQuestionForEditor(q, i);
@@ -743,6 +738,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
           min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
           max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
           placeholder: cleanQ.placeholder || "",
+          visible_if: cleanQ.visible_if || null,
           meta: cleanQ.meta || {},
           randomize_options: !!cleanQ.randomize_options,
         };
@@ -775,6 +771,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             fresh?.linked_feed_ids || normalized.linked_feed_ids
           ),
           linked_project_id: fresh?.linked_project_id || projectId,
+          trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
         });
 
         setSelectedSurveyId(savedSurveyId);
@@ -865,6 +862,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         feedIds: normalizeLinkedFeedIds(survey.linked_feed_ids),
         projectId,
         allFeeds: feeds,
+        trigger: survey.trigger || "after_feed_submit",
       });
 
       if (res?.ok) {

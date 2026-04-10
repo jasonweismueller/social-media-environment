@@ -299,7 +299,7 @@ export function makeEmptySurvey(overrides = {}) {
       ? safeOverrides.linked_feed_ids.map(String)
       : [],
     linked_project_id: safeOverrides.linked_project_id || "",
-    trigger: safeOverrides.trigger || "after_feed",
+    trigger: safeOverrides.trigger || "after_feed_submit",
   };
 }
 
@@ -321,7 +321,7 @@ export function normalizeSurvey(raw = {}) {
       ? safeRaw.linked_feed_ids.map(String)
       : [],
     linked_project_id: safeRaw.linked_project_id || "",
-    trigger: safeRaw.trigger || "after_feed",
+    trigger: safeRaw.trigger || "after_feed_submit",
   };
 }
 
@@ -509,19 +509,25 @@ export function emptyValueForQuestion(q) {
    ========================= */
 
 function isMatrixSingleAnswered(q, value) {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const rows = Array.isArray(q?.rows) ? q.rows : [];
   if (!rows.length) return false;
 
-  return rows.every((row) => String(value[row] ?? "").trim() !== "");
+  return rows.every((row, i) => {
+    const key = String(row?.value ?? `row_${i + 1}`);
+    return String(value[key] ?? "").trim() !== "";
+  });
 }
 
 function isMatrixMultiAnswered(q, value) {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const rows = Array.isArray(q?.rows) ? q.rows : [];
   if (!rows.length) return false;
 
-  return rows.every((row) => Array.isArray(value[row]) && value[row].length > 0);
+  return rows.every((row, i) => {
+    const key = String(row?.value ?? `row_${i + 1}`);
+    return Array.isArray(value[key]) && value[key].length > 0;
+  });
 }
 
 export function isQuestionAnswered(q, value) {
@@ -601,8 +607,14 @@ function seededShuffle(items = [], seed = "") {
 export function getRenderedQuestion(question, { participantSeed = "" } = {}) {
   const q = normalizeQuestion(question);
 
-  if (q.randomize_options && Array.isArray(q.options) && q.options.length > 1) {
-    q.options = seededShuffle(q.options, `${participantSeed}::${q.id}`);
+  if (q.randomize_options) {
+    if (Array.isArray(q.choices) && q.choices.length > 1) {
+      q.choices = seededShuffle(q.choices, `${participantSeed}::${q.id}`);
+    }
+
+    if (Array.isArray(q.options) && q.options.length > 1) {
+      q.options = seededShuffle(q.options, `${participantSeed}::${q.id}`);
+    }
   }
 
   return q;

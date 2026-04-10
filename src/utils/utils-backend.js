@@ -7,7 +7,7 @@ import {
   injectVideoPreload,
   primeVideoCache,
   DRIVE_RE,
-  CF_BASE
+  CF_BASE,
 } from "./utils-core";
 
 /* --------------------- App + endpoints ----------------------- */
@@ -20,6 +20,7 @@ export const getApp = () => {
   if (["facebook", "fb"].includes(fromUrl) || ["facebook", "fb"].includes(fromWin)) return "fb";
   return "fb";
 };
+
 export const APP = getApp();
 
 /* --------------------- Backend config (via API Gateway proxy) ------------- */
@@ -44,17 +45,17 @@ export const GS_ENDPOINT =
 
 export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
-/* ---------------------- Dynamic GET URL builders -------------------------- */
-const FEEDS_GET_URL = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}${qProject()}`;
-const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}${qProject()}`;
-const POSTS_GET_URL = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}${qProject()}`;
-const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}${qProject()}`;
-const WIPE_POLICY_GET_URL = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}${qProject()}`;
-const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects&app=${APP}${qProject()}`;
-const SURVEYS_GET_URL = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}${qProject()}`;
-const SURVEY_DEFINITION_GET_URL = () => `${GS_ENDPOINT}?path=survey_definition&app=${getApp()}${qProject()}`;
-const FEED_SURVEY_GET_URL = () => `${GS_ENDPOINT}?path=feed_survey&app=${getApp()}${qProject()}`;
-const SURVEY_RESPONSES_GET_URL = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}${qProject()}`;
+/* ---------------------- Base GET URL builders ----------------------------- */
+const FEEDS_GET_URL = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}`;
+const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}`;
+const POSTS_GET_URL = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}`;
+const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}`;
+const WIPE_POLICY_GET_URL = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}`;
+const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects&app=${APP}`;
+const SURVEYS_GET_URL = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}`;
+const SURVEY_DEFINITION_GET_URL = () => `${GS_ENDPOINT}?path=survey_definition&app=${getApp()}`;
+const FEED_SURVEY_GET_URL = () => `${GS_ENDPOINT}?path=feed_survey&app=${getApp()}`;
+const SURVEY_RESPONSES_GET_URL = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -63,8 +64,7 @@ async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
 
   try {
     const signal = opts.signal || ctrl.signal;
-    const res = await fetch(url, { ...opts, signal });
-    return res;
+    return await fetch(url, { ...opts, signal });
   } finally {
     clearTimeout(t);
   }
@@ -121,6 +121,28 @@ function uniqueStrings(arr = []) {
         .filter(Boolean)
     )
   );
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeProjectId(projectId) {
+  return projectId || getProjectId() || "";
+}
+
+function makeEmptySurveyShell(surveyId = "") {
+  return {
+    survey_id: surveyId || "",
+    name: "",
+    description: "",
+    version: 1,
+    status: "draft",
+    pages: [],
+    linked_feed_ids: [],
+    linked_project_id: normalizeProjectId(),
+    trigger: "after_feed_submit",
+  };
 }
 
 /* ======================= Admin User Management APIs ======================= */
@@ -222,7 +244,7 @@ export async function fetchFeedFlags({ app, projectId, feedId, endpoint = GS_END
   });
 
   const j = await res.json().catch(() => ({}));
-  const raw = (j && j.flags) ? j.flags : { random_time: false };
+  const raw = j && j.flags ? j.flags : { random_time: false };
   return normalizeFlagsForRead(raw);
 }
 
@@ -559,7 +581,11 @@ export async function sendSurveyResponseToBackend(args = {}) {
       ? legacyRow.responses
       : legacyRow.response_json
         ? (() => {
-            try { return JSON.parse(legacyRow.response_json); } catch { return {}; }
+            try {
+              return JSON.parse(legacyRow.response_json);
+            } catch {
+              return {};
+            }
           })()
         : {};
 
@@ -606,10 +632,13 @@ export async function sendSurveyResponseToBackend(args = {}) {
 }
 
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
-export async function listFeedsFromBackend({ signal } = {}) {
+export async function listFeedsFromBackend({ projectId = getProjectId(), signal } = {}) {
   try {
     const data = await getJsonWithRetry(
-      FEEDS_GET_URL() + "&_ts=" + Date.now(),
+      buildQueryUrl(FEEDS_GET_URL(), {
+        project_id: projectId || undefined,
+        _ts: Date.now(),
+      }),
       { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
@@ -621,21 +650,24 @@ export async function listFeedsFromBackend({ signal } = {}) {
 }
 
 /* -------- default feed helpers (persisted on backend) --------------------- */
-export async function getDefaultFeedFromBackend({ signal } = {}) {
+export async function getDefaultFeedFromBackend({ projectId = getProjectId(), signal } = {}) {
   try {
     const data = await getJsonWithRetry(
-      DEFAULT_FEED_GET_URL() + "&_ts=" + Date.now(),
+      buildQueryUrl(DEFAULT_FEED_GET_URL(), {
+        project_id: projectId || undefined,
+        _ts: Date.now(),
+      }),
       { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
-    return (data && typeof data === "object") ? (data.feed_id || null) : null;
+    return data && typeof data === "object" ? data.feed_id || null : null;
   } catch (e) {
     console.warn("getDefaultFeedFromBackend failed:", e);
     return null;
   }
 }
 
-export async function setDefaultFeedOnBackend(feedId) {
+export async function setDefaultFeedOnBackend(feedId, { projectId = getProjectId() } = {}) {
   const admin_token = getAdminToken();
   if (!admin_token) {
     console.warn("setDefaultFeedOnBackend: missing admin_token");
@@ -648,7 +680,7 @@ export async function setDefaultFeedOnBackend(feedId) {
       app: APP,
       feed_id: feedId || "",
       admin_token,
-      project_id: getProjectId() || undefined,
+      project_id: projectId || undefined,
     });
 
     return res.ok;
@@ -658,7 +690,7 @@ export async function setDefaultFeedOnBackend(feedId) {
   }
 }
 
-export async function deleteFeedOnBackend(feedId) {
+export async function deleteFeedOnBackend(feedId, { projectId = getProjectId() } = {}) {
   const admin_token = getAdminToken();
   if (!admin_token) return false;
 
@@ -668,7 +700,7 @@ export async function deleteFeedOnBackend(feedId) {
       app: APP,
       admin_token,
       feed_id: feedId,
-      project_id: getProjectId() || undefined,
+      project_id: projectId || undefined,
     });
 
     return res.ok;
@@ -682,23 +714,28 @@ export async function deleteFeedOnBackend(feedId) {
 const __postsCache = new Map();
 const POSTS_STALE_MS = 60_000;
 
-function __cacheKey(feedId) {
-  const pid = getProjectId() || "";
+function __postsCacheKey(feedId, projectId = getProjectId()) {
+  const pid = projectId || "";
   return `${APP}::${pid}::${feedId || ""}`;
 }
-function __getCachedPosts(feedId) {
-  const rec = __postsCache.get(__cacheKey(feedId));
+
+function __getCachedPosts(feedId, projectId = getProjectId()) {
+  const rec = __postsCache.get(__postsCacheKey(feedId, projectId));
   if (!rec) return null;
   if (Date.now() - rec.at > POSTS_STALE_MS) return null;
   return rec.data;
 }
-function __setCachedPosts(feedId, data) {
-  __postsCache.set(__cacheKey(feedId), { at: Date.now(), data });
+
+function __setCachedPosts(feedId, data, projectId = getProjectId()) {
+  __postsCache.set(__postsCacheKey(feedId, projectId), { at: Date.now(), data });
 }
-export function invalidatePostsCache(feedId = null) {
+
+export function invalidatePostsCache(feedId = null, projectId = getProjectId()) {
   const fid = String(feedId || "");
+  const pid = String(projectId || "");
   for (const k of __postsCache.keys()) {
-    if (k.endsWith(`::${fid}`)) __postsCache.delete(k);
+    if (!k.startsWith(`${APP}::${pid}::`)) continue;
+    if (!fid || k.endsWith(`::${fid}`)) __postsCache.delete(k);
   }
 }
 
@@ -706,39 +743,44 @@ export async function loadPostsFromBackend(arg1, arg2) {
   let feedId = null;
   let force = false;
   let signal;
+  let projectId = getProjectId();
 
   if (typeof arg1 === "string") {
     feedId = arg1 || null;
     if (arg2 && typeof arg2 === "object") {
       force = !!arg2.force;
       signal = arg2.signal;
+      projectId = arg2.projectId || projectId;
     }
   } else if (arg1 && typeof arg1 === "object") {
     feedId = arg1.feedId || null;
     force = !!arg1.force;
     signal = arg1.signal;
+    projectId = arg1.projectId || projectId;
   }
 
   if (!feedId) {
-    feedId = await getDefaultFeedFromBackend({ signal });
+    feedId = await getDefaultFeedFromBackend({ projectId, signal });
   }
 
   if (!force) {
-    const cached = __getCachedPosts(feedId);
+    const cached = __getCachedPosts(feedId, projectId);
     if (cached) return cached;
   }
 
   try {
-    const url =
-      POSTS_GET_URL() +
-      (feedId ? `&feed_id=${encodeURIComponent(feedId)}` : "") +
-      "&_ts=" + Date.now();
+    const url = buildQueryUrl(POSTS_GET_URL(), {
+      project_id: projectId || undefined,
+      feed_id: feedId || undefined,
+      _ts: Date.now(),
+    });
 
     const data = await getJsonWithRetry(
       url,
       { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
+
     const arr = Array.isArray(data) ? data : [];
 
     arr
@@ -748,11 +790,11 @@ export async function loadPostsFromBackend(arg1, arg2) {
         primeVideoCache(p.video.url);
       });
 
-    __setCachedPosts(feedId, arr);
+    __setCachedPosts(feedId, arr, projectId);
     return arr;
   } catch (e) {
     console.warn("loadPostsFromBackend failed:", e);
-    const cached = __getCachedPosts(feedId);
+    const cached = __getCachedPosts(feedId, projectId);
     return cached || [];
   }
 }
@@ -761,14 +803,14 @@ export async function loadPostsFromBackend(arg1, arg2) {
  * savePostsToBackend(posts, { feedId, name } = {})
  */
 export async function savePostsToBackend(rawPosts, ctx = {}) {
-  const { feedId = null, name = null } = ctx || {};
+  const { feedId = null, name = null, projectId = getProjectId() } = ctx || {};
   const admin_token = getAdminToken();
   if (!admin_token) {
     console.warn("savePostsToBackend: missing admin_token");
     return false;
   }
 
-  const nameMap = readPostNames(getProjectId() || undefined, feedId) || {};
+  const nameMap = readPostNames(projectId || undefined, feedId) || {};
 
   const offenders = [];
   (rawPosts || []).forEach((p) => {
@@ -782,8 +824,8 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     const lines = offenders.map((o) => `• Post ${o.id}: ${o.field}`).join("\n");
     alert(
       "One or more posts still contain local data URLs.\n\n" +
-      "Please upload images/videos so they use https URLs, then try saving again.\n\n" +
-      lines
+        "Please upload images/videos so they use https URLs, then try saving again.\n\n" +
+        lines
     );
     return false;
   }
@@ -799,29 +841,25 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
   });
 
   try {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const { res } = await postJson(
+      {
         action: "publish_posts",
         app: APP,
         posts,
         feed_id: feedId,
         name,
         admin_token,
-        project_id: getProjectId() || undefined,
-      }),
-    });
+        project_id: projectId || undefined,
+      },
+      { timeoutMs: 20000 }
+    );
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.warn("savePostsToBackend: HTTP error", res.status, text);
-      alert(`Save failed: HTTP ${res.status}${text ? ` — ${text}` : ""}`);
+      alert(`Save failed: HTTP ${res.status}`);
       return false;
     }
 
-    await res.json().catch(() => null);
-    invalidatePostsCache(feedId);
+    invalidatePostsCache(feedId, projectId);
     return true;
   } catch (err) {
     console.warn("Publish failed:", err);
@@ -870,6 +908,7 @@ function __getCachedFeedSurvey(feedId, projectId = getProjectId()) {
 function __setCachedFeedSurvey(feedId, projectId = getProjectId(), data) {
   __surveysCache.set(__feedSurveyCacheKey(feedId, projectId), { at: Date.now(), data });
 }
+
 export function invalidateSurveysCache({ surveyId = null, projectId = getProjectId(), feedId = null } = {}) {
   const pid = String(projectId || "");
   const sid = String(surveyId || "");
@@ -877,12 +916,44 @@ export function invalidateSurveysCache({ surveyId = null, projectId = getProject
 
   for (const k of __surveysCache.keys()) {
     const matchesProject = k.startsWith(`${APP}::${pid}::`);
-    const matchesSurvey = !sid || k.endsWith(`::${sid}`);
-    const matchesFeed = !fid || k.endsWith(`::${fid}`);
     if (!matchesProject) continue;
-    if (sid && matchesSurvey) __surveysCache.delete(k);
-    else if (fid && matchesFeed) __surveysCache.delete(k);
-    else if (!sid && !fid) __surveysCache.delete(k);
+
+    if (!sid && !fid) {
+      __surveysCache.delete(k);
+      continue;
+    }
+
+    if (sid && k.endsWith(`::${sid}`)) {
+      __surveysCache.delete(k);
+      continue;
+    }
+
+    if (fid && k.endsWith(`::${fid}`)) {
+      __surveysCache.delete(k);
+    }
+  }
+}
+
+async function rebuildSurveyRegistryOnBackend(projectId = getProjectId()) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+
+  try {
+    const { res, data } = await postJson({
+      action: "survey_rebuild_registry",
+      app: APP,
+      admin_token,
+      project_id: projectId || undefined,
+    });
+
+    if (!res.ok || data?.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
+    invalidateSurveysCache({ projectId });
+    return { ok: true, ...data };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
   }
 }
 
@@ -898,7 +969,7 @@ export async function listSurveysFromBackend({ projectId = getProjectId(), signa
     if (cached) return cached;
   }
 
-  try {
+  const fetchList = async () => {
     const url = buildQueryUrl(SURVEYS_GET_URL(), {
       project_id: projectId || undefined,
       admin_token,
@@ -911,7 +982,19 @@ export async function listSurveysFromBackend({ projectId = getProjectId(), signa
       { retries: 1, timeoutMs: 8000 }
     );
 
-    const arr = Array.isArray(data) ? data : [];
+    return Array.isArray(data) ? data : [];
+  };
+
+  try {
+    let arr = await fetchList();
+
+    if (arr.length === 0) {
+      const rebuild = await rebuildSurveyRegistryOnBackend(projectId);
+      if (rebuild.ok) {
+        arr = await fetchList();
+      }
+    }
+
     __setCachedSurveyList(projectId, arr);
     return arr;
   } catch (e) {
@@ -920,20 +1003,23 @@ export async function listSurveysFromBackend({ projectId = getProjectId(), signa
   }
 }
 
-export async function loadSurveyFromBackend(surveyId, { projectId = getProjectId(), signal, force = false } = {}) {
+export async function loadSurveyFromBackend(
+  surveyId,
+  { projectId = getProjectId(), signal, force = false, returnEmptyOnFail = true } = {}
+) {
   const admin_token = getAdminToken();
   if (!admin_token) {
     console.warn("loadSurveyFromBackend: missing admin_token");
-    return null;
+    return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
   }
-  if (!surveyId) return null;
+  if (!surveyId) return returnEmptyOnFail ? makeEmptySurveyShell("") : null;
 
   if (!force) {
     const cached = __getCachedSurvey(surveyId, projectId);
     if (cached) return cached;
   }
 
-  try {
+  const fetchDefinition = async () => {
     const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
       survey_id: surveyId,
       project_id: projectId || undefined,
@@ -947,21 +1033,47 @@ export async function loadSurveyFromBackend(surveyId, { projectId = getProjectId
       { retries: 1, timeoutMs: 8000 }
     );
 
-    const survey = data && !Array.isArray(data) ? data : null;
-    if (survey) __setCachedSurvey(surveyId, projectId, survey);
-    return survey;
+    return data && !Array.isArray(data) ? data : null;
+  };
+
+  try {
+    let survey = await fetchDefinition();
+
+    if (!survey || !survey.survey_id) {
+      const rebuild = await rebuildSurveyRegistryOnBackend(projectId);
+      if (rebuild.ok) {
+        survey = await fetchDefinition();
+      }
+    }
+
+    if (!survey) {
+      return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
+    }
+
+    const out = {
+      ...makeEmptySurveyShell(surveyId),
+      ...survey,
+      survey_id: survey.survey_id || surveyId,
+      linked_project_id: projectId || "",
+    };
+
+    __setCachedSurvey(surveyId, projectId, out);
+    return out;
   } catch (e) {
     console.warn("loadSurveyFromBackend failed:", e);
-    return null;
+    return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
   }
 }
 
-export async function getSurveyForFeedFromBackend(feedId, { projectId = getProjectId(), signal, force = false } = {}) {
+export async function getSurveyForFeedFromBackend(
+  feedId,
+  { projectId = getProjectId(), signal, force = false } = {}
+) {
   if (!feedId) return null;
 
   if (!force) {
     const cached = __getCachedFeedSurvey(feedId, projectId);
-    if (cached) return cached;
+    if (cached !== null) return cached;
   }
 
   try {
@@ -982,24 +1094,21 @@ export async function getSurveyForFeedFromBackend(feedId, { projectId = getProje
       return null;
     }
 
-    const defUrl = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
-      survey_id: link.survey_id,
-      feed_id: feedId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
+    const def = await loadSurveyFromBackend(link.survey_id, {
+      projectId,
+      signal,
+      force,
+      returnEmptyOnFail: false,
     });
 
-    const def = await getJsonWithRetry(
-      defUrl,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
-
-    const out = def && !Array.isArray(def)
+    const out = def
       ? {
+          ...makeEmptySurveyShell(link.survey_id),
           ...def,
           survey_id: def.survey_id || link.survey_id,
           linked_feed_id: feedId,
+          linked_feed_ids: [feedId],
+          linked_project_id: projectId || "",
           trigger: link.trigger || "after_feed_submit",
         }
       : null;
@@ -1101,9 +1210,20 @@ export async function linkSurveyToFeedsOnBackend({
   const desiredFeedIds = uniqueStrings(feedIds);
 
   try {
-    const feedList = Array.isArray(allFeeds) && allFeeds.length
-      ? allFeeds
-      : await listFeedsFromBackend();
+    const surveyExists = await loadSurveyFromBackend(surveyId, {
+      projectId,
+      force: true,
+      returnEmptyOnFail: false,
+    });
+
+    if (!surveyExists || !surveyExists.survey_id) {
+      return { ok: false, err: "survey not found" };
+    }
+
+    const feedList =
+      Array.isArray(allFeeds) && allFeeds.length
+        ? allFeeds
+        : await listFeedsFromBackend({ projectId });
 
     const candidateFeedIds = uniqueStrings(
       (feedList || []).map((f) => f?.feed_id).filter(Boolean)
@@ -1201,11 +1321,9 @@ export async function loadSurveyResponsesRoster(arg1, arg2) {
 
   const projectId = opts.projectId || getProjectId();
   const feedId = opts.feedId || null;
-  const app = typeof APP !== "undefined" ? APP : "";
 
   try {
     const url = buildQueryUrl(SURVEY_RESPONSES_GET_URL(), {
-      app,
       project_id: projectId || undefined,
       survey_id: surveyId || undefined,
       feed_id: feedId || undefined,
@@ -1424,12 +1542,9 @@ export async function loadParticipantsRoster(arg1, arg2) {
   }
 
   const projectId = opts.projectId || getProjectId();
-  const app = typeof APP !== "undefined" ? APP : "";
 
   try {
     const url = buildQueryUrl(PARTICIPANTS_GET_URL(), {
-      path: "participants",
-      app,
       project_id: projectId || undefined,
       feed_id: feedId || undefined,
       admin_token,
@@ -1449,7 +1564,7 @@ export async function loadParticipantsRoster(arg1, arg2) {
   }
 }
 
-export async function wipeParticipantsOnBackend(feedId) {
+export async function wipeParticipantsOnBackend(feedId, { projectId = getProjectId() } = {}) {
   const admin_token = getAdminToken();
   if (!admin_token || !feedId) return false;
 
@@ -1460,7 +1575,7 @@ export async function wipeParticipantsOnBackend(feedId) {
         app: APP,
         feed_id: feedId,
         admin_token,
-        project_id: getProjectId() || undefined,
+        project_id: projectId || undefined,
       },
       { keepalive: true }
     );
@@ -1476,7 +1591,11 @@ export async function getWipePolicyFromBackend() {
   if (!admin_token) return null;
 
   try {
-    const url = `${WIPE_POLICY_GET_URL()}&admin_token=${encodeURIComponent(admin_token)}&_ts=${Date.now()}`;
+    const url = buildQueryUrl(WIPE_POLICY_GET_URL(), {
+      admin_token,
+      _ts: Date.now(),
+    });
+
     const data = await getJsonWithRetry(
       url,
       { method: "GET", mode: "cors", cache: "no-store" },
@@ -1522,7 +1641,7 @@ export async function setWipePolicyOnBackend(wipeOnChange) {
 export async function listProjectsFromBackend({ signal } = {}) {
   try {
     const data = await getJsonWithRetry(
-      PROJECTS_GET_URL() + "&_ts=" + Date.now(),
+      buildQueryUrl(PROJECTS_GET_URL(), { _ts: Date.now() }),
       { method: "GET", mode: "cors", cache: "no-store", signal },
       { retries: 1, timeoutMs: 8000 }
     );
