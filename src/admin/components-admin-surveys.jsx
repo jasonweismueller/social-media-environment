@@ -4,8 +4,6 @@ import {
   makeQuestionByType,
   normalizeSurvey,
   SURVEY_QUESTION_TYPES,
-  surveyQuestions,
-  setSurveyQuestions,
   surveyQuestionCount,
   getProjectId,
   listFeedsFromBackend,
@@ -56,20 +54,33 @@ function clampInt(value, min, max, fallback) {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
-function stopEditorKeyBubbling(e) {
-  e.stopPropagation();
-}
-
 function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
 }
 
 function getQuestionList(survey) {
-  return surveyQuestions(survey || {});
+  return Array.isArray(survey?.pages?.[0]?.questions) ? survey.pages[0].questions : [];
 }
 
 function setQuestionList(survey, questions) {
-  return setSurveyQuestions(survey || makeEmptySurvey(), questions);
+  const safeSurvey = normalizeSurvey(survey || makeEmptySurvey());
+  const firstPage = safeSurvey.pages?.[0] || {
+    id: "page_1",
+    title: "",
+    description: "",
+    questions: [],
+  };
+
+  return {
+    ...safeSurvey,
+    pages: [
+      {
+        ...firstPage,
+        questions: Array.isArray(questions) ? questions : [],
+      },
+      ...(safeSurvey.pages || []).slice(1),
+    ],
+  };
 }
 
 function getQuestionText(q) {
@@ -77,12 +88,12 @@ function getQuestionText(q) {
 }
 
 function getChoiceLabels(q) {
-  if (Array.isArray(q?.choices) && q.choices.length) {
+  if (Array.isArray(q?.choices)) {
     return q.choices
       .map((choice) => String(choice?.label ?? choice?.value ?? "").trim())
       .filter(Boolean);
   }
-  if (Array.isArray(q?.options) && q.options.length) {
+  if (Array.isArray(q?.options)) {
     return q.options.map((x) => String(x ?? "").trim()).filter(Boolean);
   }
   return [];
@@ -121,7 +132,6 @@ function TextInput({ value, onChange, placeholder, style }) {
     <input
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
-      onKeyDown={stopEditorKeyBubbling}
       placeholder={placeholder}
       style={{
         width: "100%",
@@ -139,7 +149,6 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
     <textarea
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
-      onKeyDown={stopEditorKeyBubbling}
       placeholder={placeholder}
       rows={rows}
       style={{
@@ -163,7 +172,6 @@ function NumberInput({ value, onChange, min, max, step = 1, style }) {
       max={max}
       step={step}
       onChange={(e) => onChange(e.target.value)}
-      onKeyDown={stopEditorKeyBubbling}
       style={{
         width: "100%",
         padding: "8px 10px",
@@ -180,7 +188,6 @@ function SelectInput({ value, onChange, children, style }) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      onKeyDown={stopEditorKeyBubbling}
       style={{
         width: "100%",
         padding: "8px 10px",
@@ -202,7 +209,6 @@ function CheckboxInput({ checked, onChange, label }) {
         type="checkbox"
         checked={!!checked}
         onChange={(e) => onChange(e.target.checked)}
-        onKeyDown={stopEditorKeyBubbling}
       />
       <span>{label}</span>
     </label>
@@ -283,7 +289,7 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
           <FieldBlock label={`Question ${index + 1}`}>
             <TextInput
               value={getQuestionText(q)}
-              onChange={(v) => updateQuestion(index, { text: v })}
+              onChange={(v) => updateQuestion(index, { text: v, label: v })}
               placeholder="Question text"
             />
           </FieldBlock>
@@ -298,7 +304,8 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
                 updateQuestion(index, {
                   ...next,
                   id: q.id,
-                  text: getQuestionText(q) || next.text || next.label || "",
+                  text: getQuestionText(q) || getQuestionText(next),
+                  label: getQuestionText(q) || getQuestionText(next),
                   description: q.description || "",
                   required:
                     nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
@@ -360,6 +367,7 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
             onChange={(arr) =>
               updateQuestion(index, {
                 choices: makeChoicesFromLabels(arr),
+                options: arr,
               })
             }
             rows={5}
@@ -444,7 +452,7 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
           <FieldBlock label="Min label">
             <TextInput
               value={q.left_label ?? q.min_label ?? ""}
-              onChange={(v) => updateQuestion(index, { left_label: v })}
+              onChange={(v) => updateQuestion(index, { left_label: v, min_label: v })}
               placeholder="e.g. Negative"
             />
           </FieldBlock>
@@ -452,7 +460,7 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
           <FieldBlock label="Max label">
             <TextInput
               value={q.right_label ?? q.max_label ?? ""}
-              onChange={(v) => updateQuestion(index, { right_label: v })}
+              onChange={(v) => updateQuestion(index, { right_label: v, max_label: v })}
               placeholder="e.g. Positive"
             />
           </FieldBlock>
@@ -850,7 +858,6 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
                       type="checkbox"
                       checked={normalizeLinkedFeedIds(survey.linked_feed_ids).includes(f.feed_id)}
                       onChange={() => toggleFeed(f.feed_id)}
-                      onKeyDown={stopEditorKeyBubbling}
                     />
                     <span>{f.name || f.feed_id}</span>
                     {feedId && f.feed_id === feedId && (
