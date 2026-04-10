@@ -55,7 +55,7 @@ function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : (elseRender ?? null);
 }
 
-/* ---------- local backups + snapshots ---------------- */
+/* ---------- local backups + snapshots ----------------- */
 function saveLocalBackup(projectId, feedId, app, posts) {
   try {
     const k = `backup::${app || "fb"}::${projectId || "global"}::${feedId}`;

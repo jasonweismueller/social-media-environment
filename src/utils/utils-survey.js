@@ -4,7 +4,7 @@ import { uid } from "./utils-core";
 
 /* =========================
    Survey schema
-   ========================= */
+   ========================== */
 
 export const SURVEY_QUESTION_TYPES = {
   TEXT: "text",
