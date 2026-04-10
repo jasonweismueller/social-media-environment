@@ -10,7 +10,7 @@ import {
   loadSurveyFromBackend,
   saveSurveyToBackend,
   deleteSurveyOnBackend,
-  linkSurveyToFeedsOnBackend
+  linkSurveyToFeedsOnBackend,
 } from "../utils";
 
 /* =========================
@@ -53,6 +53,10 @@ function clampInt(value, min, max, fallback) {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
+function stopEditorKeyBubbling(e) {
+  e.stopPropagation();
+}
+
 /* =========================
    Reusable editors
    ========================= */
@@ -62,6 +66,7 @@ function TextInput({ value, onChange, placeholder, style }) {
     <input
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
+      onKeyDown={stopEditorKeyBubbling}
       placeholder={placeholder}
       style={{
         width: "100%",
@@ -79,6 +84,7 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
     <textarea
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
+      onKeyDown={stopEditorKeyBubbling}
       placeholder={placeholder}
       rows={rows}
       style={{
@@ -102,6 +108,7 @@ function NumberInput({ value, onChange, min, max, step = 1, style }) {
       max={max}
       step={step}
       onChange={(e) => onChange(e.target.value)}
+      onKeyDown={stopEditorKeyBubbling}
       style={{
         width: "100%",
         padding: "8px 10px",
@@ -118,6 +125,7 @@ function SelectInput({ value, onChange, children, style }) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onKeyDown={stopEditorKeyBubbling}
       style={{
         width: "100%",
         padding: "8px 10px",
@@ -139,6 +147,7 @@ function CheckboxInput({ checked, onChange, label }) {
         type="checkbox"
         checked={!!checked}
         onChange={(e) => onChange(e.target.checked)}
+        onKeyDown={stopEditorKeyBubbling}
       />
       <span>{label}</span>
     </label>
@@ -252,6 +261,7 @@ function QuestionCard({ q, index, updateQuestion, removeQuestion }) {
 
         <div style={{ paddingTop: 23 }}>
           <button
+            type="button"
             onClick={() => removeQuestion(index)}
             style={{
               padding: "8px 10px",
@@ -398,24 +408,36 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   const projectId = propProjectId || getProjectId();
 
   const [surveys, setSurveys] = useState([]);
-  const [feeds, setFeeds] = useState(propFeeds || []);
+  const [feeds, setFeeds] = useState(Array.isArray(propFeeds) ? propFeeds : []);
   const [selectedSurveyId, setSelectedSurveyId] = useState(null);
   const [survey, setSurvey] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (Array.isArray(propFeeds)) {
+      setFeeds(propFeeds);
+    }
+  }, [propFeeds]);
+
   async function loadAll() {
     setLoading(true);
     try {
+      const incomingFeeds = Array.isArray(propFeeds) ? propFeeds : [];
+
       const [surveyList, feedList] = await Promise.all([
         listSurveysFromBackend({ projectId }),
-        propFeeds ? Promise.resolve(propFeeds) : listFeedsFromBackend(),
+        incomingFeeds.length
+          ? Promise.resolve(incomingFeeds)
+          : listFeedsFromBackend({ projectId }),
       ]);
-      setSurveys(surveyList || []);
-      setFeeds(feedList || []);
+
+      setSurveys(Array.isArray(surveyList) ? surveyList : []);
+      setFeeds(Array.isArray(feedList) ? feedList : []);
     } catch (e) {
       console.warn("Failed to load surveys:", e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -428,8 +450,14 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       setSurvey(null);
       return;
     }
-    const s = await loadSurveyFromBackend(id);
-    setSurvey(normalizeSurvey(s));
+
+    try {
+      const s = await loadSurveyFromBackend(id);
+      setSurvey(normalizeSurvey(s));
+    } catch (e) {
+      console.warn("Failed to load survey:", e);
+      setSurvey(null);
+    }
   }
 
   function handleCreateSurvey() {
@@ -442,12 +470,19 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
   async function handleSaveSurvey() {
     if (!survey) return;
+
     const ok = await saveSurveyToBackend({
       ...survey,
       linked_project_id: projectId,
     });
+
     if (ok) {
       await loadAll();
+
+      if (!selectedSurveyId && survey?.survey_id) {
+        setSelectedSurveyId(survey.survey_id);
+      }
+
       alert("Survey saved");
     } else {
       alert("Failed to save survey");
@@ -463,6 +498,8 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       setSurvey(null);
       setSelectedSurveyId(null);
       await loadAll();
+    } else {
+      alert("Failed to delete survey");
     }
   }
 
@@ -489,11 +526,11 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     });
   }
 
-  function toggleFeed(feed_id) {
+  function toggleFeed(nextFeedId) {
     setSurvey((prev) => {
       const set = new Set(prev.linked_feed_ids || []);
-      if (set.has(feed_id)) set.delete(feed_id);
-      else set.add(feed_id);
+      if (set.has(nextFeedId)) set.delete(nextFeedId);
+      else set.add(nextFeedId);
       return { ...prev, linked_feed_ids: Array.from(set) };
     });
   }
@@ -535,6 +572,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         </div>
 
         <button
+          type="button"
           onClick={handleCreateSurvey}
           style={{
             marginTop: 10,
@@ -551,10 +589,13 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
         <div style={{ marginTop: 12 }}>
           {surveys.map((s) => (
-            <div
+            <button
               key={s.survey_id}
+              type="button"
               onClick={() => handleSelectSurvey(s.survey_id)}
               style={{
+                width: "100%",
+                textAlign: "left",
                 padding: "10px 12px",
                 cursor: "pointer",
                 borderRadius: 8,
@@ -567,7 +608,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               <div style={{ fontSize: 12, color: "#6b7280" }}>
                 {(s.questions || []).length} questions
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -618,16 +659,16 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             ))}
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.TEXT)}>+ Text</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.TEXTAREA)}>+ Long text</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.SINGLE)}>+ Single</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.MULTI)}>+ Multi</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.DROPDOWN)}>+ Dropdown</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.MATRIX_SINGLE)}>+ Matrix single</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.MATRIX_MULTI)}>+ Matrix multi</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.BIPOLAR)}>+ Bipolar</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.SLIDER)}>+ Slider</button>
-              <button onClick={() => addQuestion(SURVEY_QUESTION_TYPES.INFO)}>+ Info</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.TEXT)}>+ Text</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.TEXTAREA)}>+ Long text</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.SINGLE)}>+ Single</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.MULTI)}>+ Multi</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.DROPDOWN)}>+ Dropdown</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.MATRIX_SINGLE)}>+ Matrix single</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.MATRIX_MULTI)}>+ Matrix multi</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.BIPOLAR)}>+ Bipolar</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.SLIDER)}>+ Slider</button>
+              <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.INFO)}>+ Info</button>
             </div>
 
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Link to feeds</h4>
@@ -653,6 +694,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
                       type="checkbox"
                       checked={(survey.linked_feed_ids || []).includes(f.feed_id)}
                       onChange={() => toggleFeed(f.feed_id)}
+                      onKeyDown={stopEditorKeyBubbling}
                     />
                     <span>{f.name || f.feed_id}</span>
                     {feedId && f.feed_id === feedId && (
@@ -663,13 +705,13 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               ))}
             </div>
 
-            <button onClick={handleSaveFeedLinks} style={{ marginBottom: 20 }}>
+            <button type="button" onClick={handleSaveFeedLinks} style={{ marginBottom: 20 }}>
               Save Feed Links
             </button>
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={handleSaveSurvey}>Save Survey</button>
-              <button onClick={handleDeleteSurvey}>
+              <button type="button" onClick={handleSaveSurvey}>Save Survey</button>
+              <button type="button" onClick={handleDeleteSurvey}>
                 Delete Survey
               </button>
             </div>
