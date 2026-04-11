@@ -31,3 +31,5 @@ export const {
   RouteAwareTopbar,
   TopRailPlaceholder,
 } = app === "ig" ? IG : FB;
+
+export *  from "./ui-survey";
