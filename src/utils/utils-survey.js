@@ -17,6 +17,7 @@ export const SURVEY_QUESTION_TYPES = {
   BIPOLAR: "bipolar",
   SLIDER: "slider",
   INFO: "info",
+  PAGE_BREAK: "page_break",
 };
 
 export function isValidSurveyQuestionType(type) {
@@ -59,6 +60,17 @@ function normalizeMatrixArray(rawItems = []) {
     .filter(Boolean);
 }
 
+function isPageBreakQuestion(question) {
+  return question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK;
+}
+
+function isDisplayOnlyQuestion(question) {
+  return (
+    question?.type === SURVEY_QUESTION_TYPES.INFO ||
+    question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK
+  );
+}
+
 /* =========================
    Question mapping
    ========================= */
@@ -68,7 +80,12 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     ? type
     : SURVEY_QUESTION_TYPES.TEXT;
 
-  const text = String(overrides.text ?? overrides.label ?? "Untitled question");
+  const defaultText =
+    safeType === SURVEY_QUESTION_TYPES.PAGE_BREAK
+      ? "Page break"
+      : "Untitled question";
+
+  const text = String(overrides.text ?? overrides.label ?? defaultText);
 
   return {
     id: overrides.id || `q_${uid()}`,
@@ -76,7 +93,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     text,
     label: text,
     description: overrides.description || "",
-    required: safeType === SURVEY_QUESTION_TYPES.INFO ? false : !!overrides.required,
+    required: isDisplayOnlyQuestion({ type: safeType }) ? false : !!overrides.required,
     randomize_options: !!overrides.randomize_options,
     options: cleanStringArray(overrides.options),
     rows: cleanStringArray(overrides.rows),
@@ -88,6 +105,8 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     left_label: overrides.left_label ?? overrides.min_label ?? "",
     right_label: overrides.right_label ?? overrides.max_label ?? "",
     visible_if: overrides.visible_if || null,
+    placeholder: String(overrides.placeholder || ""),
+    meta: asObject(overrides.meta),
   };
 }
 
@@ -96,7 +115,12 @@ export function normalizeQuestion(raw = {}) {
     ? raw.type
     : SURVEY_QUESTION_TYPES.TEXT;
 
-  const text = String(raw.text ?? raw.label ?? "Untitled question");
+  const defaultText =
+    type === SURVEY_QUESTION_TYPES.PAGE_BREAK
+      ? "Page break"
+      : "Untitled question";
+
+  const text = String(raw.text ?? raw.label ?? defaultText);
 
   return {
     id: raw.id || `q_${uid()}`,
@@ -104,10 +128,9 @@ export function normalizeQuestion(raw = {}) {
     text,
     label: text,
     description: String(raw.description || ""),
-    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!raw.required,
+    required: isDisplayOnlyQuestion({ type }) ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
 
-    // preserve backend/editor structured arrays
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c, i) => ({
           value: String(c?.value ?? `opt_${i + 1}`),
@@ -129,7 +152,6 @@ export function normalizeQuestion(raw = {}) {
         }))
       : [],
 
-    // keep legacy string arrays too if needed elsewhere
     options: cleanStringArray(
       Array.isArray(raw.options) && raw.options.length
         ? raw.options
@@ -144,9 +166,10 @@ export function normalizeQuestion(raw = {}) {
     right_label: String(raw.right_label ?? raw.max_label ?? ""),
     visible_if: raw.visible_if || null,
     placeholder: String(raw.placeholder || ""),
-    meta: raw.meta || {},
+    meta: asObject(raw.meta),
   };
 }
+
 export function frontendQuestionToBackend(question = {}) {
   const q = normalizeQuestion(question);
 
@@ -155,7 +178,7 @@ export function frontendQuestionToBackend(question = {}) {
     type: q.type,
     text: q.text,
     description: q.description,
-    required: !!q.required,
+    required: isDisplayOnlyQuestion(q) ? false : !!q.required,
     meta: q.meta || {},
   };
 
@@ -205,6 +228,12 @@ export function frontendQuestionToBackend(question = {}) {
         right_label: q.right_label ?? q.max_label ?? "",
       };
 
+    case SURVEY_QUESTION_TYPES.PAGE_BREAK:
+      return {
+        ...base,
+        required: false,
+      };
+
     case SURVEY_QUESTION_TYPES.TEXT:
     case SURVEY_QUESTION_TYPES.TEXTAREA:
     case SURVEY_QUESTION_TYPES.INFO:
@@ -225,7 +254,9 @@ export function makePage(overrides = {}) {
     title: String(safeOverrides.title || ""),
     description: String(safeOverrides.description || ""),
     questions: Array.isArray(safeOverrides.questions)
-      ? safeOverrides.questions.map(normalizeQuestion).filter(Boolean)
+      ? safeOverrides.questions
+          .map(normalizeQuestion)
+          .filter((q) => q && !isPageBreakQuestion(q))
       : [],
   };
 }
@@ -238,30 +269,105 @@ export function normalizePage(raw = {}) {
     title: String(safeRaw.title || ""),
     description: String(safeRaw.description || ""),
     questions: Array.isArray(safeRaw.questions)
-      ? safeRaw.questions.map(normalizeQuestion).filter(Boolean)
+      ? safeRaw.questions
+          .map(normalizeQuestion)
+          .filter((q) => q && !isPageBreakQuestion(q))
       : [],
   };
+}
+
+function splitQuestionsIntoPages(questions = []) {
+  const normalizedQuestions = (Array.isArray(questions) ? questions : [])
+    .map(normalizeQuestion)
+    .filter(Boolean);
+
+  const pages = [];
+  let currentQuestions = [];
+  let currentPageTitle = "";
+  let currentPageDescription = "";
+  let pageCounter = 1;
+
+  const pushPage = () => {
+    pages.push(
+      makePage({
+        id: `page_${pageCounter}`,
+        title: currentPageTitle,
+        description: currentPageDescription,
+        questions: currentQuestions,
+      })
+    );
+    pageCounter += 1;
+    currentQuestions = [];
+    currentPageTitle = "";
+    currentPageDescription = "";
+  };
+
+  normalizedQuestions.forEach((question) => {
+    if (isPageBreakQuestion(question)) {
+      pushPage();
+      currentPageTitle = String(question.text || "");
+      currentPageDescription = String(question.description || "");
+      return;
+    }
+    currentQuestions.push(question);
+  });
+
+  pushPage();
+
+  return pages.filter((page, idx) => {
+    if ((page.questions || []).length > 0) return true;
+    return pages.length === 1 && idx === 0;
+  });
 }
 
 function coerceQuestionsIntoPages(raw = {}) {
   const safeRaw = asObject(raw);
 
   if (Array.isArray(safeRaw.pages) && safeRaw.pages.length > 0) {
-    return safeRaw.pages.map(normalizePage).filter(Boolean);
+    const flattenedQuestions = safeRaw.pages.flatMap((page) => {
+      const normalizedPage = asObject(page);
+      return Array.isArray(normalizedPage.questions) ? normalizedPage.questions : [];
+    });
+
+    const hasEmbeddedPageBreaks = flattenedQuestions.some(
+      (q) => q?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK
+    );
+
+    if (!hasEmbeddedPageBreaks) {
+      return safeRaw.pages.map(normalizePage).filter(Boolean);
+    }
+
+    const rebuiltPages = [];
+    let pageCounter = 1;
+
+    safeRaw.pages.forEach((rawPage) => {
+      const page = asObject(rawPage);
+      const splitPages = splitQuestionsIntoPages(page.questions || []);
+
+      splitPages.forEach((splitPage, splitIdx) => {
+        rebuiltPages.push(
+          makePage({
+            id: splitPage.id || `page_${pageCounter}`,
+            title: splitIdx === 0 ? String(page.title || splitPage.title || "") : String(splitPage.title || ""),
+            description:
+              splitIdx === 0
+                ? String(page.description || splitPage.description || "")
+                : String(splitPage.description || ""),
+            questions: splitPage.questions || [],
+          })
+        );
+        pageCounter += 1;
+      });
+    });
+
+    return rebuiltPages.length
+      ? rebuiltPages
+      : [makePage({ id: "page_1", title: "", description: "", questions: [] })];
   }
 
-  const legacyQuestions = Array.isArray(safeRaw.questions)
-    ? safeRaw.questions.map(normalizeQuestion).filter(Boolean)
-    : [];
+  const legacyQuestions = Array.isArray(safeRaw.questions) ? safeRaw.questions : [];
 
-  return [
-    makePage({
-      id: "page_1",
-      title: "",
-      description: "",
-      questions: legacyQuestions,
-    }),
-  ];
+  return splitQuestionsIntoPages(legacyQuestions);
 }
 
 export function frontendPagesToBackend(pages = []) {
@@ -340,28 +446,22 @@ export function frontendSurveyToBackend(survey = {}) {
 
 export function surveyQuestions(survey) {
   const normalized = normalizeSurvey(survey);
-  return normalized.pages?.[0]?.questions || [];
+  return (normalized.pages || []).flatMap((page) => page.questions || []);
 }
 
 export function setSurveyQuestions(survey, questions = []) {
   const normalized = normalizeSurvey(survey);
-  const firstPage = normalizePage(normalized.pages?.[0] || { id: "page_1" });
-
-  const nextFirstPage = {
-    ...firstPage,
-    questions: (Array.isArray(questions) ? questions : [])
-      .map(normalizeQuestion)
-      .filter(Boolean),
-  };
 
   return {
     ...normalized,
-    pages: [nextFirstPage, ...(normalized.pages || []).slice(1)],
+    pages: splitQuestionsIntoPages(
+      (Array.isArray(questions) ? questions : []).map(normalizeQuestion)
+    ),
   };
 }
 
 export function surveyQuestionCount(survey) {
-  return surveyQuestions(survey).length;
+  return surveyQuestions(survey).filter((q) => !isDisplayOnlyQuestion(q)).length;
 }
 
 /* =========================
@@ -437,6 +537,13 @@ export function makeQuestionByType(type) {
         required: false,
       });
 
+    case SURVEY_QUESTION_TYPES.PAGE_BREAK:
+      return makeQuestion(type, {
+        label: "Next page",
+        description: "",
+        required: false,
+      });
+
     case SURVEY_QUESTION_TYPES.TEXT:
     default:
       return makeQuestion(SURVEY_QUESTION_TYPES.TEXT, {
@@ -450,6 +557,8 @@ export function makeQuestionByType(type) {
    ========================= */
 
 export function isQuestionVisible(question, responses = {}) {
+  if (question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK) return true;
+
   const rule = question?.visible_if;
   if (!rule || !rule.question_id) return true;
 
@@ -497,6 +606,7 @@ export function emptyValueForQuestion(q) {
       return {};
 
     case SURVEY_QUESTION_TYPES.INFO:
+    case SURVEY_QUESTION_TYPES.PAGE_BREAK:
       return null;
 
     default:
@@ -531,7 +641,7 @@ function isMatrixMultiAnswered(q, value) {
 }
 
 export function isQuestionAnswered(q, value) {
-  if (!q || q.type === SURVEY_QUESTION_TYPES.INFO) return true;
+  if (!q || isDisplayOnlyQuestion(q)) return true;
   if (!q.required) return true;
 
   switch (q.type) {
@@ -647,6 +757,7 @@ export function flattenSurveyResponses(survey, responses) {
         }
 
         case SURVEY_QUESTION_TYPES.INFO:
+        case SURVEY_QUESTION_TYPES.PAGE_BREAK:
           break;
 
         default:
@@ -690,6 +801,7 @@ export function unflattenSurveyResponses(survey, row = {}) {
         }
 
         case SURVEY_QUESTION_TYPES.INFO:
+        case SURVEY_QUESTION_TYPES.PAGE_BREAK:
           responses[q.id] = null;
           break;
 
