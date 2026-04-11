@@ -277,15 +277,20 @@ function makeBackendQuestionFromType(type) {
   }
 
   if (
-    type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-    type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-  ) {
-    const srcRows = Array.isArray(base?.rows) && base.rows.length ? base.rows : [];
-    const srcCols = Array.isArray(base?.columns) && base.columns.length ? base.columns : [];
+  type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+  type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+) {
+  const srcRows = Array.isArray(base?.rows) && base.rows.length ? base.rows : [];
+  const srcCols = Array.isArray(base?.columns) && base.columns.length ? base.columns : [];
 
-    question.rows = ensureMatrixArray(srcRows, "row");
-    question.columns = ensureMatrixArray(srcCols, "col");
-  }
+  question.rows = ensureMatrixArray(srcRows, "row");
+  question.columns = ensureMatrixArray(srcCols, "col");
+}
+
+if (type === SURVEY_QUESTION_TYPES.BIPOLAR) {
+  const srcRows = Array.isArray(base?.rows) && base.rows.length ? base.rows : [];
+  question.rows = ensureMatrixArray(srcRows, "row");
+}
 
   return normalizeQuestionForEditor(question);
 }
@@ -306,10 +311,11 @@ function buildSavedQuestion(q, index) {
         ? ensureChoiceArray(cleanQ.choices)
         : [],
     rows:
-      cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-      cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-        ? ensureMatrixArray(cleanQ.rows, "row")
-        : [],
+  cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+  cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI ||
+  cleanQ.type === SURVEY_QUESTION_TYPES.BIPOLAR
+    ? ensureMatrixArray(cleanQ.rows, "row")
+    : [],
     columns:
       cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
       cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
@@ -705,9 +711,8 @@ function QuestionCard({
     type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
     type === SURVEY_QUESTION_TYPES.MATRIX_MULTI;
 
-  const isScale =
-    type === SURVEY_QUESTION_TYPES.BIPOLAR ||
-    type === SURVEY_QUESTION_TYPES.SLIDER;
+  const isBipolar = type === SURVEY_QUESTION_TYPES.BIPOLAR;
+const isSlider = type === SURVEY_QUESTION_TYPES.SLIDER;
 
   const isDragging = draggingId === q.id;
   const isDragOver = dragOverId === q.id;
@@ -980,82 +985,147 @@ function QuestionCard({
       )}
 
       {isMatrix && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-          }}
-        >
-          <ItemTableEditor
-            title="Rows / items"
-            items={q.rows}
-            onChange={(items) => updateQuestion(index, { rows: ensureMatrixArray(items, "row") })}
-            prefix="row"
-            addLabel="Add row"
-          />
-          <ItemTableEditor
-            title="Columns / scale points"
-            items={q.columns}
-            onChange={(items) => updateQuestion(index, { columns: ensureMatrixArray(items, "col") })}
-            prefix="col"
-            addLabel="Add column"
-          />
-        </div>
-      )}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 12,
+    }}
+  >
+    <ItemTableEditor
+      title="Rows / items"
+      items={q.rows}
+      onChange={(items) => updateQuestion(index, { rows: ensureMatrixArray(items, "row") })}
+      prefix="row"
+      addLabel="Add row"
+    />
+    <ItemTableEditor
+      title="Columns / scale points"
+      items={q.columns}
+      onChange={(items) => updateQuestion(index, { columns: ensureMatrixArray(items, "col") })}
+      prefix="col"
+      addLabel="Add column"
+    />
+  </div>
+)}
 
-      {isScale && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "120px 120px 1fr 1fr",
-            gap: 12,
-            alignItems: "end",
-          }}
-        >
-          <FieldBlock label="Min">
-            <NumberInput
-              value={q.min}
-              min={0}
-              max={100}
-              onChange={(v) =>
-                updateQuestion(index, {
-                  min: clampInt(v, 0, 100, q.min ?? 1),
-                })
-              }
-            />
-          </FieldBlock>
+{isBipolar && (
+  <>
+    <div style={{ marginBottom: 12 }}>
+      <ItemTableEditor
+        title="Rows / items"
+        items={q.rows}
+        onChange={(items) => updateQuestion(index, { rows: ensureMatrixArray(items, "row") })}
+        prefix="row"
+        addLabel="Add row"
+      />
+    </div>
 
-          <FieldBlock label="Max">
-            <NumberInput
-              value={q.max}
-              min={1}
-              max={100}
-              onChange={(v) =>
-                updateQuestion(index, {
-                  max: clampInt(v, 1, 100, q.max ?? 7),
-                })
-              }
-            />
-          </FieldBlock>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px 120px 1fr 1fr",
+        gap: 12,
+        alignItems: "end",
+      }}
+    >
+      <FieldBlock label="Min">
+        <NumberInput
+          value={q.min}
+          min={1}
+          max={100}
+          onChange={(v) =>
+            updateQuestion(index, {
+              min: clampInt(v, 1, 100, q.min ?? 1),
+            })
+          }
+        />
+      </FieldBlock>
 
-          <FieldBlock label="Left label">
-            <TextInput
-              value={q.left_label ?? ""}
-              onChange={(v) => updateQuestion(index, { left_label: v })}
-              placeholder="e.g. Strongly disagree"
-            />
-          </FieldBlock>
+      <FieldBlock label="Max">
+        <NumberInput
+          value={q.max}
+          min={2}
+          max={100}
+          onChange={(v) =>
+            updateQuestion(index, {
+              max: clampInt(v, 2, 100, q.max ?? 7),
+            })
+          }
+        />
+      </FieldBlock>
 
-          <FieldBlock label="Right label">
-            <TextInput
-              value={q.right_label ?? ""}
-              onChange={(v) => updateQuestion(index, { right_label: v })}
-              placeholder="e.g. Strongly agree"
-            />
-          </FieldBlock>
-        </div>
-      )}
+      <FieldBlock label="Left label">
+        <TextInput
+          value={q.left_label ?? ""}
+          onChange={(v) => updateQuestion(index, { left_label: v })}
+          placeholder="e.g. Unpleasant"
+        />
+      </FieldBlock>
+
+      <FieldBlock label="Right label">
+        <TextInput
+          value={q.right_label ?? ""}
+          onChange={(v) => updateQuestion(index, { right_label: v })}
+          placeholder="e.g. Pleasant"
+        />
+      </FieldBlock>
+    </div>
+  </>
+)}
+
+{isSlider && (
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "120px 120px 1fr 1fr",
+      gap: 12,
+      alignItems: "end",
+    }}
+  >
+    <FieldBlock label="Min">
+      <NumberInput
+        value={q.min}
+        min={0}
+        max={100}
+        onChange={(v) =>
+          updateQuestion(index, {
+            min: clampInt(v, 0, 100, q.min ?? 1),
+          })
+        }
+      />
+    </FieldBlock>
+
+    <FieldBlock label="Max">
+      <NumberInput
+        value={q.max}
+        min={1}
+        max={100}
+        onChange={(v) =>
+          updateQuestion(index, {
+            max: clampInt(v, 1, 100, q.max ?? 7),
+          })
+        }
+      />
+    </FieldBlock>
+
+    <FieldBlock label="Left label">
+      <TextInput
+        value={q.left_label ?? ""}
+        onChange={(v) => updateQuestion(index, { left_label: v })}
+        placeholder="e.g. Low"
+      />
+    </FieldBlock>
+
+    <FieldBlock label="Right label">
+      <TextInput
+        value={q.right_label ?? ""}
+        onChange={(v) => updateQuestion(index, { right_label: v })}
+        placeholder="e.g. High"
+      />
+    </FieldBlock>
+    </div>
+)}
 
       {type === SURVEY_QUESTION_TYPES.INFO && (
         <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
