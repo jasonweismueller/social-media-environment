@@ -70,6 +70,10 @@ function makeSequentialValue(prefix, index) {
   return `${prefix}_${index + 1}`;
 }
 
+function makeNumericValue(index) {
+  return String(index + 1);
+}
+
 function sanitizeQuestionId(value, fallback = "") {
   const cleaned = String(value ?? "")
     .trim()
@@ -109,14 +113,19 @@ function shouldAutoRewriteRowValues(question) {
 
 function ensureChoiceArray(items = []) {
   return (Array.isArray(items) ? items : []).map((item, i) => ({
-    value: sanitizeFreeformValue(item?.value, makeSequentialValue("opt", i)),
+    value: sanitizeFreeformValue(item?.value, makeNumericValue(i)),
     label: String(item?.label ?? ""),
   }));
 }
 
 function ensureMatrixArray(items = [], prefix = "item") {
+  const useNumericDefault = prefix === "col";
+
   return (Array.isArray(items) ? items : []).map((item, i) => ({
-    value: sanitizeFreeformValue(item?.value, makeSequentialValue(prefix, i)),
+    value: sanitizeFreeformValue(
+      item?.value,
+      useNumericDefault ? makeNumericValue(i) : makeSequentialValue(prefix, i)
+    ),
     label: String(item?.label ?? ""),
   }));
 }
@@ -356,9 +365,9 @@ function makeBackendQuestionFromType(type, index = 0) {
         ? base.choices
         : Array.isArray(base?.options)
           ? base.options.map((label, i) => ({
-              value: makeSequentialValue("opt", i),
-              label: String(label || ""),
-            }))
+    value: makeNumericValue(i),
+    label: String(label || ""),
+  }))
           : [];
 
     question.choices = ensureChoiceArray(source);
@@ -795,14 +804,14 @@ function ItemTableEditor({
   }
 
   function addItem() {
-    onChange([
-      ...safeItems,
-      {
-        value: makeSequentialValue(prefix, safeItems.length),
-        label: "",
-      },
-    ]);
-  }
+  onChange([
+    ...safeItems,
+    {
+      value: makeSequentialValue(prefix, safeItems.length),
+      label: "",
+    },
+  ]);
+}
 
   function removeItem(index) {
     onChange(safeItems.filter((_, i) => i !== index));
