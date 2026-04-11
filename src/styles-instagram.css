@@ -1554,7 +1554,7 @@ body.admin-mode .nav {
   z-index: 1;
   background: linear-gradient(180deg, #fbfbfc, #f4f6f8);
   color: #4b5563;
-  font-weight: 700;
+  font-weight: 200;
   text-align: center;
   padding: 12px 10px;
   border-bottom: 1px solid #ececec;
@@ -1579,7 +1579,7 @@ body.admin-mode .nav {
 
 .survey-matrix-table tbody td:first-child{
   text-align: left;
-  font-weight: 600;
+  font-weight: 200;
   color: var(--ig-text);
   background: #fcfcfd;
   border-right: 1px solid #f3f4f6;
