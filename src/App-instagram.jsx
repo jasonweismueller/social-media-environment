@@ -623,6 +623,20 @@ export default function App() {
     }
   }, [onAdmin, hasEntered, feedPhase, submitted, flags?.randomize_avatars, flags?.randomize_images]);
 
+
+  useEffect(() => {
+  if (!feedSubmitted) return;
+
+  if (linkedSurvey && surveyPhase === "ready") {
+    setSubmitted(false);
+    return;
+  }
+
+  if (!linkedSurvey && surveyPhase === "idle") {
+    setSubmitted(true);
+  }
+}, [feedSubmitted, linkedSurvey, surveyPhase]);
+
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
 
@@ -1057,11 +1071,8 @@ export default function App() {
                             showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
 
                             if (ok) {
-                              setFeedSubmitted(true);
-                              if (!linkedSurvey) {
-                                setSubmitted(true);
-                              }
-                            }
+  setFeedSubmitted(true);
+}
 
                             setDisabled(false);
                           }}
