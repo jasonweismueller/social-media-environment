@@ -35,6 +35,10 @@ const QUESTION_TYPE_LABELS = {
   [EDITOR_PAGE_BREAK_TYPE]: "Page break",
 };
 
+function makeEditorId() {
+  return `editor_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 const INSERTABLE_TYPES = [
   SURVEY_QUESTION_TYPES.TEXT,
   SURVEY_QUESTION_TYPES.TEXTAREA,
@@ -191,9 +195,9 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
 
   if (type === EDITOR_PAGE_BREAK_TYPE) {
     return {
-      id: q?.id || `page_break_${index + 1}`,
-      type: EDITOR_PAGE_BREAK_TYPE,
-      text: "",
+      _editorId: q?._editorId || makeEditorId(),
+  id: q?.id || `page_break_${index + 1}`,
+  type: EDITOR_PAGE_BREAK_TYPE,
       description: "",
       required: false,
       randomize_options: false,
@@ -213,9 +217,10 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
   const normalizedId = sanitizeQuestionId(q?.id, `Q_${index + 1}`);
 
   return {
-    id: normalizedId,
-    type,
-    text: String(q?.text ?? ""),
+  _editorId: q?._editorId || makeEditorId(),
+  id: normalizedId,
+  type,
+  text: String(q?.text ?? ""),
     description: String(q?.description ?? ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
     randomize_options: !!q?.randomize_options,
@@ -1621,9 +1626,9 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       const currentQuestions = [...getQuestionList(prev)];
       const currentQuestion = currentQuestions[index] || {};
       const merged =
-        patch && typeof patch === "object" && !Array.isArray(patch)
-          ? { ...currentQuestion, ...patch }
-          : currentQuestion;
+  patch && typeof patch === "object" && !Array.isArray(patch)
+    ? { ...currentQuestion, ...patch }
+    : currentQuestion;
 
       currentQuestions[index] = normalizeQuestionForEditor(merged, index);
       return setQuestionList(prev, currentQuestions);
@@ -1881,7 +1886,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
             {currentQuestions.map((q, i) => (
               <QuestionCard
-                key={q.id}
+                key={q._editorId || i}
                 q={q}
                 index={i}
                 displayNumber={questionDisplayNumbers[i]}
