@@ -1182,18 +1182,18 @@ onDrop={(e) => onDrop(e, q._editorId)}
         <TextInput
           value={q.id || ""}
           onChange={(v) => {
-            const cleanedId = sanitizeQuestionId(v, q.id || `Q_${index + 1}`);
-            let nextQuestion = {
-              ...q,
-              id: cleanedId,
-            };
+  const cleanedId = sanitizeQuestionId(v, "");
+  let nextQuestion = {
+    ...q,
+    id: cleanedId,
+  };
 
-            if (shouldAutoRewriteRowValues(nextQuestion)) {
-              nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
-            }
+  if (cleanedId && shouldAutoRewriteRowValues(nextQuestion)) {
+    nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
+  }
 
-            updateQuestion(index, nextQuestion);
-          }}
+  updateQuestion(index, nextQuestion);
+}}
           placeholder="e.g. AUTH"
         />
       </FieldBlock>
