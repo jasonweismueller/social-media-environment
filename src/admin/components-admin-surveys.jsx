@@ -1085,23 +1085,27 @@ function QuestionCard({
         }}
       >
         <div
-          title="Drag to reorder"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: 40,
-            border: "1px solid #d1d5db",
-            borderRadius: 8,
-            background: "#f9fafb",
-            cursor: "grab",
-            fontSize: 18,
-            color: "#6b7280",
-            userSelect: "none",
-          }}
-        >
-          ⋮⋮
-        </div>
+  draggable
+  onDragStart={(e) => onDragStart(e, q._editorId)}
+  onDragEnd={onDragEnd}
+  title="Drag to reorder"
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    background: "transparent",
+    cursor: "grab",
+    fontSize: 12,
+    color: "#9ca3af",
+    userSelect: "none",
+    marginTop: 6, // aligns vertically with input nicely
+  }}
+>
+  ⋮⋮
+</div>
 
         <div>
           <FieldBlock
