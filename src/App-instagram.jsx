@@ -483,14 +483,19 @@ function SurveyScreen({
     (page.questions || []).filter((q) => isQuestionVisible(q, responses))
   );
 
+  let questionNumber = 0;
+
   return (
     <div className="survey-shell">
       <div className="survey-card">
         <div className="survey-body survey-body-standalone">
-          {visibleQuestions.map((question, idx) => {
+          {visibleQuestions.map((question) => {
             const q = getRenderedQuestion(question, {
               participantSeed: participantSeed || "",
             });
+
+            const isInfo = q?.type === SURVEY_QUESTION_TYPES.INFO;
+            const displayIndex = isInfo ? null : questionNumber++;
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
@@ -499,7 +504,7 @@ function SurveyScreen({
               <SurveyQuestionRenderer
                 key={q.id}
                 question={q}
-                index={idx}
+                index={displayIndex}
                 value={value}
                 error={error}
                 onChange={(nextValue) => onChange(q.id, nextValue)}
