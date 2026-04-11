@@ -1425,14 +1425,15 @@ body.admin-mode .nav {
 }
 
 .survey-info-block{
-  border: 1px solid rgba(237,73,86,.12);
-  background: linear-gradient(180deg, #fff8f9, #fff);
-  color: var(--ig-text);
+  border: 1px solid rgba(237,73,86,.18);
+  background: linear-gradient(180deg, #fff6f8, #fff);
+  color: #c92d54;
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   font-size: 1rem;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1.6;
+  box-shadow: 0 4px 14px rgba(237,73,86,.08);
 }
 
 .survey-input,
