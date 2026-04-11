@@ -775,7 +775,7 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           cursor: "pointer",
           padding: 0,
           boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
-          opacity: isActive ? 1 : 0.18,
+          opacity: isActive ? 1 : 0.4,
           transition: "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
           transform: isActive ? "scale(1)" : "scale(0.96)",
         }}
