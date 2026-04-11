@@ -49,6 +49,9 @@ const INSERTABLE_TYPES = [
   EDITOR_PAGE_BREAK_TYPE,
 ];
 
+const INPUT_HEIGHT = 42;
+const TOP_ROW_LABEL_HEIGHT = 18;
+
 function makeEditorId() {
   return `editor_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -139,30 +142,13 @@ function rewriteQuestionRowValues(question, nextQuestionId) {
   const nextId = sanitizeQuestionId(nextQuestionId, question?.id || "");
   if (!nextId) return question;
 
-  if (
-    question?.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-    question?.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-  ) {
-    return {
-      ...question,
-      rows: (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
-        ...row,
-        value: makeMatrixRowValue(nextId, i),
-      })),
-    };
-  }
-
-  if (question?.type === SURVEY_QUESTION_TYPES.BIPOLAR) {
-    return {
-      ...question,
-      rows: (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
-        ...row,
-        value: makeMatrixRowValue(nextId, i),
-      })),
-    };
-  }
-
-  return question;
+  return {
+    ...question,
+    rows: (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
+      ...row,
+      value: makeMatrixRowValue(nextId, i),
+    })),
+  };
 }
 
 function reorderArray(list = [], fromIndex, toIndex) {
@@ -196,7 +182,6 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
       type: EDITOR_PAGE_BREAK_TYPE,
       text: "",
       required: false,
-      randomize_options: false,
       choices: [],
       rows: [],
       columns: [],
@@ -218,7 +203,6 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
     type,
     text: String(q?.text ?? ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
-    randomize_options: !!q?.randomize_options,
     choices: ensureChoiceArray(q?.choices),
     rows:
       type === SURVEY_QUESTION_TYPES.BIPOLAR
@@ -350,7 +334,6 @@ function makeBackendQuestionFromType(type, index = 0) {
     type,
     text: String(base?.text ?? base?.label ?? ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!base?.required,
-    randomize_options: !!base?.randomize_options,
     choices: [],
     rows: [],
     columns: [],
@@ -433,7 +416,7 @@ function buildSavedQuestion(q, index) {
     placeholder: cleanQ.placeholder || "",
     visible_if: cleanQ.visible_if || null,
     meta: cleanQ.meta || {},
-    randomize_options: !!cleanQ.randomize_options,
+    randomize_options: false,
   };
 }
 
@@ -499,8 +482,8 @@ function IconOnlyButton({
       aria-label={title}
       disabled={disabled}
       style={{
-        width: 36,
-        height: 36,
+        width: INPUT_HEIGHT,
+        height: INPUT_HEIGHT,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -519,6 +502,77 @@ function IconOnlyButton({
   );
 }
 
+function DragHandle({ onDragStart, onDragEnd }) {
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      title="Drag to reorder"
+      style={{
+        width: INPUT_HEIGHT,
+        height: INPUT_HEIGHT,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 8,
+        border: "1px solid #d1d5db",
+        background: "#fff",
+        cursor: "grab",
+        fontSize: 15,
+        color: "#6b7280",
+        userSelect: "none",
+      }}
+    >
+      ⋮⋮
+    </div>
+  );
+}
+
+function RequiredToggleButton({ active, onClick, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={active ? "Required" : "Optional"}
+      style={{
+        height: INPUT_HEIGHT,
+        minWidth: 92,
+        padding: "0 12px",
+        borderRadius: 8,
+        border: `1px solid ${active ? "#4f46e5" : "#d1d5db"}`,
+        background: active ? "#eef2ff" : "#fff",
+        color: active ? "#4338ca" : disabled ? "#9ca3af" : "#111827",
+        fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {active ? "Required" : "Optional"}
+    </button>
+  );
+}
+
+function TopField({ label, children }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          marginBottom: 4,
+          height: TOP_ROW_LABEL_HEIGHT,
+          lineHeight: `${TOP_ROW_LABEL_HEIGHT}px`,
+        }}
+      >
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /* =========================
    Reusable editors
    ========================= */
@@ -531,9 +585,11 @@ function TextInput({ value, onChange, placeholder, style }) {
       placeholder={placeholder}
       style={{
         width: "100%",
+        height: INPUT_HEIGHT,
         padding: "8px 10px",
         borderRadius: 8,
         border: "1px solid #d1d5db",
+        boxSizing: "border-box",
         ...style,
       }}
     />
@@ -551,9 +607,11 @@ function NumberInput({ value, onChange, min, max, step = 1, style }) {
       onChange={(e) => onChange(e.target.value)}
       style={{
         width: "100%",
+        height: INPUT_HEIGHT,
         padding: "8px 10px",
         borderRadius: 8,
         border: "1px solid #d1d5db",
+        boxSizing: "border-box",
         ...style,
       }}
     />
@@ -573,6 +631,7 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
         borderRadius: 8,
         border: "1px solid #d1d5db",
         resize: "vertical",
+        boxSizing: "border-box",
         ...style,
       }}
     />
@@ -587,28 +646,17 @@ function SelectInput({ value, onChange, children, style, disabled = false }) {
       disabled={disabled}
       style={{
         width: "100%",
+        height: INPUT_HEIGHT,
         padding: "8px 10px",
         borderRadius: 8,
         border: "1px solid #d1d5db",
         background: "#fff",
+        boxSizing: "border-box",
         ...style,
       }}
     >
       {children}
     </select>
-  );
-}
-
-function CheckboxInput({ checked, onChange, label }) {
-  return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-      <input
-        type="checkbox"
-        checked={!!checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
   );
 }
 
@@ -676,7 +724,6 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           justifyContent: "center",
           cursor: "pointer",
           padding: 0,
-          fontSize: 10,
         }}
       >
         <PlusIcon size={10} />
@@ -740,8 +787,6 @@ function ItemTableEditor({
   addLabel = "Add row",
   valuePlaceholder = "Value",
   labelPlaceholder = "Label",
-  autoValue = false,
-  valueDisabled = false,
 }) {
   const safeItems = Array.isArray(items) ? items : [];
 
@@ -799,11 +844,6 @@ function ItemTableEditor({
               value={item?.value ?? ""}
               onChange={(v) => updateItem(i, { value: v })}
               placeholder={valuePlaceholder}
-              style={
-                autoValue || valueDisabled
-                  ? { background: "#f9fafb", color: "#6b7280" }
-                  : {}
-              }
             />
             <TextInput
               value={item?.label ?? ""}
@@ -933,6 +973,68 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
    Question editor
    ========================= */
 
+function QuestionActions({
+  q,
+  index,
+  totalQuestions,
+  moveQuestion,
+  removeQuestion,
+  updateQuestion,
+  onDragStart,
+  onDragEnd,
+}) {
+  const isInfo = q?.type === SURVEY_QUESTION_TYPES.INFO;
+
+  return (
+    <TopField label="Actions">
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          alignItems: "center",
+          height: INPUT_HEIGHT,
+        }}
+      >
+        <DragHandle
+          onDragStart={(e) => onDragStart(e, q._editorId)}
+          onDragEnd={onDragEnd}
+        />
+
+        {!isInfo && (
+          <RequiredToggleButton
+            active={!!q.required}
+            onClick={() => updateQuestion(index, { required: !q.required })}
+          />
+        )}
+
+        <button
+          type="button"
+          onClick={() => moveQuestion(index, index - 1)}
+          disabled={index === 0}
+          style={smallActionButtonStyle(index === 0)}
+        >
+          ↑
+        </button>
+
+        <button
+          type="button"
+          onClick={() => moveQuestion(index, index + 1)}
+          disabled={index === totalQuestions - 1}
+          style={smallActionButtonStyle(index === totalQuestions - 1)}
+        >
+          ↓
+        </button>
+
+        <IconOnlyButton
+          onClick={() => removeQuestion(index)}
+          title="Delete question"
+          danger
+        />
+      </div>
+    </TopField>
+  );
+}
+
 function QuestionCard({
   q,
   index,
@@ -982,11 +1084,8 @@ function QuestionCard({
   if (isPageBreak) {
     return (
       <div
-        draggable
-        onDragStart={(e) => onDragStart(e, q._editorId)}
         onDragOver={(e) => onDragOver(e, q._editorId)}
         onDrop={(e) => onDrop(e, q._editorId)}
-        onDragEnd={onDragEnd}
         style={shellStyle}
       >
         <InsertAtBorderButton
@@ -998,60 +1097,70 @@ function QuestionCard({
           onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
         />
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 10,
+            alignItems: "start",
+          }}
+        >
+          <TopField label="Page break">
             <div
-              title="Drag to reorder"
               style={{
+                height: INPUT_HEIGHT,
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                width: 44,
-                height: 40,
+                padding: "0 12px",
                 border: "1px solid #d1d5db",
                 borderRadius: 8,
                 background: "#fff",
-                cursor: "grab",
-                fontSize: 18,
                 color: "#6b7280",
-                userSelect: "none",
               }}
             >
-              ⋮⋮
+              Questions after this will appear on the next page.
             </div>
-            <div>
-              <div style={{ fontWeight: 700, color: "#374151" }}>Page break</div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>
-                Questions after this will appear on the next page.
-              </div>
+          </TopField>
+
+          <TopField label="Actions">
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                height: INPUT_HEIGHT,
+              }}
+            >
+              <DragHandle
+                onDragStart={(e) => onDragStart(e, q._editorId)}
+                onDragEnd={onDragEnd}
+              />
+
+              <button
+                type="button"
+                onClick={() => moveQuestion(index, index - 1)}
+                disabled={index === 0}
+                style={smallActionButtonStyle(index === 0)}
+              >
+                ↑
+              </button>
+
+              <button
+                type="button"
+                onClick={() => moveQuestion(index, index + 1)}
+                disabled={index === totalQuestions - 1}
+                style={smallActionButtonStyle(index === totalQuestions - 1)}
+              >
+                ↓
+              </button>
+
+              <IconOnlyButton
+                onClick={() => removeQuestion(index)}
+                title="Delete page break"
+                danger
+              />
             </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => moveQuestion(index, index - 1)}
-              disabled={index === 0}
-              style={smallActionButtonStyle(index === 0)}
-            >
-              ↑
-            </button>
-
-            <button
-              type="button"
-              onClick={() => moveQuestion(index, index + 1)}
-              disabled={index === totalQuestions - 1}
-              style={smallActionButtonStyle(index === totalQuestions - 1)}
-            >
-              ↓
-            </button>
-
-            <IconOnlyButton
-              onClick={() => removeQuestion(index)}
-              title="Delete page break"
-              danger
-            />
-          </div>
+          </TopField>
         </div>
       </div>
     );
@@ -1059,11 +1168,8 @@ function QuestionCard({
 
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart(e, q._editorId)}
       onDragOver={(e) => onDragOver(e, q._editorId)}
       onDrop={(e) => onDrop(e, q._editorId)}
-      onDragEnd={onDragEnd}
       style={shellStyle}
     >
       <InsertAtBorderButton
@@ -1078,133 +1184,76 @@ function QuestionCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 220px auto",
+          gridTemplateColumns: "minmax(0,1fr) 220px auto",
           gap: 10,
           alignItems: "start",
           marginBottom: 10,
         }}
       >
-      
-
-        <div>
-          <FieldBlock
-            label={
-              type === SURVEY_QUESTION_TYPES.INFO
-                ? "Info text"
-                : `Question ${displayNumber}`
+        <TopField
+          label={
+            type === SURVEY_QUESTION_TYPES.INFO
+              ? "Info text"
+              : `Question ${displayNumber}`
+          }
+        >
+          <TextInput
+            value={q.text || ""}
+            onChange={(v) => updateQuestion(index, { text: v })}
+            placeholder={
+              type === SURVEY_QUESTION_TYPES.INFO ? "Info text" : "Question text"
             }
-          >
-            <TextInput
-              value={q.text || ""}
-              onChange={(v) => updateQuestion(index, { text: v })}
-              placeholder={
-                type === SURVEY_QUESTION_TYPES.INFO ? "Info text" : "Question text"
+          />
+        </TopField>
+
+        <TopField label="Type">
+          <SelectInput
+            value={q.type}
+            onChange={(nextType) => {
+              if (nextType === EDITOR_PAGE_BREAK_TYPE) {
+                updateQuestion(index, makePageBreakForEditor(index));
+                return;
               }
-            />
-          </FieldBlock>
-        </div>
 
-        <div>
-          <FieldBlock label="Type">
-            <SelectInput
-              value={q.type}
-              onChange={(nextType) => {
-                if (nextType === EDITOR_PAGE_BREAK_TYPE) {
-                  updateQuestion(index, makePageBreakForEditor(index));
-                  return;
-                }
+              const next = makeBackendQuestionFromType(nextType, index);
+              const preservedId = sanitizeQuestionId(q.id, next.id);
 
-                const next = makeBackendQuestionFromType(nextType, index);
-                const preservedId = sanitizeQuestionId(q.id, next.id);
+              let merged = {
+                ...next,
+                _editorId: q._editorId,
+                id: preservedId,
+                text: q.text || next.text,
+                required: nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
+                visible_if: q.visible_if || null,
+                meta: q.meta || {},
+              };
 
-                let merged = {
-                  ...next,
-                  _editorId: q._editorId,
-                  id: preservedId,
-                  text: q.text || next.text,
-                  required: nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
-                  visible_if: q.visible_if || null,
-                  meta: q.meta || {},
-                };
+              if (shouldAutoRewriteRowValues(merged)) {
+                merged = rewriteQuestionRowValues(merged, preservedId);
+              }
 
-                if (shouldAutoRewriteRowValues(merged)) {
-                  merged = rewriteQuestionRowValues(merged, preservedId);
-                }
+              updateQuestion(index, merged);
+            }}
+          >
+            {INSERTABLE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {QUESTION_TYPE_LABELS[t] || t}
+              </option>
+            ))}
+          </SelectInput>
+        </TopField>
 
-                updateQuestion(index, merged);
-              }}
-            >
-              {INSERTABLE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {QUESTION_TYPE_LABELS[t] || t}
-                </option>
-              ))}
-            </SelectInput>
-          </FieldBlock>
-        </div>
-
-                <div
-  style={{
-    paddingTop: 23,
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-  }}
->
-  {/* Drag handle */}
-  <div
-    draggable
-    onDragStart={(e) => onDragStart(e, q._editorId)}
-    onDragEnd={onDragEnd}
-    title="Drag to reorder"
-    style={{
-      width: 28,
-      height: 28,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 6,
-      border: "1px solid #e5e7eb",
-      background: "#fff",
-      cursor: "grab",
-      fontSize: 14,
-      color: "#6b7280",
-      userSelect: "none",
-    }}
-    onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-    onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
-  >
-    ⋮⋮
-  </div>
-
-  {/* Move up */}
-  <button
-    type="button"
-    onClick={() => moveQuestion(index, index - 1)}
-    disabled={index === 0}
-    style={smallActionButtonStyle(index === 0)}
-  >
-    ↑
-  </button>
-
-  {/* Move down */}
-  <button
-    type="button"
-    onClick={() => moveQuestion(index, index + 1)}
-    disabled={index === totalQuestions - 1}
-    style={smallActionButtonStyle(index === totalQuestions - 1)}
-  >
-    ↓
-  </button>
-
-  {/* Delete */}
-  <IconOnlyButton
-    onClick={() => removeQuestion(index)}
-    title="Delete question"
-    danger
-  />
-</div>
-</div>
+        <QuestionActions
+          q={q}
+          index={index}
+          totalQuestions={totalQuestions}
+          moveQuestion={moveQuestion}
+          removeQuestion={removeQuestion}
+          updateQuestion={updateQuestion}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        />
+      </div>
 
       <FieldBlock
         label="Question ID / variable name"
@@ -1229,34 +1278,14 @@ function QuestionCard({
         />
       </FieldBlock>
 
-      {type !== SURVEY_QUESTION_TYPES.INFO && (
-        <div style={{ marginBottom: 12 }}>
-          <CheckboxInput
-            checked={q.required}
-            onChange={(v) => updateQuestion(index, { required: v })}
-            label="Required"
-          />
-        </div>
-      )}
-
       {isChoice && (
-        <>
-          <ItemTableEditor
-            title="Options"
-            items={q.choices}
-            onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
-            prefix="opt"
-            addLabel="Add option"
-          />
-
-          <div style={{ marginTop: 12, marginBottom: 12 }}>
-            <CheckboxInput
-              checked={q.randomize_options}
-              onChange={(v) => updateQuestion(index, { randomize_options: v })}
-              label="Randomize options"
-            />
-          </div>
-        </>
+        <ItemTableEditor
+          title="Options"
+          items={q.choices}
+          onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
+          prefix="opt"
+          addLabel="Add option"
+        />
       )}
 
       {isMatrix && (
@@ -1408,12 +1437,18 @@ function QuestionCard({
 
 function smallActionButtonStyle(disabled) {
   return {
-    padding: "8px 10px",
+    width: INPUT_HEIGHT,
+    height: INPUT_HEIGHT,
     borderRadius: 8,
     border: "1px solid #d1d5db",
     background: "#fff",
     color: disabled ? "#9ca3af" : "#111827",
     cursor: disabled ? "not-allowed" : "pointer",
+    padding: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "0 0 auto",
   };
 }
 
