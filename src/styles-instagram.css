@@ -1710,6 +1710,13 @@ body.survey-mode .rail-right {
   display: none !important;
 }
 
+.survey-info-block {
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--ig-text);
+}
+
 .survey-page {
   min-height: 100vh;
   width: 100%;
