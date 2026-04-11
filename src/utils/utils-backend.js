@@ -273,7 +273,13 @@ function makeSurveyExportColumnKey(questionId, rowValue = "") {
 function makeSurveyVariableLabel(questionId, rowValue = "") {
   const q = sanitizeSurveyExportKeyPart(questionId, "question");
   const r = sanitizeSurveyExportKeyPart(rowValue, "");
-  return r ? `${q}_${r}` : q;
+
+  if (!r) return q;
+
+  if (r === q) return q;
+  if (r.startsWith(`${q}_`)) return r;
+
+  return `${q}_${r}`;
 }
 
 function normalizeSurveyAnswerScalar(value) {

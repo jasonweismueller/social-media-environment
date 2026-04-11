@@ -1232,10 +1232,115 @@ export function ParticipantsPanel({
     setUsingSimulated(true);
   };
 
+
+function getPostByIdMap(posts = []) {
+  const map = new Map();
+  (Array.isArray(posts) ? posts : []).forEach((p) => {
+    const id = String(p?.id || "").trim();
+    if (id) map.set(id, p);
+  });
+  return map;
+}
+
+function parsePostMetricKey(key = "") {
+  const suffixes = [
+    "_reacted",
+    "_reaction_type",
+    "_expandable",
+    "_expanded",
+    "_commented",
+    "_comment_texts",
+    "_reported_misinfo",
+    "_dwell_s",
+    "_dwell_ms",
+    "_saved",
+    "_shared",
+    "_share_target",
+    "_share_text",
+    "_cta_clicked",
+    "_bio_opened",
+    "_bio_url_clicked",
+    "_mention_clicked",
+    "_note_opened",
+    "_note_view_details",
+    "_note_link_clicked",
+    "_note_helpful_rated",
+    "_note_helpful_value",
+  ];
+
+  for (const suffix of suffixes) {
+    if (key.endsWith(suffix)) {
+      return {
+        postId: key.slice(0, -suffix.length),
+        suffix,
+      };
+    }
+  }
+
+  return null;
+}
+
+function isRelevantPostMetricForExport(post, suffix, isIG) {
+  if (!post || !suffix) return true;
+
+  if (suffix === "_saved") return !!isIG;
+
+  if (
+    suffix === "_note_opened" ||
+    suffix === "_note_view_details" ||
+    suffix === "_note_link_clicked" ||
+    suffix === "_note_helpful_rated" ||
+    suffix === "_note_helpful_value"
+  ) {
+    return hasNote(post);
+  }
+
+  if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") {
+    return hasBio(post);
+  }
+
+  if (suffix === "_mention_clicked") {
+    return hasMention(post);
+  }
+
+  if (suffix === "_cta_clicked") {
+    return hasCta(post);
+  }
+
+  if (suffix === "_expandable" || suffix === "_expanded") {
+    return looksExpandable(post);
+  }
+
+  return true;
+}
+
+function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
+  const postMap = getPostByIdMap(posts);
+
+  return (Array.isArray(keys) ? keys : []).filter((key) => {
+    if (!key) return false;
+
+    // always keep survey export fields
+    if (String(key).startsWith("survey_")) return true;
+
+    // always keep non-post-level participant metadata
+    const parsed = parsePostMetricKey(key);
+    if (!parsed) return true;
+
+    const post = postMap.get(parsed.postId);
+    if (!post) return true;
+
+    return isRelevantPostMetricForExport(post, parsed.suffix, isIG);
+  });
+}
+
   const clearSimulation = () => {
     setUsingSimulated(false);
     setSimRows([]);
   };
+
+
+  
 
   const downloadCsv = async () => {
     if (!feedId) return;
@@ -1245,9 +1350,11 @@ export function ParticipantsPanel({
 
       const normalizedAll = normalizeRowsForCsv(effectiveRows);
       const keySet = new Set();
-      normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
-      const keys = Array.from(keySet);
-      const labels = keys.map((k) => labelForKey(k, nameStore));
+normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
+
+const allKeys = Array.from(keySet);
+const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
+const labels = keys.map((k) => labelForKey(k, nameStore));
       const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
