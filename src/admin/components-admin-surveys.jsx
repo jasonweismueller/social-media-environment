@@ -194,25 +194,26 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
   const type = q?.type || SURVEY_QUESTION_TYPES.TEXT;
 
   if (type === EDITOR_PAGE_BREAK_TYPE) {
-    return {
-      _editorId: q?._editorId || makeEditorId(),
-  id: q?.id || `page_break_${index + 1}`,
-  type: EDITOR_PAGE_BREAK_TYPE,
-      description: "",
-      required: false,
-      randomize_options: false,
-      choices: [],
-      rows: [],
-      columns: [],
-      min: 1,
-      max: 7,
-      left_label: "",
-      right_label: "",
-      placeholder: "",
-      visible_if: null,
-      meta: q?.meta || {},
-    };
-  }
+  return {
+    _editorId: q?._editorId || makeEditorId(),
+    id: q?.id || `page_break_${index + 1}`,
+    type: EDITOR_PAGE_BREAK_TYPE,
+    text: "",
+    description: "",
+    required: false,
+    randomize_options: false,
+    choices: [],
+    rows: [],
+    columns: [],
+    min: 1,
+    max: 7,
+    left_label: "",
+    right_label: "",
+    placeholder: "",
+    visible_if: null,
+    meta: q?.meta || {},
+  };
+}
 
   const normalizedId = sanitizeQuestionId(q?.id, `Q_${index + 1}`);
 
@@ -221,37 +222,40 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
   id: normalizedId,
   type,
   text: String(q?.text ?? ""),
-    description: String(q?.description ?? ""),
-    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
-    randomize_options: !!q?.randomize_options,
-    choices: ensureChoiceArray(q?.choices),
-    rows:
-      type === SURVEY_QUESTION_TYPES.BIPOLAR
-        ? ensureBipolarRowArray(q?.rows, normalizedId)
-        : type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-            type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-          ? ensureMatrixRowsFromQuestionId(q?.rows, normalizedId)
-          : [],
-    columns: ensureMatrixArray(q?.columns, "col"),
-    min: Number.isFinite(q?.min) ? q.min : 1,
-    max: Number.isFinite(q?.max) ? q.max : 7,
-    left_label: String(q?.left_label ?? ""),
-    right_label: String(q?.right_label ?? ""),
-    placeholder: String(q?.placeholder ?? ""),
-    visible_if: q?.visible_if || null,
-    meta: q?.meta || {},
-  };
+  description: String(q?.description ?? ""),
+  required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
+  randomize_options: !!q?.randomize_options,
+  choices: ensureChoiceArray(q?.choices),
+  rows:
+    type === SURVEY_QUESTION_TYPES.BIPOLAR
+      ? ensureBipolarRowArray(q?.rows, normalizedId)
+      : type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+          type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+        ? ensureMatrixRowsFromQuestionId(q?.rows, normalizedId)
+        : [],
+  columns: ensureMatrixArray(q?.columns, "col"),
+  min: Number.isFinite(q?.min) ? q.min : 1,
+  max: Number.isFinite(q?.max) ? q.max : 7,
+  left_label: String(q?.left_label ?? ""),
+  right_label: String(q?.right_label ?? ""),
+  placeholder: String(q?.placeholder ?? ""),
+  visible_if: q?.visible_if || null,
+  meta: q?.meta || {},
+};
 }
 
 function flattenSurveyPagesForEditor(survey) {
-  const safeSurvey = normalizeSurvey(survey || makeEmptySurvey());
-  const pages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
+  const sourceSurvey =
+    survey && typeof survey === "object" ? survey : makeEmptySurvey();
+
+  const pages = Array.isArray(sourceSurvey.pages) ? sourceSurvey.pages : [];
   const flat = [];
 
   if (pages.length === 0) return [];
 
   pages.forEach((page, pageIndex) => {
     const questions = Array.isArray(page?.questions) ? page.questions : [];
+
     questions.forEach((q) => {
       flat.push(normalizeQuestionForEditor(q, flat.length));
     });
@@ -260,6 +264,7 @@ function flattenSurveyPagesForEditor(survey) {
       flat.push(
         normalizeQuestionForEditor(
           {
+            _editorId: `editor_page_break_${pageIndex + 1}`,
             id: `page_break_${pageIndex + 1}`,
             type: EDITOR_PAGE_BREAK_TYPE,
           },
@@ -273,9 +278,10 @@ function flattenSurveyPagesForEditor(survey) {
 }
 
 function buildSurveyPagesFromFlatQuestions(survey, items) {
-  const safeSurvey = normalizeSurvey(survey || makeEmptySurvey());
-  const flatItems = Array.isArray(items) ? items : [];
+  const safeSurvey =
+    survey && typeof survey === "object" ? survey : makeEmptySurvey();
 
+  const flatItems = Array.isArray(items) ? items : [];
   const existingPages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
   const splitPages = [];
   let currentQuestions = [];
@@ -288,6 +294,7 @@ function buildSurveyPagesFromFlatQuestions(survey, items) {
       currentQuestions.push(normalizeQuestionForEditor(item, currentQuestions.length));
     }
   });
+
   splitPages.push(currentQuestions);
 
   const pages = splitPages.map((questions, pageIndex) => {
@@ -1028,9 +1035,9 @@ onDrop={(e) => onDrop(e, q._editorId)}
   return (
     <div
       draggable
-      onDragStart={(e) => onDragStart(e, q.id)}
-      onDragOver={(e) => onDragOver(e, q.id)}
-      onDrop={(e) => onDrop(e, q.id)}
+      onDragStart={(e) => onDragStart(e, q._editorId)}
+onDragOver={(e) => onDragOver(e, q._editorId)}
+onDrop={(e) => onDrop(e, q._editorId)}
       onDragEnd={onDragEnd}
       style={{
         border: isDragOver ? "2px solid #6366f1" : "1px solid #d1d5db",
@@ -1484,13 +1491,17 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       ]);
 
       const normalized = normalizeSurvey(s || {});
+const editorSurvey = buildSurveyPagesFromFlatQuestions(
+  {
+    ...normalized,
+    linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+    linked_project_id: projectId,
+    trigger: normalized.trigger || "after_feed_submit",
+  },
+  flattenSurveyPagesForEditor(normalized)
+);
 
-      setSurvey({
-        ...normalized,
-        linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-        linked_project_id: projectId,
-        trigger: normalized.trigger || "after_feed_submit",
-      });
+setSurvey(editorSurvey);
     } catch (e) {
       console.warn("Failed to load survey:", e);
       setSurvey(null);
@@ -1499,16 +1510,20 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
   function handleCreateSurvey() {
     const s = makeEmptySurvey({
-      linked_project_id: projectId,
-      linked_feed_ids: [],
-      trigger: "after_feed_submit",
-    });
-    setSurvey(
-      normalizeSurvey({
-        ...s,
-        trigger: s.trigger || "after_feed_submit",
-      })
-    );
+  linked_project_id: projectId,
+  linked_feed_ids: [],
+  trigger: "after_feed_submit",
+});
+
+const editorSurvey = buildSurveyPagesFromFlatQuestions(
+  {
+    ...s,
+    trigger: s.trigger || "after_feed_submit",
+  },
+  flattenSurveyPagesForEditor(s)
+);
+
+setSurvey(editorSurvey);
     setSelectedSurveyId(null);
   }
 
@@ -1553,14 +1568,19 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         ]);
 
         const normalizedFresh = normalizeSurvey({
-          ...(fresh || {}),
-          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-          linked_project_id: projectId,
-          trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
-        });
+  ...(fresh || {}),
+  linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+  linked_project_id: projectId,
+  trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
+});
 
-        setSelectedSurveyId(savedSurveyId);
-        setSurvey(normalizedFresh);
+const editorFresh = buildSurveyPagesFromFlatQuestions(
+  normalizedFresh,
+  flattenSurveyPagesForEditor(normalizedFresh)
+);
+
+setSelectedSurveyId(savedSurveyId);
+setSurvey(editorFresh);
 
         await loadAll();
         alert("Survey saved");
