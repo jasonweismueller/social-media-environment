@@ -3,6 +3,8 @@ import * as FB from "./ui-core-facebook";
 import * as IG from "./ui-core-instagram";
 import { getApp } from "../utils/utils-backend";
 
+export * from "./ui-survey";
+
 const app = (typeof window !== "undefined" ? getApp() : "fb");
 
 export const {
@@ -31,5 +33,3 @@ export const {
   RouteAwareTopbar,
   TopRailPlaceholder,
 } = app === "ig" ? IG : FB;
-
-export *  from "./ui-survey";
