@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   loadParticipantsRoster,
+  loadMergedParticipantSurveyRoster,
   summarizeRoster,
   nfCompact,
   extractPerPostFromRosterRow,
@@ -32,6 +33,8 @@ function selectAllOnFocus(e) {
 const isIGApp = () => String(APP || "").toLowerCase() === "ig";
 
 function labelForKey(key, nameMap) {
+  if (String(key).startsWith("survey_")) return key;
+
   const m = /^(.+?)_([a-z_]+)$/.exec(key);
   if (!m) return key;
   const [, base, suf] = m;
@@ -1232,30 +1235,79 @@ export function ParticipantsPanel({
     setSimRows([]);
   };
 
-  const downloadCsv = () => {
-    if (!effectiveRows?.length) return;
+  const downloadCsv = async () => {
+    if (!feedId) return;
+    if (usingSimulated) {
+      if (!effectiveRows?.length) return;
 
-    const normalizedAll = normalizeRowsForCsv(effectiveRows);
-    const keySet = new Set();
-    normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
-    const keys = Array.from(keySet);
-    const labels = keys.map((k) => labelForKey(k, nameStore));
-    const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
+      const normalizedAll = normalizeRowsForCsv(effectiveRows);
+      const keySet = new Set();
+      normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
+      const keys = Array.from(keySet);
+      const labels = keys.map((k) => labelForKey(k, nameStore));
+      const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download =
-      `${APP}_participants` +
-      `${projectId ? `_${projectId}` : ""}` +
-      `${feedId ? `_${feedId}` : ""}` +
-      `${usingSimulated ? "_SIMULATED" : ""}.csv`;
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        `${APP}_participants` +
+        `${projectId ? `_${projectId}` : ""}` +
+        `${feedId ? `_${feedId}` : ""}` +
+        `_SIMULATED.csv`;
 
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    try {
+      setError("");
+      setLoading(true);
+
+      const merged = await loadMergedParticipantSurveyRoster({
+        feedId,
+        projectId,
+      });
+
+      const mergedRows = Array.isArray(merged?.rows) ? merged.rows : [];
+      if (!mergedRows.length) return;
+
+      const normalizedAll = normalizeRowsForCsv(mergedRows);
+      const keySet = new Set();
+      normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
+
+      const keys = Array.from(keySet);
+      const surveyLabelMap = new Map(
+        (merged?.surveyColumns || []).map((col) => [col.column_key, col.label || col.column_key])
+      );
+
+      const labels = keys.map((k) => surveyLabelMap.get(k) || labelForKey(k, nameStore));
+      const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        `${APP}_participants` +
+        `${projectId ? `_${projectId}` : ""}` +
+        `${feedId ? `_${feedId}` : ""}` +
+        `${merged?.hasMergedSurveyColumns ? "_with_survey" : ""}.csv`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Merged CSV download failed:", e);
+      setError("Failed to download CSV");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1326,7 +1378,7 @@ export function ParticipantsPanel({
           <button
             className="btn"
             onClick={downloadCsv}
-            disabled={!effectiveRows?.length}
+            disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Download CSV
