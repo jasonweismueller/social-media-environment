@@ -2047,7 +2047,7 @@ body.survey-mode .rail-right {
 
 .survey-matrix-table tbody td:first-child{
   text-align: left;
-  font-weight: 500;
+  font-weight: 200;
   color: var(--ig-text);
   background: #fcfcfd;
   border-right: 1px solid #f3f4f6;
