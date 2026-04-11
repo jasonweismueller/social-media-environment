@@ -2025,7 +2025,7 @@ body.survey-mode .rail-right {
   margin-bottom: 12px;
   font-size: 1rem;
   line-height: 1.45;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--ig-text);
 }
 
@@ -2034,7 +2034,7 @@ body.survey-mode .rail-right {
   justify-content:space-between;
   gap: 12px;
   font-size: .84rem;
-  font-weight: 400;
+  font-weight: 200;
   color: var(--ig-muted);
 }
 
@@ -2042,7 +2042,7 @@ body.survey-mode .rail-right {
   font-size: .95rem;
   line-height: 1.45;
   color: var(--ig-text);
-  font-weight: 400;
+  font-weight: 200;
 }
 
 .survey-matrix-table tbody td:first-child{
