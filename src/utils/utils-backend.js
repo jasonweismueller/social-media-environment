@@ -23,7 +23,6 @@ export const getApp = () => {
 
 export const APP = getApp();
 
-
 async function loadPublicSurveyDefinitionForFeed(
   surveyId,
   feedId,
@@ -66,7 +65,6 @@ async function loadPublicSurveyDefinitionForFeed(
     return null;
   }
 }
-
 
 export async function getLinkedFeedIdsForSurveyFromBackend({
   surveyId,
@@ -232,6 +230,364 @@ function makeEmptySurveyShell(surveyId = "") {
     linked_feed_ids: [],
     linked_project_id: normalizeProjectId(),
     trigger: "after_feed_submit",
+  };
+}
+
+/* ======================= merged survey export helpers ====================== */
+
+const SURVEY_EXPORT_PREFIX = "survey";
+
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseMaybeJson(value, fallback = {}) {
+  if (isPlainObject(value) || Array.isArray(value)) return value;
+  if (typeof value !== "string") return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed == null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeSurveyExportKeyPart(value, fallback = "") {
+  const cleaned = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w-]/g, "");
+  return cleaned || fallback;
+}
+
+function makeSurveyExportColumnKey(questionId, rowValue = "") {
+  const q = sanitizeSurveyExportKeyPart(questionId, "question");
+  const r = sanitizeSurveyExportKeyPart(rowValue, "");
+  return r ? `${SURVEY_EXPORT_PREFIX}_${q}_${r}` : `${SURVEY_EXPORT_PREFIX}_${q}`;
+}
+
+function normalizeSurveyAnswerScalar(value) {
+  if (value == null) return "";
+  if (Array.isArray(value)) {
+    return value.map((v) => normalizeSurveyAnswerScalar(v)).filter(Boolean).join(" | ");
+  }
+  if (isPlainObject(value)) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return String(value);
+}
+
+function flattenSurveyQuestions(definition) {
+  const survey = definition && typeof definition === "object" ? definition : {};
+  const pages = Array.isArray(survey.pages) ? survey.pages : [];
+  const questions = [];
+
+  pages.forEach((page, pIdx) => {
+    const qs = Array.isArray(page?.questions) ? page.questions : [];
+    qs.forEach((q, qIdx) => {
+      const questionId = String(q?.id || "").trim();
+      const questionType = String(q?.type || "").trim();
+      if (!questionId) return;
+      if (questionType === "info" || questionType === "page_break") return;
+
+      const rows = Array.isArray(q?.rows) ? q.rows : [];
+      const hasRowStructure = rows.length > 0;
+
+      if (hasRowStructure) {
+        rows.forEach((row, rIdx) => {
+          const rowValue = String(row?.value || "").trim() || String(rIdx + 1);
+          const rowLabel =
+            String(
+              row?.label ??
+              row?.left_label ??
+              row?.text ??
+              rowValue
+            ).trim() || rowValue;
+
+          questions.push({
+            kind: "row",
+            question_id: questionId,
+            question_text: String(q?.text || questionId).trim() || questionId,
+            question_type: questionType,
+            row_value: rowValue,
+            row_label: rowLabel,
+            column_key: makeSurveyExportColumnKey(questionId, rowValue),
+            label: `${String(q?.text || questionId).trim() || questionId} [${rowLabel}]`,
+            page_index: pIdx,
+            question_index: qIdx,
+            row_index: rIdx,
+          });
+        });
+      } else {
+        questions.push({
+          kind: "question",
+          question_id: questionId,
+          question_text: String(q?.text || questionId).trim() || questionId,
+          question_type: questionType,
+          row_value: "",
+          row_label: "",
+          column_key: makeSurveyExportColumnKey(questionId),
+          label: String(q?.text || questionId).trim() || questionId,
+          page_index: pIdx,
+          question_index: qIdx,
+          row_index: -1,
+        });
+      }
+    });
+  });
+
+  return questions;
+}
+
+function buildSurveyExportColumns(definition, surveyRows = []) {
+  const fromDefinition = flattenSurveyQuestions(definition);
+  if (fromDefinition.length) return fromDefinition;
+
+  const seen = new Map();
+
+  (Array.isArray(surveyRows) ? surveyRows : []).forEach((row) => {
+    const raw = parseMaybeJson(row?.response_json, {});
+    if (!isPlainObject(raw)) return;
+
+    Object.entries(raw).forEach(([questionId, value]) => {
+      if (!questionId) return;
+
+      if (isPlainObject(value)) {
+        Object.keys(value).forEach((rowKey) => {
+          const colKey = makeSurveyExportColumnKey(questionId, rowKey);
+          if (!seen.has(colKey)) {
+            seen.set(colKey, {
+              kind: "row",
+              question_id: questionId,
+              question_text: questionId,
+              question_type: "",
+              row_value: rowKey,
+              row_label: rowKey,
+              column_key: colKey,
+              label: `${questionId} [${rowKey}]`,
+              page_index: 0,
+              question_index: 0,
+              row_index: 0,
+            });
+          }
+        });
+      } else {
+        const colKey = makeSurveyExportColumnKey(questionId);
+        if (!seen.has(colKey)) {
+          seen.set(colKey, {
+            kind: "question",
+            question_id: questionId,
+            question_text: questionId,
+            question_type: "",
+            row_value: "",
+            row_label: "",
+            column_key: colKey,
+            label: questionId,
+            page_index: 0,
+            question_index: 0,
+            row_index: -1,
+          });
+        }
+      }
+    });
+  });
+
+  return Array.from(seen.values());
+}
+
+function flattenSurveyResponseRecord(responseRow, surveyColumns) {
+  const out = {};
+  const rawResponses = parseMaybeJson(
+    responseRow?.response_json ?? responseRow?.responses ?? {},
+    {}
+  );
+
+  const responses = isPlainObject(rawResponses) ? rawResponses : {};
+
+  (Array.isArray(surveyColumns) ? surveyColumns : []).forEach((col) => {
+    if (!col?.column_key || !col?.question_id) return;
+
+    const value = responses[col.question_id];
+
+    if (col.kind === "row") {
+      if (isPlainObject(value)) {
+        out[col.column_key] = normalizeSurveyAnswerScalar(value[col.row_value]);
+      } else {
+        out[col.column_key] = "";
+      }
+      return;
+    }
+
+    out[col.column_key] = normalizeSurveyAnswerScalar(value);
+  });
+
+  return out;
+}
+
+function makeSurveyResponseLookup(surveyRows = [], surveyColumns = []) {
+  const bySessionId = new Map();
+  const byParticipantId = new Map();
+
+  (Array.isArray(surveyRows) ? surveyRows : []).forEach((row) => {
+    const flattened = flattenSurveyResponseRecord(row, surveyColumns);
+    const record = {
+      raw: row,
+      flat: flattened,
+    };
+
+    const sessionId = String(row?.session_id || "").trim();
+    const participantId = String(row?.participant_id || "").trim();
+
+    if (sessionId && !bySessionId.has(sessionId)) {
+      bySessionId.set(sessionId, record);
+    }
+    if (participantId && !byParticipantId.has(participantId)) {
+      byParticipantId.set(participantId, record);
+    }
+  });
+
+  return { bySessionId, byParticipantId };
+}
+
+function mergeParticipantRowsWithSurveyRows({
+  participantRows = [],
+  surveyRows = [],
+  surveyDefinition = null,
+  fillValue = "NA",
+} = {}) {
+  const participants = Array.isArray(participantRows) ? participantRows : [];
+  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyRows);
+  const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
+  const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
+  const lookup = makeSurveyResponseLookup(surveyRows, surveyColumns);
+
+  const mergedRows = participants.map((participant) => {
+    const sessionId = String(participant?.session_id || "").trim();
+    const participantId = String(participant?.participant_id || "").trim();
+
+    const match =
+      (sessionId && lookup.bySessionId.get(sessionId)) ||
+      (participantId && lookup.byParticipantId.get(participantId)) ||
+      null;
+
+    const surveyPayload = {};
+    surveyColumnKeys.forEach((key) => {
+      const value = match?.flat?.[key];
+      surveyPayload[key] = value === "" || value == null ? fillValue : value;
+    });
+
+    return {
+      ...participant,
+      ...surveyPayload,
+    };
+  });
+
+  return {
+    rows: mergedRows,
+    surveyColumns,
+    surveyColumnKeys,
+    surveyColumnLabels,
+    hasSurveyColumns: surveyColumnKeys.length > 0,
+  };
+}
+
+export async function loadMergedParticipantSurveyRoster({
+  feedId,
+  projectId = getProjectId(),
+  signal,
+  fillValue = "NA",
+  forceSurveyDefinition = false,
+} = {}) {
+  const effectiveFeedId = String(feedId || "").trim();
+  if (!effectiveFeedId) {
+    return {
+      rows: [],
+      participants: [],
+      surveyResponses: [],
+      survey: null,
+      surveyLink: null,
+      surveyColumns: [],
+      surveyColumnKeys: [],
+      surveyColumnLabels: [],
+      hasSurvey: false,
+      hasMergedSurveyColumns: false,
+    };
+  }
+
+  const [participants, surveyLink] = await Promise.all([
+    loadParticipantsRoster(effectiveFeedId, { projectId, signal }),
+    (async () => {
+      try {
+        const url = buildQueryUrl(FEED_SURVEY_GET_URL(), {
+          feed_id: effectiveFeedId,
+          project_id: projectId || undefined,
+          _ts: Date.now(),
+        });
+        const link = await getJsonWithRetry(
+          url,
+          { method: "GET", mode: "cors", cache: "no-store", signal },
+          { retries: 1, timeoutMs: 8000 }
+        );
+        return link && link.survey_id ? link : null;
+      } catch (e) {
+        console.warn("loadMergedParticipantSurveyRoster feed_survey lookup failed:", e);
+        return null;
+      }
+    })(),
+  ]);
+
+  if (!surveyLink?.survey_id) {
+    return {
+      rows: Array.isArray(participants) ? participants : [],
+      participants: Array.isArray(participants) ? participants : [],
+      surveyResponses: [],
+      survey: null,
+      surveyLink: null,
+      surveyColumns: [],
+      surveyColumnKeys: [],
+      surveyColumnLabels: [],
+      hasSurvey: false,
+      hasMergedSurveyColumns: false,
+    };
+  }
+
+  const surveyId = String(surveyLink.survey_id || "").trim();
+
+  const [surveyDefinition, surveyResponses] = await Promise.all([
+    loadPublicSurveyDefinitionForFeed(surveyId, effectiveFeedId, {
+      projectId,
+      signal,
+      force: !!forceSurveyDefinition,
+    }),
+    loadSurveyResponsesRoster(surveyId, {
+      feedId: effectiveFeedId,
+      projectId,
+      signal,
+    }),
+  ]);
+
+  const merged = mergeParticipantRowsWithSurveyRows({
+    participantRows: participants,
+    surveyRows: surveyResponses,
+    surveyDefinition,
+    fillValue,
+  });
+
+  return {
+    rows: merged.rows,
+    participants: Array.isArray(participants) ? participants : [],
+    surveyResponses: Array.isArray(surveyResponses) ? surveyResponses : [],
+    survey: surveyDefinition || null,
+    surveyLink,
+    surveyColumns: merged.surveyColumns,
+    surveyColumnKeys: merged.surveyColumnKeys,
+    surveyColumnLabels: merged.surveyColumnLabels,
+    hasSurvey: true,
+    hasMergedSurveyColumns: !!merged.hasSurveyColumns,
   };
 }
 
@@ -1842,6 +2198,10 @@ export function headerLabelsForKeys(keys, posts, { projectId = getProjectId(), f
   });
 
   return keys.map((k) => {
+    if (k.startsWith(`${SURVEY_EXPORT_PREFIX}_`)) {
+      return k;
+    }
+
     const m = /^(.+?)_(.+)$/.exec(k);
     if (!m) return nameMap[k] || k;
     const [, id, suffix] = m;
@@ -1867,5 +2227,3 @@ export function seedNamesFromPosts(posts, { projectId = getProjectId(), feedId =
 
   if (changed) writePostNames(projectId, feedId, map);
 }
-
-
