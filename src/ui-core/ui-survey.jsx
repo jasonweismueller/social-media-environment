@@ -3,7 +3,7 @@ import {
   SURVEY_QUESTION_TYPES,
   isQuestionVisible,
   getRenderedQuestion,
-} from "./utils";
+} from "../utils";
 
 export function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   const qType = question?.type;
