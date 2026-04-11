@@ -1390,7 +1390,8 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       const keySet = new Set();
       normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
 
-      const keys = Array.from(keySet);
+      const allKeys = Array.from(keySet);
+const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
       const surveyLabelMap = new Map(
         (merged?.surveyColumns || []).map((col) => {
           const label =
