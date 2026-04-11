@@ -740,6 +740,8 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
     };
   }, []);
 
+  const isTop = position === "top";
+
   return (
     <div
       ref={wrapRef}
@@ -747,19 +749,19 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
         position: "absolute",
         left: "50%",
         transform: "translateX(-50%)",
-        top: position === "top" ? 6 : "auto",
-        bottom: position === "bottom" ? 6 : "auto",
-        zIndex: 5,
+        top: isTop ? -11 : "auto",
+        bottom: !isTop ? -11 : "auto",
+        zIndex: 6,
         pointerEvents: "auto",
       }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={position === "top" ? "Insert above" : "Insert below"}
+        title={isTop ? "Insert above" : "Insert below"}
         style={{
-          width: 20,
-          height: 20,
+          width: 22,
+          height: 22,
           borderRadius: 999,
           border: "1px solid #d1d5db",
           background: "#fff",
@@ -768,6 +770,7 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           justifyContent: "center",
           cursor: "pointer",
           padding: 0,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
         }}
       >
         <PlusIcon size={10} />
@@ -779,9 +782,9 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            top: position === "top" ? 26 : "auto",
-            bottom: position === "bottom" ? 26 : "auto",
-            minWidth: 200,
+            top: isTop ? 28 : "auto",
+            bottom: !isTop ? 28 : "auto",
+            minWidth: 220,
             padding: 10,
             borderRadius: 10,
             border: "1px solid #d1d5db",
@@ -1120,7 +1123,8 @@ function QuestionCard({
     borderStyle: isPageBreak ? "dashed" : "solid",
     borderRadius: 12,
     padding: 14,
-    marginBottom: 20,
+    marginTop: 18,
+marginBottom: 26,
     background: isDragging ? "#f8fafc" : isPageBreak ? "#f9fafb" : "#fff",
     opacity: isDragging ? 0.65 : 1,
     boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
@@ -1918,9 +1922,9 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <h3 style={{ margin: 0 }}>Surveys</h3>
-          {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
-        </div>
+  <h3 style={{ margin: 0 }}>Survey list</h3>
+  {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+</div>
 
         <button
           type="button"
