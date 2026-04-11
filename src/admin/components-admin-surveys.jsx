@@ -215,7 +215,7 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
   };
 }
 
-  const normalizedId = sanitizeQuestionId(q?.id, `Q_${index + 1}`);
+  const normalizedId = sanitizeQuestionId(q?.id, "");
 
   return {
   _editorId: q?._editorId || makeEditorId(),
