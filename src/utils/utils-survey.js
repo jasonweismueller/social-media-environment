@@ -60,6 +60,36 @@ function normalizeMatrixArray(rawItems = []) {
     .filter(Boolean);
 }
 
+function normalizeStructuredItems(items = [], prefix = "item") {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, i) => {
+      if (typeof item === "string") {
+        const label = item.trim();
+        return label
+          ? {
+              value: `${prefix}_${i + 1}`,
+              label,
+            }
+          : null;
+      }
+
+      if (item && typeof item === "object") {
+        const value = String(item.value ?? `${prefix}_${i + 1}`).trim();
+        const label = String(item.label ?? item.value ?? "").trim();
+        return value || label
+          ? {
+              value: value || `${prefix}_${i + 1}`,
+              label,
+            }
+          : null;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
 function isPageBreakQuestion(question) {
   return question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK;
 }
@@ -122,6 +152,14 @@ export function normalizeQuestion(raw = {}) {
 
   const text = String(raw.text ?? raw.label ?? defaultText);
 
+  const normalizedRows = Array.isArray(raw.rows)
+    ? normalizeStructuredItems(raw.rows, "row")
+    : [];
+
+  const normalizedColumns = Array.isArray(raw.columns)
+    ? normalizeStructuredItems(raw.columns, "col")
+    : [];
+
   return {
     id: raw.id || `q_${uid()}`,
     type,
@@ -138,19 +176,30 @@ export function normalizeQuestion(raw = {}) {
         }))
       : [],
 
-    rows: Array.isArray(raw.rows)
-      ? raw.rows.map((r, i) => ({
-          value: String(r?.value ?? `row_${i + 1}`),
-          label: String(r?.label ?? ""),
-        }))
-      : [],
-
-    columns: Array.isArray(raw.columns)
-      ? raw.columns.map((c, i) => ({
-          value: String(c?.value ?? `col_${i + 1}`),
-          label: String(c?.label ?? ""),
-        }))
-      : [],
+    rows: normalizedRows,
+    columns:
+      type === SURVEY_QUESTION_TYPES.BIPOLAR
+        ? normalizedColumns.length
+          ? normalizedColumns
+          : Array.from(
+              {
+                length: Math.max(
+                  2,
+                  Number.isFinite(raw.max) && Number.isFinite(raw.min)
+                    ? Number(raw.max) - Number(raw.min) + 1
+                    : 7
+                ),
+              },
+              (_, i) => ({
+                value: String(
+                  (Number.isFinite(raw.min) ? Number(raw.min) : 1) + i
+                ),
+                label: String(
+                  (Number.isFinite(raw.min) ? Number(raw.min) : 1) + i
+                ),
+              })
+            )
+        : normalizedColumns,
 
     options: cleanStringArray(
       Array.isArray(raw.options) && raw.options.length
@@ -219,6 +268,46 @@ export function frontendQuestionToBackend(question = {}) {
       };
 
     case SURVEY_QUESTION_TYPES.BIPOLAR:
+      return {
+        ...base,
+        rows: Array.isArray(q.rows)
+          ? q.rows.map((row, i) => ({
+              value: String(row?.value ?? `row_${i + 1}`),
+              label: String(row?.label ?? ""),
+            }))
+          : [],
+        columns: Array.isArray(q.columns) && q.columns.length
+          ? q.columns.map((col, i) => ({
+              value: String(
+                col?.value ??
+                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+              ),
+              label: String(
+                col?.label ??
+                  col?.value ??
+                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+              ),
+            }))
+          : Array.from(
+              {
+                length: Math.max(
+                  2,
+                  Number.isFinite(q.max) && Number.isFinite(q.min)
+                    ? Number(q.max) - Number(q.min) + 1
+                    : 7
+                ),
+              },
+              (_, i) => ({
+                value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+                label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+              })
+            ),
+        min: q.min,
+        max: q.max,
+        left_label: q.left_label ?? q.min_label ?? "",
+        right_label: q.right_label ?? q.max_label ?? "",
+      };
+
     case SURVEY_QUESTION_TYPES.SLIDER:
       return {
         ...base,
@@ -348,7 +437,10 @@ function coerceQuestionsIntoPages(raw = {}) {
         rebuiltPages.push(
           makePage({
             id: splitPage.id || `page_${pageCounter}`,
-            title: splitIdx === 0 ? String(page.title || splitPage.title || "") : String(splitPage.title || ""),
+            title:
+              splitIdx === 0
+                ? String(page.title || splitPage.title || "")
+                : String(splitPage.title || ""),
             description:
               splitIdx === 0
                 ? String(page.description || splitPage.description || "")
@@ -510,7 +602,8 @@ export function makeQuestionByType(type) {
 
     case SURVEY_QUESTION_TYPES.BIPOLAR:
       return makeQuestion(type, {
-        label: "How would you rate this?",
+        label: "Please rate the following items",
+        rows: ["Item 1", "Item 2", "Item 3"],
         min: 1,
         max: 7,
         min_label: "Negative",
@@ -603,6 +696,7 @@ export function emptyValueForQuestion(q) {
 
     case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
     case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
+    case SURVEY_QUESTION_TYPES.BIPOLAR:
       return {};
 
     case SURVEY_QUESTION_TYPES.INFO:
@@ -640,6 +734,17 @@ function isMatrixMultiAnswered(q, value) {
   });
 }
 
+function isBipolarAnswered(q, value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const rows = Array.isArray(q?.rows) ? q.rows : [];
+  if (!rows.length) return false;
+
+  return rows.every((row, i) => {
+    const key = String(row?.value ?? `row_${i + 1}`);
+    return String(value[key] ?? "").trim() !== "";
+  });
+}
+
 export function isQuestionAnswered(q, value) {
   if (!q || isDisplayOnlyQuestion(q)) return true;
   if (!q.required) return true;
@@ -654,11 +759,13 @@ export function isQuestionAnswered(q, value) {
     case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
       return isMatrixMultiAnswered(q, value);
 
+    case SURVEY_QUESTION_TYPES.BIPOLAR:
+      return isBipolarAnswered(q, value);
+
     case SURVEY_QUESTION_TYPES.TEXT:
     case SURVEY_QUESTION_TYPES.TEXTAREA:
     case SURVEY_QUESTION_TYPES.SINGLE:
     case SURVEY_QUESTION_TYPES.DROPDOWN:
-    case SURVEY_QUESTION_TYPES.BIPOLAR:
     case SURVEY_QUESTION_TYPES.SLIDER:
     default:
       return String(value ?? "").trim() !== "";
@@ -748,7 +855,8 @@ export function flattenSurveyResponses(survey, responses) {
           break;
 
         case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
-        case SURVEY_QUESTION_TYPES.MATRIX_MULTI: {
+        case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
+        case SURVEY_QUESTION_TYPES.BIPOLAR: {
           const obj = value && typeof value === "object" ? value : {};
           for (const [k, v] of Object.entries(obj)) {
             row[`${q.id}__${k}`] = Array.isArray(v) ? v.join(" | ") : String(v ?? "");
@@ -784,7 +892,8 @@ export function unflattenSurveyResponses(survey, row = {}) {
         }
 
         case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
-        case SURVEY_QUESTION_TYPES.MATRIX_MULTI: {
+        case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
+        case SURVEY_QUESTION_TYPES.BIPOLAR: {
           const obj = {};
           for (const key of Object.keys(row)) {
             if (key.startsWith(`${q.id}__`)) {
