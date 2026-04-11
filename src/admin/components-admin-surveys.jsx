@@ -687,6 +687,35 @@ function FieldBlock({ label, children, hint = "" }) {
   );
 }
 
+function SectionCard({ title, children, right = null }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        background: "#fff",
+        padding: 16,
+        marginBottom: 18,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
+        <h4 style={{ margin: 0, fontSize: 16 }}>{title}</h4>
+        {right}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function InsertAtBorderButton({ position = "top", onInsert }) {
   const [open, setOpen] = useState(false);
   const [selectedType, setSelectedType] = useState(SURVEY_QUESTION_TYPES.TEXT);
@@ -1271,10 +1300,7 @@ function QuestionCard({
         />
       </div>
 
-      <FieldBlock
-        label="Question ID / variable name"
-        hint="Use something like AUTH, CRED, WARMTH. Matrix and bipolar row ids will follow this base, e.g. CRED_1, CRED_2."
-      >
+      <FieldBlock label="Question ID / variable name">
         <TextInput
           value={q.id || ""}
           onChange={(v) => {
@@ -1443,12 +1469,6 @@ function QuestionCard({
           </FieldBlock>
         </div>
       )}
-
-      {type === SURVEY_QUESTION_TYPES.INFO && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-          Info text is display-only and is not required.
-        </div>
-      )}
     </div>
   );
 }
@@ -1467,6 +1487,21 @@ function smallActionButtonStyle(disabled) {
     alignItems: "center",
     justifyContent: "center",
     flex: "0 0 auto",
+  };
+}
+
+function surveyListButtonStyle(isActive) {
+  return {
+    width: "100%",
+    textAlign: "left",
+    padding: "12px 14px",
+    cursor: "pointer",
+    borderRadius: 12,
+    marginBottom: 8,
+    background: isActive ? "#eef2ff" : "#fff",
+    border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
+    boxShadow: isActive ? "0 1px 2px rgba(79,70,229,0.10)" : "0 1px 2px rgba(0,0,0,0.03)",
+    transition: "all 0.15s ease",
   };
 }
 
@@ -1873,16 +1908,16 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   }, [survey, currentQuestions]);
 
   return (
-    <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+    <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
       <div
         style={{
-          width: 260,
-          flex: "0 0 260px",
+          width: 280,
+          flex: "0 0 280px",
           borderRight: "1px solid #e5e7eb",
-          paddingRight: 16,
+          paddingRight: 18,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <h3 style={{ margin: 0 }}>Surveys</h3>
           {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
         </div>
@@ -1891,44 +1926,46 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
           type="button"
           onClick={handleCreateSurvey}
           style={{
-            marginTop: 10,
+            marginBottom: 14,
             width: "100%",
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid #d1d5db",
-            background: "#fff",
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid #4f46e5",
+            background: "#4f46e5",
+            color: "#fff",
+            fontWeight: 700,
             cursor: "pointer",
+            boxShadow: "0 4px 10px rgba(79,70,229,0.18)",
           }}
         >
           + New Survey
         </button>
 
-        <div style={{ marginTop: 12 }}>
-          {surveys.map((s) => (
-            <button
-              key={s.survey_id}
-              type="button"
-              onClick={() => handleSelectSurvey(s.survey_id)}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "10px 12px",
-                cursor: "pointer",
-                borderRadius: 8,
-                marginBottom: 6,
-                background: selectedSurveyId === s.survey_id ? "#eef2ff" : "transparent",
-                border:
-                  selectedSurveyId === s.survey_id
-                    ? "1px solid #c7d2fe"
-                    : "1px solid transparent",
-              }}
-            >
-              <div style={{ fontWeight: 600 }}>{s.name || s.survey_id}</div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>
-                {surveyQuestionCount(s || {})} questions
-              </div>
-            </button>
-          ))}
+        <div>
+          {surveys.map((s) => {
+            const isActive = selectedSurveyId === s.survey_id;
+            return (
+              <button
+                key={s.survey_id}
+                type="button"
+                onClick={() => handleSelectSurvey(s.survey_id)}
+                style={surveyListButtonStyle(isActive)}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: isActive ? "#3730a3" : "#111827",
+                    marginBottom: 4,
+                  }}
+                >
+                  {s.name || s.survey_id}
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  {surveyQuestionCount(s || {})} questions
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1963,115 +2000,146 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               </div>
             </div>
 
-            <FieldBlock label="Survey name">
-              <TextInput
-                value={survey.name}
-                onChange={(v) => setSurvey({ ...survey, name: v })}
-                placeholder="Survey name"
-              />
-            </FieldBlock>
+            <SectionCard title="Survey details">
+              <FieldBlock label="Survey name">
+                <TextInput
+                  value={survey.name}
+                  onChange={(v) => setSurvey({ ...survey, name: v })}
+                  placeholder="Survey name"
+                />
+              </FieldBlock>
 
-            <FieldBlock label="Description">
-              <TextAreaInput
-                value={survey.description}
-                onChange={(v) => setSurvey({ ...survey, description: v })}
-                placeholder="Description"
-                rows={3}
-              />
-            </FieldBlock>
+              <FieldBlock label="Description">
+                <TextAreaInput
+                  value={survey.description}
+                  onChange={(v) => setSurvey({ ...survey, description: v })}
+                  placeholder="Description"
+                  rows={3}
+                />
+              </FieldBlock>
+            </SectionCard>
 
-            <h4 style={{ marginTop: 18, marginBottom: 10 }}>Questions</h4>
-
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
-              Drag items by the dotted handle to reorder them. Use the + buttons on the borders
-              to insert new questions.
-            </div>
-
-            {currentQuestions.map((q, i) => (
-              <QuestionCard
-                key={q._editorId || i}
-                q={q}
-                index={i}
-                displayNumber={questionDisplayNumbers[i]}
-                totalQuestions={currentQuestions.length}
-                updateQuestion={updateQuestion}
-                removeQuestion={removeQuestion}
-                moveQuestion={moveQuestion}
-                insertQuestionAt={insertQuestionAt}
-                draggingId={draggingQuestionId}
-                dragOverId={dragOverQuestionId}
-                onDragStart={handleQuestionDragStart}
-                onDragOver={handleQuestionDragOver}
-                onDrop={handleQuestionDrop}
-                onDragEnd={handleQuestionDragEnd}
-              />
-            ))}
-
-            {currentQuestions.length === 0 && (
+            <SectionCard
+              title="Link to feeds"
+              right={
+                <button
+                  type="button"
+                  onClick={handleSaveFeedLinks}
+                  disabled={savingLinks}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: savingLinks ? "not-allowed" : "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  {savingLinks ? "Saving..." : "Save Feed Links"}
+                </button>
+              }
+            >
               <div
                 style={{
-                  position: "relative",
-                  border: "1px dashed #d1d5db",
-                  borderRadius: 12,
-                  padding: 28,
-                  background: "#fff",
-                  marginBottom: 20,
-                  textAlign: "center",
-                  color: "#6b7280",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: 12,
+                  maxHeight: 220,
+                  overflow: "auto",
                 }}
               >
-                No questions yet.
-                <div style={{ marginTop: 10 }}>
-                  <InsertAtBorderButton
-                    position="bottom"
-                    onInsert={(nextType) => addQuestion(nextType)}
-                  />
-                </div>
+                {feeds.length === 0 && <div style={{ color: "#6b7280" }}>No feeds found.</div>}
+
+                {feeds.map((f) => (
+                  <div key={f.feed_id} style={{ marginBottom: 8 }}>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={normalizeLinkedFeedIds(survey.linked_feed_ids).includes(f.feed_id)}
+                        onChange={() => toggleFeed(f.feed_id)}
+                      />
+                      <span>{f.name || f.feed_id}</span>
+                      {feedId && f.feed_id === feedId && (
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>(current)</span>
+                      )}
+                    </label>
+                  </div>
+                ))}
               </div>
-            )}
+            </SectionCard>
 
-            <h4 style={{ marginTop: 18, marginBottom: 10 }}>Link to feeds</h4>
+            <SectionCard title="Questions">
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
+                Drag items by the dotted handle to reorder them. Use the + buttons on the borders
+                to insert new questions.
+              </div>
 
-            <div
-              style={{
-                border: "1px solid #d1d5db",
-                borderRadius: 10,
-                padding: 12,
-                maxHeight: 220,
-                overflow: "auto",
-                marginBottom: 12,
-              }}
-            >
-              {feeds.length === 0 && <div style={{ color: "#6b7280" }}>No feeds found.</div>}
-
-              {feeds.map((f) => (
-                <div key={f.feed_id} style={{ marginBottom: 6 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={normalizeLinkedFeedIds(survey.linked_feed_ids).includes(f.feed_id)}
-                      onChange={() => toggleFeed(f.feed_id)}
-                    />
-                    <span>{f.name || f.feed_id}</span>
-                    {feedId && f.feed_id === feedId && (
-                      <span style={{ fontSize: 12, color: "#6b7280" }}>(current)</span>
-                    )}
-                  </label>
-                </div>
+              {currentQuestions.map((q, i) => (
+                <QuestionCard
+                  key={q._editorId || i}
+                  q={q}
+                  index={i}
+                  displayNumber={questionDisplayNumbers[i]}
+                  totalQuestions={currentQuestions.length}
+                  updateQuestion={updateQuestion}
+                  removeQuestion={removeQuestion}
+                  moveQuestion={moveQuestion}
+                  insertQuestionAt={insertQuestionAt}
+                  draggingId={draggingQuestionId}
+                  dragOverId={dragOverQuestionId}
+                  onDragStart={handleQuestionDragStart}
+                  onDragOver={handleQuestionDragOver}
+                  onDrop={handleQuestionDrop}
+                  onDragEnd={handleQuestionDragEnd}
+                />
               ))}
-            </div>
 
-            <button
-              type="button"
-              onClick={handleSaveFeedLinks}
-              disabled={savingLinks}
-              style={{ marginBottom: 20 }}
-            >
-              {savingLinks ? "Saving Feed Links..." : "Save Feed Links"}
-            </button>
+              {currentQuestions.length === 0 && (
+                <div
+                  style={{
+                    position: "relative",
+                    border: "1px dashed #d1d5db",
+                    borderRadius: 12,
+                    padding: 28,
+                    background: "#fff",
+                    textAlign: "center",
+                    color: "#6b7280",
+                  }}
+                >
+                  No questions yet.
+                  <div style={{ marginTop: 10 }}>
+                    <InsertAtBorderButton
+                      position="bottom"
+                      onInsert={(nextType) => addQuestion(nextType)}
+                    />
+                  </div>
+                </div>
+              )}
+            </SectionCard>
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button type="button" onClick={handleSaveSurvey} disabled={savingSurvey}>
+              <button
+                type="button"
+                onClick={handleSaveSurvey}
+                disabled={savingSurvey}
+                style={{
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  border: "1px solid #4f46e5",
+                  background: "#4f46e5",
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor: savingSurvey ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 10px rgba(79,70,229,0.18)",
+                }}
+              >
                 {savingSurvey ? "Saving Survey..." : "Save Survey"}
               </button>
             </div>
