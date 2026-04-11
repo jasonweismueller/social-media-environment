@@ -1,4 +1,4 @@
-// components/ui-core/index.js
+/// components/ui-core/index.js
 import * as FB from "./ui-core-facebook";
 import * as IG from "./ui-core-instagram";
 import { getApp } from "../utils/utils-backend";
