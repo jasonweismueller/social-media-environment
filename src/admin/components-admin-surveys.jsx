@@ -655,32 +655,31 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
         position: "absolute",
         left: "50%",
         transform: "translateX(-50%)",
-        top: position === "top" ? -16 : "auto",
-        bottom: position === "bottom" ? -16 : "auto",
+        top: position === "top" ? 6 : "auto",
+        bottom: position === "bottom" ? 6 : "auto",
         zIndex: 5,
+        pointerEvents: "auto",
       }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={position === "top" ? "Insert above" : "Insert below"}
-        aria-label={position === "top" ? "Insert above" : "Insert below"}
         style={{
-          width: 30,
-          height: 30,
+          width: 20,
+          height: 20,
           borderRadius: 999,
           border: "1px solid #d1d5db",
           background: "#fff",
-          boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
-          display: "inline-flex",
+          display: "flex",
           alignItems: "center",
           justifyContent: "center",
           cursor: "pointer",
-          color: "#111827",
           padding: 0,
+          fontSize: 10,
         }}
       >
-        <PlusIcon size={14} />
+        <PlusIcon size={10} />
       </button>
 
       {open && (
@@ -689,19 +688,17 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            top: position === "top" ? 36 : "auto",
-            bottom: position === "bottom" ? 36 : "auto",
-            minWidth: 220,
+            top: position === "top" ? 26 : "auto",
+            bottom: position === "bottom" ? 26 : "auto",
+            minWidth: 200,
             padding: 10,
             borderRadius: 10,
             border: "1px solid #d1d5db",
             background: "#fff",
-            boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 8 }}>
-            Add question
-          </div>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>Add question</div>
 
           <SelectInput value={selectedType} onChange={setSelectedType}>
             {INSERTABLE_TYPES.map((t) => (
@@ -720,12 +717,11 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
             style={{
               marginTop: 8,
               width: "100%",
-              padding: "8px 10px",
-              borderRadius: 8,
+              padding: "6px 8px",
+              borderRadius: 6,
               border: "1px solid #d1d5db",
               background: "#fff",
               cursor: "pointer",
-              fontWeight: 600,
             }}
           >
             Add
