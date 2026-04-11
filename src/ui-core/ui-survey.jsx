@@ -5,6 +5,14 @@ import {
   getRenderedQuestion,
 } from "../utils";
 
+function makeBipolarScalePoints(min, max) {
+  const safeMin = Number.isFinite(Number(min)) ? Number(min) : 1;
+  const safeMax = Number.isFinite(Number(max)) ? Number(max) : 7;
+
+  if (safeMax < safeMin) return [];
+  return Array.from({ length: safeMax - safeMin + 1 }, (_, i) => safeMin + i);
+}
+
 export function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   const qType = question?.type;
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
@@ -20,6 +28,7 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
 
   const rows = Array.isArray(question?.rows) ? question.rows : [];
   const columns = Array.isArray(question?.columns) ? question.columns : [];
+  const bipolarPoints = makeBipolarScalePoints(question?.min, question?.max);
 
   return (
     <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
@@ -99,21 +108,60 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
       )}
 
       {qType === SURVEY_QUESTION_TYPES.BIPOLAR && (
-        <div className="survey-scale">
-          <div className="survey-scale-labels">
+        <div className="survey-bipolar">
+          <div className="survey-bipolar-top-labels">
             <span>{question.left_label || question.min_label || ""}</span>
             <span>{question.right_label || question.max_label || ""}</span>
           </div>
-          <input
-            type="range"
-            min={question.min ?? 1}
-            max={question.max ?? 7}
-            step={1}
-            value={value === "" || value == null ? question.min ?? 1 : value}
-            onChange={(e) => onChange(String(e.target.value))}
-            className="survey-range"
-          />
-          <div className="survey-range-value">{value || question.min || 1}</div>
+
+          <div className="survey-matrix survey-bipolar-matrix">
+            <table className="survey-matrix-table">
+              <thead>
+                <tr>
+                  <th />
+                  {bipolarPoints.map((point) => (
+                    <th key={point}>{point}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, rowIndex) => {
+                  const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+                  const rowLabel = row?.label || row?.value || "";
+                  const rowValue = value && typeof value === "object" ? value[rowKey] : "";
+
+                  return (
+                    <tr key={rowKey}>
+                      <td>{rowLabel}</td>
+                      {bipolarPoints.map((point) => {
+                        const pointValue = String(point);
+                        return (
+                          <td key={pointValue}>
+                            <input
+                              type="radio"
+                              name={`${question.id}__${rowKey}`}
+                              checked={String(rowValue) === pointValue}
+                              onChange={() =>
+                                onChange({
+                                  ...(value && typeof value === "object" ? value : {}),
+                                  [rowKey]: pointValue,
+                                })
+                              }
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="survey-bipolar-bottom-labels">
+            <span>{question.left_label || question.min_label || ""}</span>
+            <span>{question.right_label || question.max_label || ""}</span>
+          </div>
         </div>
       )}
 
@@ -148,31 +196,35 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row?.value || row?.label}>
-                  <td>{row?.label || row?.value || ""}</td>
-                  {columns.map((col) => {
-                    const rowKey = row?.value || row?.label || "";
-                    const colValue = col?.value || col?.label || "";
-                    const rowValue = value && typeof value === "object" ? value[rowKey] : "";
-                    return (
-                      <td key={colValue}>
-                        <input
-                          type="radio"
-                          name={`${question.id}__${rowKey}`}
-                          checked={rowValue === colValue}
-                          onChange={() =>
-                            onChange({
-                              ...(value && typeof value === "object" ? value : {}),
-                              [rowKey]: colValue,
-                            })
-                          }
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+              {rows.map((row, rowIndex) => {
+                const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+                const rowLabel = row?.label || row?.value || "";
+                const rowValue = value && typeof value === "object" ? value[rowKey] : "";
+
+                return (
+                  <tr key={rowKey}>
+                    <td>{rowLabel}</td>
+                    {columns.map((col) => {
+                      const colValue = col?.value || col?.label || "";
+                      return (
+                        <td key={colValue}>
+                          <input
+                            type="radio"
+                            name={`${question.id}__${rowKey}`}
+                            checked={rowValue === colValue}
+                            onChange={() =>
+                              onChange({
+                                ...(value && typeof value === "object" ? value : {}),
+                                [rowKey]: colValue,
+                              })
+                            }
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -190,8 +242,9 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const rowKey = row?.value || row?.label || "";
+              {rows.map((row, rowIndex) => {
+                const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+                const rowLabel = row?.label || row?.value || "";
                 const rowValues =
                   value && typeof value === "object" && Array.isArray(value[rowKey])
                     ? value[rowKey]
@@ -199,7 +252,7 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
 
                 return (
                   <tr key={rowKey}>
-                    <td>{row?.label || row?.value || ""}</td>
+                    <td>{rowLabel}</td>
                     {columns.map((col) => {
                       const colValue = col?.value || col?.label || "";
                       const checked = rowValues.includes(colValue);
@@ -326,8 +379,8 @@ export function SurveyScreen({
       if (q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE) {
         const rows = Array.isArray(q.rows) ? q.rows : [];
         const obj = value && typeof value === "object" ? value : {};
-        const missing = rows.some((row) => {
-          const rowKey = row?.value || row?.label || "";
+        const missing = rows.some((row, rowIndex) => {
+          const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
           return !obj[rowKey];
         });
         if (missing) {
@@ -338,9 +391,21 @@ export function SurveyScreen({
       if (q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI) {
         const rows = Array.isArray(q.rows) ? q.rows : [];
         const obj = value && typeof value === "object" ? value : {};
-        const missing = rows.some((row) => {
-          const rowKey = row?.value || row?.label || "";
+        const missing = rows.some((row, rowIndex) => {
+          const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
           return !Array.isArray(obj[rowKey]) || obj[rowKey].length === 0;
+        });
+        if (missing) {
+          pageErrors[q.id] = "Please complete all rows.";
+        }
+      }
+
+      if (q.type === SURVEY_QUESTION_TYPES.BIPOLAR) {
+        const rows = Array.isArray(q.rows) ? q.rows : [];
+        const obj = value && typeof value === "object" ? value : {};
+        const missing = rows.some((row, rowIndex) => {
+          const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+          return String(obj[rowKey] ?? "").trim() === "";
         });
         if (missing) {
           pageErrors[q.id] = "Please complete all rows.";
