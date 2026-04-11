@@ -24,6 +24,50 @@ export const getApp = () => {
 export const APP = getApp();
 
 
+async function loadPublicSurveyDefinitionForFeed(
+  surveyId,
+  feedId,
+  { projectId = getProjectId(), signal, force = false } = {}
+) {
+  if (!surveyId || !feedId) return null;
+
+  if (!force) {
+    const cached = __getCachedSurvey(surveyId, projectId);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
+      survey_id: surveyId,
+      feed_id: feedId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    if (!data || Array.isArray(data) || !data.survey_id) return null;
+
+    const out = {
+      ...makeEmptySurveyShell(surveyId),
+      ...data,
+      survey_id: data.survey_id || surveyId,
+      linked_project_id: projectId || "",
+    };
+
+    __setCachedSurvey(surveyId, projectId, out);
+    return out;
+  } catch (e) {
+    console.warn("loadPublicSurveyDefinitionForFeed failed:", e);
+    return null;
+  }
+}
+
+
 export async function getLinkedFeedIdsForSurveyFromBackend({
   surveyId,
   projectId = getProjectId(),
@@ -1140,11 +1184,10 @@ export async function getSurveyForFeedFromBackend(
       return null;
     }
 
-    const def = await loadSurveyFromBackend(link.survey_id, {
+    const def = await loadPublicSurveyDefinitionForFeed(link.survey_id, feedId, {
       projectId,
       signal,
       force,
-      returnEmptyOnFail: false,
     });
 
     const out = def
@@ -1163,6 +1206,7 @@ export async function getSurveyForFeedFromBackend(
     return out;
   } catch (e) {
     console.warn("getSurveyForFeedFromBackend failed:", e);
+    __setCachedFeedSurvey(feedId, projectId, null);
     return null;
   }
 }

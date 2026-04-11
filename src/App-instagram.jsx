@@ -396,11 +396,11 @@ export default function App() {
     setFeedError("");
     setFlagsReady(false);
     setAssetsReady(false);
-    setLinkedSurvey(null);
-    setSurveyPhase("idle");
-    setSurveyResponses({});
-    setSurveyErrors({});
-    setSurveyErrorMsg("");
+   setLinkedSurvey(null);
+setSurveyPhase("loading");
+setSurveyResponses({});
+setSurveyErrors({});
+setSurveyErrorMsg("");
     setFeedSubmitted(false);
     setSubmitted(false);
 
@@ -626,6 +626,8 @@ export default function App() {
 
   useEffect(() => {
   if (!feedSubmitted) return;
+
+  if (surveyPhase === "loading") return;
 
   if (linkedSurvey && surveyPhase === "ready") {
     setSubmitted(false);
