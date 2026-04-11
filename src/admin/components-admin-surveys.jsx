@@ -718,6 +718,7 @@ function SectionCard({ title, children, right = null }) {
 
 function InsertAtBorderButton({ position = "top", onInsert }) {
   const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [selectedType, setSelectedType] = useState(SURVEY_QUESTION_TYPES.TEXT);
   const wrapRef = useRef(null);
 
@@ -741,10 +742,13 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
   }, []);
 
   const isTop = position === "top";
+  const isActive = hovered || open;
 
   return (
     <div
       ref={wrapRef}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         position: "absolute",
         left: "50%",
@@ -770,7 +774,10 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           justifyContent: "center",
           cursor: "pointer",
           padding: 0,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.10)",
+          boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
+          opacity: isActive ? 1 : 0.18,
+          transition: "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
+          transform: isActive ? "scale(1)" : "scale(0.96)",
         }}
       >
         <PlusIcon size={10} />
@@ -1921,7 +1928,14 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
           paddingRight: 18,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 18,
+  }}
+>
   <h3 style={{ margin: 0 }}>Survey list</h3>
   {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
 </div>
@@ -1979,13 +1993,13 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         {survey && (
           <>
             <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 12,
-              }}
-            >
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 18,
+  }}
+>
               <h3 style={{ margin: 0 }}>Survey Editor</h3>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
