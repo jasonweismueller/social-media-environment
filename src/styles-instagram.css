@@ -2016,3 +2016,39 @@ body.survey-mode .rail-right {
     min-width: 0;
   }
 }
+
+.survey-question-title{
+  display:flex;
+  align-items:flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 1rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--ig-text);
+}
+
+.survey-scale-labels{
+  display:flex;
+  justify-content:space-between;
+  gap: 12px;
+  font-size: .84rem;
+  font-weight: 400;
+  color: var(--ig-muted);
+}
+
+.survey-option span{
+  font-size: .95rem;
+  line-height: 1.45;
+  color: var(--ig-text);
+  font-weight: 400;
+}
+
+.survey-matrix-table tbody td:first-child{
+  text-align: left;
+  font-weight: 500;
+  color: var(--ig-text);
+  background: #fcfcfd;
+  border-right: 1px solid #f3f4f6;
+}
