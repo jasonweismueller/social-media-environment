@@ -19,6 +19,8 @@ import {
    Small helpers
    ========================= */
 
+const EDITOR_PAGE_BREAK_TYPE = "page_break";
+
 const QUESTION_TYPE_LABELS = {
   [SURVEY_QUESTION_TYPES.TEXT]: "Text",
   [SURVEY_QUESTION_TYPES.TEXTAREA]: "Long text",
@@ -30,6 +32,7 @@ const QUESTION_TYPE_LABELS = {
   [SURVEY_QUESTION_TYPES.BIPOLAR]: "Bipolar scale",
   [SURVEY_QUESTION_TYPES.SLIDER]: "Slider",
   [SURVEY_QUESTION_TYPES.INFO]: "Info text",
+  [EDITOR_PAGE_BREAK_TYPE]: "Page break",
 };
 
 function clampInt(value, min, max, fallback) {
@@ -80,6 +83,27 @@ function reorderArray(list = [], fromIndex, toIndex) {
 function normalizeQuestionForEditor(q = {}, index = 0) {
   const type = q?.type || SURVEY_QUESTION_TYPES.TEXT;
 
+  if (type === EDITOR_PAGE_BREAK_TYPE) {
+    return {
+      id: q?.id || `page_break_${index + 1}`,
+      type: EDITOR_PAGE_BREAK_TYPE,
+      text: "",
+      description: "",
+      required: false,
+      randomize_options: false,
+      choices: [],
+      rows: [],
+      columns: [],
+      min: 1,
+      max: 7,
+      left_label: "",
+      right_label: "",
+      placeholder: "",
+      visible_if: null,
+      meta: q?.meta || {},
+    };
+  }
+
   return {
     id: q?.id || `q_${index + 1}`,
     type,
@@ -100,37 +124,101 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
   };
 }
 
-function getQuestionList(survey) {
-  const questions = Array.isArray(survey?.pages?.[0]?.questions)
-    ? survey.pages[0].questions
-    : [];
-  return questions.map((q, i) => normalizeQuestionForEditor(q, i));
+function flattenSurveyPagesForEditor(survey) {
+  const safeSurvey = normalizeSurvey(survey || makeEmptySurvey());
+  const pages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
+  const flat = [];
+
+  if (pages.length === 0) return [];
+
+  pages.forEach((page, pageIndex) => {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+    questions.forEach((q) => {
+      flat.push(normalizeQuestionForEditor(q, flat.length));
+    });
+
+    if (pageIndex < pages.length - 1) {
+      flat.push(
+        normalizeQuestionForEditor(
+          {
+            id: `page_break_${pageIndex + 1}`,
+            type: EDITOR_PAGE_BREAK_TYPE,
+          },
+          flat.length
+        )
+      );
+    }
+  });
+
+  return flat;
 }
 
-function setQuestionList(survey, questions) {
+function buildSurveyPagesFromFlatQuestions(survey, items) {
   const safeSurvey = normalizeSurvey(survey || makeEmptySurvey());
-  const firstPage = safeSurvey.pages?.[0] || {
-    id: "page_1",
-    title: "",
-    description: "",
-    questions: [],
-  };
+  const flatItems = Array.isArray(items) ? items : [];
+
+  const existingPages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
+  const splitPages = [];
+  let currentQuestions = [];
+
+  flatItems.forEach((item) => {
+    if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
+      splitPages.push(currentQuestions);
+      currentQuestions = [];
+    } else {
+      currentQuestions.push(normalizeQuestionForEditor(item, currentQuestions.length));
+    }
+  });
+  splitPages.push(currentQuestions);
+
+  const pages = splitPages.map((questions, pageIndex) => {
+    const existingPage = existingPages[pageIndex] || {};
+    return {
+      id: existingPage.id || `page_${pageIndex + 1}`,
+      title: String(existingPage.title ?? ""),
+      description: String(existingPage.description ?? ""),
+      questions: questions.map((q, i) => normalizeQuestionForEditor(q, i)),
+    };
+  });
 
   return {
     ...safeSurvey,
-    pages: [
-      {
-        ...firstPage,
-        questions: (Array.isArray(questions) ? questions : []).map((q, i) =>
-          normalizeQuestionForEditor(q, i)
-        ),
-      },
-      ...(safeSurvey.pages || []).slice(1),
-    ],
+    pages: pages.length
+      ? pages
+      : [
+          {
+            id: "page_1",
+            title: "",
+            description: "",
+            questions: [],
+          },
+        ],
   };
 }
 
+function getQuestionList(survey) {
+  return flattenSurveyPagesForEditor(survey);
+}
+
+function setQuestionList(survey, questions) {
+  return buildSurveyPagesFromFlatQuestions(survey, questions);
+}
+
+function makePageBreakForEditor(index = 0) {
+  return normalizeQuestionForEditor(
+    {
+      id: `page_break_${Date.now()}_${index}`,
+      type: EDITOR_PAGE_BREAK_TYPE,
+    },
+    index
+  );
+}
+
 function makeBackendQuestionFromType(type) {
+  if (type === EDITOR_PAGE_BREAK_TYPE) {
+    return makePageBreakForEditor();
+  }
+
   const base = makeQuestionByType(type);
 
   const question = {
@@ -184,6 +272,42 @@ function makeBackendQuestionFromType(type) {
   return normalizeQuestionForEditor(question);
 }
 
+function buildSavedQuestion(q, index) {
+  const cleanQ = normalizeQuestionForEditor(q, index);
+
+  return {
+    id: cleanQ.id,
+    type: cleanQ.type,
+    text: cleanQ.text,
+    description: cleanQ.description,
+    required: cleanQ.type === SURVEY_QUESTION_TYPES.INFO ? false : !!cleanQ.required,
+    choices:
+      cleanQ.type === SURVEY_QUESTION_TYPES.SINGLE ||
+      cleanQ.type === SURVEY_QUESTION_TYPES.MULTI ||
+      cleanQ.type === SURVEY_QUESTION_TYPES.DROPDOWN
+        ? ensureChoiceArray(cleanQ.choices)
+        : [],
+    rows:
+      cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+      cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+        ? ensureMatrixArray(cleanQ.rows, "row")
+        : [],
+    columns:
+      cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+      cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+        ? ensureMatrixArray(cleanQ.columns, "col")
+        : [],
+    left_label: cleanQ.left_label || "",
+    right_label: cleanQ.right_label || "",
+    min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
+    max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
+    placeholder: cleanQ.placeholder || "",
+    visible_if: cleanQ.visible_if || null,
+    meta: cleanQ.meta || {},
+    randomize_options: !!cleanQ.randomize_options,
+  };
+}
+
 /* =========================
    Small icon/button helpers
    ========================= */
@@ -217,6 +341,7 @@ function IconOnlyButton({
   disabled = false,
   style = {},
   size = 16,
+  children = null,
 }) {
   return (
     <button
@@ -241,7 +366,7 @@ function IconOnlyButton({
         ...style,
       }}
     >
-      <TrashIcon size={size} />
+      {children || <TrashIcon size={size} />}
     </button>
   );
 }
@@ -306,11 +431,12 @@ function NumberInput({ value, onChange, min, max, step = 1, style }) {
   );
 }
 
-function SelectInput({ value, onChange, children, style }) {
+function SelectInput({ value, onChange, children, style, disabled = false }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
       style={{
         width: "100%",
         padding: "8px 10px",
@@ -377,6 +503,12 @@ function ItemTableEditor({
     onChange(safeItems.filter((_, i) => i !== index));
   }
 
+  const singularTitle =
+    String(title || "item")
+      .replace(/ \/ .*/g, "")
+      .replace(/s$/i, "")
+      .toLowerCase() || "item";
+
   return (
     <div
       style={{
@@ -417,7 +549,7 @@ function ItemTableEditor({
             />
             <IconOnlyButton
               onClick={() => removeItem(i)}
-              title={`Delete ${title.slice(0, -1).toLowerCase() || "item"}`}
+              title={`Delete ${singularTitle}`}
               danger
             />
           </div>
@@ -461,6 +593,7 @@ function QuestionCard({
   onDragEnd,
 }) {
   const type = q?.type;
+  const isPageBreak = type === EDITOR_PAGE_BREAK_TYPE;
 
   const isChoice =
     type === SURVEY_QUESTION_TYPES.SINGLE ||
@@ -477,6 +610,97 @@ function QuestionCard({
 
   const isDragging = draggingId === q.id;
   const isDragOver = dragOverId === q.id;
+
+  if (isPageBreak) {
+    return (
+      <div
+        draggable
+        onDragStart={(e) => onDragStart(e, q.id)}
+        onDragOver={(e) => onDragOver(e, q.id)}
+        onDrop={(e) => onDrop(e, q.id)}
+        onDragEnd={onDragEnd}
+        style={{
+          border: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 12,
+          background: isDragging ? "#f8fafc" : "#f9fafb",
+          opacity: isDragging ? 0.65 : 1,
+          boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              title="Drag to reorder"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 44,
+                height: 40,
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                background: "#fff",
+                cursor: "grab",
+                fontSize: 18,
+                color: "#6b7280",
+                userSelect: "none",
+              }}
+            >
+              ⋮⋮
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: "#374151" }}>Page break</div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                Questions after this will appear on the next page.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => moveQuestion(index, index - 1)}
+              disabled={index === 0}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: index === 0 ? "#9ca3af" : "#111827",
+                cursor: index === 0 ? "not-allowed" : "pointer",
+              }}
+            >
+              ↑
+            </button>
+
+            <button
+              type="button"
+              onClick={() => moveQuestion(index, index + 1)}
+              disabled={index === totalQuestions - 1}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                color: index === totalQuestions - 1 ? "#9ca3af" : "#111827",
+                cursor: index === totalQuestions - 1 ? "not-allowed" : "pointer",
+              }}
+            >
+              ↓
+            </button>
+
+            <IconOnlyButton
+              onClick={() => removeQuestion(index)}
+              title="Delete page break"
+              danger
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -538,6 +762,11 @@ function QuestionCard({
             <SelectInput
               value={q.type}
               onChange={(nextType) => {
+                if (nextType === EDITOR_PAGE_BREAK_TYPE) {
+                  updateQuestion(index, makePageBreakForEditor(index));
+                  return;
+                }
+
                 const next = makeBackendQuestionFromType(nextType);
                 updateQuestion(index, {
                   ...next,
@@ -550,7 +779,10 @@ function QuestionCard({
                 });
               }}
             >
-              {Object.values(SURVEY_QUESTION_TYPES).map((t) => (
+              {[
+                ...Object.values(SURVEY_QUESTION_TYPES),
+                EDITOR_PAGE_BREAK_TYPE,
+              ].map((t) => (
                 <option key={t} value={t}>
                   {QUESTION_TYPE_LABELS[t] || t}
                 </option>
@@ -872,51 +1104,15 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         trigger: survey.trigger || "after_feed_submit",
       };
 
-      const cleanedQuestions = getQuestionList(normalized).map((q, i) => {
-        const cleanQ = normalizeQuestionForEditor(q, i);
-
-        return {
-          id: cleanQ.id,
-          type: cleanQ.type,
-          text: cleanQ.text,
-          description: cleanQ.description,
-          required: cleanQ.type === SURVEY_QUESTION_TYPES.INFO ? false : !!cleanQ.required,
-          choices:
-            cleanQ.type === SURVEY_QUESTION_TYPES.SINGLE ||
-            cleanQ.type === SURVEY_QUESTION_TYPES.MULTI ||
-            cleanQ.type === SURVEY_QUESTION_TYPES.DROPDOWN
-              ? ensureChoiceArray(cleanQ.choices)
-              : [],
-          rows:
-            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-              ? ensureMatrixArray(cleanQ.rows, "row")
-              : [],
-          columns:
-            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-              ? ensureMatrixArray(cleanQ.columns, "col")
-              : [],
-          left_label: cleanQ.left_label || "",
-          right_label: cleanQ.right_label || "",
-          min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
-          max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
-          placeholder: cleanQ.placeholder || "",
-          visible_if: cleanQ.visible_if || null,
-          meta: cleanQ.meta || {},
-          randomize_options: !!cleanQ.randomize_options,
-        };
-      });
+      const flatQuestions = getQuestionList(normalized);
+      const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(normalized, flatQuestions);
 
       const payload = {
         ...normalized,
-        pages: [
-          {
-            ...(normalized.pages?.[0] || { id: "page_1", title: "", description: "" }),
-            questions: cleanedQuestions,
-          },
-          ...(normalized.pages || []).slice(1),
-        ],
+        pages: (rebuiltSurvey.pages || []).map((page) => ({
+          ...(page || { id: "page_1", title: "", description: "" }),
+          questions: (page.questions || []).map((q, i) => buildSavedQuestion(q, i)),
+        })),
       };
 
       const res = await saveSurveyToBackend(payload, { projectId });
@@ -982,6 +1178,16 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     setSurvey((prev) => {
       const currentQuestions = getQuestionList(prev);
       return setQuestionList(prev, [...currentQuestions, makeBackendQuestionFromType(type)]);
+    });
+  }
+
+  function addPageBreak() {
+    setSurvey((prev) => {
+      const currentQuestions = getQuestionList(prev);
+      return setQuestionList(
+        prev,
+        [...currentQuestions, makePageBreakForEditor(currentQuestions.length)]
+      );
     });
   }
 
@@ -1121,6 +1327,12 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     [survey]
   );
 
+  const pageCount = useMemo(() => {
+    if (!survey) return 0;
+    const pages = buildSurveyPagesFromFlatQuestions(survey, currentQuestions).pages || [];
+    return pages.length;
+  }, [survey, currentQuestions]);
+
   return (
     <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
       <div
@@ -1191,7 +1403,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               <h3 style={{ margin: 0 }}>Survey Editor</h3>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"}
+                  {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"} · {pageCount} page{pageCount === 1 ? "" : "s"}
                 </div>
 
                 {!!survey?.survey_id && (
@@ -1225,7 +1437,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Questions</h4>
 
             <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-              Drag questions by the dotted handle to reorder them, or use ↑ / ↓.
+              Drag questions by the dotted handle to reorder them, use ↑ / ↓, or insert page breaks to split the survey across pages.
             </div>
 
             {currentQuestions.map((q, i) => (
@@ -1257,6 +1469,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.BIPOLAR)}>+ Bipolar</button>
               <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.SLIDER)}>+ Slider</button>
               <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.INFO)}>+ Info</button>
+              <button type="button" onClick={addPageBreak}>+ Page break</button>
             </div>
 
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Link to feeds</h4>

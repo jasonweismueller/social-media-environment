@@ -9,15 +9,12 @@ import {
   computeFeedId, getDefaultFeedFromBackend,
   hasAdminSession, adminLogout, listFeedsFromBackend,
   getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION, VIEWPORT_ENTER_FRACTION_IMAGE,
-  // project/feed helpers so URLs include ?project_id
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   setFeedIdInUrl,
-  // flags + asset helpers
   APP, GS_ENDPOINT, fetchFeedFlags,
   getAvatarPool,
   getImagePool,
-  // survey helpers
   getSurveyForFeedFromBackend,
   sendSurveyResponseToBackend,
   normalizeSurvey as normalizeFrontendSurvey,
@@ -45,7 +42,6 @@ if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
 
-// Normalize truthy flag shapes coming back from Apps Script / sheet
 function normalizeFlags(raw) {
   let f = raw || {};
   if (typeof f === "string") {
@@ -64,7 +60,6 @@ function normalizeFlags(raw) {
   return { randomize_times, randomize_avatars, randomize_names, randomize_images, randomize_bios };
 }
 
-/* iOS UX guards (same behavior as FB) */
 function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
   useEffect(() => {
     const ua = navigator.userAgent || "";
@@ -135,7 +130,7 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
   }, [overlayActive, fieldSelector]);
 }
 
-/* ---------- IG rails skeleton (unchanged visuals) ---------- */
+/* ---------- IG rails skeleton ---------- */
 function RailBox({ largeAvatar = false }) {
   return (
     <div className="ghost-card box" style={{ padding: ".8rem", borderRadius: 14 }}>
@@ -168,7 +163,6 @@ function RailList({ rows = 4 }) {
     </div>
   );
 }
-
 
 function RailStack({ children }) {
   return <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>{children}</div>;
@@ -255,10 +249,10 @@ function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   return (
     <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
       {!isInfo && (
-  <div className="survey-question-title">
-    <span>{index + 1}. {question.text}</span>
-  </div>
-)}
+        <div className="survey-question-title">
+          <span>{index + 1}. {question.text}</span>
+        </div>
+      )}
 
       {!isInfo && question.description ? (
         <div className="survey-question-description">{question.description}</div>
@@ -475,26 +469,184 @@ function SurveyScreen({
   participantSeed,
   onChange,
   onSubmit,
+  onPageValidationFail,
+  onClearBanner,
   submitting,
 }) {
-  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
-  const visibleQuestions = pages.flatMap((page) =>
-    (page.questions || []).filter((q) => isQuestionVisible(q, responses))
-  );
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
-  let questionNumber = 0;
+  const visiblePages = useMemo(() => {
+    const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+
+    return pages
+      .map((page, pageIdx) => {
+        const visibleQuestions = (page?.questions || [])
+          .filter((q) => isQuestionVisible(q, responses))
+          .map((question) =>
+            getRenderedQuestion(question, {
+              participantSeed: participantSeed || "",
+            })
+          );
+
+        return {
+          id: page?.id || `page_${pageIdx + 1}`,
+          title: page?.title || "",
+          description: page?.description || "",
+          questions: visibleQuestions,
+        };
+      })
+      .filter((page) => page.questions.length > 0);
+  }, [survey, responses, participantSeed]);
+
+  useEffect(() => {
+    setCurrentPageIndex(0);
+  }, [survey?.survey_id]);
+
+  useEffect(() => {
+    if (visiblePages.length === 0) {
+      if (currentPageIndex !== 0) setCurrentPageIndex(0);
+      return;
+    }
+    if (currentPageIndex > visiblePages.length - 1) {
+      setCurrentPageIndex(visiblePages.length - 1);
+    }
+  }, [visiblePages, currentPageIndex]);
+
+  const currentPage = visiblePages[currentPageIndex] || null;
+  const isLastPage = currentPageIndex === visiblePages.length - 1;
+  const isFirstPage = currentPageIndex === 0;
+
+  const questionNumberOffset = useMemo(() => {
+    let count = 0;
+    for (let i = 0; i < currentPageIndex; i += 1) {
+      const page = visiblePages[i];
+      count += (page?.questions || []).filter((q) => q?.type !== SURVEY_QUESTION_TYPES.INFO).length;
+    }
+    return count;
+  }, [visiblePages, currentPageIndex]);
+
+  const validateCurrentPage = useCallback(() => {
+    if (!currentPage) return { ok: true, errors: {} };
+
+    const pageErrors = {};
+
+    currentPage.questions.forEach((q) => {
+      if (!q || q.type === SURVEY_QUESTION_TYPES.INFO || !q.required) return;
+
+      const value = responses?.[q.id];
+
+      const isEmpty =
+        value == null ||
+        value === "" ||
+        (Array.isArray(value) && value.length === 0) ||
+        (typeof value === "object" &&
+          !Array.isArray(value) &&
+          Object.keys(value).length === 0);
+
+      if (isEmpty) {
+        pageErrors[q.id] = "Please answer this question.";
+        return;
+      }
+
+      if (q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE) {
+        const rows = Array.isArray(q.rows) ? q.rows : [];
+        const obj = value && typeof value === "object" ? value : {};
+        const missing = rows.some((row) => {
+          const rowKey = row?.value || row?.label || "";
+          return !obj[rowKey];
+        });
+        if (missing) {
+          pageErrors[q.id] = "Please complete all rows.";
+        }
+      }
+
+      if (q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI) {
+        const rows = Array.isArray(q.rows) ? q.rows : [];
+        const obj = value && typeof value === "object" ? value : {};
+        const missing = rows.some((row) => {
+          const rowKey = row?.value || row?.label || "";
+          return !Array.isArray(obj[rowKey]) || obj[rowKey].length === 0;
+        });
+        if (missing) {
+          pageErrors[q.id] = "Please complete all rows.";
+        }
+      }
+    });
+
+    return {
+      ok: Object.keys(pageErrors).length === 0,
+      errors: pageErrors,
+    };
+  }, [currentPage, responses]);
+
+  const goNext = () => {
+    onClearBanner?.();
+    const validation = validateCurrentPage();
+    if (!validation.ok) {
+      onPageValidationFail?.(validation.errors, "Please complete the highlighted questions on this page.");
+      return;
+    }
+    setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const goBack = () => {
+    onClearBanner?.();
+    setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  if (!currentPage) {
+    return (
+      <div className="survey-shell">
+        <div className="survey-card">
+          <div className="survey-body survey-body-standalone">
+            <div className="survey-error-banner">No survey questions are available.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="survey-shell">
       <div className="survey-card">
         <div className="survey-body survey-body-standalone">
-          {visibleQuestions.map((question) => {
-            const q = getRenderedQuestion(question, {
-              participantSeed: participantSeed || "",
-            });
+          {visiblePages.length > 1 && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 8,
+                fontSize: 13,
+                color: "#6b7280",
+                fontWeight: 600,
+              }}
+            >
+              <span>Page {currentPageIndex + 1} of {visiblePages.length}</span>
+            </div>
+          )}
 
+          {currentPage.title ? (
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, color: "var(--ig-text)" }}>
+              {currentPage.title}
+            </div>
+          ) : null}
+
+          {currentPage.description ? (
+            <div style={{ fontSize: 14, lineHeight: 1.5, color: "#6b7280", marginBottom: 14 }}>
+              {currentPage.description}
+            </div>
+          ) : null}
+
+          {currentPage.questions.map((q, idx) => {
             const isInfo = q?.type === SURVEY_QUESTION_TYPES.INFO;
-            const displayIndex = isInfo ? null : questionNumber++;
+            const displayIndex = isInfo
+              ? null
+              : questionNumberOffset + currentPage.questions
+                  .slice(0, idx + 1)
+                  .filter((item) => item?.type !== SURVEY_QUESTION_TYPES.INFO).length - 1;
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
@@ -513,15 +665,44 @@ function SurveyScreen({
 
           {errorMsg ? <div className="survey-error-banner">{errorMsg}</div> : null}
 
-          <div className="survey-submit-wrap">
-            <button
-              type="button"
-              className="btn primary survey-submit-btn"
-              onClick={onSubmit}
-              disabled={submitting}
-            >
-              {submitting ? "Submitting..." : "Submit survey"}
-            </button>
+          <div
+            className="survey-submit-wrap"
+            style={{
+              justifyContent: isFirstPage && isLastPage ? "center" : "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            {!isFirstPage ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={goBack}
+                disabled={submitting}
+              >
+                Back
+              </button>
+            ) : <div />}
+
+            {!isLastPage ? (
+              <button
+                type="button"
+                className="btn primary survey-submit-btn"
+                onClick={goNext}
+                disabled={submitting}
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn primary survey-submit-btn"
+                onClick={onSubmit}
+                disabled={submitting}
+              >
+                {submitting ? "Submitting..." : "Submit survey"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -530,7 +711,6 @@ function SurveyScreen({
 }
 
 /* =============================== MAIN APP ================================ */
-
 function elementHasImage(el) {
   if (!el) return false;
   if (el.dataset?.hasImage === "1") return true;
@@ -597,14 +777,12 @@ export default function App() {
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
-  // Survey state
   const [linkedSurvey, setLinkedSurvey] = useState(null);
-  const [surveyPhase, setSurveyPhase] = useState("idle"); // idle | ready | submitting | error | done
+  const [surveyPhase, setSurveyPhase] = useState("idle");
   const [surveyResponses, setSurveyResponses] = useState({});
   const [surveyErrors, setSurveyErrors] = useState({});
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
 
-  // Feed completion state
   const [feedSubmitted, setFeedSubmitted] = useState(false);
 
   const [flags, setFlags] = useState({
@@ -856,7 +1034,7 @@ export default function App() {
   const [showComposer, setShowComposer] = useState(false);
   const [participantId, setParticipantId] = useState("");
   const [hasEntered, setHasEntered] = useState(false);
-  const [submitted, setSubmitted] = useState(false); // final completion only
+  const [submitted, setSubmitted] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [toast, setToast] = useState(null);
   const [events, setEvents] = useState([]);
@@ -869,19 +1047,19 @@ export default function App() {
     !!linkedSurvey &&
     (surveyPhase === "ready" || surveyPhase === "submitting" || surveyPhase === "error");
 
-    useEffect(() => {
-  if (typeof document === "undefined") return;
+  useEffect(() => {
+    if (typeof document === "undefined") return;
 
-  if (shouldShowSurvey) {
-    document.body.classList.add("survey-mode");
-  } else {
-    document.body.classList.remove("survey-mode");
-  }
+    if (shouldShowSurvey) {
+      document.body.classList.add("survey-mode");
+    } else {
+      document.body.classList.remove("survey-mode");
+    }
 
-  return () => {
-    document.body.classList.remove("survey-mode");
-  };
-}, [shouldShowSurvey]);
+    return () => {
+      document.body.classList.remove("survey-mode");
+    };
+  }, [shouldShowSurvey]);
 
   useEffect(() => {
     const el = document.documentElement;
@@ -1043,6 +1221,18 @@ export default function App() {
       delete next[questionId];
       return next;
     });
+  }, []);
+
+  const handleSurveyPageValidationFail = useCallback((pageErrors, message) => {
+    setSurveyErrors((prev) => ({
+      ...prev,
+      ...(pageErrors || {}),
+    }));
+    setSurveyErrorMsg(message || "Please complete the highlighted questions.");
+  }, []);
+
+  const clearSurveyBanner = useCallback(() => {
+    setSurveyErrorMsg("");
   }, []);
 
   const handleSurveySubmit = useCallback(async () => {
@@ -1235,149 +1425,151 @@ export default function App() {
     <Router>
       <div
         className={`app-shell ${
-  !onAdmin &&
-  !shouldShowSurvey &&
-  (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)
-    ? "blurred"
-    : ""
-}`}
+          !onAdmin &&
+          !shouldShowSurvey &&
+          (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)
+            ? "blurred"
+            : ""
+        }`}
       >
         <RouteAwareTopbar />
 
         <Routes>
           <Route
-  path="/"
-  element={
-    shouldShowSurvey ? (
-      <div className="survey-page">
-        <SurveyScreen
-          survey={linkedSurvey}
-          responses={surveyResponses}
-          errors={surveyErrors}
-          errorMsg={surveyErrorMsg}
-          participantSeed={participantId || sessionIdRef.current}
-          onChange={handleSurveyResponseChange}
-          onSubmit={handleSurveySubmit}
-          submitting={surveyPhase === "submitting"}
-        />
-      </div>
-    ) : (
-      <PageWithRails>
-        <div style={{ position: "relative", minHeight: "calc(100vh - var(--vp-top, 0px))" }}>
-          <div
-            aria-hidden={!canShowFeed}
-            style={{
-              opacity: canShowFeed ? (gateOpen ? 1 : 0) : 0,
-              pointerEvents: gateOpen ? "auto" : "none",
-              transition: "opacity 320ms ease",
-              position: showSkeletonLayer ? "absolute" : "relative",
-              inset: showSkeletonLayer ? 0 : "auto",
-              zIndex: 1,
-            }}
-          >
-            {canShowFeed ? (
-              <IGFeed
-                posts={orderedPosts}
-                registerViewRef={registerViewRef}
-                disabled={disabled}
-                log={log}
-                showComposer={false}
-                loading={false}
-                flags={flags}
-                runSeed={runSeed}
-                app={APP}
-                projectId={projectId}
-                submitButtonLabel={linkedSurvey ? "Submit Feed & Continue to Questions" : "Submit Feed"}
-                feedId={activeFeedId}
-                avatarPools={avatarPools}
-                onSubmit={async () => {
-                  if (feedSubmitted || submitted || disabled) return;
-                  setDisabled(true);
+            path="/"
+            element={
+              shouldShowSurvey ? (
+                <div className="survey-page">
+                  <SurveyScreen
+                    survey={linkedSurvey}
+                    responses={surveyResponses}
+                    errors={surveyErrors}
+                    errorMsg={surveyErrorMsg}
+                    participantSeed={participantId || sessionIdRef.current}
+                    onChange={handleSurveyResponseChange}
+                    onSubmit={handleSurveySubmit}
+                    onPageValidationFail={handleSurveyPageValidationFail}
+                    onClearBanner={clearSurveyBanner}
+                    submitting={surveyPhase === "submitting"}
+                  />
+                </div>
+              ) : (
+                <PageWithRails>
+                  <div style={{ position: "relative", minHeight: "calc(100vh - var(--vp-top, 0px))" }}>
+                    <div
+                      aria-hidden={!canShowFeed}
+                      style={{
+                        opacity: canShowFeed ? (gateOpen ? 1 : 0) : 0,
+                        pointerEvents: gateOpen ? "auto" : "none",
+                        transition: "opacity 320ms ease",
+                        position: showSkeletonLayer ? "absolute" : "relative",
+                        inset: showSkeletonLayer ? 0 : "auto",
+                        zIndex: 1,
+                      }}
+                    >
+                      {canShowFeed ? (
+                        <IGFeed
+                          posts={orderedPosts}
+                          registerViewRef={registerViewRef}
+                          disabled={disabled}
+                          log={log}
+                          showComposer={false}
+                          loading={false}
+                          flags={flags}
+                          runSeed={runSeed}
+                          app={APP}
+                          projectId={projectId}
+                          submitButtonLabel={linkedSurvey ? "Submit Feed & Continue to Questions" : "Submit Feed"}
+                          feedId={activeFeedId}
+                          avatarPools={avatarPools}
+                          onSubmit={async () => {
+                            if (feedSubmitted || submitted || disabled) return;
+                            setDisabled(true);
 
-                  const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
-                    ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
-                    : 0.5;
-                  const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
-                    ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
-                    : ENTER_FRAC;
+                            const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                              ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+                              : 0.5;
+                            const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                              ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                              : ENTER_FRAC;
 
-                  for (const [post_id, elNode] of viewRefs.current) {
-                    const m = measureVis(post_id);
-                    if (!m) continue;
-                    const { vis_frac } = m;
-                    const isImg = elementHasImage(elNode);
-                    const TH = isImg ? IMG_FRAC : ENTER_FRAC;
-                    if (vis_frac >= TH) {
-                      log("vp_exit", {
-                        post_id,
-                        vis_frac,
-                        reason: "submit",
-                        feed_id: activeFeedId || null,
-                      });
-                    }
-                  }
+                            for (const [post_id, elNode] of viewRefs.current) {
+                              const m = measureVis(post_id);
+                              if (!m) continue;
+                              const { vis_frac } = m;
+                              const isImg = elementHasImage(elNode);
+                              const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+                              if (vis_frac >= TH) {
+                                log("vp_exit", {
+                                  post_id,
+                                  vis_frac,
+                                  reason: "submit",
+                                  feed_id: activeFeedId || null,
+                                });
+                              }
+                            }
 
-                  const ts = now();
-                  submitTsRef.current = ts;
+                            const ts = now();
+                            submitTsRef.current = ts;
 
-                  const submitEvent = {
-                    session_id: sessionIdRef.current,
-                    participant_id: participantId || null,
-                    timestamp_iso: fmtTime(ts),
-                    elapsed_ms: ts - t0Ref.current,
-                    ts_ms: ts,
-                    action: "feed_submit",
-                    feed_id: activeFeedId || null,
-                    project_id: projectId || null,
-                  };
+                            const submitEvent = {
+                              session_id: sessionIdRef.current,
+                              participant_id: participantId || null,
+                              timestamp_iso: fmtTime(ts),
+                              elapsed_ms: ts - t0Ref.current,
+                              ts_ms: ts,
+                              action: "feed_submit",
+                              feed_id: activeFeedId || null,
+                              project_id: projectId || null,
+                            };
 
-                  const eventsWithSubmit = [...events, submitEvent];
-                  const feed_id = activeFeedId || null;
-                  const feed_checksum = computeFeedId(posts);
-                  const row = buildParticipantRow({
-                    session_id: sessionIdRef.current,
-                    participant_id: participantId,
-                    events: eventsWithSubmit,
-                    posts,
-                    feed_id,
-                    feed_checksum,
-                  });
-                  const header = buildMinimalHeader(posts);
-                  const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+                            const eventsWithSubmit = [...events, submitEvent];
+                            const feed_id = activeFeedId || null;
+                            const feed_checksum = computeFeedId(posts);
+                            const row = buildParticipantRow({
+                              session_id: sessionIdRef.current,
+                              participant_id: participantId,
+                              events: eventsWithSubmit,
+                              posts,
+                              feed_id,
+                              feed_checksum,
+                            });
+                            const header = buildMinimalHeader(posts);
+                            const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
 
-                  showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
+                            showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
 
-                  if (ok) {
-                    setFeedSubmitted(true);
-                    if (!linkedSurvey) {
-                      setSubmitted(true);
-                    }
-                  }
+                            if (ok) {
+                              setFeedSubmitted(true);
+                              if (!linkedSurvey) {
+                                setSubmitted(true);
+                              }
+                            }
 
-                  setDisabled(false);
-                }}
-              />
-            ) : null}
-          </div>
+                            setDisabled(false);
+                          }}
+                        />
+                      ) : null}
+                    </div>
 
-          {showSkeletonLayer && !feedSubmitted && !shouldShowSurvey && (
-            <div
-              aria-hidden={gateOpen}
-              style={{
-                position: "relative",
-                zIndex: 2,
-                opacity: gateOpen ? 0 : 1,
-                transition: "opacity 320ms ease",
-              }}
-            >
-              <SkeletonFeed />
-            </div>
-          )}
-        </div>
-      </PageWithRails>
-    )
-  }
-/>
+                    {showSkeletonLayer && !feedSubmitted && !shouldShowSurvey && (
+                      <div
+                        aria-hidden={gateOpen}
+                        style={{
+                          position: "relative",
+                          zIndex: 2,
+                          opacity: gateOpen ? 0 : 1,
+                          transition: "opacity 320ms ease",
+                        }}
+                      >
+                        <SkeletonFeed />
+                      </div>
+                    )}
+                  </div>
+                </PageWithRails>
+              )
+            }
+          />
 
           <Route
             path="/admin"
