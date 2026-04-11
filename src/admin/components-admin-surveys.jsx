@@ -35,6 +35,20 @@ const QUESTION_TYPE_LABELS = {
   [EDITOR_PAGE_BREAK_TYPE]: "Page break",
 };
 
+const INSERTABLE_TYPES = [
+  SURVEY_QUESTION_TYPES.TEXT,
+  SURVEY_QUESTION_TYPES.TEXTAREA,
+  SURVEY_QUESTION_TYPES.SINGLE,
+  SURVEY_QUESTION_TYPES.MULTI,
+  SURVEY_QUESTION_TYPES.DROPDOWN,
+  SURVEY_QUESTION_TYPES.MATRIX_SINGLE,
+  SURVEY_QUESTION_TYPES.MATRIX_MULTI,
+  SURVEY_QUESTION_TYPES.BIPOLAR,
+  SURVEY_QUESTION_TYPES.SLIDER,
+  SURVEY_QUESTION_TYPES.INFO,
+  EDITOR_PAGE_BREAK_TYPE,
+];
+
 function clampInt(value, min, max, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -78,6 +92,10 @@ function reorderArray(list = [], fromIndex, toIndex) {
   const [moved] = arr.splice(fromIndex, 1);
   arr.splice(toIndex, 0, moved);
   return arr;
+}
+
+function isCountedQuestionType(type) {
+  return type !== SURVEY_QUESTION_TYPES.INFO && type !== EDITOR_PAGE_BREAK_TYPE;
 }
 
 function normalizeQuestionForEditor(q = {}, index = 0) {
@@ -334,6 +352,25 @@ function TrashIcon({ size = 16 }) {
   );
 }
 
+function PlusIcon({ size = 15 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
 function IconOnlyButton({
   onClick,
   title,
@@ -473,6 +510,68 @@ function FieldBlock({ label, children }) {
   );
 }
 
+function InlineInsertControls({ index, insertQuestionAt }) {
+  const [aboveType, setAboveType] = useState(SURVEY_QUESTION_TYPES.TEXT);
+  const [belowType, setBelowType] = useState(SURVEY_QUESTION_TYPES.TEXT);
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop: "1px solid #e5e7eb",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 12,
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>
+          Insert above
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <SelectInput value={aboveType} onChange={setAboveType}>
+            {INSERTABLE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {QUESTION_TYPE_LABELS[t] || t}
+              </option>
+            ))}
+          </SelectInput>
+          <IconOnlyButton
+            onClick={() => insertQuestionAt(index, aboveType, "above")}
+            title="Insert above"
+            style={{ flex: "0 0 auto" }}
+          >
+            <PlusIcon />
+          </IconOnlyButton>
+        </div>
+      </div>
+
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>
+          Insert below
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <SelectInput value={belowType} onChange={setBelowType}>
+            {INSERTABLE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {QUESTION_TYPE_LABELS[t] || t}
+              </option>
+            ))}
+          </SelectInput>
+          <IconOnlyButton
+            onClick={() => insertQuestionAt(index, belowType, "below")}
+            title="Insert below"
+            style={{ flex: "0 0 auto" }}
+          >
+            <PlusIcon />
+          </IconOnlyButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ItemTableEditor({
   title,
   items,
@@ -581,10 +680,12 @@ function ItemTableEditor({
 function QuestionCard({
   q,
   index,
+  displayNumber,
   totalQuestions,
   updateQuestion,
   removeQuestion,
   moveQuestion,
+  insertQuestionAt,
   draggingId,
   dragOverId,
   onDragStart,
@@ -698,6 +799,8 @@ function QuestionCard({
             />
           </div>
         </div>
+
+        <InlineInsertControls index={index} insertQuestionAt={insertQuestionAt} />
       </div>
     );
   }
@@ -748,11 +851,19 @@ function QuestionCard({
         </div>
 
         <div>
-          <FieldBlock label={`Question ${index + 1}`}>
+          <FieldBlock
+            label={
+              type === SURVEY_QUESTION_TYPES.INFO
+                ? "Info text"
+                : `Question ${displayNumber}`
+            }
+          >
             <TextInput
               value={q.text || ""}
               onChange={(v) => updateQuestion(index, { text: v })}
-              placeholder="Question text"
+              placeholder={
+                type === SURVEY_QUESTION_TYPES.INFO ? "Info text" : "Question text"
+              }
             />
           </FieldBlock>
         </div>
@@ -779,10 +890,7 @@ function QuestionCard({
                 });
               }}
             >
-              {[
-                ...Object.values(SURVEY_QUESTION_TYPES),
-                EDITOR_PAGE_BREAK_TYPE,
-              ].map((t) => (
+              {INSERTABLE_TYPES.map((t) => (
                 <option key={t} value={t}>
                   {QUESTION_TYPE_LABELS[t] || t}
                 </option>
@@ -954,6 +1062,8 @@ function QuestionCard({
           Info text is display-only and is not required.
         </div>
       )}
+
+      <InlineInsertControls index={index} insertQuestionAt={insertQuestionAt} />
     </div>
   );
 }
@@ -1191,6 +1301,16 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     });
   }
 
+  function insertQuestionAt(index, type, position = "below") {
+    setSurvey((prev) => {
+      const currentQuestions = getQuestionList(prev);
+      const insertIndex = position === "above" ? index : index + 1;
+      const nextQuestions = [...currentQuestions];
+      nextQuestions.splice(insertIndex, 0, makeBackendQuestionFromType(type));
+      return setQuestionList(prev, nextQuestions);
+    });
+  }
+
   function updateQuestion(index, patch) {
     setSurvey((prev) => {
       const currentQuestions = [...getQuestionList(prev)];
@@ -1327,6 +1447,17 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     [survey]
   );
 
+  const questionDisplayNumbers = useMemo(() => {
+    let count = 0;
+    return currentQuestions.map((item) => {
+      if (isCountedQuestionType(item?.type)) {
+        count += 1;
+        return count;
+      }
+      return null;
+    });
+  }, [currentQuestions]);
+
   const pageCount = useMemo(() => {
     if (!survey) return 0;
     const pages = buildSurveyPagesFromFlatQuestions(survey, currentQuestions).pages || [];
@@ -1437,7 +1568,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Questions</h4>
 
             <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-              Drag questions by the dotted handle to reorder them, use ↑ / ↓, or insert page breaks to split the survey across pages.
+              Drag items by the dotted handle to reorder them, use ↑ / ↓, or insert questions and page breaks anywhere in the survey.
             </div>
 
             {currentQuestions.map((q, i) => (
@@ -1445,10 +1576,12 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
                 key={q.id}
                 q={q}
                 index={i}
+                displayNumber={questionDisplayNumbers[i]}
                 totalQuestions={currentQuestions.length}
                 updateQuestion={updateQuestion}
                 removeQuestion={removeQuestion}
                 moveQuestion={moveQuestion}
+                insertQuestionAt={insertQuestionAt}
                 draggingId={draggingQuestionId}
                 dragOverId={dragOverQuestionId}
                 onDragStart={handleQuestionDragStart}
