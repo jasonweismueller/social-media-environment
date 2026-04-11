@@ -2034,7 +2034,7 @@ body.survey-mode .rail-right {
   justify-content:space-between;
   gap: 12px;
   font-size: .84rem;
-  font-weight: 200;
+  font-weight: 400;
   color: var(--ig-muted);
 }
 
@@ -2047,7 +2047,7 @@ body.survey-mode .rail-right {
 
 .survey-matrix-table tbody td:first-child{
   text-align: left;
-  font-weight: 200;
+  font-weight: 400;
   color: var(--ig-text);
   background: #fcfcfd;
   border-right: 1px solid #f3f4f6;
