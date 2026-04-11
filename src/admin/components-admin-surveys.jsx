@@ -929,16 +929,16 @@ function QuestionCard({
   const isBipolar = type === SURVEY_QUESTION_TYPES.BIPOLAR;
   const isSlider = type === SURVEY_QUESTION_TYPES.SLIDER;
 
-  const isDragging = draggingId === q.id;
-  const isDragOver = dragOverId === q.id;
+  const isDragging = draggingId === q._editorId;
+const isDragOver = dragOverId === q._editorId;
 
   if (isPageBreak) {
     return (
       <div
         draggable
-        onDragStart={(e) => onDragStart(e, q.id)}
-        onDragOver={(e) => onDragOver(e, q.id)}
-        onDrop={(e) => onDrop(e, q.id)}
+        onDragStart={(e) => onDragStart(e, q._editorId)}
+onDragOver={(e) => onDragOver(e, q._editorId)}
+onDrop={(e) => onDrop(e, q._editorId)}
         onDragEnd={onDragEnd}
         style={{
           border: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
@@ -1680,8 +1680,8 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     }
 
     const questions = getQuestionList(survey);
-    const fromIndex = questions.findIndex((q) => q.id === draggingQuestionId);
-    const toIndex = questions.findIndex((q) => q.id === targetQuestionId);
+    const fromIndex = questions.findIndex((q) => q._editorId === draggingQuestionId);
+const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
 
     if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
       moveQuestion(fromIndex, toIndex);
