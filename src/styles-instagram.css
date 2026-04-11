@@ -1511,7 +1511,7 @@ body.admin-mode .nav {
   justify-content:space-between;
   gap: 12px;
   font-size: .84rem;
-  font-weight: 600;
+  font-weight: 200;
   color: var(--ig-muted);
 }
 
