@@ -17,7 +17,7 @@ import {
 
 /* =========================
    Small helpers
-   ========================= */
+   ========================== */
 
 const EDITOR_PAGE_BREAK_TYPE = "page_break";
 
