@@ -32,7 +32,7 @@ import {
 import { AdminDashboard } from "./admin/components-admin-dashboard";
 import AdminLogin from "./admin/components-admin-login";
 
-/* =======================================================================
+/* ========================================================================
    Mode & helpers
    ====================================================================== */
 const MODE = (new URLSearchParams(window.location.search).get("style") || window.CONFIG?.STYLE || "ig").toLowerCase();
