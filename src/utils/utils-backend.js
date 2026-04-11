@@ -236,6 +236,10 @@ function makeEmptySurveyShell(surveyId = "") {
 /* ======================= merged survey export helpers ====================== */
 
 const SURVEY_EXPORT_PREFIX = "survey";
+export const SURVEY_COLUMN_LABEL_MODE = {
+  VARIABLE: "variable",
+  TEXT: "text",
+};
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -266,6 +270,12 @@ function makeSurveyExportColumnKey(questionId, rowValue = "") {
   return r ? `${SURVEY_EXPORT_PREFIX}_${q}_${r}` : `${SURVEY_EXPORT_PREFIX}_${q}`;
 }
 
+function makeSurveyVariableLabel(questionId, rowValue = "") {
+  const q = sanitizeSurveyExportKeyPart(questionId, "question");
+  const r = sanitizeSurveyExportKeyPart(rowValue, "");
+  return r ? `${q}_${r}` : q;
+}
+
 function normalizeSurveyAnswerScalar(value) {
   if (value == null) return "";
   if (Array.isArray(value)) {
@@ -281,7 +291,7 @@ function normalizeSurveyAnswerScalar(value) {
   return String(value);
 }
 
-function flattenSurveyQuestions(definition) {
+function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
   const questions = [];
@@ -294,6 +304,7 @@ function flattenSurveyQuestions(definition) {
       if (!questionId) return;
       if (questionType === "info" || questionType === "page_break") return;
 
+      const questionText = String(q?.text || questionId).trim() || questionId;
       const rows = Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
 
@@ -308,30 +319,46 @@ function flattenSurveyQuestions(definition) {
               rowValue
             ).trim() || rowValue;
 
+          const variableLabel = makeSurveyVariableLabel(questionId, rowValue);
+          const textLabel = `${questionText} [${rowLabel}]`;
+
           questions.push({
             kind: "row",
             question_id: questionId,
-            question_text: String(q?.text || questionId).trim() || questionId,
+            question_text: questionText,
             question_type: questionType,
             row_value: rowValue,
             row_label: rowLabel,
             column_key: makeSurveyExportColumnKey(questionId, rowValue),
-            label: `${String(q?.text || questionId).trim() || questionId} [${rowLabel}]`,
+            variable_label: variableLabel,
+            text_label: textLabel,
+            label:
+              labelMode === SURVEY_COLUMN_LABEL_MODE.TEXT
+                ? textLabel
+                : variableLabel,
             page_index: pIdx,
             question_index: qIdx,
             row_index: rIdx,
           });
         });
       } else {
+        const variableLabel = makeSurveyVariableLabel(questionId);
+        const textLabel = questionText;
+
         questions.push({
           kind: "question",
           question_id: questionId,
-          question_text: String(q?.text || questionId).trim() || questionId,
+          question_text: questionText,
           question_type: questionType,
           row_value: "",
           row_label: "",
           column_key: makeSurveyExportColumnKey(questionId),
-          label: String(q?.text || questionId).trim() || questionId,
+          variable_label: variableLabel,
+          text_label: textLabel,
+          label:
+            labelMode === SURVEY_COLUMN_LABEL_MODE.TEXT
+              ? textLabel
+              : variableLabel,
           page_index: pIdx,
           question_index: qIdx,
           row_index: -1,
@@ -343,8 +370,12 @@ function flattenSurveyQuestions(definition) {
   return questions;
 }
 
-function buildSurveyExportColumns(definition, surveyRows = []) {
-  const fromDefinition = flattenSurveyQuestions(definition);
+function buildSurveyExportColumns(
+  definition,
+  surveyRows = [],
+  { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}
+) {
+  const fromDefinition = flattenSurveyQuestions(definition, { labelMode });
   if (fromDefinition.length) return fromDefinition;
 
   const seen = new Map();
@@ -360,6 +391,9 @@ function buildSurveyExportColumns(definition, surveyRows = []) {
         Object.keys(value).forEach((rowKey) => {
           const colKey = makeSurveyExportColumnKey(questionId, rowKey);
           if (!seen.has(colKey)) {
+            const variableLabel = makeSurveyVariableLabel(questionId, rowKey);
+            const textLabel = `${questionId} [${rowKey}]`;
+
             seen.set(colKey, {
               kind: "row",
               question_id: questionId,
@@ -368,7 +402,12 @@ function buildSurveyExportColumns(definition, surveyRows = []) {
               row_value: rowKey,
               row_label: rowKey,
               column_key: colKey,
-              label: `${questionId} [${rowKey}]`,
+              variable_label: variableLabel,
+              text_label: textLabel,
+              label:
+                labelMode === SURVEY_COLUMN_LABEL_MODE.TEXT
+                  ? textLabel
+                  : variableLabel,
               page_index: 0,
               question_index: 0,
               row_index: 0,
@@ -378,6 +417,9 @@ function buildSurveyExportColumns(definition, surveyRows = []) {
       } else {
         const colKey = makeSurveyExportColumnKey(questionId);
         if (!seen.has(colKey)) {
+          const variableLabel = makeSurveyVariableLabel(questionId);
+          const textLabel = questionId;
+
           seen.set(colKey, {
             kind: "question",
             question_id: questionId,
@@ -386,7 +428,12 @@ function buildSurveyExportColumns(definition, surveyRows = []) {
             row_value: "",
             row_label: "",
             column_key: colKey,
-            label: questionId,
+            variable_label: variableLabel,
+            text_label: textLabel,
+            label:
+              labelMode === SURVEY_COLUMN_LABEL_MODE.TEXT
+                ? textLabel
+                : variableLabel,
             page_index: 0,
             question_index: 0,
             row_index: -1,
@@ -458,9 +505,10 @@ function mergeParticipantRowsWithSurveyRows({
   surveyRows = [],
   surveyDefinition = null,
   fillValue = "NA",
+  labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE,
 } = {}) {
   const participants = Array.isArray(participantRows) ? participantRows : [];
-  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyRows);
+  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyRows, { labelMode });
   const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
   const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
   const lookup = makeSurveyResponseLookup(surveyRows, surveyColumns);
@@ -501,6 +549,7 @@ export async function loadMergedParticipantSurveyRoster({
   signal,
   fillValue = "NA",
   forceSurveyDefinition = false,
+  labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE,
 } = {}) {
   const effectiveFeedId = String(feedId || "").trim();
   if (!effectiveFeedId) {
@@ -575,6 +624,7 @@ export async function loadMergedParticipantSurveyRoster({
     surveyRows: surveyResponses,
     surveyDefinition,
     fillValue,
+    labelMode,
   });
 
   return {

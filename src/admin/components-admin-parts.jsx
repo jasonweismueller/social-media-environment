@@ -1025,6 +1025,8 @@ export function ParticipantsPanel({
   const [usingSimulated, setUsingSimulated] = useState(false);
 
   const [simMode, setSimMode] = useState("random");
+  const [surveyHeaderMode, setSurveyHeaderMode] = useState("text"); // "text" | "name"
+
   const [simConfig, setSimConfig] = useState(() => ({
     ...DEFAULT_SIM_CONFIG,
     controlled: {
@@ -1237,6 +1239,7 @@ export function ParticipantsPanel({
 
   const downloadCsv = async () => {
     if (!feedId) return;
+
     if (usingSimulated) {
       if (!effectiveRows?.length) return;
 
@@ -1282,7 +1285,13 @@ export function ParticipantsPanel({
 
       const keys = Array.from(keySet);
       const surveyLabelMap = new Map(
-        (merged?.surveyColumns || []).map((col) => [col.column_key, col.label || col.column_key])
+        (merged?.surveyColumns || []).map((col) => {
+          const label =
+            surveyHeaderMode === "name"
+              ? (col.header_name || col.column_key)
+              : (col.header_text || col.header_name || col.column_key);
+          return [col.column_key, label];
+        })
       );
 
       const labels = keys.map((k) => surveyLabelMap.get(k) || labelForKey(k, nameStore));
@@ -1296,7 +1305,8 @@ export function ParticipantsPanel({
         `${APP}_participants` +
         `${projectId ? `_${projectId}` : ""}` +
         `${feedId ? `_${feedId}` : ""}` +
-        `${merged?.hasMergedSurveyColumns ? "_with_survey" : ""}.csv`;
+        `${merged?.hasMergedSurveyColumns ? "_with_survey" : ""}` +
+        `${surveyHeaderMode === "name" ? "_varnames" : "_questiontext"}.csv`;
 
       document.body.appendChild(a);
       a.click();
@@ -1343,6 +1353,24 @@ export function ParticipantsPanel({
             <option value="random">Random</option>
             <option value="controlled">Controlled</option>
           </select>
+
+          {!usingSimulated && (
+            <select
+              value={surveyHeaderMode}
+              onChange={(e) => setSurveyHeaderMode(e.target.value)}
+              style={{
+                padding: compact ? ".25rem .45rem" : ".35rem .55rem",
+                border: "1px solid var(--line)",
+                borderRadius: 8,
+                fontSize: compact ? ".85rem" : ".9rem",
+                background: "var(--card, white)",
+              }}
+              title="Survey CSV column headers"
+            >
+              <option value="text">Survey headers: question text</option>
+              <option value="name">Survey headers: question name</option>
+            </select>
+          )}
 
           <IntegerField
             value={simCount}
