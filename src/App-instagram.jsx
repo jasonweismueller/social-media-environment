@@ -255,11 +255,10 @@ function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   return (
     <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
       {!isInfo && (
-        <div className="survey-question-title">
-          <span>{index + 1}. {question.text}</span>
-          {question.required ? <span className="survey-required">*</span> : null}
-        </div>
-      )}
+  <div className="survey-question-title">
+    <span>{index + 1}. {question.text}</span>
+  </div>
+)}
 
       {!isInfo && question.description ? (
         <div className="survey-question-description">{question.description}</div>
@@ -1052,7 +1051,7 @@ export default function App() {
     const validation = validateSurveyResponses(linkedSurvey, surveyResponses);
     if (!validation.ok) {
       setSurveyErrors(validation.errors || {});
-      setSurveyErrorMsg("Please complete the required questions.");
+      setSurveyErrorMsg("Please complete the highlighted questions.");
       return;
     }
 
