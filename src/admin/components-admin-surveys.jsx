@@ -1078,7 +1078,7 @@ function QuestionCard({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "44px 1fr 220px auto",
+          gridTemplateColumns: "1fr 220px auto",
           gap: 10,
           alignItems: "start",
           marginBottom: 10,
