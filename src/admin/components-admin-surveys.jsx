@@ -1084,28 +1084,7 @@ function QuestionCard({
           marginBottom: 10,
         }}
       >
-        <div
-  draggable
-  onDragStart={(e) => onDragStart(e, q._editorId)}
-  onDragEnd={onDragEnd}
-  title="Drag to reorder"
-  style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    background: "transparent",
-    cursor: "grab",
-    fontSize: 12,
-    color: "#9ca3af",
-    userSelect: "none",
-    marginTop: 6, // aligns vertically with input nicely
-  }}
->
-  ⋮⋮
-</div>
+      
 
         <div>
           <FieldBlock
@@ -1164,32 +1143,68 @@ function QuestionCard({
           </FieldBlock>
         </div>
 
-        <div style={{ paddingTop: 23, display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => moveQuestion(index, index - 1)}
-            disabled={index === 0}
-            style={smallActionButtonStyle(index === 0)}
-          >
-            ↑
-          </button>
+                <div
+  style={{
+    paddingTop: 23,
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+  }}
+>
+  {/* Drag handle */}
+  <div
+    draggable
+    onDragStart={(e) => onDragStart(e, q._editorId)}
+    onDragEnd={onDragEnd}
+    title="Drag to reorder"
+    style={{
+      width: 28,
+      height: 28,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 6,
+      border: "1px solid #e5e7eb",
+      background: "#fff",
+      cursor: "grab",
+      fontSize: 14,
+      color: "#6b7280",
+      userSelect: "none",
+    }}
+    onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
+    onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
+  >
+    ⋮⋮
+  </div>
 
-          <button
-            type="button"
-            onClick={() => moveQuestion(index, index + 1)}
-            disabled={index === totalQuestions - 1}
-            style={smallActionButtonStyle(index === totalQuestions - 1)}
-          >
-            ↓
-          </button>
+  {/* Move up */}
+  <button
+    type="button"
+    onClick={() => moveQuestion(index, index - 1)}
+    disabled={index === 0}
+    style={smallActionButtonStyle(index === 0)}
+  >
+    ↑
+  </button>
 
-          <IconOnlyButton
-            onClick={() => removeQuestion(index)}
-            title="Delete question"
-            danger
-          />
-        </div>
-      </div>
+  {/* Move down */}
+  <button
+    type="button"
+    onClick={() => moveQuestion(index, index + 1)}
+    disabled={index === totalQuestions - 1}
+    style={smallActionButtonStyle(index === totalQuestions - 1)}
+  >
+    ↓
+  </button>
+
+  {/* Delete */}
+  <IconOnlyButton
+    onClick={() => removeQuestion(index)}
+    title="Delete question"
+    danger
+  />
+</div>
+</div>
 
       <FieldBlock
         label="Question ID / variable name"
