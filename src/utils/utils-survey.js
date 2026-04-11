@@ -34,6 +34,32 @@ function cleanStringArray(arr = []) {
     .filter(Boolean);
 }
 
+function sanitizeQuestionId(value, fallback = "") {
+  const cleaned = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Z0-9_]/g, "");
+  return cleaned || fallback;
+}
+
+function sanitizeStructuredValue(value, fallback = "") {
+  const cleaned = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w-]/g, "");
+  return cleaned || fallback;
+}
+
+function makeSequentialValue(prefix, index) {
+  return `${prefix}_${index + 1}`;
+}
+
+function makeMatrixRowValue(questionId, index) {
+  const base = sanitizeQuestionId(questionId);
+  return base ? `${base}_${index + 1}` : makeSequentialValue("row", index);
+}
+
 function normalizeChoiceArray(rawChoices = []) {
   if (!Array.isArray(rawChoices)) return [];
   return rawChoices
@@ -68,19 +94,89 @@ function normalizeStructuredItems(items = [], prefix = "item") {
         const label = item.trim();
         return label
           ? {
-              value: `${prefix}_${i + 1}`,
+              value: sanitizeStructuredValue(makeSequentialValue(prefix, i), makeSequentialValue(prefix, i)),
               label,
             }
           : null;
       }
 
       if (item && typeof item === "object") {
-        const value = String(item.value ?? `${prefix}_${i + 1}`).trim();
+        const fallbackValue = makeSequentialValue(prefix, i);
+        const value = sanitizeStructuredValue(item.value, fallbackValue);
         const label = String(item.label ?? item.value ?? "").trim();
         return value || label
           ? {
-              value: value || `${prefix}_${i + 1}`,
+              value: value || fallbackValue,
               label,
+            }
+          : null;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function normalizeMatrixRows(items = [], questionId = "") {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, i) => {
+      if (typeof item === "string") {
+        const label = item.trim();
+        return label
+          ? {
+              value: makeMatrixRowValue(questionId, i),
+              label,
+            }
+          : null;
+      }
+
+      if (item && typeof item === "object") {
+        const fallbackValue = makeMatrixRowValue(questionId, i);
+        const value = sanitizeStructuredValue(item.value, fallbackValue);
+        const label = String(item.label ?? item.value ?? "").trim();
+        return value || label
+          ? {
+              value: value || fallbackValue,
+              label,
+            }
+          : null;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function normalizeBipolarRows(items = [], questionId = "") {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, i) => {
+      if (typeof item === "string") {
+        const label = item.trim();
+        return label
+          ? {
+              value: makeMatrixRowValue(questionId, i),
+              label,
+              left_label: label,
+              right_label: "",
+            }
+          : null;
+      }
+
+      if (item && typeof item === "object") {
+        const fallbackValue = makeMatrixRowValue(questionId, i);
+        const value = sanitizeStructuredValue(item.value, fallbackValue);
+        const label = String(item.label ?? "").trim();
+        const leftLabel = String(item.left_label ?? item.label ?? "").trim();
+        const rightLabel = String(item.right_label ?? "").trim();
+
+        return value || label || leftLabel || rightLabel
+          ? {
+              value: value || fallbackValue,
+              label: label || leftLabel,
+              left_label: leftLabel,
+              right_label: rightLabel,
             }
           : null;
       }
@@ -116,9 +212,10 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
       : "Untitled question";
 
   const text = String(overrides.text ?? overrides.label ?? defaultText);
+  const questionId = sanitizeQuestionId(overrides.id, `Q_${uid()}`);
 
   return {
-    id: overrides.id || `q_${uid()}`,
+    id: questionId,
     type: safeType,
     text,
     label: text,
@@ -151,17 +248,21 @@ export function normalizeQuestion(raw = {}) {
       : "Untitled question";
 
   const text = String(raw.text ?? raw.label ?? defaultText);
+  const questionId = sanitizeQuestionId(raw.id, `Q_${uid()}`);
 
-  const normalizedRows = Array.isArray(raw.rows)
-    ? normalizeStructuredItems(raw.rows, "row")
-    : [];
+  const normalizedRows =
+    type === SURVEY_QUESTION_TYPES.BIPOLAR
+      ? normalizeBipolarRows(raw.rows, questionId)
+      : Array.isArray(raw.rows)
+        ? normalizeMatrixRows(raw.rows, questionId)
+        : [];
 
   const normalizedColumns = Array.isArray(raw.columns)
     ? normalizeStructuredItems(raw.columns, "col")
     : [];
 
   return {
-    id: raw.id || `q_${uid()}`,
+    id: questionId,
     type,
     text,
     label: text,
@@ -171,12 +272,13 @@ export function normalizeQuestion(raw = {}) {
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c, i) => ({
-          value: String(c?.value ?? `opt_${i + 1}`),
+          value: sanitizeStructuredValue(c?.value, `opt_${i + 1}`),
           label: String(c?.label ?? ""),
         }))
       : [],
 
     rows: normalizedRows,
+
     columns:
       type === SURVEY_QUESTION_TYPES.BIPOLAR
         ? normalizedColumns.length
@@ -239,7 +341,7 @@ export function frontendQuestionToBackend(question = {}) {
         ...base,
         choices: Array.isArray(q.choices) && q.choices.length
           ? q.choices.map((choice, i) => ({
-              value: String(choice?.value ?? `opt_${i + 1}`),
+              value: sanitizeStructuredValue(choice?.value, `opt_${i + 1}`),
               label: String(choice?.label ?? ""),
             }))
           : q.options.map((opt, i) => ({
@@ -255,13 +357,13 @@ export function frontendQuestionToBackend(question = {}) {
         ...base,
         rows: Array.isArray(q.rows)
           ? q.rows.map((row, i) => ({
-              value: String(row?.value ?? `row_${i + 1}`),
+              value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
               label: String(row?.label ?? ""),
             }))
           : [],
         columns: Array.isArray(q.columns)
           ? q.columns.map((col, i) => ({
-              value: String(col?.value ?? `col_${i + 1}`),
+              value: sanitizeStructuredValue(col?.value, `col_${i + 1}`),
               label: String(col?.label ?? ""),
             }))
           : [],
@@ -272,8 +374,8 @@ export function frontendQuestionToBackend(question = {}) {
         ...base,
         rows: Array.isArray(q.rows)
           ? q.rows.map((row, i) => ({
-              value: String(row?.value ?? `row_${i + 1}`),
-              label: String(row?.label ?? ""),
+              value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
+              label: String(row?.label ?? row?.left_label ?? ""),
             }))
           : [],
         columns: Array.isArray(q.columns) && q.columns.length
@@ -718,7 +820,7 @@ function isMatrixSingleAnswered(q, value) {
   if (!rows.length) return false;
 
   return rows.every((row, i) => {
-    const key = String(row?.value ?? `row_${i + 1}`);
+    const key = String(row?.value ?? makeMatrixRowValue(q?.id, i));
     return String(value[key] ?? "").trim() !== "";
   });
 }
@@ -729,7 +831,7 @@ function isMatrixMultiAnswered(q, value) {
   if (!rows.length) return false;
 
   return rows.every((row, i) => {
-    const key = String(row?.value ?? `row_${i + 1}`);
+    const key = String(row?.value ?? makeMatrixRowValue(q?.id, i));
     return Array.isArray(value[key]) && value[key].length > 0;
   });
 }
@@ -740,7 +842,7 @@ function isBipolarAnswered(q, value) {
   if (!rows.length) return false;
 
   return rows.every((row, i) => {
-    const key = String(row?.value ?? `row_${i + 1}`);
+    const key = String(row?.value ?? makeMatrixRowValue(q?.id, i));
     return String(value[key] ?? "").trim() !== "";
   });
 }
@@ -859,7 +961,9 @@ export function flattenSurveyResponses(survey, responses) {
         case SURVEY_QUESTION_TYPES.BIPOLAR: {
           const obj = value && typeof value === "object" ? value : {};
           for (const [k, v] of Object.entries(obj)) {
-            row[`${q.id}__${k}`] = Array.isArray(v) ? v.join(" | ") : String(v ?? "");
+            const outKey = String(k ?? "").trim();
+            if (!outKey) continue;
+            row[outKey] = Array.isArray(v) ? v.join(" | ") : String(v ?? "");
           }
           break;
         }
@@ -895,16 +999,17 @@ export function unflattenSurveyResponses(survey, row = {}) {
         case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
         case SURVEY_QUESTION_TYPES.BIPOLAR: {
           const obj = {};
-          for (const key of Object.keys(row)) {
-            if (key.startsWith(`${q.id}__`)) {
-              const subKey = key.slice(`${q.id}__`.length);
-              const raw = row[key];
-              obj[subKey] =
-                q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-                  ? (raw ? String(raw).split(" | ").filter(Boolean) : [])
-                  : String(raw ?? "");
-            }
-          }
+          const rows = Array.isArray(q.rows) ? q.rows : [];
+
+          rows.forEach((questionRow, i) => {
+            const subKey = String(questionRow?.value ?? makeMatrixRowValue(q.id, i));
+            const raw = row[subKey];
+            obj[subKey] =
+              q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+                ? (raw ? String(raw).split(" | ").filter(Boolean) : [])
+                : String(raw ?? "");
+          });
+
           responses[q.id] = obj;
           break;
         }
