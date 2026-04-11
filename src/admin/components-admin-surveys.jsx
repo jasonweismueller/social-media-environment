@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   makeEmptySurvey,
   makeQuestionByType,
@@ -35,10 +35,6 @@ const QUESTION_TYPE_LABELS = {
   [EDITOR_PAGE_BREAK_TYPE]: "Page break",
 };
 
-function makeEditorId() {
-  return `editor_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
 const INSERTABLE_TYPES = [
   SURVEY_QUESTION_TYPES.TEXT,
   SURVEY_QUESTION_TYPES.TEXTAREA,
@@ -52,6 +48,10 @@ const INSERTABLE_TYPES = [
   SURVEY_QUESTION_TYPES.INFO,
   EDITOR_PAGE_BREAK_TYPE,
 ];
+
+function makeEditorId() {
+  return `editor_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
 
 function clampInt(value, min, max, fallback) {
   const n = Number(value);
@@ -143,26 +143,22 @@ function rewriteQuestionRowValues(question, nextQuestionId) {
     question?.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
     question?.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
   ) {
-    const nextRows = (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
-      ...row,
-      value: makeMatrixRowValue(nextId, i),
-    }));
-
     return {
       ...question,
-      rows: nextRows,
+      rows: (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
+        ...row,
+        value: makeMatrixRowValue(nextId, i),
+      })),
     };
   }
 
   if (question?.type === SURVEY_QUESTION_TYPES.BIPOLAR) {
-    const nextRows = (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
-      ...row,
-      value: makeMatrixRowValue(nextId, i),
-    }));
-
     return {
       ...question,
-      rows: nextRows,
+      rows: (Array.isArray(question?.rows) ? question.rows : []).map((row, i) => ({
+        ...row,
+        value: makeMatrixRowValue(nextId, i),
+      })),
     };
   }
 
@@ -194,54 +190,52 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
   const type = q?.type || SURVEY_QUESTION_TYPES.TEXT;
 
   if (type === EDITOR_PAGE_BREAK_TYPE) {
-  return {
-    _editorId: q?._editorId || makeEditorId(),
-    id: q?.id || `page_break_${index + 1}`,
-    type: EDITOR_PAGE_BREAK_TYPE,
-    text: "",
-    description: "",
-    required: false,
-    randomize_options: false,
-    choices: [],
-    rows: [],
-    columns: [],
-    min: 1,
-    max: 7,
-    left_label: "",
-    right_label: "",
-    placeholder: "",
-    visible_if: null,
-    meta: q?.meta || {},
-  };
-}
+    return {
+      _editorId: q?._editorId || makeEditorId(),
+      id: q?.id || `page_break_${index + 1}`,
+      type: EDITOR_PAGE_BREAK_TYPE,
+      text: "",
+      required: false,
+      randomize_options: false,
+      choices: [],
+      rows: [],
+      columns: [],
+      min: 1,
+      max: 7,
+      left_label: "",
+      right_label: "",
+      placeholder: "",
+      visible_if: null,
+      meta: q?.meta || {},
+    };
+  }
 
   const normalizedId = sanitizeQuestionId(q?.id, "");
 
   return {
-  _editorId: q?._editorId || makeEditorId(),
-  id: normalizedId,
-  type,
-  text: String(q?.text ?? ""),
-  description: String(q?.description ?? ""),
-  required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
-  randomize_options: !!q?.randomize_options,
-  choices: ensureChoiceArray(q?.choices),
-  rows:
-    type === SURVEY_QUESTION_TYPES.BIPOLAR
-      ? ensureBipolarRowArray(q?.rows, normalizedId)
-      : type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-          type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-        ? ensureMatrixRowsFromQuestionId(q?.rows, normalizedId)
-        : [],
-  columns: ensureMatrixArray(q?.columns, "col"),
-  min: Number.isFinite(q?.min) ? q.min : 1,
-  max: Number.isFinite(q?.max) ? q.max : 7,
-  left_label: String(q?.left_label ?? ""),
-  right_label: String(q?.right_label ?? ""),
-  placeholder: String(q?.placeholder ?? ""),
-  visible_if: q?.visible_if || null,
-  meta: q?.meta || {},
-};
+    _editorId: q?._editorId || makeEditorId(),
+    id: normalizedId,
+    type,
+    text: String(q?.text ?? ""),
+    required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
+    randomize_options: !!q?.randomize_options,
+    choices: ensureChoiceArray(q?.choices),
+    rows:
+      type === SURVEY_QUESTION_TYPES.BIPOLAR
+        ? ensureBipolarRowArray(q?.rows, normalizedId)
+        : type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+            type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+          ? ensureMatrixRowsFromQuestionId(q?.rows, normalizedId)
+          : [],
+    columns: ensureMatrixArray(q?.columns, "col"),
+    min: Number.isFinite(q?.min) ? q.min : 1,
+    max: Number.isFinite(q?.max) ? q.max : 7,
+    left_label: String(q?.left_label ?? ""),
+    right_label: String(q?.right_label ?? ""),
+    placeholder: String(q?.placeholder ?? ""),
+    visible_if: q?.visible_if || null,
+    meta: q?.meta || {},
+  };
 }
 
 function flattenSurveyPagesForEditor(survey) {
@@ -355,7 +349,6 @@ function makeBackendQuestionFromType(type, index = 0) {
         : `Q_${Date.now()}`,
     type,
     text: String(base?.text ?? base?.label ?? ""),
-    description: String(base?.description ?? ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!base?.required,
     randomize_options: !!base?.randomize_options,
     choices: [],
@@ -394,7 +387,6 @@ function makeBackendQuestionFromType(type, index = 0) {
   ) {
     const srcRows = Array.isArray(base?.rows) && base.rows.length ? base.rows : [];
     const srcCols = Array.isArray(base?.columns) && base.columns.length ? base.columns : [];
-
     question.rows = ensureMatrixRowsFromQuestionId(srcRows, question.id);
     question.columns = ensureMatrixArray(srcCols, "col");
   }
@@ -414,7 +406,7 @@ function buildSavedQuestion(q, index) {
     id: sanitizeQuestionId(cleanQ.id, `Q_${index + 1}`),
     type: cleanQ.type,
     text: cleanQ.text,
-    description: cleanQ.description,
+    description: "",
     required: cleanQ.type === SURVEY_QUESTION_TYPES.INFO ? false : !!cleanQ.required,
     choices:
       cleanQ.type === SURVEY_QUESTION_TYPES.SINGLE ||
@@ -548,25 +540,6 @@ function TextInput({ value, onChange, placeholder, style }) {
   );
 }
 
-function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
-  return (
-    <textarea
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      rows={rows}
-      style={{
-        width: "100%",
-        padding: "8px 10px",
-        borderRadius: 8,
-        border: "1px solid #d1d5db",
-        resize: "vertical",
-        ...style,
-      }}
-    />
-  );
-}
-
 function NumberInput({ value, onChange, min, max, step = 1, style }) {
   return (
     <input
@@ -581,6 +554,25 @@ function NumberInput({ value, onChange, min, max, step = 1, style }) {
         padding: "8px 10px",
         borderRadius: 8,
         border: "1px solid #d1d5db",
+        ...style,
+      }}
+    />
+  );
+}
+
+function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
+  return (
+    <textarea
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      style={{
+        width: "100%",
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: "1px solid #d1d5db",
+        resize: "vertical",
         ...style,
       }}
     />
@@ -632,64 +624,114 @@ function FieldBlock({ label, children, hint = "" }) {
   );
 }
 
-function InlineInsertControls({ index, insertQuestionAt }) {
-  const [aboveType, setAboveType] = useState(SURVEY_QUESTION_TYPES.TEXT);
-  const [belowType, setBelowType] = useState(SURVEY_QUESTION_TYPES.TEXT);
+function InsertAtBorderButton({ position = "top", onInsert }) {
+  const [open, setOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState(SURVEY_QUESTION_TYPES.TEXT);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+
+    function handleEscape(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   return (
     <div
+      ref={wrapRef}
       style={{
-        marginTop: 14,
-        paddingTop: 12,
-        borderTop: "1px solid #e5e7eb",
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: 12,
+        position: "absolute",
+        left: "50%",
+        transform: "translateX(-50%)",
+        top: position === "top" ? -16 : "auto",
+        bottom: position === "bottom" ? -16 : "auto",
+        zIndex: 5,
       }}
     >
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>
-          Insert above
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <SelectInput value={aboveType} onChange={setAboveType}>
-            {INSERTABLE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {QUESTION_TYPE_LABELS[t] || t}
-              </option>
-            ))}
-          </SelectInput>
-          <IconOnlyButton
-            onClick={() => insertQuestionAt(index, aboveType, "above")}
-            title="Insert above"
-            style={{ flex: "0 0 auto" }}
-          >
-            <PlusIcon />
-          </IconOnlyButton>
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={position === "top" ? "Insert above" : "Insert below"}
+        aria-label={position === "top" ? "Insert above" : "Insert below"}
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 999,
+          border: "1px solid #d1d5db",
+          background: "#fff",
+          boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          color: "#111827",
+          padding: 0,
+        }}
+      >
+        <PlusIcon size={14} />
+      </button>
 
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>
-          Insert below
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <SelectInput value={belowType} onChange={setBelowType}>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            top: position === "top" ? 36 : "auto",
+            bottom: position === "bottom" ? 36 : "auto",
+            minWidth: 220,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 8 }}>
+            Add question
+          </div>
+
+          <SelectInput value={selectedType} onChange={setSelectedType}>
             {INSERTABLE_TYPES.map((t) => (
               <option key={t} value={t}>
                 {QUESTION_TYPE_LABELS[t] || t}
               </option>
             ))}
           </SelectInput>
-          <IconOnlyButton
-            onClick={() => insertQuestionAt(index, belowType, "below")}
-            title="Insert below"
-            style={{ flex: "0 0 auto" }}
+
+          <button
+            type="button"
+            onClick={() => {
+              onInsert(selectedType);
+              setOpen(false);
+            }}
+            style={{
+              marginTop: 8,
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
           >
-            <PlusIcon />
-          </IconOnlyButton>
+            Add
+          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -708,10 +750,7 @@ function ItemTableEditor({
   const safeItems = Array.isArray(items) ? items : [];
 
   function updateItem(index, patch) {
-    const next = safeItems.map((item, i) =>
-      i === index ? { ...item, ...patch } : item
-    );
-    onChange(next);
+    onChange(safeItems.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
   function addItem() {
@@ -746,9 +785,7 @@ function ItemTableEditor({
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{title}</div>
 
       {safeItems.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
-          No items yet.
-        </div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>No items yet.</div>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
@@ -808,10 +845,7 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
   const safeItems = Array.isArray(items) ? items : [];
 
   function updateItem(index, patch) {
-    const next = safeItems.map((item, i) =>
-      i === index ? { ...item, ...patch } : item
-    );
-    onChange(next);
+    onChange(safeItems.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
   function addItem() {
@@ -843,9 +877,7 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
       </div>
 
       {safeItems.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
-          No rows yet.
-        </div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>No rows yet.</div>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
@@ -861,7 +893,11 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
           >
             <TextInput
               value={item?.value ?? ""}
-              onChange={(v) => updateItem(i, { value: sanitizeFreeformValue(v, makeMatrixRowValue(questionId, i)) })}
+              onChange={(v) =>
+                updateItem(i, {
+                  value: sanitizeFreeformValue(v, makeMatrixRowValue(questionId, i)),
+                })
+              }
               placeholder="Value"
             />
             <TextInput
@@ -874,11 +910,7 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
               onChange={(v) => updateItem(i, { right_label: v })}
               placeholder="Right label"
             />
-            <IconOnlyButton
-              onClick={() => removeItem(i)}
-              title="Delete row"
-              danger
-            />
+            <IconOnlyButton onClick={() => removeItem(i)} title="Delete row" danger />
           </div>
         ))}
       </div>
@@ -937,26 +969,39 @@ function QuestionCard({
   const isSlider = type === SURVEY_QUESTION_TYPES.SLIDER;
 
   const isDragging = draggingId === q._editorId;
-const isDragOver = dragOverId === q._editorId;
+  const isDragOver = dragOverId === q._editorId;
+
+  const shellStyle = {
+    position: "relative",
+    border: isDragOver ? "2px solid #6366f1" : `1px solid ${isPageBreak ? "#9ca3af" : "#d1d5db"}`,
+    borderStyle: isPageBreak ? "dashed" : "solid",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    background: isDragging ? "#f8fafc" : isPageBreak ? "#f9fafb" : "#fff",
+    opacity: isDragging ? 0.65 : 1,
+    boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
+  };
 
   if (isPageBreak) {
     return (
       <div
         draggable
         onDragStart={(e) => onDragStart(e, q._editorId)}
-onDragOver={(e) => onDragOver(e, q._editorId)}
-onDrop={(e) => onDrop(e, q._editorId)}
+        onDragOver={(e) => onDragOver(e, q._editorId)}
+        onDrop={(e) => onDrop(e, q._editorId)}
         onDragEnd={onDragEnd}
-        style={{
-          border: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 12,
-          background: isDragging ? "#f8fafc" : "#f9fafb",
-          opacity: isDragging ? 0.65 : 1,
-          boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
-        }}
+        style={shellStyle}
       >
+        <InsertAtBorderButton
+          position="top"
+          onInsert={(nextType) => insertQuestionAt(index, nextType, "above")}
+        />
+        <InsertAtBorderButton
+          position="bottom"
+          onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
+        />
+
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div
@@ -991,14 +1036,7 @@ onDrop={(e) => onDrop(e, q._editorId)}
               type="button"
               onClick={() => moveQuestion(index, index - 1)}
               disabled={index === 0}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid #d1d5db",
-                background: "#fff",
-                color: index === 0 ? "#9ca3af" : "#111827",
-                cursor: index === 0 ? "not-allowed" : "pointer",
-              }}
+              style={smallActionButtonStyle(index === 0)}
             >
               ↑
             </button>
@@ -1007,14 +1045,7 @@ onDrop={(e) => onDrop(e, q._editorId)}
               type="button"
               onClick={() => moveQuestion(index, index + 1)}
               disabled={index === totalQuestions - 1}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: "1px solid #d1d5db",
-                background: "#fff",
-                color: index === totalQuestions - 1 ? "#9ca3af" : "#111827",
-                cursor: index === totalQuestions - 1 ? "not-allowed" : "pointer",
-              }}
+              style={smallActionButtonStyle(index === totalQuestions - 1)}
             >
               ↓
             </button>
@@ -1026,8 +1057,6 @@ onDrop={(e) => onDrop(e, q._editorId)}
             />
           </div>
         </div>
-
-        <InlineInsertControls index={index} insertQuestionAt={insertQuestionAt} />
       </div>
     );
   }
@@ -1036,19 +1065,20 @@ onDrop={(e) => onDrop(e, q._editorId)}
     <div
       draggable
       onDragStart={(e) => onDragStart(e, q._editorId)}
-onDragOver={(e) => onDragOver(e, q._editorId)}
-onDrop={(e) => onDrop(e, q._editorId)}
+      onDragOver={(e) => onDragOver(e, q._editorId)}
+      onDrop={(e) => onDrop(e, q._editorId)}
       onDragEnd={onDragEnd}
-      style={{
-        border: isDragOver ? "2px solid #6366f1" : "1px solid #d1d5db",
-        borderRadius: 12,
-        padding: 14,
-        marginBottom: 12,
-        background: isDragging ? "#f8fafc" : "#fff",
-        opacity: isDragging ? 0.65 : 1,
-        boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
-      }}
+      style={shellStyle}
     >
+      <InsertAtBorderButton
+        position="top"
+        onInsert={(nextType) => insertQuestionAt(index, nextType, "above")}
+      />
+      <InsertAtBorderButton
+        position="bottom"
+        onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
+      />
+
       <div
         style={{
           display: "grid",
@@ -1110,9 +1140,9 @@ onDrop={(e) => onDrop(e, q._editorId)}
 
                 let merged = {
                   ...next,
+                  _editorId: q._editorId,
                   id: preservedId,
                   text: q.text || next.text,
-                  description: q.description || "",
                   required: nextType === SURVEY_QUESTION_TYPES.INFO ? false : !!q.required,
                   visible_if: q.visible_if || null,
                   meta: q.meta || {},
@@ -1139,14 +1169,7 @@ onDrop={(e) => onDrop(e, q._editorId)}
             type="button"
             onClick={() => moveQuestion(index, index - 1)}
             disabled={index === 0}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              color: index === 0 ? "#9ca3af" : "#111827",
-              cursor: index === 0 ? "not-allowed" : "pointer",
-            }}
+            style={smallActionButtonStyle(index === 0)}
           >
             ↑
           </button>
@@ -1155,14 +1178,7 @@ onDrop={(e) => onDrop(e, q._editorId)}
             type="button"
             onClick={() => moveQuestion(index, index + 1)}
             disabled={index === totalQuestions - 1}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              color: index === totalQuestions - 1 ? "#9ca3af" : "#111827",
-              cursor: index === totalQuestions - 1 ? "not-allowed" : "pointer",
-            }}
+            style={smallActionButtonStyle(index === totalQuestions - 1)}
           >
             ↓
           </button>
@@ -1182,28 +1198,19 @@ onDrop={(e) => onDrop(e, q._editorId)}
         <TextInput
           value={q.id || ""}
           onChange={(v) => {
-  const cleanedId = sanitizeQuestionId(v, "");
-  let nextQuestion = {
-    ...q,
-    id: cleanedId,
-  };
+            const cleanedId = sanitizeQuestionId(v, "");
+            let nextQuestion = {
+              ...q,
+              id: cleanedId,
+            };
 
-  if (cleanedId && shouldAutoRewriteRowValues(nextQuestion)) {
-    nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
-  }
+            if (cleanedId && shouldAutoRewriteRowValues(nextQuestion)) {
+              nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
+            }
 
-  updateQuestion(index, nextQuestion);
-}}
+            updateQuestion(index, nextQuestion);
+          }}
           placeholder="e.g. AUTH"
-        />
-      </FieldBlock>
-
-      <FieldBlock label="Help text / description">
-        <TextAreaInput
-          value={q.description || ""}
-          onChange={(v) => updateQuestion(index, { description: v })}
-          placeholder="Optional description"
-          rows={2}
         />
       </FieldBlock>
 
@@ -1258,6 +1265,7 @@ onDrop={(e) => onDrop(e, q._editorId)}
             valuePlaceholder="Auto id"
             labelPlaceholder="Item text"
           />
+
           <ItemTableEditor
             title="Columns / scale points"
             items={q.columns}
@@ -1379,10 +1387,19 @@ onDrop={(e) => onDrop(e, q._editorId)}
           Info text is display-only and is not required.
         </div>
       )}
-
-      <InlineInsertControls index={index} insertQuestionAt={insertQuestionAt} />
     </div>
   );
+}
+
+function smallActionButtonStyle(disabled) {
+  return {
+    padding: "8px 10px",
+    borderRadius: 8,
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    color: disabled ? "#9ca3af" : "#111827",
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
 }
 
 /* =========================
@@ -1491,17 +1508,17 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       ]);
 
       const normalized = normalizeSurvey(s || {});
-const editorSurvey = buildSurveyPagesFromFlatQuestions(
-  {
-    ...normalized,
-    linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-    linked_project_id: projectId,
-    trigger: normalized.trigger || "after_feed_submit",
-  },
-  flattenSurveyPagesForEditor(normalized)
-);
+      const editorSurvey = buildSurveyPagesFromFlatQuestions(
+        {
+          ...normalized,
+          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+          linked_project_id: projectId,
+          trigger: normalized.trigger || "after_feed_submit",
+        },
+        flattenSurveyPagesForEditor(normalized)
+      );
 
-setSurvey(editorSurvey);
+      setSurvey(editorSurvey);
     } catch (e) {
       console.warn("Failed to load survey:", e);
       setSurvey(null);
@@ -1510,20 +1527,20 @@ setSurvey(editorSurvey);
 
   function handleCreateSurvey() {
     const s = makeEmptySurvey({
-  linked_project_id: projectId,
-  linked_feed_ids: [],
-  trigger: "after_feed_submit",
-});
+      linked_project_id: projectId,
+      linked_feed_ids: [],
+      trigger: "after_feed_submit",
+    });
 
-const editorSurvey = buildSurveyPagesFromFlatQuestions(
-  {
-    ...s,
-    trigger: s.trigger || "after_feed_submit",
-  },
-  flattenSurveyPagesForEditor(s)
-);
+    const editorSurvey = buildSurveyPagesFromFlatQuestions(
+      {
+        ...s,
+        trigger: s.trigger || "after_feed_submit",
+      },
+      flattenSurveyPagesForEditor(s)
+    );
 
-setSurvey(editorSurvey);
+    setSurvey(editorSurvey);
     setSelectedSurveyId(null);
   }
 
@@ -1568,19 +1585,19 @@ setSurvey(editorSurvey);
         ]);
 
         const normalizedFresh = normalizeSurvey({
-  ...(fresh || {}),
-  linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-  linked_project_id: projectId,
-  trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
-});
+          ...(fresh || {}),
+          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+          linked_project_id: projectId,
+          trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
+        });
 
-const editorFresh = buildSurveyPagesFromFlatQuestions(
-  normalizedFresh,
-  flattenSurveyPagesForEditor(normalizedFresh)
-);
+        const editorFresh = buildSurveyPagesFromFlatQuestions(
+          normalizedFresh,
+          flattenSurveyPagesForEditor(normalizedFresh)
+        );
 
-setSelectedSurveyId(savedSurveyId);
-setSurvey(editorFresh);
+        setSelectedSurveyId(savedSurveyId);
+        setSurvey(editorFresh);
 
         await loadAll();
         alert("Survey saved");
@@ -1617,17 +1634,20 @@ setSurvey(editorFresh);
   function addQuestion(type) {
     setSurvey((prev) => {
       const currentQuestions = getQuestionList(prev);
-      return setQuestionList(prev, [...currentQuestions, makeBackendQuestionFromType(type, currentQuestions.length)]);
+      return setQuestionList(prev, [
+        ...currentQuestions,
+        makeBackendQuestionFromType(type, currentQuestions.length),
+      ]);
     });
   }
 
   function addPageBreak() {
     setSurvey((prev) => {
       const currentQuestions = getQuestionList(prev);
-      return setQuestionList(
-        prev,
-        [...currentQuestions, makePageBreakForEditor(currentQuestions.length)]
-      );
+      return setQuestionList(prev, [
+        ...currentQuestions,
+        makePageBreakForEditor(currentQuestions.length),
+      ]);
     });
   }
 
@@ -1646,9 +1666,9 @@ setSurvey(editorFresh);
       const currentQuestions = [...getQuestionList(prev)];
       const currentQuestion = currentQuestions[index] || {};
       const merged =
-  patch && typeof patch === "object" && !Array.isArray(patch)
-    ? { ...currentQuestion, ...patch }
-    : currentQuestion;
+        patch && typeof patch === "object" && !Array.isArray(patch)
+          ? { ...currentQuestion, ...patch }
+          : currentQuestion;
 
       currentQuestions[index] = normalizeQuestionForEditor(merged, index);
       return setQuestionList(prev, currentQuestions);
@@ -1701,7 +1721,7 @@ setSurvey(editorFresh);
 
     const questions = getQuestionList(survey);
     const fromIndex = questions.findIndex((q) => q._editorId === draggingQuestionId);
-const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
+    const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
 
     if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
       moveQuestion(fromIndex, toIndex);
@@ -1775,10 +1795,7 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
     [survey]
   );
 
-  const currentQuestions = useMemo(
-    () => getQuestionList(survey),
-    [survey]
-  );
+  const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);
 
   const questionDisplayNumbers = useMemo(() => {
     let count = 0;
@@ -1842,7 +1859,10 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
                 borderRadius: 8,
                 marginBottom: 6,
                 background: selectedSurveyId === s.survey_id ? "#eef2ff" : "transparent",
-                border: selectedSurveyId === s.survey_id ? "1px solid #c7d2fe" : "1px solid transparent",
+                border:
+                  selectedSurveyId === s.survey_id
+                    ? "1px solid #c7d2fe"
+                    : "1px solid transparent",
               }}
             >
               <div style={{ fontWeight: 600 }}>{s.name || s.survey_id}</div>
@@ -1855,19 +1875,23 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        {!survey && (
-          <div style={{ color: "#6b7280" }}>
-            Select or create a survey.
-          </div>
-        )}
+        {!survey && <div style={{ color: "#6b7280" }}>Select or create a survey.</div>}
 
         {survey && (
           <>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
               <h3 style={{ margin: 0 }}>Survey Editor</h3>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"} · {pageCount} page{pageCount === 1 ? "" : "s"}
+                  {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
+                  {pageCount === 1 ? "" : "s"}
                 </div>
 
                 {!!survey?.survey_id && (
@@ -1900,8 +1924,9 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
 
             <h4 style={{ marginTop: 18, marginBottom: 10 }}>Questions</h4>
 
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-              Drag items by the dotted handle to reorder them, use ↑ / ↓, or insert questions and page breaks anywhere in the survey.
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
+              Drag items by the dotted handle to reorder them. Use the + buttons on the borders
+              to insert new questions.
             </div>
 
             {currentQuestions.map((q, i) => (
@@ -1923,6 +1948,29 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
                 onDragEnd={handleQuestionDragEnd}
               />
             ))}
+
+            {currentQuestions.length === 0 && (
+              <div
+                style={{
+                  position: "relative",
+                  border: "1px dashed #d1d5db",
+                  borderRadius: 12,
+                  padding: 28,
+                  background: "#fff",
+                  marginBottom: 20,
+                  textAlign: "center",
+                  color: "#6b7280",
+                }}
+              >
+                No questions yet.
+                <div style={{ marginTop: 10 }}>
+                  <InsertAtBorderButton
+                    position="bottom"
+                    onInsert={(nextType) => addQuestion(nextType)}
+                  />
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
               <button type="button" onClick={() => addQuestion(SURVEY_QUESTION_TYPES.TEXT)}>+ Text</button>
@@ -1950,9 +1998,7 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
                 marginBottom: 12,
               }}
             >
-              {feeds.length === 0 && (
-                <div style={{ color: "#6b7280" }}>No feeds found.</div>
-              )}
+              {feeds.length === 0 && <div style={{ color: "#6b7280" }}>No feeds found.</div>}
 
               {feeds.map((f) => (
                 <div key={f.feed_id} style={{ marginBottom: 6 }}>
@@ -1981,11 +2027,7 @@ const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
             </button>
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button
-                type="button"
-                onClick={handleSaveSurvey}
-                disabled={savingSurvey}
-              >
+              <button type="button" onClick={handleSaveSurvey} disabled={savingSurvey}>
                 {savingSurvey ? "Saving Survey..." : "Save Survey"}
               </button>
             </div>
