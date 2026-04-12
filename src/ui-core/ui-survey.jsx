@@ -310,6 +310,14 @@ export function SurveyScreen({
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
+  useEffect(() => {
+  const id = requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+
+  return () => cancelAnimationFrame(id);
+}, [currentPageIndex]);
+
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
 
@@ -427,21 +435,24 @@ export function SurveyScreen({
   }, [currentPage, responses]);
 
   const goNext = () => {
-    onClearBanner?.();
-    const validation = validateCurrentPage();
-    if (!validation.ok) {
-      onPageValidationFail?.(validation.errors, "Please complete the highlighted questions on this page.");
-      return;
-    }
-    setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  onClearBanner?.();
+  const validation = validateCurrentPage();
+
+  if (!validation.ok) {
+    onPageValidationFail?.(
+      validation.errors,
+      "Please complete the highlighted questions on this page."
+    );
+    return;
+  }
+
+  setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
+};
 
   const goBack = () => {
-    onClearBanner?.();
-    setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  onClearBanner?.();
+  setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
+};
 
   if (!currentPage) {
     return (
