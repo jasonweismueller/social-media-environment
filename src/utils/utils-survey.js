@@ -34,6 +34,10 @@ function cleanStringArray(arr = []) {
     .filter(Boolean);
 }
 
+function uniqueStringArray(arr = []) {
+  return Array.from(new Set(cleanStringArray(arr)));
+}
+
 function sanitizeQuestionId(value, fallback = "") {
   const cleaned = String(value ?? "")
     .trim()
@@ -94,7 +98,10 @@ function normalizeStructuredItems(items = [], prefix = "item") {
         const label = item.trim();
         return label
           ? {
-              value: sanitizeStructuredValue(makeSequentialValue(prefix, i), makeSequentialValue(prefix, i)),
+              value: sanitizeStructuredValue(
+                makeSequentialValue(prefix, i),
+                makeSequentialValue(prefix, i)
+              ),
               label,
             }
           : null;
@@ -188,6 +195,46 @@ function normalizeBipolarRows(items = [], questionId = "") {
     .filter(Boolean);
 }
 
+function normalizeVisibleInFeeds(value = []) {
+  return uniqueStringArray(value);
+}
+
+function normalizeFeedOverrides(value = {}) {
+  const source = asObject(value);
+  const out = {};
+
+  Object.entries(source).forEach(([feedId, override]) => {
+    const cleanFeedId = String(feedId ?? "").trim();
+    if (!cleanFeedId) return;
+
+    const safeOverride = asObject(override);
+    out[cleanFeedId] = {
+      text: String(safeOverride.text ?? ""),
+    };
+  });
+
+  return out;
+}
+
+function pruneFeedOverridesByVisibleFeeds(feedOverrides = {}, visibleInFeeds = []) {
+  const allowedFeedIds = normalizeVisibleInFeeds(visibleInFeeds);
+  const allowed = new Set(allowedFeedIds);
+  const normalized = normalizeFeedOverrides(feedOverrides);
+  const out = {};
+
+  Object.entries(normalized).forEach(([feedId, override]) => {
+    if (allowed.size > 0 && !allowed.has(feedId)) return;
+
+    if (String(override?.text ?? "").trim()) {
+      out[feedId] = {
+        text: String(override.text ?? ""),
+      };
+    }
+  });
+
+  return out;
+}
+
 function isPageBreakQuestion(question) {
   return question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK;
 }
@@ -215,6 +262,11 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
 
   const text = String(overrides.text ?? overrides.label ?? defaultText);
   const questionId = sanitizeQuestionId(overrides.id, `Q_${uid()}`);
+  const visibleInFeeds = normalizeVisibleInFeeds(overrides.visible_in_feeds);
+  const feedOverrides = pruneFeedOverridesByVisibleFeeds(
+    overrides.feed_overrides,
+    visibleInFeeds
+  );
 
   return {
     id: questionId,
@@ -234,6 +286,8 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     left_label: overrides.left_label ?? overrides.min_label ?? "",
     right_label: overrides.right_label ?? overrides.max_label ?? "",
     visible_if: overrides.visible_if || null,
+    visible_in_feeds: visibleInFeeds,
+    feed_overrides: feedOverrides,
     placeholder: String(overrides.placeholder || ""),
     meta: asObject(overrides.meta),
   };
@@ -262,6 +316,12 @@ export function normalizeQuestion(raw = {}) {
   const normalizedColumns = Array.isArray(raw.columns)
     ? normalizeStructuredItems(raw.columns, "col")
     : [];
+
+  const visibleInFeeds = normalizeVisibleInFeeds(raw.visible_in_feeds);
+  const feedOverrides = pruneFeedOverridesByVisibleFeeds(
+    raw.feed_overrides,
+    visibleInFeeds
+  );
 
   return {
     id: questionId,
@@ -318,6 +378,8 @@ export function normalizeQuestion(raw = {}) {
     left_label: String(raw.left_label ?? raw.min_label ?? ""),
     right_label: String(raw.right_label ?? raw.max_label ?? ""),
     visible_if: raw.visible_if || null,
+    visible_in_feeds: visibleInFeeds,
+    feed_overrides: feedOverrides,
     placeholder: String(raw.placeholder || ""),
     meta: asObject(raw.meta),
   };
@@ -332,6 +394,8 @@ export function frontendQuestionToBackend(question = {}) {
     text: q.text,
     description: q.description,
     required: isDisplayOnlyQuestion(q) ? false : !!q.required,
+    visible_in_feeds: q.visible_in_feeds,
+    feed_overrides: q.feed_overrides,
     meta: q.meta || {},
   };
 
@@ -372,47 +436,47 @@ export function frontendQuestionToBackend(question = {}) {
       };
 
     case SURVEY_QUESTION_TYPES.BIPOLAR:
-  return {
-    ...base,
-    rows: Array.isArray(q.rows)
-      ? q.rows.map((row, i) => ({
-          value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
-          label: String(row?.label ?? row?.left_label ?? ""),
-          left_label: String(row?.left_label ?? row?.label ?? ""),
-          right_label: String(row?.right_label ?? ""),
-        }))
-      : [],
-    columns: Array.isArray(q.columns) && q.columns.length
-      ? q.columns.map((col, i) => ({
-          value: String(
-            col?.value ??
-              String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
-          ),
-          label: String(
-            col?.label ??
-              col?.value ??
-              String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
-          ),
-        }))
-      : Array.from(
-          {
-            length: Math.max(
-              2,
-              Number.isFinite(q.max) && Number.isFinite(q.min)
-                ? Number(q.max) - Number(q.min) + 1
-                : 7
+      return {
+        ...base,
+        rows: Array.isArray(q.rows)
+          ? q.rows.map((row, i) => ({
+              value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
+              label: String(row?.label ?? row?.left_label ?? ""),
+              left_label: String(row?.left_label ?? row?.label ?? ""),
+              right_label: String(row?.right_label ?? ""),
+            }))
+          : [],
+        columns: Array.isArray(q.columns) && q.columns.length
+          ? q.columns.map((col, i) => ({
+              value: String(
+                col?.value ??
+                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+              ),
+              label: String(
+                col?.label ??
+                  col?.value ??
+                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+              ),
+            }))
+          : Array.from(
+              {
+                length: Math.max(
+                  2,
+                  Number.isFinite(q.max) && Number.isFinite(q.min)
+                    ? Number(q.max) - Number(q.min) + 1
+                    : 7
+                ),
+              },
+              (_, i) => ({
+                value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+                label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+              })
             ),
-          },
-          (_, i) => ({
-            value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
-            label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
-          })
-        ),
-    min: q.min,
-    max: q.max,
-    left_label: q.left_label ?? q.min_label ?? "",
-    right_label: q.right_label ?? q.max_label ?? "",
-  };
+        min: q.min,
+        max: q.max,
+        left_label: q.left_label ?? q.min_label ?? "",
+        right_label: q.right_label ?? q.max_label ?? "",
+      };
 
     case SURVEY_QUESTION_TYPES.SLIDER:
       return {
@@ -755,10 +819,20 @@ export function makeQuestionByType(type) {
    Visibility
    ========================= */
 
-export function isQuestionVisible(question, responses = {}) {
+export function isQuestionVisible(question, responses = {}, { feedId = "" } = {}) {
   if (question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK) return true;
 
-  const rule = question?.visible_if;
+  const normalizedQuestion = normalizeQuestion(question);
+  const activeFeedId = String(feedId ?? "").trim();
+  const visibleInFeeds = Array.isArray(normalizedQuestion.visible_in_feeds)
+    ? normalizedQuestion.visible_in_feeds
+    : [];
+
+  if (activeFeedId && visibleInFeeds.length > 0 && !visibleInFeeds.includes(activeFeedId)) {
+    return false;
+  }
+
+  const rule = normalizedQuestion?.visible_if;
   if (!rule || !rule.question_id) return true;
 
   const sourceValue = responses?.[rule.question_id];
@@ -878,13 +952,13 @@ export function isQuestionAnswered(q, value) {
   }
 }
 
-export function validateSurveyResponses(survey, responses) {
+export function validateSurveyResponses(survey, responses, { feedId = "" } = {}) {
   const normalized = normalizeSurvey(survey);
   const errors = {};
 
   for (const page of normalized.pages || []) {
     for (const q of page.questions || []) {
-      if (!isQuestionVisible(q, responses)) continue;
+      if (!isQuestionVisible(q, responses, { feedId })) continue;
 
       const value = responses?.[q.id];
       if (!isQuestionAnswered(q, value)) {
@@ -927,8 +1001,21 @@ function seededShuffle(items = [], seed = "") {
   return arr;
 }
 
-export function getRenderedQuestion(question, { participantSeed = "" } = {}) {
+export function getRenderedQuestion(
+  question,
+  { participantSeed = "", feedId = "" } = {}
+) {
   const q = normalizeQuestion(question);
+  const activeFeedId = String(feedId ?? "").trim();
+  const activeOverride =
+    activeFeedId && q.feed_overrides && typeof q.feed_overrides === "object"
+      ? q.feed_overrides[activeFeedId]
+      : null;
+
+  if (activeOverride && String(activeOverride.text ?? "").trim()) {
+    q.text = String(activeOverride.text ?? "");
+    q.label = q.text;
+  }
 
   if (q.randomize_options) {
     if (Array.isArray(q.choices) && q.choices.length > 1) {
