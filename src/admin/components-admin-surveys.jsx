@@ -74,6 +74,10 @@ function resetSurveyIdentityForCopy(sourceSurvey, { projectId, keepFeedLinks = t
           ...cleanQ,
           meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
           visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
+          visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
+            ? [...cleanQ.visible_in_feeds]
+            : [],
+          feed_overrides: cleanQ?.feed_overrides ? deepClone(cleanQ.feed_overrides) : {},
         };
       }),
     })),
@@ -109,6 +113,10 @@ function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
           ...cleanQ,
           meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
           visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
+          visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
+            ? [...cleanQ.visible_in_feeds]
+            : [],
+          feed_overrides: cleanQ?.feed_overrides ? deepClone(cleanQ.feed_overrides) : {},
         };
       }),
     })),
@@ -641,6 +649,13 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     [survey]
   );
 
+  const linkedFeedsForEditor = useMemo(() => {
+    const linkedIds = new Set(normalizeLinkedFeedIds(survey?.linked_feed_ids));
+    return (Array.isArray(feeds) ? feeds : []).filter((f) =>
+      linkedIds.has(String(f?.feed_id || ""))
+    );
+  }, [feeds, survey]);
+
   const pageCount = useMemo(() => {
     if (!survey) return 0;
     const pages = buildSurveyPagesFromFlatQuestions(
@@ -883,7 +898,11 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               </div>
             </SectionCard>
 
-            <SurveyEditor survey={survey} onSurveyChange={setSurvey} />
+            <SurveyEditor
+              survey={survey}
+              onSurveyChange={setSurvey}
+              linkedFeeds={linkedFeedsForEditor}
+            />
 
             <div style={{ display: "flex", gap: 10 }}>
               <button
