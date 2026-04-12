@@ -540,8 +540,38 @@ function mergeParticipantRowsWithSurveyRows({
       surveyPayload[key] = value === "" || value == null ? fillValue : value;
     });
 
+    const remainingParticipantFields = { ...participant };
+
+    delete remainingParticipantFields.session_id;
+    delete remainingParticipantFields.participant_id;
+    delete remainingParticipantFields.ip_address;
+    delete remainingParticipantFields.prolific_pid;
+    delete remainingParticipantFields.entered_at_iso;
+    delete remainingParticipantFields.submitted_at_iso;
+    delete remainingParticipantFields.feed_id;
+
+    delete remainingParticipantFields.session_id_ext;
+    delete remainingParticipantFields.study_id;
+    delete remainingParticipantFields.prolific_session_id;
+    delete remainingParticipantFields.prolific_study_id;
+
+    delete remainingParticipantFields.ms_enter_to_submit;
+    delete remainingParticipantFields.ms_enter_to_last_interaction;
+    delete remainingParticipantFields.feed_checksum;
+
+    const orderedParticipant = {
+      session_id: participant?.session_id ?? "",
+      participant_id: participant?.participant_id ?? "",
+      ip_address: participant?.ip_address ?? "",
+      prolific_pid: participant?.prolific_pid ?? "",
+      entered_at_iso: participant?.entered_at_iso ?? "",
+      submitted_at_iso: participant?.submitted_at_iso ?? "",
+      feed_id: participant?.feed_id ?? "",
+    };
+
     return {
-      ...participant,
+      ...orderedParticipant,
+      ...remainingParticipantFields,
       ...surveyPayload,
     };
   });
