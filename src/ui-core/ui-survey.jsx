@@ -34,8 +34,14 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
     <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
       {!isInfo && (
         <div className="survey-question-title">
-          <span>{index + 1}. {question.text}</span>
-        </div>
+  <div className="survey-question-title-inner">
+    <span className="survey-question-number">{index + 1}.</span>
+    <div
+      className="survey-question-title-content"
+      dangerouslySetInnerHTML={{ __html: question.text || "" }}
+    />
+  </div>
+</div>
       )}
 
       {!isInfo && question.description ? (
@@ -43,9 +49,10 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
       ) : null}
 
       {isInfo && (
-        <div className="survey-info-block">
-          {question.text}
-        </div>
+        <div
+  className="survey-info-block"
+  dangerouslySetInnerHTML={{ __html: question.text || "" }}
+/>
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
