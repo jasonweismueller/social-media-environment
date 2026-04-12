@@ -3,8 +3,8 @@ import * as FB from "./ui-core-facebook";
 import * as IG from "./ui-core-instagram";
 import { getApp } from "../utils/utils-backend";
 
-export * from "./ui-survey";
-export * from "./ui-survey-mobile";
+export { SurveyScreen } from "./ui-survey";
+export { SurveyScreenMobile } from "./ui-survey-mobile";
 
 
 
