@@ -98,6 +98,33 @@ export function normalizeVisibleInFeeds(values = []) {
   return uniqueStringList(values);
 }
 
+function normalizeRichTextHtml(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(raw);
+  if (looksLikeHtml) return raw;
+
+  const escaped = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return escaped
+    .split(/\n{2,}/)
+    .map((block) => `<p>${block.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function stripHtmlForEmptyCheck(html = "") {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/<\/p>\s*<p>/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .trim();
+}
+
 export function normalizeFeedOverridesMap(value = {}) {
   const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const out = {};
@@ -110,7 +137,7 @@ export function normalizeFeedOverridesMap(value = {}) {
       override && typeof override === "object" && !Array.isArray(override) ? override : {};
 
     out[cleanFeedId] = {
-      text: String(safeOverride.text ?? ""),
+      text: normalizeRichTextHtml(safeOverride.text ?? ""),
     };
   });
 
@@ -124,9 +151,9 @@ export function pruneFeedOverridesMap(value = {}, allowedFeedIds = []) {
 
   Object.entries(normalized).forEach(([feedId, override]) => {
     if (allowed.size && !allowed.has(feedId)) return;
-    if (String(override?.text ?? "").trim()) {
+    if (stripHtmlForEmptyCheck(override?.text ?? "")) {
       out[feedId] = {
-        text: String(override.text ?? ""),
+        text: normalizeRichTextHtml(override.text ?? ""),
       };
     }
   });
@@ -246,33 +273,6 @@ export function reorderArray(list = [], fromIndex, toIndex) {
 
 export function isCountedQuestionType(type) {
   return type !== SURVEY_QUESTION_TYPES.INFO && type !== EDITOR_PAGE_BREAK_TYPE;
-}
-
-function normalizeRichTextHtml(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-
-  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(raw);
-  if (looksLikeHtml) return raw;
-
-  const escaped = raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  return escaped
-    .split(/\n{2,}/)
-    .map((block) => `<p>${block.replace(/\n/g, "<br>")}</p>`)
-    .join("");
-}
-
-function stripHtmlForEmptyCheck(html = "") {
-  return String(html || "")
-    .replace(/<br\s*\/?>/gi, "")
-    .replace(/<\/p>\s*<p>/gi, "")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .trim();
 }
 
 export function normalizeQuestionForEditor(q = {}, index = 0) {
@@ -733,7 +733,7 @@ function TextCursorIcon({ size = 14 }) {
   );
 }
 
-function ChevronDownIcon({ size = 14 }) {
+function ChevronDownIcon({ size = 14, open = false }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -745,6 +745,10 @@ function ChevronDownIcon({ size = 14 }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      style={{
+        transform: open ? "rotate(180deg)" : "rotate(0deg)",
+        transition: "transform 0.15s ease",
+      }}
     >
       <polyline points="6 9 12 15 18 9" />
     </svg>
@@ -1705,7 +1709,7 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
       ...normalized,
       [feedId]: {
         ...(normalized[feedId] || {}),
-        text: String(nextText ?? ""),
+        text: normalizeRichTextHtml(nextText ?? ""),
       },
     };
 
@@ -1742,7 +1746,7 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
         Leave a field blank to use the default question text.
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "grid", gap: 14 }}>
         {safeFeeds.map((feed) => {
           const feedId = String(feed?.feed_id || "").trim();
           if (!feedId) return null;
@@ -1752,20 +1756,17 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
               key={feedId}
               style={{
                 display: "grid",
-                gridTemplateColumns: "220px minmax(0,1fr)",
-                gap: 10,
-                alignItems: "center",
+                gap: 8,
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
                 {feed?.name || feedId}
               </div>
 
-              <TextAreaInput
+              <RichTextEditor
                 value={normalized?.[feedId]?.text ?? ""}
                 onChange={(v) => updateFeedText(feedId, v)}
                 placeholder="Alternative question text for this feed"
-                rows={2}
               />
             </div>
           );
@@ -1806,7 +1807,7 @@ function QuestionAdvancedFeedTools({
           Display logic
           {visibleFeedCount > 0 ? ` (${visibleFeedCount})` : ""}
         </span>
-        <ChevronDownIcon size={12} />
+        <ChevronDownIcon size={12} open={!!q?._showFeedVisibilityEditor} />
       </SecondaryPillButton>
 
       <SecondaryPillButton
@@ -1820,7 +1821,7 @@ function QuestionAdvancedFeedTools({
           Alternative text
           {overrideCount > 0 ? ` (${overrideCount})` : ""}
         </span>
-        <ChevronDownIcon size={12} />
+        <ChevronDownIcon size={12} open={!!q?._showFeedOverridesEditor} />
       </SecondaryPillButton>
 
       {!hasLinkedFeeds && (
