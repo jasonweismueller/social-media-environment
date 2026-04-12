@@ -25,7 +25,7 @@ import {
 import { Feed as IGFeed } from "./ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
-  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreen
+  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreen, SurveyScreenMobile
 } from "./ui-core";
 
 
@@ -57,6 +57,29 @@ function normalizeFlags(raw) {
   const randomize_bios = truthy(f.randomize_bios ?? f.rand_bios ?? false);
   return { randomize_times, randomize_avatars, randomize_names, randomize_images, randomize_bios };
 }
+
+const [isMobileSurvey, setIsMobileSurvey] = useState(
+  typeof window !== "undefined"
+    ? window.matchMedia("(max-width: 700px)").matches
+    : false
+);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const mq = window.matchMedia("(max-width: 700px)");
+  const onChange = (e) => setIsMobileSurvey(e.matches);
+
+  setIsMobileSurvey(mq.matches);
+
+  mq.addEventListener?.("change", onChange);
+  mq.addListener?.(onChange);
+
+  return () => {
+    mq.removeEventListener?.("change", onChange);
+    mq.removeListener?.(onChange);
+  };
+}, []);
 
 function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
   useEffect(() => {
@@ -973,18 +996,33 @@ setSurveyErrorMsg("");
             element={
               shouldShowSurvey ? (
                 <div className="survey-page">
-                  <SurveyScreen
-                    survey={linkedSurvey}
-                    responses={surveyResponses}
-                    errors={surveyErrors}
-                    errorMsg={surveyErrorMsg}
-                    participantSeed={participantId || sessionIdRef.current}
-                    onChange={handleSurveyResponseChange}
-                    onSubmit={handleSurveySubmit}
-                    onPageValidationFail={handleSurveyPageValidationFail}
-                    onClearBanner={clearSurveyBanner}
-                    submitting={surveyPhase === "submitting"}
-                  />
+                  {isMobileSurvey ? (
+  <SurveyScreenMobile
+    survey={linkedSurvey}
+    responses={surveyResponses}
+    errors={surveyErrors}
+    errorMsg={surveyErrorMsg}
+    participantSeed={participantId || sessionIdRef.current}
+    onChange={handleSurveyResponseChange}
+    onSubmit={handleSurveySubmit}
+    onPageValidationFail={handleSurveyPageValidationFail}
+    onClearBanner={clearSurveyBanner}
+    submitting={surveyPhase === "submitting"}
+  />
+) : (
+  <SurveyScreen
+    survey={linkedSurvey}
+    responses={surveyResponses}
+    errors={surveyErrors}
+    errorMsg={surveyErrorMsg}
+    participantSeed={participantId || sessionIdRef.current}
+    onChange={handleSurveyResponseChange}
+    onSubmit={handleSurveySubmit}
+    onPageValidationFail={handleSurveyPageValidationFail}
+    onClearBanner={clearSurveyBanner}
+    submitting={surveyPhase === "submitting"}
+  />
+)}
                 </div>
               ) : (
                 <PageWithRails>
