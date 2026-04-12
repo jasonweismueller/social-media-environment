@@ -146,12 +146,13 @@ function ensureMatrixRowsFromQuestionId(items = [], questionId = "") {
 
 function ensureBipolarRowArray(items = [], questionId = "") {
   return (Array.isArray(items) ? items : []).map((item, i) => {
-    const leftLabel = String(item?.left_label ?? item?.label ?? "").trim();
-    const rightLabel = String(item?.right_label ?? "").trim();
+    const leftLabel = String(item?.left_label ?? item?.label ?? "");
+    const rightLabel = String(item?.right_label ?? "");
+    const label = String(item?.label ?? item?.left_label ?? `Row ${i + 1}`);
 
     return {
       value: preserveEmptyOrSanitize(item?.value, makeMatrixRowValue(questionId, i)),
-      label: String(item?.label ?? leftLabel ?? `Row ${i + 1}`).trim(),
+      label,
       left_label: leftLabel,
       right_label: rightLabel,
     };
@@ -558,12 +559,17 @@ function buildSavedQuestion(q, index) {
         ? ensureChoiceArray(cleanQ.choices)
         : [],
     rows:
-      cleanQ.type === SURVEY_QUESTION_TYPES.BIPOLAR
-        ? ensureBipolarRowArray(cleanQ.rows, cleanQ.id)
-        : cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
-            cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-          ? ensureMatrixRowsFromQuestionId(cleanQ.rows, cleanQ.id)
-          : [],
+  cleanQ.type === SURVEY_QUESTION_TYPES.BIPOLAR
+    ? (Array.isArray(cleanQ.rows) ? cleanQ.rows : []).map((row, i) => ({
+        value: preserveEmptyOrSanitize(row?.value, makeMatrixRowValue(cleanQ.id, i)),
+        label: String(row?.label ?? row?.left_label ?? `Row ${i + 1}`).trim(),
+        left_label: String(row?.left_label ?? row?.label ?? "").trim(),
+        right_label: String(row?.right_label ?? "").trim(),
+      }))
+    : cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+        cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
+      ? ensureMatrixRowsFromQuestionId(cleanQ.rows, cleanQ.id)
+      : [],
     columns:
       cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
       cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
