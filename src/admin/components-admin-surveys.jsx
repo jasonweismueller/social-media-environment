@@ -145,11 +145,17 @@ function ensureMatrixRowsFromQuestionId(items = [], questionId = "") {
 }
 
 function ensureBipolarRowArray(items = [], questionId = "") {
-  return (Array.isArray(items) ? items : []).map((item, i) => ({
-    value: preserveEmptyOrSanitize(item?.value, makeMatrixRowValue(questionId, i)),
-    left_label: String(item?.left_label ?? item?.label ?? "").trim(),
-    right_label: String(item?.right_label ?? "").trim(),
-  }));
+  return (Array.isArray(items) ? items : []).map((item, i) => {
+    const leftLabel = String(item?.left_label ?? item?.label ?? "").trim();
+    const rightLabel = String(item?.right_label ?? "").trim();
+
+    return {
+      value: preserveEmptyOrSanitize(item?.value, makeMatrixRowValue(questionId, i)),
+      label: String(item?.label ?? leftLabel ?? `Row ${i + 1}`).trim(),
+      left_label: leftLabel,
+      right_label: rightLabel,
+    };
+  });
 }
 
 function rewriteQuestionRowValues(question, nextQuestionId) {

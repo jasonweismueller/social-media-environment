@@ -150,15 +150,16 @@ function normalizeMatrixRows(items = [], questionId = "") {
 
 function normalizeBipolarRows(items = [], questionId = "") {
   if (!Array.isArray(items)) return [];
+
   return items
     .map((item, i) => {
       if (typeof item === "string") {
-        const label = item.trim();
-        return label
+        const text = item.trim();
+        return text
           ? {
               value: makeMatrixRowValue(questionId, i),
-              label,
-              left_label: label,
+              label: text,
+              left_label: text,
               right_label: "",
             }
           : null;
@@ -167,6 +168,7 @@ function normalizeBipolarRows(items = [], questionId = "") {
       if (item && typeof item === "object") {
         const fallbackValue = makeMatrixRowValue(questionId, i);
         const value = sanitizeStructuredValue(item.value, fallbackValue);
+
         const label = String(item.label ?? "").trim();
         const leftLabel = String(item.left_label ?? item.label ?? "").trim();
         const rightLabel = String(item.right_label ?? "").trim();
@@ -174,8 +176,8 @@ function normalizeBipolarRows(items = [], questionId = "") {
         return value || label || leftLabel || rightLabel
           ? {
               value: value || fallbackValue,
-              label: label || leftLabel,
-              left_label: leftLabel,
+              label: label || leftLabel || `Row ${i + 1}`,
+              left_label: leftLabel || label || "",
               right_label: rightLabel,
             }
           : null;
@@ -370,45 +372,47 @@ export function frontendQuestionToBackend(question = {}) {
       };
 
     case SURVEY_QUESTION_TYPES.BIPOLAR:
-      return {
-        ...base,
-        rows: Array.isArray(q.rows)
-          ? q.rows.map((row, i) => ({
-              value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
-              label: String(row?.label ?? row?.left_label ?? ""),
-            }))
-          : [],
-        columns: Array.isArray(q.columns) && q.columns.length
-          ? q.columns.map((col, i) => ({
-              value: String(
-                col?.value ??
-                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
-              ),
-              label: String(
-                col?.label ??
-                  col?.value ??
-                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
-              ),
-            }))
-          : Array.from(
-              {
-                length: Math.max(
-                  2,
-                  Number.isFinite(q.max) && Number.isFinite(q.min)
-                    ? Number(q.max) - Number(q.min) + 1
-                    : 7
-                ),
-              },
-              (_, i) => ({
-                value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
-                label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
-              })
+  return {
+    ...base,
+    rows: Array.isArray(q.rows)
+      ? q.rows.map((row, i) => ({
+          value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
+          label: String(row?.label ?? row?.left_label ?? ""),
+          left_label: String(row?.left_label ?? row?.label ?? ""),
+          right_label: String(row?.right_label ?? ""),
+        }))
+      : [],
+    columns: Array.isArray(q.columns) && q.columns.length
+      ? q.columns.map((col, i) => ({
+          value: String(
+            col?.value ??
+              String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+          ),
+          label: String(
+            col?.label ??
+              col?.value ??
+              String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+          ),
+        }))
+      : Array.from(
+          {
+            length: Math.max(
+              2,
+              Number.isFinite(q.max) && Number.isFinite(q.min)
+                ? Number(q.max) - Number(q.min) + 1
+                : 7
             ),
-        min: q.min,
-        max: q.max,
-        left_label: q.left_label ?? q.min_label ?? "",
-        right_label: q.right_label ?? q.max_label ?? "",
-      };
+          },
+          (_, i) => ({
+            value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+            label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+          })
+        ),
+    min: q.min,
+    max: q.max,
+    left_label: q.left_label ?? q.min_label ?? "",
+    right_label: q.right_label ?? q.max_label ?? "",
+  };
 
     case SURVEY_QUESTION_TYPES.SLIDER:
       return {
