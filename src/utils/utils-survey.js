@@ -1012,6 +1012,10 @@ export function getRenderedQuestion(
       ? q.feed_overrides[activeFeedId]
       : null;
 
+   console.log("getRenderedQuestion feedId", feedId);
+console.log("question overrides", q.feed_overrides);
+console.log("active override", q.feed_overrides?.[String(feedId ?? "").trim()]);
+
   if (activeOverride && String(activeOverride.text ?? "").trim()) {
     q.text = String(activeOverride.text ?? "");
     q.label = q.text;
