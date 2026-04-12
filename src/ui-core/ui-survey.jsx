@@ -151,7 +151,7 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
         <tbody>
           {rows.map((row, rowIndex) => {
             const rowKey = row?.value || `row_${rowIndex + 1}`;
-            const leftLabel = row?.left_label || row?.label || `Row ${rowIndex + 1}`;
+            const leftLabel = row?.left_label || `Row ${rowIndex + 1}`;
             const rightLabel = row?.right_label || "";
             const rowValue = value && typeof value === "object" ? value[rowKey] : "";
 
