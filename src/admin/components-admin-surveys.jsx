@@ -166,6 +166,21 @@ function rewriteQuestionRowValues(question, nextQuestionId) {
   };
 }
 
+function makeCopiedQuestionId(existingIds = [], sourceId = "") {
+  const cleanSourceId = sanitizeQuestionId(sourceId, `Q_${Date.now()}`);
+  const idSet = new Set((Array.isArray(existingIds) ? existingIds : []).map((x) => String(x || "").trim()));
+
+  let nextId = `${cleanSourceId}_COPY`;
+  if (!idSet.has(nextId)) return nextId;
+
+  let counter = 2;
+  while (idSet.has(`${cleanSourceId}_COPY_${counter}`)) {
+    counter += 1;
+  }
+
+  return `${cleanSourceId}_COPY_${counter}`;
+}
+
 function reorderArray(list = [], fromIndex, toIndex) {
   const arr = [...list];
   if (
@@ -479,6 +494,26 @@ function PlusIcon({ size = 15 }) {
     </svg>
   );
 }
+
+function CopyIcon({ size = 16 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 
 function IconOnlyButton({
   onClick,
@@ -1034,6 +1069,7 @@ function QuestionActions({
   totalQuestions,
   moveQuestion,
   removeQuestion,
+  duplicateQuestion,
   updateQuestion,
   onDragStart,
   onDragEnd,
@@ -1042,7 +1078,7 @@ function QuestionActions({
 
   return (
     <TopField label="Actions">
-      <div
+            <div
         style={{
           display: "flex",
           gap: 6,
@@ -1081,6 +1117,13 @@ function QuestionActions({
         </button>
 
         <IconOnlyButton
+          onClick={() => duplicateQuestion(index)}
+          title="Copy question"
+        >
+          <CopyIcon size={16} />
+        </IconOnlyButton>
+
+        <IconOnlyButton
           onClick={() => removeQuestion(index)}
           title="Delete question"
           danger
@@ -1098,6 +1141,7 @@ function QuestionCard({
   updateQuestion,
   removeQuestion,
   moveQuestion,
+  duplicateQuestion,
   insertQuestionAt,
   draggingId,
   dragOverId,
@@ -1300,15 +1344,16 @@ marginBottom: 26,
         </TopField>
 
         <QuestionActions
-          q={q}
-          index={index}
-          totalQuestions={totalQuestions}
-          moveQuestion={moveQuestion}
-          removeQuestion={removeQuestion}
-          updateQuestion={updateQuestion}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-        />
+  q={q}
+  index={index}
+  totalQuestions={totalQuestions}
+  moveQuestion={moveQuestion}
+  removeQuestion={removeQuestion}
+  duplicateQuestion={duplicateQuestion}
+  updateQuestion={updateQuestion}
+  onDragStart={onDragStart}
+  onDragEnd={onDragEnd}
+/>
       </div>
 
       <FieldBlock label="Question ID / variable name">
@@ -1765,6 +1810,37 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     });
   }
 
+    function duplicateQuestion(index) {
+    setSurvey((prev) => {
+      const currentQuestions = [...getQuestionList(prev)];
+      const sourceQuestion = currentQuestions[index];
+
+      if (!sourceQuestion) return prev;
+
+      const existingIds = currentQuestions
+        .filter((q) => q?.type !== EDITOR_PAGE_BREAK_TYPE)
+        .map((q) => q?.id)
+        .filter(Boolean);
+
+      const nextId = makeCopiedQuestionId(existingIds, sourceQuestion.id);
+
+      let copiedQuestion = {
+        ...sourceQuestion,
+        _editorId: makeEditorId(),
+        id: nextId,
+      };
+
+      if (shouldAutoRewriteRowValues(copiedQuestion)) {
+        copiedQuestion = rewriteQuestionRowValues(copiedQuestion, nextId);
+      }
+
+      copiedQuestion = normalizeQuestionForEditor(copiedQuestion, index + 1);
+
+      currentQuestions.splice(index + 1, 0, copiedQuestion);
+      return setQuestionList(prev, currentQuestions);
+    });
+  }
+
   function updateQuestion(index, patch) {
     setSurvey((prev) => {
       const currentQuestions = [...getQuestionList(prev)];
@@ -2101,22 +2177,23 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
               {currentQuestions.map((q, i) => (
                 <QuestionCard
-                  key={q._editorId || i}
-                  q={q}
-                  index={i}
-                  displayNumber={questionDisplayNumbers[i]}
-                  totalQuestions={currentQuestions.length}
-                  updateQuestion={updateQuestion}
-                  removeQuestion={removeQuestion}
-                  moveQuestion={moveQuestion}
-                  insertQuestionAt={insertQuestionAt}
-                  draggingId={draggingQuestionId}
-                  dragOverId={dragOverQuestionId}
-                  onDragStart={handleQuestionDragStart}
-                  onDragOver={handleQuestionDragOver}
-                  onDrop={handleQuestionDrop}
-                  onDragEnd={handleQuestionDragEnd}
-                />
+  key={q._editorId || i}
+  q={q}
+  index={i}
+  displayNumber={questionDisplayNumbers[i]}
+  totalQuestions={currentQuestions.length}
+  updateQuestion={updateQuestion}
+  removeQuestion={removeQuestion}
+  moveQuestion={moveQuestion}
+  duplicateQuestion={duplicateQuestion}
+  insertQuestionAt={insertQuestionAt}
+  draggingId={draggingQuestionId}
+  dragOverId={dragOverQuestionId}
+  onDragStart={handleQuestionDragStart}
+  onDragOver={handleQuestionDragOver}
+  onDrop={handleQuestionDrop}
+  onDragEnd={handleQuestionDragEnd}
+/>
               ))}
 
               {currentQuestions.length === 0 && (
