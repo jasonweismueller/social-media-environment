@@ -3,6 +3,7 @@ import {
   makeEmptySurvey,
   makeQuestionByType,
   normalizeSurvey,
+  frontendSurveyToBackend,
   SURVEY_QUESTION_TYPES,
   surveyQuestionCount,
   getProjectId,
@@ -200,6 +201,98 @@ function reorderArray(list = [], fromIndex, toIndex) {
 
 function isCountedQuestionType(type) {
   return type !== SURVEY_QUESTION_TYPES.INFO && type !== EDITOR_PAGE_BREAK_TYPE;
+}
+
+function slugifySurveyName(name = "") {
+  return String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+}
+
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function makeCopiedSurveyName(name = "") {
+  const base = slugifySurveyName(name || "Untitled Survey");
+  return base.endsWith("(Copy)") ? base : `${base} (Copy)`;
+}
+
+function makeImportedSurveyName(name = "") {
+  const base = slugifySurveyName(name || "Untitled Survey");
+  return base.endsWith("(Imported)") ? base : `${base} (Imported)`;
+}
+
+function resetSurveyIdentityForCopy(sourceSurvey, { projectId, keepFeedLinks = true } = {}) {
+  const normalized = normalizeSurvey(deepClone(sourceSurvey || {}));
+
+  const copied = {
+    ...normalized,
+    survey_id: "",
+    name: makeCopiedSurveyName(normalized.name),
+    linked_project_id: projectId || "",
+    linked_feed_ids: keepFeedLinks ? normalizeLinkedFeedIds(normalized.linked_feed_ids) : [],
+    created_at: null,
+    updated_at: null,
+    version: 1,
+    status: normalized.status || "draft",
+    pages: (normalized.pages || []).map((page, pageIndex) => ({
+      ...page,
+      id: page?.id || `page_${pageIndex + 1}`,
+      questions: (page.questions || []).map((q, qIndex) => {
+        const cleanQ = normalizeQuestionForEditor(q, qIndex);
+
+        return {
+          ...cleanQ,
+          _editorId: makeEditorId(),
+          meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
+          visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
+        };
+      }),
+    })),
+  };
+
+  return buildSurveyPagesFromFlatQuestions(
+    copied,
+    flattenSurveyPagesForEditor(copied)
+  );
+}
+
+function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
+  const normalized = normalizeSurvey(deepClone(sourceSurvey || {}));
+
+  const imported = {
+    ...normalized,
+    survey_id: "",
+    name: makeImportedSurveyName(normalized.name),
+    linked_project_id: projectId || "",
+    linked_feed_ids: [],
+    created_at: null,
+    updated_at: null,
+    version: 1,
+    status: "draft",
+    trigger: normalized.trigger || "after_feed_submit",
+    pages: (normalized.pages || []).map((page, pageIndex) => ({
+      ...page,
+      id: page?.id || `page_${pageIndex + 1}`,
+      questions: (page.questions || []).map((q, qIndex) => {
+        const cleanQ = normalizeQuestionForEditor(q, qIndex);
+
+        return {
+          ...cleanQ,
+          _editorId: makeEditorId(),
+          meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
+          visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
+        };
+      }),
+    })),
+  };
+
+  return buildSurveyPagesFromFlatQuestions(
+    imported,
+    flattenSurveyPagesForEditor(imported)
+  );
 }
 
 /* =========================
@@ -1885,6 +1978,7 @@ function surveyListButtonStyle(isActive) {
 export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: propFeeds }) {
   const projectId = propProjectId || getProjectId();
 
+  const importFileRef = useRef(null);
   const [surveys, setSurveys] = useState([]);
   const [feeds, setFeeds] = useState(Array.isArray(propFeeds) ? propFeeds : []);
   const [selectedSurveyId, setSelectedSurveyId] = useState(null);
@@ -2019,6 +2113,75 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     setSurvey(editorSurvey);
     setSelectedSurveyId(null);
   }
+
+  function handleCopySurvey() {
+  if (!survey) return;
+
+  const copiedSurvey = resetSurveyIdentityForCopy(survey, {
+    projectId,
+    keepFeedLinks: true,
+  });
+
+  setSurvey(copiedSurvey);
+  setSelectedSurveyId(null);
+}
+
+function handleExportSurvey() {
+  if (!survey) return;
+
+  const normalized = normalizeSurvey(survey);
+
+  const exportPayload = {
+    ...frontendSurveyToBackend(normalized),
+    linked_feed_ids: normalizeLinkedFeedIds(normalized.linked_feed_ids),
+    linked_project_id: normalized.linked_project_id || "",
+    trigger: normalized.trigger || "after_feed_submit",
+    exported_at: new Date().toISOString(),
+    export_format: "survey_v1",
+  };
+
+  const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+    type: "application/json",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const safeName = slugifySurveyName(normalized.name || "survey")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "_");
+
+  a.href = url;
+  a.download = `${safeName || "survey"}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function handleImportSurveyFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+
+    const normalizedImported = normalizeSurvey(parsed || {});
+    const importedSurvey = resetSurveyIdentityForImport(normalizedImported, {
+      projectId,
+    });
+
+    setSurvey(importedSurvey);
+    setSelectedSurveyId(null);
+  } catch (e) {
+    console.warn("Failed to import survey:", e);
+    alert("Failed to import survey JSON.");
+  } finally {
+    if (event.target) {
+      event.target.value = "";
+    }
+  }
+}
 
   async function handleSaveSurvey() {
     if (!survey) return;
@@ -2388,32 +2551,90 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         {!survey && <div style={{ color: "#6b7280" }}>Select or create a survey.</div>}
 
         {survey && (
+  <>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 18,
+      }}
+    >
+      <h3 style={{ margin: 0 }}>Survey Editor</h3>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, color: "#6b7280" }}>
+          {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
+          {pageCount === 1 ? "" : "s"}
+        </div>
+
+        <input
+          ref={importFileRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={handleImportSurveyFile}
+          style={{ display: "none" }}
+        />
+
+        <button
+          type="button"
+          onClick={() => importFileRef.current?.click()}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Import
+        </button>
+
+        {survey && (
           <>
-            <div
+            <button
+              type="button"
+              onClick={handleCopySurvey}
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 18,
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 600,
               }}
             >
-              <h3 style={{ margin: 0 }}>Survey Editor</h3>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
-                  {pageCount === 1 ? "" : "s"}
-                </div>
+              Copy
+            </button>
 
-                {!!survey?.survey_id && (
-                  <IconOnlyButton
-                    onClick={handleDeleteSurvey}
-                    title="Delete survey"
-                    danger
-                    size={17}
-                  />
-                )}
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={handleExportSurvey}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Export
+            </button>
+          </>
+        )}
+
+        {!!survey?.survey_id && (
+          <IconOnlyButton
+            onClick={handleDeleteSurvey}
+            title="Delete survey"
+            danger
+            size={17}
+          />
+        )}
+      </div>
+    </div>
 
             <SectionCard title="Survey details">
               <FieldBlock label="Survey name">
