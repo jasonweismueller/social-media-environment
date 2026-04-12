@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   SURVEY_QUESTION_TYPES,
   isQuestionVisible,
@@ -11,6 +11,27 @@ function makeBipolarScalePoints(min, max) {
 
   if (safeMax < safeMin) return [];
   return Array.from({ length: safeMax - safeMin + 1 }, (_, i) => safeMin + i);
+}
+
+function scrollSurveyPageToTop() {
+  if (typeof window === "undefined") return;
+
+  const run = () => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const surveyPageEl = document.querySelector(".survey-page");
+    if (surveyPageEl) surveyPageEl.scrollTop = 0;
+
+    const surveyShellEl = document.querySelector(".survey-shell");
+    if (surveyShellEl) surveyShellEl.scrollTop = 0;
+  };
+
+  run();
+  requestAnimationFrame(run);
+  setTimeout(run, 0);
+  setTimeout(run, 80);
 }
 
 export function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
@@ -34,14 +55,14 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
     <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
       {!isInfo && (
         <div className="survey-question-title">
-  <div className="survey-question-title-inner">
-    <span className="survey-question-number">{index + 1}.</span>
-    <div
-      className="survey-question-title-content"
-      dangerouslySetInnerHTML={{ __html: question.text || "" }}
-    />
-  </div>
-</div>
+          <div className="survey-question-title-inner">
+            <span className="survey-question-number">{index + 1}.</span>
+            <div
+              className="survey-question-title-content"
+              dangerouslySetInnerHTML={{ __html: question.text || "" }}
+            />
+          </div>
+        </div>
       )}
 
       {!isInfo && question.description ? (
@@ -50,9 +71,9 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
 
       {isInfo && (
         <div
-  className="survey-info-block"
-  dangerouslySetInnerHTML={{ __html: question.text || "" }}
-/>
+          className="survey-info-block"
+          dangerouslySetInnerHTML={{ __html: question.text || "" }}
+        />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -310,14 +331,6 @@ export function SurveyScreen({
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
-  useEffect(() => {
-  const id = requestAnimationFrame(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-  });
-
-  return () => cancelAnimationFrame(id);
-}, [currentPageIndex]);
-
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
 
@@ -354,6 +367,10 @@ export function SurveyScreen({
       setCurrentPageIndex(visiblePages.length - 1);
     }
   }, [visiblePages, currentPageIndex]);
+
+  useLayoutEffect(() => {
+    scrollSurveyPageToTop();
+  }, [currentPageIndex]);
 
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
@@ -435,24 +452,24 @@ export function SurveyScreen({
   }, [currentPage, responses]);
 
   const goNext = () => {
-  onClearBanner?.();
-  const validation = validateCurrentPage();
+    onClearBanner?.();
+    const validation = validateCurrentPage();
 
-  if (!validation.ok) {
-    onPageValidationFail?.(
-      validation.errors,
-      "Please complete the highlighted questions on this page."
-    );
-    return;
-  }
+    if (!validation.ok) {
+      onPageValidationFail?.(
+        validation.errors,
+        "Please complete the highlighted questions on this page."
+      );
+      return;
+    }
 
-  setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
-};
+    setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
+  };
 
   const goBack = () => {
-  onClearBanner?.();
-  setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
-};
+    onClearBanner?.();
+    setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
+  };
 
   if (!currentPage) {
     return (
