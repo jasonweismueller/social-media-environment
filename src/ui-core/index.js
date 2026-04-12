@@ -6,6 +6,8 @@ import { getApp } from "../utils/utils-backend";
 export * from "./ui-survey";
 export * from "./ui-survey-mobile";
 
+
+
 const app = (typeof window !== "undefined" ? getApp() : "fb");
 
 export const {
