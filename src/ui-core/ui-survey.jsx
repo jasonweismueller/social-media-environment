@@ -34,6 +34,59 @@ function scrollSurveyPageToTop() {
   setTimeout(run, 80);
 }
 
+function isRenderableQuestion(question) {
+  return question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK;
+}
+
+function isNumberedQuestion(question) {
+  return (
+    question?.type !== SURVEY_QUESTION_TYPES.INFO &&
+    question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK
+  );
+}
+
+function isEmptyRequiredValue(question, value) {
+  if (!question || !question.required) return false;
+
+  if (
+    value == null ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0)
+  ) {
+    return true;
+  }
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    if (question.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE) {
+      const rows = Array.isArray(question.rows) ? question.rows : [];
+      return rows.some((row, rowIndex) => {
+        const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+        return String(value[rowKey] ?? "").trim() === "";
+      });
+    }
+
+    if (question.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI) {
+      const rows = Array.isArray(question.rows) ? question.rows : [];
+      return rows.some((row, rowIndex) => {
+        const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+        return !Array.isArray(value[rowKey]) || value[rowKey].length === 0;
+      });
+    }
+
+    if (question.type === SURVEY_QUESTION_TYPES.BIPOLAR) {
+      const rows = Array.isArray(question.rows) ? question.rows : [];
+      return rows.some((row, rowIndex) => {
+        const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+        return String(value[rowKey] ?? "").trim() === "";
+      });
+    }
+
+    return Object.keys(value).length === 0;
+  }
+
+  return false;
+}
+
 export function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
   const qType = question?.type;
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
@@ -52,7 +105,11 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
   const bipolarPoints = makeBipolarScalePoints(question?.min, question?.max);
 
   return (
-    <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
+    <div
+      className={`survey-question ${isInfo ? "survey-question-info" : ""} ${
+        error ? "has-error" : ""
+      }`}
+    >
       {!isInfo && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
@@ -93,7 +150,8 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
         />
       )}
 
-      {(qType === SURVEY_QUESTION_TYPES.SINGLE || qType === SURVEY_QUESTION_TYPES.DROPDOWN) && (
+      {(qType === SURVEY_QUESTION_TYPES.SINGLE ||
+        qType === SURVEY_QUESTION_TYPES.DROPDOWN) && (
         <div className="survey-options">
           {choiceItems.map((choice) => (
             <label key={choice.value} className="survey-option">
@@ -136,55 +194,55 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
       )}
 
       {qType === SURVEY_QUESTION_TYPES.BIPOLAR && (
-  <div className="survey-bipolar">
-    <div className="survey-matrix survey-bipolar-matrix">
-      <table className="survey-matrix-table">
-        <thead>
-          <tr>
-            <th />
-            {bipolarPoints.map((point) => (
-              <th key={point}>{point}</th>
-            ))}
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => {
-            const rowKey = row?.value || `row_${rowIndex + 1}`;
-            const leftLabel = row?.left_label || `Row ${rowIndex + 1}`;
-            const rightLabel = row?.right_label || "";
-            const rowValue = value && typeof value === "object" ? value[rowKey] : "";
+        <div className="survey-bipolar">
+          <div className="survey-matrix survey-bipolar-matrix">
+            <table className="survey-matrix-table">
+              <thead>
+                <tr>
+                  <th />
+                  {bipolarPoints.map((point) => (
+                    <th key={point}>{point}</th>
+                  ))}
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, rowIndex) => {
+                  const rowKey = row?.value || `row_${rowIndex + 1}`;
+                  const leftLabel = row?.left_label || `Row ${rowIndex + 1}`;
+                  const rightLabel = row?.right_label || "";
+                  const rowValue = value && typeof value === "object" ? value[rowKey] : "";
 
-            return (
-              <tr key={rowKey}>
-                <td>{leftLabel}</td>
-                {bipolarPoints.map((point) => {
-                  const pointValue = String(point);
                   return (
-                    <td key={pointValue}>
-                      <input
-                        type="radio"
-                        name={`${question.id}__${rowKey}`}
-                        checked={String(rowValue) === pointValue}
-                        onChange={() =>
-                          onChange({
-                            ...(value && typeof value === "object" ? value : {}),
-                            [rowKey]: pointValue,
-                          })
-                        }
-                      />
-                    </td>
+                    <tr key={rowKey}>
+                      <td>{leftLabel}</td>
+                      {bipolarPoints.map((point) => {
+                        const pointValue = String(point);
+                        return (
+                          <td key={pointValue}>
+                            <input
+                              type="radio"
+                              name={`${question.id}__${rowKey}`}
+                              checked={String(rowValue) === pointValue}
+                              onChange={() =>
+                                onChange({
+                                  ...(value && typeof value === "object" ? value : {}),
+                                  [rowKey]: pointValue,
+                                })
+                              }
+                            />
+                          </td>
+                        );
+                      })}
+                      <td>{rightLabel}</td>
+                    </tr>
                   );
                 })}
-                <td>{rightLabel}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {qType === SURVEY_QUESTION_TYPES.SLIDER && (
         <div className="survey-scale">
@@ -212,7 +270,9 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
               <tr>
                 <th />
                 {columns.map((col) => (
-                  <th key={col?.value || col?.label}>{col?.label || col?.value || ""}</th>
+                  <th key={col?.value || col?.label}>
+                    {col?.label || col?.value || ""}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -258,7 +318,9 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
               <tr>
                 <th />
                 {columns.map((col) => (
-                  <th key={col?.value || col?.label}>{col?.label || col?.value || ""}</th>
+                  <th key={col?.value || col?.label}>
+                    {col?.label || col?.value || ""}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -316,6 +378,7 @@ export function SurveyScreen({
   errors,
   errorMsg,
   participantSeed,
+  feedId,
   onChange,
   onSubmit,
   onPageValidationFail,
@@ -326,14 +389,17 @@ export function SurveyScreen({
 
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+    const activeFeedId = String(feedId ?? "").trim();
 
     return pages
       .map((page, pageIdx) => {
         const visibleQuestions = (page?.questions || [])
-          .filter((q) => isQuestionVisible(q, responses))
+          .filter(isRenderableQuestion)
+          .filter((q) => isQuestionVisible(q, responses, { feedId: activeFeedId }))
           .map((question) =>
             getRenderedQuestion(question, {
               participantSeed: participantSeed || "",
+              feedId: activeFeedId,
             })
           );
 
@@ -345,11 +411,11 @@ export function SurveyScreen({
         };
       })
       .filter((page) => page.questions.length > 0);
-  }, [survey, responses, participantSeed]);
+  }, [survey, responses, participantSeed, feedId]);
 
   useEffect(() => {
     setCurrentPageIndex(0);
-  }, [survey?.survey_id]);
+  }, [survey?.survey_id, feedId]);
 
   useEffect(() => {
     if (visiblePages.length === 0) {
@@ -373,7 +439,7 @@ export function SurveyScreen({
     let count = 0;
     for (let i = 0; i < currentPageIndex; i += 1) {
       const page = visiblePages[i];
-      count += (page?.questions || []).filter((q) => q?.type !== SURVEY_QUESTION_TYPES.INFO).length;
+      count += (page?.questions || []).filter(isNumberedQuestion).length;
     }
     return count;
   }, [visiblePages, currentPageIndex]);
@@ -388,52 +454,15 @@ export function SurveyScreen({
 
       const value = responses?.[q.id];
 
-      const isEmpty =
-        value == null ||
-        value === "" ||
-        (Array.isArray(value) && value.length === 0) ||
-        (typeof value === "object" &&
-          !Array.isArray(value) &&
-          Object.keys(value).length === 0);
-
-      if (isEmpty) {
-        pageErrors[q.id] = "Please answer this question.";
-        return;
-      }
-
-      if (q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE) {
-        const rows = Array.isArray(q.rows) ? q.rows : [];
-        const obj = value && typeof value === "object" ? value : {};
-        const missing = rows.some((row, rowIndex) => {
-          const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
-          return !obj[rowKey];
-        });
-        if (missing) {
+      if (isEmptyRequiredValue(q, value)) {
+        if (
+          q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
+          q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI ||
+          q.type === SURVEY_QUESTION_TYPES.BIPOLAR
+        ) {
           pageErrors[q.id] = "Please complete all rows.";
-        }
-      }
-
-      if (q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI) {
-        const rows = Array.isArray(q.rows) ? q.rows : [];
-        const obj = value && typeof value === "object" ? value : {};
-        const missing = rows.some((row, rowIndex) => {
-          const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
-          return !Array.isArray(obj[rowKey]) || obj[rowKey].length === 0;
-        });
-        if (missing) {
-          pageErrors[q.id] = "Please complete all rows.";
-        }
-      }
-
-      if (q.type === SURVEY_QUESTION_TYPES.BIPOLAR) {
-        const rows = Array.isArray(q.rows) ? q.rows : [];
-        const obj = value && typeof value === "object" ? value : {};
-        const missing = rows.some((row, rowIndex) => {
-          const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
-          return String(obj[rowKey] ?? "").trim() === "";
-        });
-        if (missing) {
-          pageErrors[q.id] = "Please complete all rows.";
+        } else {
+          pageErrors[q.id] = "Please answer this question.";
         }
       }
     });
@@ -515,7 +544,10 @@ export function SurveyScreen({
           )}
 
           {visiblePages.length <= 1 && currentPage.title ? (
-            <div className="survey-page-title-wrap" style={{ marginBottom: currentPage.description ? 14 : 18 }}>
+            <div
+              className="survey-page-title-wrap"
+              style={{ marginBottom: currentPage.description ? 14 : 18 }}
+            >
               <h2 className="survey-page-title">{currentPage.title}</h2>
               {currentPage.description ? (
                 <div className="survey-page-subtitle">{currentPage.description}</div>
@@ -530,7 +562,8 @@ export function SurveyScreen({
               : questionNumberOffset +
                 currentPage.questions
                   .slice(0, idx + 1)
-                  .filter((item) => item?.type !== SURVEY_QUESTION_TYPES.INFO).length - 1;
+                  .filter(isNumberedQuestion).length -
+                1;
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
