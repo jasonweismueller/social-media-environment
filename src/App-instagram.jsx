@@ -1021,17 +1021,18 @@ export default function App() {
                 <div className="survey-page">
                   {isMobileSurvey ? (
                     <SurveyScreenMobile
-                      survey={linkedSurvey}
-                      responses={surveyResponses}
-                      errors={surveyErrors}
-                      errorMsg={surveyErrorMsg}
-                      participantSeed={participantId || sessionIdRef.current}
-                      onChange={handleSurveyResponseChange}
-                      onSubmit={handleSurveySubmit}
-                      onPageValidationFail={handleSurveyPageValidationFail}
-                      onClearBanner={clearSurveyBanner}
-                      submitting={surveyPhase === "submitting"}
-                    />
+  survey={linkedSurvey}
+  responses={surveyResponses}
+  errors={surveyErrors}
+  errorMsg={surveyErrorMsg}
+  participantSeed={participantId || sessionIdRef.current}
+  feedId={activeFeedId}
+  onChange={handleSurveyResponseChange}
+  onSubmit={handleSurveySubmit}
+  onPageValidationFail={handleSurveyPageValidationFail}
+  onClearBanner={clearSurveyBanner}
+  submitting={surveyPhase === "submitting"}
+/>
                   ) : (
                     <SurveyScreen
                       survey={linkedSurvey}
@@ -1039,6 +1040,7 @@ export default function App() {
                       errors={surveyErrors}
                       errorMsg={surveyErrorMsg}
                       participantSeed={participantId || sessionIdRef.current}
+                      feedId={activeFeedId}
                       onChange={handleSurveyResponseChange}
                       onSubmit={handleSurveySubmit}
                       onPageValidationFail={handleSurveyPageValidationFail}
