@@ -296,6 +296,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       visible_if: null,
       visible_in_feeds: [],
       feed_overrides: {},
+      _showFeedVisibilityEditor: false,
+      _showFeedOverridesEditor: false,
       meta: q?.meta || {},
     };
   }
@@ -325,6 +327,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     visible_if: q?.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q?.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q?.feed_overrides),
+    _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
+    _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
     meta: q?.meta || {},
   };
 }
@@ -452,6 +456,8 @@ export function makeBackendQuestionFromType(type, index = 0) {
     visible_if: base?.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(base?.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(base?.feed_overrides),
+    _showFeedVisibilityEditor: false,
+    _showFeedOverridesEditor: false,
     meta: base?.meta || {},
   };
 
@@ -688,6 +694,63 @@ function OrderedListIcon({ size = 14 }) {
   );
 }
 
+function EyeIcon({ size = 14 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function TextCursorIcon({ size = 14 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 7V5h16v2" />
+      <path d="M12 5v14" />
+      <path d="M8 19h8" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ size = 14 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 function IconOnlyButton({
   onClick,
   title,
@@ -721,6 +784,40 @@ function IconOnlyButton({
       }}
     >
       {children || <TrashIcon size={size} />}
+    </button>
+  );
+}
+
+function SecondaryPillButton({
+  onClick,
+  active = false,
+  children,
+  title,
+  disabled = false,
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        height: 34,
+        padding: "0 12px",
+        borderRadius: 999,
+        border: `1px solid ${active ? "#c7d2fe" : "#d1d5db"}`,
+        background: active ? "#eef2ff" : "#fff",
+        color: active ? "#4338ca" : disabled ? "#9ca3af" : "#111827",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
     </button>
   );
 }
@@ -1678,6 +1775,63 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
   );
 }
 
+function QuestionAdvancedFeedTools({
+  q,
+  linkedFeeds,
+  onToggleVisibilityEditor,
+  onToggleOverridesEditor,
+}) {
+  const visibleFeedCount = normalizeVisibleInFeeds(q?.visible_in_feeds).length;
+  const overrideCount = Object.keys(pruneFeedOverridesMap(q?.feed_overrides)).length;
+  const hasLinkedFeeds = Array.isArray(linkedFeeds) && linkedFeeds.length > 0;
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        display: "flex",
+        gap: 8,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}
+    >
+      <SecondaryPillButton
+        onClick={onToggleVisibilityEditor}
+        active={!!q?._showFeedVisibilityEditor}
+        title="Question display by linked feed"
+        disabled={!hasLinkedFeeds}
+      >
+        <EyeIcon size={14} />
+        <span>
+          Display logic
+          {visibleFeedCount > 0 ? ` (${visibleFeedCount})` : ""}
+        </span>
+        <ChevronDownIcon size={12} />
+      </SecondaryPillButton>
+
+      <SecondaryPillButton
+        onClick={onToggleOverridesEditor}
+        active={!!q?._showFeedOverridesEditor}
+        title="Alternative question text by linked feed"
+        disabled={!hasLinkedFeeds}
+      >
+        <TextCursorIcon size={14} />
+        <span>
+          Alternative text
+          {overrideCount > 0 ? ` (${overrideCount})` : ""}
+        </span>
+        <ChevronDownIcon size={12} />
+      </SecondaryPillButton>
+
+      {!hasLinkedFeeds && (
+        <span style={{ fontSize: 12, color: "#6b7280" }}>
+          Link this survey to feeds first.
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* =========================
    Question editor
    ========================= */
@@ -1792,6 +1946,9 @@ function QuestionCard({
   const scopedFeeds = Array.isArray(linkedFeeds)
     ? linkedFeeds.filter((feed) => scopedFeedIds.includes(String(feed?.feed_id || "").trim()))
     : [];
+
+  const hasFeedVisibilitySelection = scopedFeedIds.length > 0;
+  const safeOverrideFeeds = hasFeedVisibilitySelection ? scopedFeeds : linkedFeeds;
 
   const shellStyle = {
     position: "relative",
@@ -1952,6 +2109,8 @@ function QuestionCard({
                 visible_if: q.visible_if || null,
                 visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
                 feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
+                _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
+                _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
                 meta: q.meta || {},
               };
 
@@ -2153,46 +2312,74 @@ function QuestionCard({
         </div>
       )}
 
-      <div style={{ marginTop: 14 }}>
-        <FieldBlock
-          label="Feed visibility"
-          hint="Restrict this question to selected linked feeds. Leaving all unchecked means it will show in all linked feeds."
-        >
-          <FeedVisibilityEditor
-            availableFeeds={linkedFeeds}
-            value={q.visible_in_feeds}
-            onChange={(nextVisibleInFeeds) => {
-              const prunedOverrides = pruneFeedOverridesMap(
-                q.feed_overrides,
-                normalizeVisibleInFeeds(nextVisibleInFeeds)
-              );
+      <QuestionAdvancedFeedTools
+        q={q}
+        linkedFeeds={linkedFeeds}
+        onToggleVisibilityEditor={() =>
+          updateQuestion(index, {
+            _showFeedVisibilityEditor: !q?._showFeedVisibilityEditor,
+          })
+        }
+        onToggleOverridesEditor={() =>
+          updateQuestion(index, {
+            _showFeedOverridesEditor: !q?._showFeedOverridesEditor,
+          })
+        }
+      />
 
-              updateQuestion(index, {
-                visible_in_feeds: normalizeVisibleInFeeds(nextVisibleInFeeds),
-                feed_overrides: prunedOverrides,
-              });
-            }}
-          />
-        </FieldBlock>
+      {q?._showFeedVisibilityEditor && (
+        <div style={{ marginTop: 12 }}>
+          <FieldBlock
+            label="Feed visibility"
+            hint="Restrict this question to selected linked feeds. Leaving all unchecked means it will show in all linked feeds."
+          >
+            <FeedVisibilityEditor
+              availableFeeds={linkedFeeds}
+              value={q.visible_in_feeds}
+              onChange={(nextVisibleInFeeds) => {
+                const normalizedVisibleFeeds = normalizeVisibleInFeeds(nextVisibleInFeeds);
+                const prunedOverrides = pruneFeedOverridesMap(
+                  q.feed_overrides,
+                  normalizedVisibleFeeds
+                );
 
-        <FieldBlock
-          label="Feed-specific question text"
-          hint="Optional alternative text shown only for the selected feeds below."
-        >
-          <FeedOverridesEditor
-            availableFeeds={scopedFeeds}
-            value={q.feed_overrides}
-            onChange={(nextOverrides) =>
-              updateQuestion(index, {
-                feed_overrides: pruneFeedOverridesMap(
-                  nextOverrides,
-                  normalizeVisibleInFeeds(q.visible_in_feeds)
-                ),
-              })
+                updateQuestion(index, {
+                  visible_in_feeds: normalizedVisibleFeeds,
+                  feed_overrides: prunedOverrides,
+                });
+              }}
+            />
+          </FieldBlock>
+        </div>
+      )}
+
+      {q?._showFeedOverridesEditor && (
+        <div style={{ marginTop: 12 }}>
+          <FieldBlock
+            label="Feed-specific question text"
+            hint={
+              hasFeedVisibilitySelection
+                ? "These alternative texts apply to the currently selected display-logic feeds."
+                : "Optional alternative text shown for linked feeds. Leave a field blank to use the default question text."
             }
-          />
-        </FieldBlock>
-      </div>
+          >
+            <FeedOverridesEditor
+              availableFeeds={safeOverrideFeeds}
+              value={q.feed_overrides}
+              onChange={(nextOverrides) =>
+                updateQuestion(index, {
+                  feed_overrides: pruneFeedOverridesMap(
+                    nextOverrides,
+                    hasFeedVisibilitySelection
+                      ? normalizeVisibleInFeeds(q.visible_in_feeds)
+                      : []
+                  ),
+                })
+              }
+            />
+          </FieldBlock>
+        </div>
+      )}
     </div>
   );
 }
@@ -2283,6 +2470,8 @@ export function SurveyEditor({
           : null,
         visible_in_feeds: normalizeVisibleInFeeds(sourceQuestion?.visible_in_feeds),
         feed_overrides: normalizeFeedOverridesMap(sourceQuestion?.feed_overrides),
+        _showFeedVisibilityEditor: !!sourceQuestion?._showFeedVisibilityEditor,
+        _showFeedOverridesEditor: !!sourceQuestion?._showFeedOverridesEditor,
       };
 
       if (shouldAutoRewriteRowValues(copiedQuestion)) {
