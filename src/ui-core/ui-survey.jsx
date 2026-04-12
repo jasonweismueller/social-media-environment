@@ -41,6 +41,7 @@ function isRenderableQuestion(question) {
 function isNumberedQuestion(question) {
   return (
     question?.type !== SURVEY_QUESTION_TYPES.INFO &&
+    question?.type !== SURVEY_QUESTION_TYPES.POST_REMINDER &&
     question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
 }
@@ -87,9 +88,280 @@ function isEmptyRequiredValue(question, value) {
   return false;
 }
 
-export function SurveyQuestionRenderer({ question, index, value, error, onChange }) {
+function getPostId(post = {}) {
+  return String(
+    post?.id ??
+      post?.post_id ??
+      post?.postId ??
+      post?.meta?.post_id ??
+      ""
+  ).trim();
+}
+
+function getQuestionReminderPost(question, posts = []) {
+  const snapshot = question?.meta?.post_snapshot;
+  const targetPostId = String(question?.post_id || "").trim();
+
+  if (snapshot && typeof snapshot === "object") {
+    return snapshot;
+  }
+
+  if (!targetPostId || !Array.isArray(posts)) return null;
+
+  return posts.find((p) => getPostId(p) === targetPostId) || null;
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function getReminderPostAuthor(post = {}) {
+  return firstNonEmpty(
+    post?.authorName,
+    post?.author_name,
+    post?.displayName,
+    post?.display_name,
+    post?.name,
+    post?.username,
+    post?.user?.name,
+    post?.author?.name
+  );
+}
+
+function getReminderPostHandle(post = {}) {
+  const raw = firstNonEmpty(
+    post?.handle,
+    post?.username,
+    post?.user?.username,
+    post?.author?.username
+  );
+
+  if (!raw) return "";
+  return raw.startsWith("@") ? raw : `@${raw}`;
+}
+
+function getReminderPostText(post = {}) {
+  return firstNonEmpty(
+    post?.text,
+    post?.caption,
+    post?.message,
+    post?.body,
+    post?.content,
+    post?.copy
+  );
+}
+
+function getReminderPostTimestamp(post = {}) {
+  return firstNonEmpty(
+    post?.displayTime,
+    post?.time_display,
+    post?.timestampLabel,
+    post?.time,
+    post?.created_at_text
+  );
+}
+
+function getReminderPostImage(post = {}) {
+  const image = post?.image;
+  const url = firstNonEmpty(
+    typeof image === "string" ? image : "",
+    image?.url,
+    post?.imageUrl,
+    post?.image_url,
+    post?.mediaUrl,
+    post?.media_url
+  );
+
+  if (!url) return "";
+
+  return url;
+}
+
+function getReminderPostVideoPoster(post = {}) {
+  return firstNonEmpty(
+    post?.videoPosterUrl,
+    post?.video_poster_url,
+    post?.video?.poster,
+    post?.video?.posterUrl,
+    post?.video?.thumbnail,
+    post?.thumbnailUrl,
+    post?.thumbnail_url
+  );
+}
+
+function getReminderPostAvatar(post = {}) {
+  return firstNonEmpty(
+    post?.avatar,
+    post?.avatarUrl,
+    post?.avatar_url,
+    post?.authorAvatar,
+    post?.author_avatar,
+    post?.user?.avatar,
+    post?.user?.avatarUrl,
+    post?.author?.avatar
+  );
+}
+
+function PostReminderCard({ question, posts = [] }) {
+  const post = getQuestionReminderPost(question, posts);
+
+  const author = getReminderPostAuthor(post || {});
+  const handle = getReminderPostHandle(post || {});
+  const text = getReminderPostText(post || {});
+  const timestamp = getReminderPostTimestamp(post || {});
+  const imageUrl = getReminderPostImage(post || {});
+  const videoPosterUrl = getReminderPostVideoPoster(post || {});
+  const avatarUrl = getReminderPostAvatar(post || {});
+  const mediaUrl = imageUrl || videoPosterUrl;
+  const fallbackLabel = firstNonEmpty(question?.post_label, question?.post_id);
+
+  return (
+    <div className="survey-post-reminder-block">
+      {question?.text ? (
+        <div
+          className="survey-post-reminder-intro"
+          dangerouslySetInnerHTML={{ __html: question.text || "" }}
+        />
+      ) : null}
+
+      <div
+        className="survey-post-reminder-card"
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          background: "#fff",
+          overflow: "hidden",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}
+      >
+        {post ? (
+          <>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "14px 14px 10px",
+                borderBottom: mediaUrl ? "1px solid #f3f4f6" : "none",
+              }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  background: "#f3f4f6",
+                  flex: "0 0 40px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#9ca3af",
+                  fontWeight: 700,
+                  fontSize: 14,
+                }}
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <span>{(author || "?").slice(0, 1).toUpperCase()}</span>
+                )}
+              </div>
+
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: "#111827",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {author || fallbackLabel || "Post reminder"}
+                </div>
+
+                {(handle || timestamp) && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#6b7280",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {[handle, timestamp].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {text ? (
+              <div
+                style={{
+                  padding: mediaUrl ? "12px 14px 6px" : "12px 14px 14px",
+                  color: "#111827",
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {text}
+              </div>
+            ) : null}
+
+            {mediaUrl ? (
+              <div style={{ padding: text ? "8px 14px 14px" : "14px" }}>
+                <img
+                  src={mediaUrl}
+                  alt="Reminder post"
+                  style={{
+                    width: "100%",
+                    display: "block",
+                    borderRadius: 12,
+                    border: "1px solid #f3f4f6",
+                    objectFit: "cover",
+                  }}
+                />
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div
+            style={{
+              padding: 14,
+              color: "#6b7280",
+              fontSize: 14,
+            }}
+          >
+            {fallbackLabel
+              ? `Reminder post selected: ${fallbackLabel}`
+              : "No reminder post has been selected for this survey item yet."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function SurveyQuestionRenderer({
+  question,
+  index,
+  value,
+  error,
+  onChange,
+  posts = [],
+}) {
   const qType = question?.type;
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
+  const isPostReminder = qType === SURVEY_QUESTION_TYPES.POST_REMINDER;
 
   const choiceItems = Array.isArray(question?.choices)
     ? question.choices
@@ -106,11 +378,13 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
 
   return (
     <div
-      className={`survey-question ${isInfo ? "survey-question-info" : ""} ${
+      className={`survey-question ${
+        isInfo ? "survey-question-info" : ""
+      } ${isPostReminder ? "survey-question-post-reminder" : ""} ${
         error ? "has-error" : ""
       }`}
     >
-      {!isInfo && (
+      {!isInfo && !isPostReminder && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
             <span className="survey-question-number">{index + 1}.</span>
@@ -122,7 +396,7 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
         </div>
       )}
 
-      {!isInfo && question.description ? (
+      {!isInfo && !isPostReminder && question.description ? (
         <div className="survey-question-description">{question.description}</div>
       ) : null}
 
@@ -131,6 +405,10 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
           className="survey-info-block"
           dangerouslySetInnerHTML={{ __html: question.text || "" }}
         />
+      )}
+
+      {isPostReminder && (
+        <PostReminderCard question={question} posts={posts} />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -374,6 +652,7 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
 
 export function SurveyScreen({
   survey,
+  posts = [],
   responses,
   errors,
   errorMsg,
@@ -450,7 +729,14 @@ export function SurveyScreen({
     const pageErrors = {};
 
     currentPage.questions.forEach((q) => {
-      if (!q || q.type === SURVEY_QUESTION_TYPES.INFO || !q.required) return;
+      if (
+        !q ||
+        q.type === SURVEY_QUESTION_TYPES.INFO ||
+        q.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+        !q.required
+      ) {
+        return;
+      }
 
       const value = responses?.[q.id];
 
@@ -556,8 +842,11 @@ export function SurveyScreen({
           ) : null}
 
           {currentPage.questions.map((q, idx) => {
-            const isInfo = q?.type === SURVEY_QUESTION_TYPES.INFO;
-            const displayIndex = isInfo
+            const isUnnumbered =
+              q?.type === SURVEY_QUESTION_TYPES.INFO ||
+              q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
+
+            const displayIndex = isUnnumbered
               ? null
               : questionNumberOffset +
                 currentPage.questions
@@ -576,6 +865,7 @@ export function SurveyScreen({
                 value={value}
                 error={error}
                 onChange={(nextValue) => onChange(q.id, nextValue)}
+                posts={posts}
               />
             );
           })}
