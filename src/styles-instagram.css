@@ -1397,7 +1397,6 @@ body.admin-mode .nav {
   box-shadow: 0 1px 2px rgba(0,0,0,.03);
 }
 
-/* keep only this version of survey-question-title */
 .survey-question-title{
   display: block;
   margin-bottom: 12px;
@@ -1572,8 +1571,6 @@ body.admin-mode .nav {
   transform: scale(.997);
 }
 
-
-
 .survey-option input{
   margin-top: 0;
   accent-color: var(--ig-accent);
@@ -1653,6 +1650,13 @@ body.admin-mode .nav {
   border-right: 1px solid #f1f1f1;
 }
 
+/* make bipolar right-label header cell match layout */
+.survey-bipolar-matrix .survey-matrix-table thead th:last-child{
+  text-align: left;
+  min-width: 180px;
+  border-left: 1px solid #f1f1f1;
+}
+
 .survey-matrix-table tbody td{
   padding: 12px 10px;
   border-bottom: 1px solid #f3f4f6;
@@ -1670,6 +1674,30 @@ body.admin-mode .nav {
   color: var(--ig-text);
   background: #fcfcfd;
   border-right: 1px solid #f3f4f6;
+}
+
+/* bipolar right label should look exactly like left label */
+.survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  text-align: left;
+  font-weight: 400;
+  color: var(--ig-text);
+  background: #fcfcfd;
+  border-left: 1px solid #f3f4f6;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* keep bipolar end labels readable */
+.survey-bipolar-matrix .survey-matrix-table tbody td:first-child,
+.survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  min-width: 180px;
+}
+
+/* central bipolar scale cells stay centered and narrower */
+.survey-bipolar-matrix .survey-matrix-table tbody td:not(:first-child):not(:last-child),
+.survey-bipolar-matrix .survey-matrix-table thead th:not(:first-child):not(:last-child){
+  min-width: 52px;
+  text-align: center;
 }
 
 .survey-matrix-table input[type="radio"],
@@ -1833,6 +1861,24 @@ body.admin-mode .nav {
     padding: 10px 8px;
   }
 
+  /* bipolar mobile: preserve readable left/right labels */
+  .survey-bipolar-matrix .survey-matrix-table{
+    min-width: 640px;
+  }
+
+  .survey-bipolar-matrix .survey-matrix-table tbody td:first-child,
+  .survey-bipolar-matrix .survey-matrix-table tbody td:last-child,
+  .survey-bipolar-matrix .survey-matrix-table thead th:first-child,
+  .survey-bipolar-matrix .survey-matrix-table thead th:last-child{
+    min-width: 140px;
+  }
+
+  .survey-bipolar-matrix .survey-matrix-table tbody td:first-child,
+  .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+    font-size: .86rem;
+    line-height: 1.35;
+  }
+
   .survey-submit-wrap{
     padding: 4px 4px 0;
   }
@@ -1852,7 +1898,6 @@ body.admin-mode .nav {
     line-height: 1.25;
   }
 }
-
 
 /* =========================
    Full-page survey mode
@@ -2102,30 +2147,6 @@ body.survey-mode .rail-right {
     width: 100%;
     min-width: 0;
   }
-}
-
-.survey-scale-labels{
-  display:flex;
-  justify-content:space-between;
-  gap: 12px;
-  font-size: .84rem;
-  font-weight: 400;
-  color: var(--ig-muted);
-}
-
-.survey-option span{
-  font-size: .95rem;
-  line-height: 1.45;
-  color: var(--ig-text);
-  font-weight: 400;
-}
-
-.survey-matrix-table tbody td:first-child{
-  text-align: left;
-  font-weight: 400;
-  color: var(--ig-text);
-  background: #fcfcfd;
-  border-right: 1px solid #f3f4f6;
 }
 
 .survey-nav-btn.survey-nav-btn-primary:hover:not(:disabled){
