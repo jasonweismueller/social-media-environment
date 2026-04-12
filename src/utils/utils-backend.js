@@ -267,7 +267,13 @@ function sanitizeSurveyExportKeyPart(value, fallback = "") {
 function makeSurveyExportColumnKey(questionId, rowValue = "") {
   const q = sanitizeSurveyExportKeyPart(questionId, "question");
   const r = sanitizeSurveyExportKeyPart(rowValue, "");
-  return r ? `${SURVEY_EXPORT_PREFIX}_${q}_${r}` : `${SURVEY_EXPORT_PREFIX}_${q}`;
+
+  if (!r) return `${SURVEY_EXPORT_PREFIX}_${q}`;
+
+  if (r === q) return `${SURVEY_EXPORT_PREFIX}_${q}`;
+  if (r.startsWith(`${q}_`)) return `${SURVEY_EXPORT_PREFIX}_${r}`;
+
+  return `${SURVEY_EXPORT_PREFIX}_${q}_${r}`;
 }
 
 function makeSurveyVariableLabel(questionId, rowValue = "") {
