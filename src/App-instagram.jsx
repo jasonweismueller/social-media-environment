@@ -1022,6 +1022,7 @@ export default function App() {
                   {isMobileSurvey ? (
                     <SurveyScreenMobile
   survey={linkedSurvey}
+  posts={orderedPosts}
   responses={surveyResponses}
   errors={surveyErrors}
   errorMsg={surveyErrorMsg}
@@ -1036,6 +1037,7 @@ export default function App() {
                   ) : (
                     <SurveyScreen
                       survey={linkedSurvey}
+                      posts={orderedPosts}
                       responses={surveyResponses}
                       errors={surveyErrors}
                       errorMsg={surveyErrorMsg}
