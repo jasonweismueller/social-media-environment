@@ -202,6 +202,37 @@ function isCountedQuestionType(type) {
   return type !== SURVEY_QUESTION_TYPES.INFO && type !== EDITOR_PAGE_BREAK_TYPE;
 }
 
+/* =========================
+   Rich text helpers
+   ========================== */
+
+function normalizeRichTextHtml(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(raw);
+  if (looksLikeHtml) return raw;
+
+  const escaped = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return escaped
+    .split(/\n{2,}/)
+    .map((block) => `<p>${block.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function stripHtmlForEmptyCheck(html = "") {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/<\/p>\s*<p>/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .trim();
+}
+
 function normalizeQuestionForEditor(q = {}, index = 0) {
   const type = q?.type || SURVEY_QUESTION_TYPES.TEXT;
 
@@ -231,7 +262,7 @@ function normalizeQuestionForEditor(q = {}, index = 0) {
     _editorId: q?._editorId || makeEditorId(),
     id: normalizedId,
     type,
-    text: String(q?.text ?? ""),
+    text: normalizeRichTextHtml(q?.text ?? ""),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!q?.required,
     choices: ensureChoiceArray(q?.choices),
     rows:
@@ -362,7 +393,7 @@ function makeBackendQuestionFromType(type, index = 0) {
         ? sanitizeQuestionId(base.id, fallbackId)
         : `Q_${Date.now()}`,
     type,
-    text: String(base?.text ?? base?.label ?? ""),
+    text: normalizeRichTextHtml(String(base?.text ?? base?.label ?? "")),
     required: type === SURVEY_QUESTION_TYPES.INFO ? false : !!base?.required,
     choices: [],
     rows: [],
@@ -514,6 +545,50 @@ function CopyIcon({ size = 16 }) {
   );
 }
 
+function BoldIcon({ size = 14 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 5h6a4 4 0 0 1 0 8H7z" />
+      <path d="M7 13h7a4 4 0 0 1 0 8H7z" />
+    </svg>
+  );
+}
+
+function ItalicIcon({ size = 14 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="19" y1="4" x2="10" y2="4" />
+      <line x1="14" y1="20" x2="5" y2="20" />
+      <line x1="15" y1="4" x2="9" y2="20" />
+    </svg>
+  );
+}
+
+function ListIcon({ size = 14 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function OrderedListIcon({ size = 14 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="10" y1="6" x2="21" y2="6" />
+      <line x1="10" y1="12" x2="21" y2="12" />
+      <line x1="10" y1="18" x2="21" y2="18" />
+      <path d="M4 7V4l-1 1" />
+      <path d="M3 10h1a1 1 0 0 1 0 2H3l2 2h-2" />
+      <path d="M3 16h2a1 1 0 0 1 0 2H3m1-3v6" />
+    </svg>
+  );
+}
 
 function IconOnlyButton({
   onClick,
@@ -747,6 +822,248 @@ function SectionCard({ title, children, right = null }) {
         {right}
       </div>
       {children}
+    </div>
+  );
+}
+
+function RichToolbarButton({ title, onMouseDown, active = false, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onMouseDown={onMouseDown}
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        border: `1px solid ${active ? "#4f46e5" : "#d1d5db"}`,
+        background: active ? "#eef2ff" : "#fff",
+        color: active ? "#4338ca" : "#111827",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        padding: 0,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
+  const editorRef = useRef(null);
+  const [focused, setFocused] = useState(false);
+  const [formats, setFormats] = useState({
+    bold: false,
+    italic: false,
+    insertUnorderedList: false,
+    insertOrderedList: false,
+  });
+
+  const normalizedValue = normalizeRichTextHtml(value);
+
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+
+    if (el.innerHTML !== normalizedValue) {
+      el.innerHTML = normalizedValue || "";
+    }
+  }, [normalizedValue]);
+
+  function updateFormats() {
+    try {
+      setFormats({
+        bold: !!document.queryCommandState("bold"),
+        italic: !!document.queryCommandState("italic"),
+        insertUnorderedList: !!document.queryCommandState("insertUnorderedList"),
+        insertOrderedList: !!document.queryCommandState("insertOrderedList"),
+      });
+    } catch {
+      setFormats({
+        bold: false,
+        italic: false,
+        insertUnorderedList: false,
+        insertOrderedList: false,
+      });
+    }
+  }
+
+  function emitChange() {
+    const el = editorRef.current;
+    if (!el) return;
+
+    const rawHtml = el.innerHTML || "";
+    const textOnly = stripHtmlForEmptyCheck(rawHtml);
+
+    if (!textOnly) {
+      onChange("");
+      return;
+    }
+
+    onChange(rawHtml);
+  }
+
+  function runCommand(command, commandValue = null) {
+    const el = editorRef.current;
+    if (!el) return;
+
+    el.focus();
+
+    try {
+      document.execCommand(command, false, commandValue);
+    } catch {}
+
+    if (command === "formatBlock") {
+      try {
+        document.execCommand("defaultParagraphSeparator", false, "p");
+      } catch {}
+    }
+
+    updateFormats();
+    emitChange();
+  }
+
+  function handleInput() {
+    emitChange();
+    updateFormats();
+  }
+
+  function handlePaste(e) {
+    e.preventDefault();
+    const text = e.clipboardData?.getData("text/plain") || "";
+    try {
+      document.execCommand("insertText", false, text);
+    } catch {
+      const el = editorRef.current;
+      if (!el) return;
+      el.innerText = `${el.innerText || ""}${text}`;
+    }
+    emitChange();
+    updateFormats();
+  }
+
+  const isEmpty = !stripHtmlForEmptyCheck(normalizedValue);
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${focused ? "#4f46e5" : "#d1d5db"}`,
+        borderRadius: 10,
+        overflow: "hidden",
+        background: "#fff",
+        boxShadow: focused ? "0 0 0 3px rgba(79,70,229,0.10)" : "none",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          alignItems: "center",
+          padding: 8,
+          borderBottom: "1px solid #e5e7eb",
+          background: "#fafafa",
+          flexWrap: "wrap",
+        }}
+      >
+        <RichToolbarButton
+          title="Bold"
+          active={formats.bold}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("bold");
+          }}
+        >
+          <BoldIcon size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
+          title="Italic"
+          active={formats.italic}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("italic");
+          }}
+        >
+          <ItalicIcon size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
+          title="Bullet list"
+          active={formats.insertUnorderedList}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("insertUnorderedList");
+          }}
+        >
+          <ListIcon size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
+          title="Numbered list"
+          active={formats.insertOrderedList}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("insertOrderedList");
+          }}
+        >
+          <OrderedListIcon size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
+          title="Paragraph"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("formatBlock", "p");
+          }}
+        >
+          <span style={{ fontSize: 11, fontWeight: 700 }}>P</span>
+        </RichToolbarButton>
+      </div>
+
+      <div style={{ position: "relative" }}>
+        {isEmpty && !focused && (
+          <div
+            style={{
+              position: "absolute",
+              left: 12,
+              top: 12,
+              color: "#9ca3af",
+              pointerEvents: "none",
+              fontSize: 14,
+            }}
+          >
+            {placeholder}
+          </div>
+        )}
+
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onFocus={() => {
+            setFocused(true);
+            updateFormats();
+          }}
+          onBlur={() => {
+            setFocused(false);
+            emitChange();
+          }}
+          onInput={handleInput}
+          onKeyUp={updateFormats}
+          onMouseUp={updateFormats}
+          onPaste={handlePaste}
+          style={{
+            minHeight: 120,
+            padding: 12,
+            outline: "none",
+            lineHeight: 1.5,
+            fontSize: 14,
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -1078,7 +1395,7 @@ function QuestionActions({
 
   return (
     <TopField label="Actions">
-            <div
+      <div
         style={{
           display: "flex",
           gap: 6,
@@ -1175,7 +1492,7 @@ function QuestionCard({
     borderRadius: 12,
     padding: 14,
     marginTop: 18,
-marginBottom: 26,
+    marginBottom: 26,
     background: isDragging ? "#f8fafc" : isPageBreak ? "#f9fafb" : "#fff",
     opacity: isDragging ? 0.65 : 1,
     boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
@@ -1297,7 +1614,7 @@ marginBottom: 26,
               : `Question ${displayNumber}`
           }
         >
-          <TextInput
+          <RichTextEditor
             value={q.text || ""}
             onChange={(v) => updateQuestion(index, { text: v })}
             placeholder={
@@ -1344,16 +1661,16 @@ marginBottom: 26,
         </TopField>
 
         <QuestionActions
-  q={q}
-  index={index}
-  totalQuestions={totalQuestions}
-  moveQuestion={moveQuestion}
-  removeQuestion={removeQuestion}
-  duplicateQuestion={duplicateQuestion}
-  updateQuestion={updateQuestion}
-  onDragStart={onDragStart}
-  onDragEnd={onDragEnd}
-/>
+          q={q}
+          index={index}
+          totalQuestions={totalQuestions}
+          moveQuestion={moveQuestion}
+          removeQuestion={removeQuestion}
+          duplicateQuestion={duplicateQuestion}
+          updateQuestion={updateQuestion}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        />
       </div>
 
       <FieldBlock label="Question ID / variable name">
@@ -1810,7 +2127,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     });
   }
 
-    function duplicateQuestion(index) {
+  function duplicateQuestion(index) {
     setSurvey((prev) => {
       const currentQuestions = [...getQuestionList(prev)];
       const sourceQuestion = currentQuestions[index];
@@ -1824,15 +2141,15 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
       const nextId = makeCopiedQuestionId(existingIds, sourceQuestion.id);
 
-     let copiedQuestion = {
-  ...sourceQuestion,
-  _editorId: makeEditorId(),
-  id: nextId,
-  meta: sourceQuestion?.meta ? { ...sourceQuestion.meta } : {},
-  visible_if: sourceQuestion?.visible_if
-    ? JSON.parse(JSON.stringify(sourceQuestion.visible_if))
-    : null,
-};
+      let copiedQuestion = {
+        ...sourceQuestion,
+        _editorId: makeEditorId(),
+        id: nextId,
+        meta: sourceQuestion?.meta ? { ...sourceQuestion.meta } : {},
+        visible_if: sourceQuestion?.visible_if
+          ? JSON.parse(JSON.stringify(sourceQuestion.visible_if))
+          : null,
+      };
 
       if (shouldAutoRewriteRowValues(copiedQuestion)) {
         copiedQuestion = rewriteQuestionRowValues(copiedQuestion, nextId);
@@ -2009,16 +2326,16 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         }}
       >
         <div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 18,
-  }}
->
-  <h3 style={{ margin: 0 }}>Survey list</h3>
-  {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
-</div>
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 18,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>Survey list</h3>
+          {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+        </div>
 
         <button
           type="button"
@@ -2073,13 +2390,13 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
         {survey && (
           <>
             <div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 18,
-  }}
->
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 18,
+              }}
+            >
               <h3 style={{ margin: 0 }}>Survey Editor</h3>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
@@ -2181,23 +2498,23 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
               {currentQuestions.map((q, i) => (
                 <QuestionCard
-  key={q._editorId || i}
-  q={q}
-  index={i}
-  displayNumber={questionDisplayNumbers[i]}
-  totalQuestions={currentQuestions.length}
-  updateQuestion={updateQuestion}
-  removeQuestion={removeQuestion}
-  moveQuestion={moveQuestion}
-  duplicateQuestion={duplicateQuestion}
-  insertQuestionAt={insertQuestionAt}
-  draggingId={draggingQuestionId}
-  dragOverId={dragOverQuestionId}
-  onDragStart={handleQuestionDragStart}
-  onDragOver={handleQuestionDragOver}
-  onDrop={handleQuestionDrop}
-  onDragEnd={handleQuestionDragEnd}
-/>
+                  key={q._editorId || i}
+                  q={q}
+                  index={i}
+                  displayNumber={questionDisplayNumbers[i]}
+                  totalQuestions={currentQuestions.length}
+                  updateQuestion={updateQuestion}
+                  removeQuestion={removeQuestion}
+                  moveQuestion={moveQuestion}
+                  duplicateQuestion={duplicateQuestion}
+                  insertQuestionAt={insertQuestionAt}
+                  draggingId={draggingQuestionId}
+                  dragOverId={dragOverQuestionId}
+                  onDragStart={handleQuestionDragStart}
+                  onDragOver={handleQuestionDragOver}
+                  onDrop={handleQuestionDrop}
+                  onDragEnd={handleQuestionDragEnd}
+                />
               ))}
 
               {currentQuestions.length === 0 && (
