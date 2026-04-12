@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   SURVEY_QUESTION_TYPES,
   isQuestionVisible,
@@ -11,6 +11,27 @@ function makeBipolarScalePoints(min, max) {
 
   if (safeMax < safeMin) return [];
   return Array.from({ length: safeMax - safeMin + 1 }, (_, i) => safeMin + i);
+}
+
+function scrollSurveyPageToTop() {
+  if (typeof window === "undefined") return;
+
+  const run = () => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const surveyPageEl = document.querySelector(".survey-page");
+    if (surveyPageEl) surveyPageEl.scrollTop = 0;
+
+    const surveyShellEl = document.querySelector(".survey-shell");
+    if (surveyShellEl) surveyShellEl.scrollTop = 0;
+  };
+
+  run();
+  requestAnimationFrame(run);
+  setTimeout(run, 0);
+  setTimeout(run, 80);
 }
 
 function getChoiceItems(question) {
@@ -84,15 +105,29 @@ function MobileQuestionWrapper({ question, index, error, children }) {
     <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
       {!isInfo && (
         <div className="survey-question-title">
-          <span>{index + 1}. {question.text}</span>
+          <div className="survey-question-title-inner">
+            <span className="survey-question-number">{index + 1}.</span>
+            <div
+              className="survey-question-title-content"
+              dangerouslySetInnerHTML={{ __html: question.text || "" }}
+            />
+          </div>
         </div>
       )}
 
       {!isInfo && question.description ? (
-        <div className="survey-question-description">{question.description}</div>
+        <div
+          className="survey-question-description"
+          dangerouslySetInnerHTML={{ __html: question.description || "" }}
+        />
       ) : null}
 
-      {isInfo ? <div className="survey-info-block">{question.text}</div> : children}
+      {isInfo ? (
+        <div
+          className="survey-info-block"
+          dangerouslySetInnerHTML={{ __html: question.text || "" }}
+        />
+      ) : children}
 
       {error ? <div className="survey-error">{error}</div> : null}
     </div>
@@ -516,13 +551,11 @@ export function SurveyScreenMobile({
     }
 
     setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const goBack = () => {
     onClearBanner?.();
     setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   if (!currentPage) {
