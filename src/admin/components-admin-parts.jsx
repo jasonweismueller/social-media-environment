@@ -22,6 +22,16 @@ const ms = (n) => {
   return `${m}:${sec}`;
 };
 
+const IG_ONLY = ["_saved"];
+
+const FB_ONLY = [
+  "_note_opened",
+  "_note_view_details",
+  "_note_link_clicked",
+  "_note_helpful_rated",
+  "_note_helpful_value",
+];
+
 const sShort = (n) => (Number.isFinite(Number(n)) ? `${Math.round(Number(n))}s` : "—");
 
 function selectAllOnFocus(e) {
@@ -1283,18 +1293,16 @@ function parsePostMetricKey(key = "") {
 function isRelevantPostMetricForExport(post, suffix, isIG) {
   if (!post || !suffix) return true;
 
+  // ❌ Remove FB-only metrics from IG
+  if (isIG && FB_ONLY.includes(suffix)) return false;
+
+  // ❌ Remove IG-only metrics from FB
+  if (!isIG && IG_ONLY.includes(suffix)) return false;
+
+  // ✅ IG-only
   if (suffix === "_saved") return !!isIG;
 
-  if (
-    suffix === "_note_opened" ||
-    suffix === "_note_view_details" ||
-    suffix === "_note_link_clicked" ||
-    suffix === "_note_helpful_rated" ||
-    suffix === "_note_helpful_value"
-  ) {
-    return hasNote(post);
-  }
-
+  // ✅ Feature-based filters
   if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") {
     return hasBio(post);
   }
