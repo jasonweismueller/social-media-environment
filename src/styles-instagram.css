@@ -1553,7 +1553,7 @@ body.admin-mode .nav {
 
 .survey-option{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   gap: 10px;
   border: 1px solid #ececec;
   background: #fff;
@@ -1572,13 +1572,16 @@ body.admin-mode .nav {
   transform: scale(.997);
 }
 
+
+
 .survey-option input{
-  margin-top: 2px;
+  margin-top: 0;
   accent-color: var(--ig-accent);
   flex: 0 0 auto;
 }
 
 .survey-option span{
+  display:block;
   font-size: .95rem;
   line-height: 1.45;
   color: var(--ig-text);
@@ -2123,4 +2126,11 @@ body.survey-mode .rail-right {
   color: var(--ig-text);
   background: #fcfcfd;
   border-right: 1px solid #f3f4f6;
+}
+
+.survey-nav-btn.survey-nav-btn-primary:hover:not(:disabled){
+  background: linear-gradient(135deg, #ed4956, #d93c72) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 10px 26px rgba(237,73,86,.24);
 }
