@@ -58,28 +58,6 @@ function normalizeFlags(raw) {
   return { randomize_times, randomize_avatars, randomize_names, randomize_images, randomize_bios };
 }
 
-const [isMobileSurvey, setIsMobileSurvey] = useState(
-  typeof window !== "undefined"
-    ? window.matchMedia("(max-width: 700px)").matches
-    : false
-);
-
-useEffect(() => {
-  if (typeof window === "undefined") return;
-
-  const mq = window.matchMedia("(max-width: 700px)");
-  const onChange = (e) => setIsMobileSurvey(e.matches);
-
-  setIsMobileSurvey(mq.matches);
-
-  mq.addEventListener?.("change", onChange);
-  mq.addListener?.(onChange);
-
-  return () => {
-    mq.removeEventListener?.("change", onChange);
-    mq.removeListener?.(onChange);
-  };
-}, []);
 
 function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
   useEffect(() => {
@@ -275,6 +253,29 @@ export default function App() {
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
+
+  const [isMobileSurvey, setIsMobileSurvey] = useState(
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 700px)").matches
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 700px)");
+    const onChange = (e) => setIsMobileSurvey(e.matches);
+
+    setIsMobileSurvey(mq.matches);
+
+    mq.addEventListener?.("change", onChange);
+    mq.addListener?.(onChange);
+
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      mq.removeListener?.(onChange);
+    };
+  }, []);
 
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
   useEffect(() => {
