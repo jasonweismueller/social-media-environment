@@ -28,7 +28,6 @@ import {
   RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreen, SurveyScreenMobile
 } from "./ui-core";
 
-
 import { AdminDashboard } from "./admin/components-admin-dashboard";
 import AdminLogin from "./admin/components-admin-login";
 
@@ -57,7 +56,6 @@ function normalizeFlags(raw) {
   const randomize_bios = truthy(f.randomize_bios ?? f.rand_bios ?? false);
   return { randomize_times, randomize_avatars, randomize_names, randomize_images, randomize_bios };
 }
-
 
 function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
   useEffect(() => {
@@ -409,6 +407,26 @@ export default function App() {
     };
   }, []);
 
+  const scrollSurveyViewToTop = useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    const run = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      const surveyPageEl = document.querySelector(".survey-page");
+      if (surveyPageEl) {
+        surveyPageEl.scrollTop = 0;
+      }
+    };
+
+    run();
+    requestAnimationFrame(run);
+    setTimeout(run, 0);
+    setTimeout(run, 80);
+  }, []);
+
   const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
 
@@ -420,11 +438,11 @@ export default function App() {
     setFeedError("");
     setFlagsReady(false);
     setAssetsReady(false);
-   setLinkedSurvey(null);
-setSurveyPhase("loading");
-setSurveyResponses({});
-setSurveyErrors({});
-setSurveyErrorMsg("");
+    setLinkedSurvey(null);
+    setSurveyPhase("loading");
+    setSurveyResponses({});
+    setSurveyErrors({});
+    setSurveyErrorMsg("");
     setFeedSubmitted(false);
     setSubmitted(false);
 
@@ -603,6 +621,11 @@ setSurveyErrorMsg("");
   }, [shouldShowSurvey]);
 
   useEffect(() => {
+    if (!shouldShowSurvey) return;
+    scrollSurveyViewToTop();
+  }, [shouldShowSurvey, scrollSurveyViewToTop]);
+
+  useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
     const shouldLock =
@@ -647,21 +670,20 @@ setSurveyErrorMsg("");
     }
   }, [onAdmin, hasEntered, feedPhase, submitted, flags?.randomize_avatars, flags?.randomize_images]);
 
-
   useEffect(() => {
-  if (!feedSubmitted) return;
+    if (!feedSubmitted) return;
 
-  if (surveyPhase === "loading") return;
+    if (surveyPhase === "loading") return;
 
-  if (linkedSurvey && surveyPhase === "ready") {
-    setSubmitted(false);
-    return;
-  }
+    if (linkedSurvey && surveyPhase === "ready") {
+      setSubmitted(false);
+      return;
+    }
 
-  if (!linkedSurvey && surveyPhase === "idle") {
-    setSubmitted(true);
-  }
-}, [feedSubmitted, linkedSurvey, surveyPhase]);
+    if (!linkedSurvey && surveyPhase === "idle") {
+      setSubmitted(true);
+    }
+  }, [feedSubmitted, linkedSurvey, surveyPhase]);
 
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
@@ -998,32 +1020,32 @@ setSurveyErrorMsg("");
               shouldShowSurvey ? (
                 <div className="survey-page">
                   {isMobileSurvey ? (
-  <SurveyScreenMobile
-    survey={linkedSurvey}
-    responses={surveyResponses}
-    errors={surveyErrors}
-    errorMsg={surveyErrorMsg}
-    participantSeed={participantId || sessionIdRef.current}
-    onChange={handleSurveyResponseChange}
-    onSubmit={handleSurveySubmit}
-    onPageValidationFail={handleSurveyPageValidationFail}
-    onClearBanner={clearSurveyBanner}
-    submitting={surveyPhase === "submitting"}
-  />
-) : (
-  <SurveyScreen
-    survey={linkedSurvey}
-    responses={surveyResponses}
-    errors={surveyErrors}
-    errorMsg={surveyErrorMsg}
-    participantSeed={participantId || sessionIdRef.current}
-    onChange={handleSurveyResponseChange}
-    onSubmit={handleSurveySubmit}
-    onPageValidationFail={handleSurveyPageValidationFail}
-    onClearBanner={clearSurveyBanner}
-    submitting={surveyPhase === "submitting"}
-  />
-)}
+                    <SurveyScreenMobile
+                      survey={linkedSurvey}
+                      responses={surveyResponses}
+                      errors={surveyErrors}
+                      errorMsg={surveyErrorMsg}
+                      participantSeed={participantId || sessionIdRef.current}
+                      onChange={handleSurveyResponseChange}
+                      onSubmit={handleSurveySubmit}
+                      onPageValidationFail={handleSurveyPageValidationFail}
+                      onClearBanner={clearSurveyBanner}
+                      submitting={surveyPhase === "submitting"}
+                    />
+                  ) : (
+                    <SurveyScreen
+                      survey={linkedSurvey}
+                      responses={surveyResponses}
+                      errors={surveyErrors}
+                      errorMsg={surveyErrorMsg}
+                      participantSeed={participantId || sessionIdRef.current}
+                      onChange={handleSurveyResponseChange}
+                      onSubmit={handleSurveySubmit}
+                      onPageValidationFail={handleSurveyPageValidationFail}
+                      onClearBanner={clearSurveyBanner}
+                      submitting={surveyPhase === "submitting"}
+                    />
+                  )}
                 </div>
               ) : (
                 <PageWithRails>
@@ -1112,8 +1134,9 @@ setSurveyErrorMsg("");
                             showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
 
                             if (ok) {
-  setFeedSubmitted(true);
-}
+                              setFeedSubmitted(true);
+                              scrollSurveyViewToTop();
+                            }
 
                             setDisabled(false);
                           }}
