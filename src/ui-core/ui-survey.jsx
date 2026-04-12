@@ -136,62 +136,55 @@ export function SurveyQuestionRenderer({ question, index, value, error, onChange
       )}
 
       {qType === SURVEY_QUESTION_TYPES.BIPOLAR && (
-        <div className="survey-bipolar">
-          <div className="survey-bipolar-top-labels">
-            <span>{question.left_label || question.min_label || ""}</span>
-            <span>{question.right_label || question.max_label || ""}</span>
-          </div>
+  <div className="survey-bipolar">
+    <div className="survey-matrix survey-bipolar-matrix">
+      <table className="survey-matrix-table">
+        <thead>
+          <tr>
+            <th />
+            {bipolarPoints.map((point) => (
+              <th key={point}>{point}</th>
+            ))}
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => {
+            const rowKey = row?.value || `row_${rowIndex + 1}`;
+            const leftLabel = row?.left_label || row?.label || `Row ${rowIndex + 1}`;
+            const rightLabel = row?.right_label || "";
+            const rowValue = value && typeof value === "object" ? value[rowKey] : "";
 
-          <div className="survey-matrix survey-bipolar-matrix">
-            <table className="survey-matrix-table">
-              <thead>
-                <tr>
-                  <th />
-                  {bipolarPoints.map((point) => (
-                    <th key={point}>{point}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rowIndex) => {
-                  const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
-                  const rowLabel = row?.label || row?.value || "";
-                  const rowValue = value && typeof value === "object" ? value[rowKey] : "";
-
+            return (
+              <tr key={rowKey}>
+                <td>{leftLabel}</td>
+                {bipolarPoints.map((point) => {
+                  const pointValue = String(point);
                   return (
-                    <tr key={rowKey}>
-                      <td>{rowLabel}</td>
-                      {bipolarPoints.map((point) => {
-                        const pointValue = String(point);
-                        return (
-                          <td key={pointValue}>
-                            <input
-                              type="radio"
-                              name={`${question.id}__${rowKey}`}
-                              checked={String(rowValue) === pointValue}
-                              onChange={() =>
-                                onChange({
-                                  ...(value && typeof value === "object" ? value : {}),
-                                  [rowKey]: pointValue,
-                                })
-                              }
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
+                    <td key={pointValue}>
+                      <input
+                        type="radio"
+                        name={`${question.id}__${rowKey}`}
+                        checked={String(rowValue) === pointValue}
+                        onChange={() =>
+                          onChange({
+                            ...(value && typeof value === "object" ? value : {}),
+                            [rowKey]: pointValue,
+                          })
+                        }
+                      />
+                    </td>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="survey-bipolar-bottom-labels">
-            <span>{question.left_label || question.min_label || ""}</span>
-            <span>{question.right_label || question.max_label || ""}</span>
-          </div>
-        </div>
-      )}
+                <td>{rightLabel}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
 
       {qType === SURVEY_QUESTION_TYPES.SLIDER && (
         <div className="survey-scale">
