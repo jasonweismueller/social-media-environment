@@ -61,6 +61,17 @@ function getColumnLabel(col, colIndex) {
   return col?.label || col?.value || `Option ${colIndex + 1}`;
 }
 
+function isRenderableQuestion(question) {
+  return question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK;
+}
+
+function isNumberedQuestion(question) {
+  return (
+    question?.type !== SURVEY_QUESTION_TYPES.INFO &&
+    question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK
+  );
+}
+
 function isEmptyRequiredValue(q, value) {
   if (value == null || value === "") return true;
   if (Array.isArray(value)) return value.length === 0;
@@ -102,7 +113,11 @@ function MobileQuestionWrapper({ question, index, error, children }) {
   const isInfo = question?.type === SURVEY_QUESTION_TYPES.INFO;
 
   return (
-    <div className={`survey-question ${isInfo ? "survey-question-info" : ""} ${error ? "has-error" : ""}`}>
+    <div
+      className={`survey-question ${isInfo ? "survey-question-info" : ""} ${
+        error ? "has-error" : ""
+      }`}
+    >
       {!isInfo && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
@@ -127,7 +142,9 @@ function MobileQuestionWrapper({ question, index, error, children }) {
           className="survey-info-block"
           dangerouslySetInnerHTML={{ __html: question.text || "" }}
         />
-      ) : children}
+      ) : (
+        children
+      )}
 
       {error ? <div className="survey-error">{error}</div> : null}
     </div>
@@ -458,6 +475,7 @@ export function SurveyScreenMobile({
   errors,
   errorMsg,
   participantSeed,
+  feedId,
   onChange,
   onSubmit,
   onPageValidationFail,
@@ -468,14 +486,17 @@ export function SurveyScreenMobile({
 
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+    const activeFeedId = String(feedId ?? "").trim();
 
     return pages
       .map((page, pageIdx) => {
         const visibleQuestions = (page?.questions || [])
-          .filter((q) => isQuestionVisible(q, responses))
+          .filter(isRenderableQuestion)
+          .filter((q) => isQuestionVisible(q, responses, { feedId: activeFeedId }))
           .map((question) =>
             getRenderedQuestion(question, {
               participantSeed: participantSeed || "",
+              feedId: activeFeedId,
             })
           );
 
@@ -487,11 +508,11 @@ export function SurveyScreenMobile({
         };
       })
       .filter((page) => page.questions.length > 0);
-  }, [survey, responses, participantSeed]);
+  }, [survey, responses, participantSeed, feedId]);
 
   useEffect(() => {
     setCurrentPageIndex(0);
-  }, [survey?.survey_id]);
+  }, [survey?.survey_id, feedId]);
 
   useEffect(() => {
     if (visiblePages.length === 0) {
@@ -503,6 +524,10 @@ export function SurveyScreenMobile({
     }
   }, [visiblePages, currentPageIndex]);
 
+  useLayoutEffect(() => {
+    scrollSurveyPageToTop();
+  }, [currentPageIndex]);
+
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
   const isFirstPage = currentPageIndex === 0;
@@ -511,7 +536,7 @@ export function SurveyScreenMobile({
     let count = 0;
     for (let i = 0; i < currentPageIndex; i += 1) {
       const page = visiblePages[i];
-      count += (page?.questions || []).filter((q) => q?.type !== SURVEY_QUESTION_TYPES.INFO).length;
+      count += (page?.questions || []).filter(isNumberedQuestion).length;
     }
     return count;
   }, [visiblePages, currentPageIndex]);
@@ -546,7 +571,10 @@ export function SurveyScreenMobile({
     const validation = validateCurrentPage();
 
     if (!validation.ok) {
-      onPageValidationFail?.(validation.errors, "Please complete the highlighted questions on this page.");
+      onPageValidationFail?.(
+        validation.errors,
+        "Please complete the highlighted questions on this page."
+      );
       return;
     }
 
@@ -609,7 +637,10 @@ export function SurveyScreenMobile({
           )}
 
           {visiblePages.length <= 1 && currentPage.title ? (
-            <div className="survey-page-title-wrap" style={{ marginBottom: currentPage.description ? 14 : 18 }}>
+            <div
+              className="survey-page-title-wrap"
+              style={{ marginBottom: currentPage.description ? 14 : 18 }}
+            >
               <h2 className="survey-page-title">{currentPage.title}</h2>
               {currentPage.description ? (
                 <div className="survey-page-subtitle">{currentPage.description}</div>
@@ -624,7 +655,7 @@ export function SurveyScreenMobile({
               : questionNumberOffset +
                 currentPage.questions
                   .slice(0, idx + 1)
-                  .filter((item) => item?.type !== SURVEY_QUESTION_TYPES.INFO).length - 1;
+                  .filter(isNumberedQuestion).length - 1;
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
