@@ -17,6 +17,7 @@ export const SURVEY_QUESTION_TYPES = {
   BIPOLAR: "bipolar",
   SLIDER: "slider",
   INFO: "info",
+  POST_REMINDER: "post_reminder",
   PAGE_BREAK: "page_break",
 };
 
@@ -71,19 +72,6 @@ function normalizeChoiceArray(rawChoices = []) {
       if (typeof c === "string") return c.trim();
       if (c && typeof c === "object") {
         return String(c.label ?? c.value ?? "").trim();
-      }
-      return "";
-    })
-    .filter(Boolean);
-}
-
-function normalizeMatrixArray(rawItems = []) {
-  if (!Array.isArray(rawItems)) return [];
-  return rawItems
-    .map((x) => {
-      if (typeof x === "string") return x.trim();
-      if (x && typeof x === "object") {
-        return String(x.label ?? x.value ?? "").trim();
       }
       return "";
     })
@@ -242,6 +230,7 @@ function isPageBreakQuestion(question) {
 function isDisplayOnlyQuestion(question) {
   return (
     question?.type === SURVEY_QUESTION_TYPES.INFO ||
+    question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
     question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
 }
@@ -258,7 +247,9 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
   const defaultText =
     safeType === SURVEY_QUESTION_TYPES.PAGE_BREAK
       ? "Page break"
-      : "Untitled question";
+      : safeType === SURVEY_QUESTION_TYPES.POST_REMINDER
+        ? "Please look at this post again before answering."
+        : "Untitled question";
 
   const text = String(overrides.text ?? overrides.label ?? defaultText);
   const questionId = sanitizeQuestionId(overrides.id, `Q_${uid()}`);
@@ -289,6 +280,8 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
     placeholder: String(overrides.placeholder || ""),
+    post_id: String(overrides.post_id ?? ""),
+    post_label: String(overrides.post_label ?? ""),
     meta: asObject(overrides.meta),
   };
 }
@@ -301,7 +294,9 @@ export function normalizeQuestion(raw = {}) {
   const defaultText =
     type === SURVEY_QUESTION_TYPES.PAGE_BREAK
       ? "Page break"
-      : "Untitled question";
+      : type === SURVEY_QUESTION_TYPES.POST_REMINDER
+        ? "Please look at this post again before answering."
+        : "Untitled question";
 
   const text = String(raw.text ?? raw.label ?? defaultText);
   const questionId = sanitizeQuestionId(raw.id, `Q_${uid()}`);
@@ -381,6 +376,8 @@ export function normalizeQuestion(raw = {}) {
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
     placeholder: String(raw.placeholder || ""),
+    post_id: String(raw.post_id ?? ""),
+    post_label: String(raw.post_label ?? ""),
     meta: asObject(raw.meta),
   };
 }
@@ -485,6 +482,14 @@ export function frontendQuestionToBackend(question = {}) {
         max: q.max,
         left_label: q.left_label ?? q.min_label ?? "",
         right_label: q.right_label ?? q.max_label ?? "",
+      };
+
+    case SURVEY_QUESTION_TYPES.POST_REMINDER:
+      return {
+        ...base,
+        required: false,
+        post_id: String(q.post_id ?? ""),
+        post_label: String(q.post_label ?? ""),
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
@@ -800,6 +805,14 @@ export function makeQuestionByType(type) {
         required: false,
       });
 
+    case SURVEY_QUESTION_TYPES.POST_REMINDER:
+      return makeQuestion(type, {
+        label: "Please look at this post again before answering.",
+        required: false,
+        post_id: "",
+        post_label: "",
+      });
+
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
       return makeQuestion(type, {
         label: "Next page",
@@ -880,6 +893,7 @@ export function emptyValueForQuestion(q) {
       return {};
 
     case SURVEY_QUESTION_TYPES.INFO:
+    case SURVEY_QUESTION_TYPES.POST_REMINDER:
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
       return null;
 
@@ -1060,6 +1074,7 @@ export function flattenSurveyResponses(survey, responses) {
         }
 
         case SURVEY_QUESTION_TYPES.INFO:
+        case SURVEY_QUESTION_TYPES.POST_REMINDER:
         case SURVEY_QUESTION_TYPES.PAGE_BREAK:
           break;
 
@@ -1106,6 +1121,7 @@ export function unflattenSurveyResponses(survey, row = {}) {
         }
 
         case SURVEY_QUESTION_TYPES.INFO:
+        case SURVEY_QUESTION_TYPES.POST_REMINDER:
         case SURVEY_QUESTION_TYPES.PAGE_BREAK:
           responses[q.id] = null;
           break;
