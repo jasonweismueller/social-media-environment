@@ -1824,11 +1824,15 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
       const nextId = makeCopiedQuestionId(existingIds, sourceQuestion.id);
 
-      let copiedQuestion = {
-        ...sourceQuestion,
-        _editorId: makeEditorId(),
-        id: nextId,
-      };
+     let copiedQuestion = {
+  ...sourceQuestion,
+  _editorId: makeEditorId(),
+  id: nextId,
+  meta: sourceQuestion?.meta ? { ...sourceQuestion.meta } : {},
+  visible_if: sourceQuestion?.visible_if
+    ? JSON.parse(JSON.stringify(sourceQuestion.visible_if))
+    : null,
+};
 
       if (shouldAutoRewriteRowValues(copiedQuestion)) {
         copiedQuestion = rewriteQuestionRowValues(copiedQuestion, nextId);
