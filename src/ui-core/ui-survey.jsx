@@ -11,7 +11,7 @@ import {
   getRenderedQuestion,
   getProjectId,
 } from "../utils";
-import { PostCard } from "./components-ui-posts";
+import { PostCard } from "../ui-posts/components-ui-posts";
 
 function makeBipolarScalePoints(min, max) {
   const safeMin = Number.isFinite(Number(min)) ? Number(min) : 1;
