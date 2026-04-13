@@ -1,9 +1,17 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   SURVEY_QUESTION_TYPES,
   isQuestionVisible,
   getRenderedQuestion,
+  getProjectId,
 } from "../utils";
+import { PostCard } from "./components-ui-posts";
 
 function makeBipolarScalePoints(min, max) {
   const safeMin = Number.isFinite(Number(min)) ? Number(min) : 1;
@@ -118,105 +126,81 @@ function firstNonEmpty(...values) {
   return "";
 }
 
-function getReminderPostAuthor(post = {}) {
+function getReminderPostLabel(question = {}, post = {}) {
   return firstNonEmpty(
-    post?.authorName,
-    post?.author_name,
-    post?.displayName,
-    post?.display_name,
+    question?.post_label,
     post?.name,
+    post?.author,
     post?.username,
-    post?.user?.name,
-    post?.author?.name
-  );
-}
-
-function getReminderPostHandle(post = {}) {
-  const raw = firstNonEmpty(
-    post?.handle,
-    post?.username,
-    post?.user?.username,
-    post?.author?.username
-  );
-
-  if (!raw) return "";
-  return raw.startsWith("@") ? raw : `@${raw}`;
-}
-
-function getReminderPostText(post = {}) {
-  return firstNonEmpty(
     post?.text,
-    post?.caption,
-    post?.message,
-    post?.body,
-    post?.content,
-    post?.copy
+    question?.post_id
   );
 }
 
-function getReminderPostTimestamp(post = {}) {
+function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
   return firstNonEmpty(
-    post?.displayTime,
-    post?.time_display,
-    post?.timestampLabel,
-    post?.time,
-    post?.created_at_text
+    question?.post_feed_id,
+    question?.meta?.post_feed_id,
+    fallbackFeedId
   );
 }
 
-function getReminderPostImage(post = {}) {
-  const image = post?.image;
-  const url = firstNonEmpty(
-    typeof image === "string" ? image : "",
-    image?.url,
-    post?.imageUrl,
-    post?.image_url,
-    post?.mediaUrl,
-    post?.media_url
-  );
-
-  if (!url) return "";
-
-  return url;
-}
-
-function getReminderPostVideoPoster(post = {}) {
-  return firstNonEmpty(
-    post?.videoPosterUrl,
-    post?.video_poster_url,
-    post?.video?.poster,
-    post?.video?.posterUrl,
-    post?.video?.thumbnail,
-    post?.thumbnailUrl,
-    post?.thumbnail_url
+function getReminderApp() {
+  if (typeof window === "undefined") return "fb";
+  return (
+    String(
+      window.APP ||
+        new URLSearchParams(window.location.search).get("app") ||
+        "fb"
+    ).toLowerCase() === "ig"
+      ? "ig"
+      : "fb"
   );
 }
 
-function getReminderPostAvatar(post = {}) {
-  return firstNonEmpty(
-    post?.avatar,
-    post?.avatarUrl,
-    post?.avatar_url,
-    post?.authorAvatar,
-    post?.author_avatar,
-    post?.user?.avatar,
-    post?.user?.avatarUrl,
-    post?.author?.avatar
-  );
-}
-
-function PostReminderCard({ question, posts = [] }) {
+function PostReminderCard({
+  question,
+  posts = [],
+  projectId,
+  feedId,
+  flags,
+  participantSeed,
+}) {
   const post = getQuestionReminderPost(question, posts);
+  const fallbackLabel = getReminderPostLabel(question, post || {});
+  const reminderFeedId = getReminderPostFeedId(question, feedId);
+  const app = getReminderApp();
 
-  const author = getReminderPostAuthor(post || {});
-  const handle = getReminderPostHandle(post || {});
-  const text = getReminderPostText(post || {});
-  const timestamp = getReminderPostTimestamp(post || {});
-  const imageUrl = getReminderPostImage(post || {});
-  const videoPosterUrl = getReminderPostVideoPoster(post || {});
-  const avatarUrl = getReminderPostAvatar(post || {});
-  const mediaUrl = imageUrl || videoPosterUrl;
-  const fallbackLabel = firstNonEmpty(question?.post_label, question?.post_id);
+  if (!post) {
+    return (
+      <div className="survey-post-reminder-block">
+        {question?.text ? (
+          <div
+            className="survey-post-reminder-intro"
+            dangerouslySetInnerHTML={{ __html: question.text || "" }}
+          />
+        ) : null}
+
+        <div
+          className="survey-post-reminder-card"
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 16,
+            background: "#fff",
+            overflow: "hidden",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            padding: 14,
+            color: "#6b7280",
+            fontSize: 14,
+          }}
+        >
+          {fallbackLabel
+            ? `Reminder post selected: ${fallbackLabel}`
+            : "No reminder post has been selected for this survey item yet."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="survey-post-reminder-block">
@@ -237,115 +221,17 @@ function PostReminderCard({ question, posts = [] }) {
           boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
         }}
       >
-        {post ? (
-          <>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "14px 14px 10px",
-                borderBottom: mediaUrl ? "1px solid #f3f4f6" : "none",
-              }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  background: "#f3f4f6",
-                  flex: "0 0 40px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#9ca3af",
-                  fontWeight: 700,
-                  fontSize: 14,
-                }}
-              >
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <span>{(author || "?").slice(0, 1).toUpperCase()}</span>
-                )}
-              </div>
-
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: "#111827",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {author || fallbackLabel || "Post reminder"}
-                </div>
-
-                {(handle || timestamp) && (
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: "#6b7280",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {[handle, timestamp].filter(Boolean).join(" · ")}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {text ? (
-              <div
-                style={{
-                  padding: mediaUrl ? "12px 14px 6px" : "12px 14px 14px",
-                  color: "#111827",
-                  lineHeight: 1.5,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {text}
-              </div>
-            ) : null}
-
-            {mediaUrl ? (
-              <div style={{ padding: text ? "8px 14px 14px" : "14px" }}>
-                <img
-                  src={mediaUrl}
-                  alt="Reminder post"
-                  style={{
-                    width: "100%",
-                    display: "block",
-                    borderRadius: 12,
-                    border: "1px solid #f3f4f6",
-                    objectFit: "cover",
-                  }}
-                />
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <div
-            style={{
-              padding: 14,
-              color: "#6b7280",
-              fontSize: 14,
-            }}
-          >
-            {fallbackLabel
-              ? `Reminder post selected: ${fallbackLabel}`
-              : "No reminder post has been selected for this survey item yet."}
-          </div>
-        )}
+        <PostCard
+          post={post}
+          onAction={() => {}}
+          disabled={true}
+          registerViewRef={() => undefined}
+          app={app}
+          projectId={projectId || getProjectId() || ""}
+          feedId={reminderFeedId || ""}
+          runSeed={participantSeed || "survey-reminder-preview"}
+          flags={flags || {}}
+        />
       </div>
     </div>
   );
@@ -358,6 +244,10 @@ export function SurveyQuestionRenderer({
   error,
   onChange,
   posts = [],
+  projectId,
+  feedId,
+  flags,
+  participantSeed,
 }) {
   const qType = question?.type;
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
@@ -408,7 +298,14 @@ export function SurveyQuestionRenderer({
       )}
 
       {isPostReminder && (
-        <PostReminderCard question={question} posts={posts} />
+        <PostReminderCard
+          question={question}
+          posts={posts}
+          projectId={projectId}
+          feedId={feedId}
+          flags={flags}
+          participantSeed={participantSeed}
+        />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -489,7 +386,8 @@ export function SurveyQuestionRenderer({
                   const rowKey = row?.value || `row_${rowIndex + 1}`;
                   const leftLabel = row?.left_label || `Row ${rowIndex + 1}`;
                   const rightLabel = row?.right_label || "";
-                  const rowValue = value && typeof value === "object" ? value[rowKey] : "";
+                  const rowValue =
+                    value && typeof value === "object" ? value[rowKey] : "";
 
                   return (
                     <tr key={rowKey}>
@@ -504,7 +402,9 @@ export function SurveyQuestionRenderer({
                               checked={String(rowValue) === pointValue}
                               onChange={() =>
                                 onChange({
-                                  ...(value && typeof value === "object" ? value : {}),
+                                  ...(value && typeof value === "object"
+                                    ? value
+                                    : {}),
                                   [rowKey]: pointValue,
                                 })
                               }
@@ -556,9 +456,11 @@ export function SurveyQuestionRenderer({
             </thead>
             <tbody>
               {rows.map((row, rowIndex) => {
-                const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+                const rowKey =
+                  row?.value || row?.label || `row_${rowIndex + 1}`;
                 const rowLabel = row?.label || row?.value || "";
-                const rowValue = value && typeof value === "object" ? value[rowKey] : "";
+                const rowValue =
+                  value && typeof value === "object" ? value[rowKey] : "";
 
                 return (
                   <tr key={rowKey}>
@@ -573,7 +475,9 @@ export function SurveyQuestionRenderer({
                             checked={rowValue === colValue}
                             onChange={() =>
                               onChange({
-                                ...(value && typeof value === "object" ? value : {}),
+                                ...(value && typeof value === "object"
+                                  ? value
+                                  : {}),
                                 [rowKey]: colValue,
                               })
                             }
@@ -604,10 +508,13 @@ export function SurveyQuestionRenderer({
             </thead>
             <tbody>
               {rows.map((row, rowIndex) => {
-                const rowKey = row?.value || row?.label || `row_${rowIndex + 1}`;
+                const rowKey =
+                  row?.value || row?.label || `row_${rowIndex + 1}`;
                 const rowLabel = row?.label || row?.value || "";
                 const rowValues =
-                  value && typeof value === "object" && Array.isArray(value[rowKey])
+                  value &&
+                  typeof value === "object" &&
+                  Array.isArray(value[rowKey])
                     ? value[rowKey]
                     : [];
 
@@ -629,7 +536,9 @@ export function SurveyQuestionRenderer({
                                 : rowValues.filter((v) => v !== colValue);
 
                               onChange({
-                                ...(value && typeof value === "object" ? value : {}),
+                                ...(value && typeof value === "object"
+                                  ? value
+                                  : {}),
                                 [rowKey]: nextRowValues,
                               });
                             }}
@@ -658,6 +567,8 @@ export function SurveyScreen({
   errorMsg,
   participantSeed,
   feedId,
+  projectId: propProjectId,
+  flags,
   onChange,
   onSubmit,
   onPageValidationFail,
@@ -665,6 +576,7 @@ export function SurveyScreen({
   submitting,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const projectId = propProjectId || getProjectId() || "";
 
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
@@ -784,7 +696,9 @@ export function SurveyScreen({
       <div className="survey-shell">
         <div className="survey-card">
           <div className="survey-body survey-body-standalone">
-            <div className="survey-error-banner">No survey questions are available.</div>
+            <div className="survey-error-banner">
+              No survey questions are available.
+            </div>
           </div>
         </div>
       </div>
@@ -803,7 +717,9 @@ export function SurveyScreen({
                     <h2 className="survey-page-title">{currentPage.title}</h2>
                   ) : null}
                   {currentPage.description ? (
-                    <div className="survey-page-subtitle">{currentPage.description}</div>
+                    <div className="survey-page-subtitle">
+                      {currentPage.description}
+                    </div>
                   ) : null}
                 </div>
 
@@ -836,7 +752,9 @@ export function SurveyScreen({
             >
               <h2 className="survey-page-title">{currentPage.title}</h2>
               {currentPage.description ? (
-                <div className="survey-page-subtitle">{currentPage.description}</div>
+                <div className="survey-page-subtitle">
+                  {currentPage.description}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -866,11 +784,17 @@ export function SurveyScreen({
                 error={error}
                 onChange={(nextValue) => onChange(q.id, nextValue)}
                 posts={posts}
+                projectId={projectId}
+                feedId={feedId}
+                flags={flags}
+                participantSeed={participantSeed}
               />
             );
           })}
 
-          {errorMsg ? <div className="survey-error-banner">{errorMsg}</div> : null}
+          {errorMsg ? (
+            <div className="survey-error-banner">{errorMsg}</div>
+          ) : null}
 
           {visiblePages.length > 1 ? (
             <div className="survey-nav">
