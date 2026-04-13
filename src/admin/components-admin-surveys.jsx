@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   normalizeSurvey,
   frontendSurveyToBackend,
@@ -318,14 +318,19 @@ export function AdminSurveysPanel({
   loadFeedPosts,
 }) {
   const projectId = propProjectId || getProjectId();
-  const effectiveLoadFeedPosts =
-    typeof loadFeedPosts === "function"
-      ? loadFeedPosts
-      : async (currentFeedId) =>
-          loadPostsFromBackend(currentFeedId, {
-            projectId: projectId || undefined,
-            force: true,
-          });
+  const effectiveLoadFeedPosts = useCallback(
+  async (currentFeedId) => {
+    if (typeof loadFeedPosts === "function") {
+      return await loadFeedPosts(currentFeedId);
+    }
+
+    return await loadPostsFromBackend(currentFeedId, {
+      projectId: projectId || undefined,
+      force: true,
+    });
+  },
+  [loadFeedPosts, projectId]
+);
 
   const importFileRef = useRef(null);
   const [surveys, setSurveys] = useState([]);
