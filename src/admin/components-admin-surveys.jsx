@@ -1,7 +1,6 @@
 import React, {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -42,6 +41,10 @@ const DEFAULT_PARTICIPANT_INFORMATION_TITLE = "Participant Information";
 const DEFAULT_CONSENT_TITLE = "Participant Consent";
 const DEFAULT_INSTRUCTIONS_TITLE = "Instructions";
 const DEFAULT_PRE_FEED_BUTTON_LABEL = "Go to feed";
+const DEFAULT_THANK_YOU_MESSAGE_HTML =
+  "<p>Thank you for completing the study.</p><p>You may now close this window.</p>";
+const COMPLETION_MODE_MESSAGE = "message";
+const COMPLETION_MODE_REDIRECT = "redirect";
 
 function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
@@ -73,6 +76,12 @@ function hasPostReminderQuestion(surveyLike) {
   return flatQuestions.some((q) => q?.type === POST_REMINDER_TYPE);
 }
 
+function normalizeCompletionMode(value) {
+  return value === COMPLETION_MODE_REDIRECT
+    ? COMPLETION_MODE_REDIRECT
+    : COMPLETION_MODE_MESSAGE;
+}
+
 function normalizeSurveyMetaFields(source = {}) {
   return {
     participant_information_title:
@@ -88,6 +97,11 @@ function normalizeSurveyMetaFields(source = {}) {
     instructions_html: source?.instructions_html || "",
     pre_feed_button_label:
       source?.pre_feed_button_label || DEFAULT_PRE_FEED_BUTTON_LABEL,
+    thank_you_message_html:
+      source?.thank_you_message_html || DEFAULT_THANK_YOU_MESSAGE_HTML,
+    completion_code: String(source?.completion_code || ""),
+    completion_mode: normalizeCompletionMode(source?.completion_mode),
+    completion_redirect_url: String(source?.completion_redirect_url || ""),
   };
 }
 
@@ -289,6 +303,27 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
         ...style,
       }}
     />
+  );
+}
+
+function SelectInput({ value, onChange, children, style }) {
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        height: 42,
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: "1px solid #d1d5db",
+        background: "#fff",
+        boxSizing: "border-box",
+        ...style,
+      }}
+    >
+      {children}
+    </select>
   );
 }
 
@@ -570,6 +605,13 @@ export function AdminSurveysPanel({
       instructions_html: normalized.instructions_html || "",
       pre_feed_button_label:
         normalized.pre_feed_button_label || DEFAULT_PRE_FEED_BUTTON_LABEL,
+      thank_you_message_html:
+        normalized.thank_you_message_html || DEFAULT_THANK_YOU_MESSAGE_HTML,
+      completion_code: String(normalized.completion_code || ""),
+      completion_mode: normalizeCompletionMode(normalized.completion_mode),
+      completion_redirect_url: String(
+        normalized.completion_redirect_url || ""
+      ),
       exported_at: new Date().toISOString(),
       export_format: "survey_v1",
     };
@@ -619,92 +661,80 @@ export function AdminSurveysPanel({
   }
 
   async function handleSaveSurvey() {
-  if (!survey) return;
+    if (!survey) return;
 
-  setSavingSurvey(true);
-  try {
-    const normalized = {
-      ...survey,
-      linked_project_id: projectId,
-      linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
-      trigger: survey.trigger || "after_feed_submit",
-      ...normalizeSurveyMetaFields(survey),
-    };
+    setSavingSurvey(true);
+    try {
+      const normalized = {
+        ...survey,
+        linked_project_id: projectId,
+        linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
+        trigger: survey.trigger || "after_feed_submit",
+        ...normalizeSurveyMetaFields(survey),
+      };
 
-    const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
-      normalized,
-      flattenSurveyPagesForEditor(normalized)
-    );
-
-    const payload = {
-      ...normalized,
-      pages: (rebuiltSurvey.pages || []).map((page) => ({
-        ...(page || { id: "page_1", title: "", description: "" }),
-        questions: (page.questions || []).map((q, i) =>
-          buildSavedQuestion(q, i)
-        ),
-      })),
-    };
-
-    
-    const res = await saveSurveyToBackend(payload, { projectId });
-
-    if (res?.ok) {
-      const savedSurveyId = res.survey_id || payload.survey_id;
-
-      const [fresh, linkedFeedIds] = await Promise.all([
-        loadSurveyFromBackend(savedSurveyId, {
-          projectId,
-          force: true,
-        }),
-        getLinkedFeedIdsForSurveyFromBackend({
-          surveyId: savedSurveyId,
-          projectId,
-          allFeeds: feeds,
-        }),
-      ]);
-
-      console.log("RELOADED SURVEY META", {
-        participant_information_title: fresh?.participant_information_title,
-        participant_information_html: fresh?.participant_information_html,
-        consent_title: fresh?.consent_title,
-        consent_text_html: fresh?.consent_text_html,
-        consent_decline_message_html: fresh?.consent_decline_message_html,
-        instructions_title: fresh?.instructions_title,
-        instructions_html: fresh?.instructions_html,
-        pre_feed_button_label: fresh?.pre_feed_button_label,
-      });
-
-      const normalizedFresh = applySurveyMetaDefaults(
-        {
-          ...(fresh || {}),
-          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-          linked_project_id: projectId,
-          trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
-        },
-        projectId
+      const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
+        normalized,
+        flattenSurveyPagesForEditor(normalized)
       );
 
-      const editorFresh = buildSurveyPagesFromFlatQuestions(
-        normalizedFresh,
-        flattenSurveyPagesForEditor(normalizedFresh)
-      );
+      const payload = {
+        ...normalized,
+        pages: (rebuiltSurvey.pages || []).map((page) => ({
+          ...(page || { id: "page_1", title: "", description: "" }),
+          questions: (page.questions || []).map((q, i) =>
+            buildSavedQuestion(q, i)
+          ),
+        })),
+      };
 
-      setSelectedSurveyId(savedSurveyId);
-      setSurvey(editorFresh);
+      const res = await saveSurveyToBackend(payload, { projectId });
 
-      await loadAll();
-      alert("Survey saved");
-    } else {
-      alert(res?.err || "Failed to save survey");
+      if (res?.ok) {
+        const savedSurveyId = res.survey_id || payload.survey_id;
+
+        const [fresh, linkedFeedIds] = await Promise.all([
+          loadSurveyFromBackend(savedSurveyId, {
+            projectId,
+            force: true,
+          }),
+          getLinkedFeedIdsForSurveyFromBackend({
+            surveyId: savedSurveyId,
+            projectId,
+            allFeeds: feeds,
+          }),
+        ]);
+
+        const normalizedFresh = applySurveyMetaDefaults(
+          {
+            ...(fresh || {}),
+            linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+            linked_project_id: projectId,
+            trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
+          },
+          projectId
+        );
+
+        const editorFresh = buildSurveyPagesFromFlatQuestions(
+          normalizedFresh,
+          flattenSurveyPagesForEditor(normalizedFresh)
+        );
+
+        setSelectedSurveyId(savedSurveyId);
+        setSurvey(editorFresh);
+
+        await loadAll();
+        alert("Survey saved");
+      } else {
+        alert(res?.err || "Failed to save survey");
+      }
+    } catch (e) {
+      console.warn("Failed to save survey:", e);
+      alert("Failed to save survey");
+    } finally {
+      setSavingSurvey(false);
     }
-  } catch (e) {
-    console.warn("Failed to save survey:", e);
-    alert("Failed to save survey");
-  } finally {
-    setSavingSurvey(false);
   }
-}
 
   async function handleDeleteSurvey() {
     if (!survey?.survey_id) return;
@@ -876,6 +906,9 @@ export function AdminSurveysPanel({
       ).pages || [];
     return pages.length;
   }, [survey]);
+
+  const completionMode =
+    normalizeCompletionMode(survey?.completion_mode) || COMPLETION_MODE_MESSAGE;
 
   return (
     <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
@@ -1198,6 +1231,103 @@ export function AdminSurveysPanel({
                   placeholder={DEFAULT_PRE_FEED_BUTTON_LABEL}
                 />
               </FieldBlock>
+            </SectionCard>
+
+            <SectionCard title="Completion / thank you">
+              <FieldBlock
+                label="Completion mode"
+                hint="Choose whether participants see a thank you screen or are redirected automatically after survey submission."
+              >
+                <SelectInput
+                  value={completionMode}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      completion_mode: normalizeCompletionMode(v),
+                    })
+                  }
+                >
+                  <option value={COMPLETION_MODE_MESSAGE}>
+                    Show thank you message
+                  </option>
+                  <option value={COMPLETION_MODE_REDIRECT}>
+                    Redirect automatically
+                  </option>
+                </SelectInput>
+              </FieldBlock>
+
+              {completionMode === COMPLETION_MODE_MESSAGE && (
+                <>
+                  <FieldBlock
+                    label="Thank you message HTML"
+                    hint="Shown after the participant submits the survey."
+                  >
+                    <TextAreaInput
+                      value={survey.thank_you_message_html}
+                      onChange={(v) =>
+                        setSurvey({
+                          ...survey,
+                          thank_you_message_html: v,
+                        })
+                      }
+                      placeholder="Enter the thank you message shown after submission..."
+                      rows={6}
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock
+                    label="Completion code"
+                    hint="Optional code shown on the thank you screen instead of using the session ID."
+                  >
+                    <TextInput
+                      value={survey.completion_code}
+                      onChange={(v) =>
+                        setSurvey({
+                          ...survey,
+                          completion_code: v,
+                        })
+                      }
+                      placeholder="e.g. C1SVTQZC"
+                    />
+                  </FieldBlock>
+                </>
+              )}
+
+              {completionMode === COMPLETION_MODE_REDIRECT && (
+                <>
+                  <FieldBlock
+                    label="Completion code"
+                    hint="If no full redirect URL is provided, the app can build a Prolific completion URL from this code."
+                  >
+                    <TextInput
+                      value={survey.completion_code}
+                      onChange={(v) =>
+                        setSurvey({
+                          ...survey,
+                          completion_code: v,
+                        })
+                      }
+                      placeholder="e.g. C1SVTQZC"
+                    />
+                  </FieldBlock>
+
+                  <FieldBlock
+                    label="Redirect URL"
+                    hint="Optional full URL. If provided, this takes priority over the completion code."
+                  >
+                    <TextInput
+                      value={survey.completion_redirect_url}
+                      onChange={(v) =>
+                        setSurvey({
+                          ...survey,
+                          completion_redirect_url: v,
+                        })
+                      }
+                      placeholder="https://app.prolific.com/submissions/complete?cc=C1SVTQZC"
+                    />
+                  </FieldBlock>
+                </>
+              )}
             </SectionCard>
 
             <SectionCard
