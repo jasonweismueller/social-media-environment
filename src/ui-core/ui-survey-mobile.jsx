@@ -1,9 +1,17 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   SURVEY_QUESTION_TYPES,
   isQuestionVisible,
   getRenderedQuestion,
+  getProjectId,
 } from "../utils";
+import { PostCard } from "./components-ui-posts";
 
 function makeBipolarScalePoints(min, max) {
   const safeMin = Number.isFinite(Number(min)) ? Number(min) : 1;
@@ -68,6 +76,7 @@ function isRenderableQuestion(question) {
 function isNumberedQuestion(question) {
   return (
     question?.type !== SURVEY_QUESTION_TYPES.INFO &&
+    question?.type !== SURVEY_QUESTION_TYPES.POST_REMINDER &&
     question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
 }
@@ -109,16 +118,144 @@ function isEmptyRequiredValue(q, value) {
   return false;
 }
 
+function getPostId(post = {}) {
+  return String(
+    post?.id ??
+      post?.post_id ??
+      post?.postId ??
+      post?.meta?.post_id ??
+      ""
+  ).trim();
+}
+
+function getQuestionReminderPost(question, posts = []) {
+  const snapshot = question?.meta?.post_snapshot;
+  const targetPostId = String(question?.post_id || "").trim();
+
+  if (snapshot && typeof snapshot === "object") {
+    return snapshot;
+  }
+
+  if (!targetPostId || !Array.isArray(posts)) return null;
+
+  return posts.find((p) => getPostId(p) === targetPostId) || null;
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function getReminderPostLabel(question = {}, post = {}) {
+  return firstNonEmpty(
+    question?.post_label,
+    post?.name,
+    post?.author,
+    post?.username,
+    post?.text,
+    question?.post_id
+  );
+}
+
+function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
+  return firstNonEmpty(
+    question?.post_feed_id,
+    question?.meta?.post_feed_id,
+    fallbackFeedId
+  );
+}
+
+function getReminderApp() {
+  if (typeof window === "undefined") return "fb";
+  return (
+    String(
+      window.APP ||
+        new URLSearchParams(window.location.search).get("app") ||
+        "fb"
+    ).toLowerCase() === "ig"
+      ? "ig"
+      : "fb"
+  );
+}
+
+function PostReminderCardMobile({
+  question,
+  posts = [],
+  projectId,
+  feedId,
+  flags,
+  participantSeed,
+}) {
+  const post = getQuestionReminderPost(question, posts);
+  const fallbackLabel = getReminderPostLabel(question, post || {});
+  const reminderFeedId = getReminderPostFeedId(question, feedId);
+  const app = getReminderApp();
+
+  return (
+    <div className="survey-post-reminder-block">
+      {question?.text ? (
+        <div
+          className="survey-post-reminder-intro"
+          dangerouslySetInnerHTML={{ __html: question.text || "" }}
+        />
+      ) : null}
+
+      <div
+        className="survey-post-reminder-card"
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 16,
+          background: "#fff",
+          overflow: "hidden",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}
+      >
+        {post ? (
+          <PostCard
+            post={post}
+            onAction={() => {}}
+            disabled={true}
+            registerViewRef={() => undefined}
+            app={app}
+            projectId={projectId || getProjectId() || ""}
+            feedId={reminderFeedId || ""}
+            runSeed={participantSeed || "survey-reminder-preview"}
+            flags={flags || {}}
+          />
+        ) : (
+          <div
+            style={{
+              padding: 14,
+              color: "#6b7280",
+              fontSize: 14,
+            }}
+          >
+            {fallbackLabel
+              ? `Reminder post selected: ${fallbackLabel}`
+              : "No reminder post has been selected for this survey item yet."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MobileQuestionWrapper({ question, index, error, children }) {
   const isInfo = question?.type === SURVEY_QUESTION_TYPES.INFO;
+  const isPostReminder =
+    question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
 
   return (
     <div
-      className={`survey-question ${isInfo ? "survey-question-info" : ""} ${
+      className={`survey-question ${
+        isInfo ? "survey-question-info" : ""
+      } ${isPostReminder ? "survey-question-post-reminder" : ""} ${
         error ? "has-error" : ""
       }`}
     >
-      {!isInfo && (
+      {!isInfo && !isPostReminder && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
             <span className="survey-question-number">{index + 1}.</span>
@@ -130,7 +267,7 @@ function MobileQuestionWrapper({ question, index, error, children }) {
         </div>
       )}
 
-      {!isInfo && question.description ? (
+      {!isInfo && !isPostReminder && question.description ? (
         <div
           className="survey-question-description"
           dangerouslySetInnerHTML={{ __html: question.description || "" }}
@@ -211,8 +348,10 @@ function MobileBipolar({ question, value, onChange }) {
         const rowKey = getRowKey(row, rowIndex);
         const rowLabel = getRowLabel(row, rowIndex);
         const rowValue = value && typeof value === "object" ? value[rowKey] : "";
-        const leftLabel = row?.left_label || question?.left_label || question?.min_label || "";
-        const rightLabel = row?.right_label || question?.right_label || question?.max_label || "";
+        const leftLabel =
+          row?.left_label || question?.left_label || question?.min_label || "";
+        const rightLabel =
+          row?.right_label || question?.right_label || question?.max_label || "";
 
         return (
           <div
@@ -254,14 +393,18 @@ function MobileBipolar({ question, value, onChange }) {
                       flexDirection: "column",
                       alignItems: "center",
                       gap: 6,
-                      border: checked ? "1px solid rgba(237,73,86,.45)" : "1px solid #ececec",
+                      border: checked
+                        ? "1px solid rgba(237,73,86,.45)"
+                        : "1px solid #ececec",
                       background: checked ? "rgba(237,73,86,.08)" : "#fff",
                       borderRadius: 12,
                       padding: "10px 6px",
                       cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontSize: ".88rem", fontWeight: 700 }}>{pointValue}</span>
+                    <span style={{ fontSize: ".88rem", fontWeight: 700 }}>
+                      {pointValue}
+                    </span>
                     <input
                       type="radio"
                       name={`${question.id}__${rowKey}`}
@@ -405,11 +548,33 @@ function MobileMatrixMulti({ question, value, onChange }) {
   );
 }
 
-export function SurveyQuestionRendererMobile({ question, index, value, error, onChange }) {
+export function SurveyQuestionRendererMobile({
+  question,
+  index,
+  value,
+  error,
+  onChange,
+  posts = [],
+  projectId,
+  feedId,
+  flags,
+  participantSeed,
+}) {
   const qType = question?.type;
 
   return (
     <MobileQuestionWrapper question={question} index={index} error={error}>
+      {qType === SURVEY_QUESTION_TYPES.POST_REMINDER && (
+        <PostReminderCardMobile
+          question={question}
+          posts={posts}
+          projectId={projectId}
+          feedId={feedId}
+          flags={flags}
+          participantSeed={participantSeed}
+        />
+      )}
+
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
         <input
           className="survey-input"
@@ -427,12 +592,21 @@ export function SurveyQuestionRendererMobile({ question, index, value, error, on
         />
       )}
 
-      {(qType === SURVEY_QUESTION_TYPES.SINGLE || qType === SURVEY_QUESTION_TYPES.DROPDOWN) && (
-        <MobileSingleChoice question={question} value={value} onChange={onChange} />
+      {(qType === SURVEY_QUESTION_TYPES.SINGLE ||
+        qType === SURVEY_QUESTION_TYPES.DROPDOWN) && (
+        <MobileSingleChoice
+          question={question}
+          value={value}
+          onChange={onChange}
+        />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.MULTI && (
-        <MobileMultiChoice question={question} value={value} onChange={onChange} />
+        <MobileMultiChoice
+          question={question}
+          value={value}
+          onChange={onChange}
+        />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.BIPOLAR && (
@@ -459,11 +633,19 @@ export function SurveyQuestionRendererMobile({ question, index, value, error, on
       )}
 
       {qType === SURVEY_QUESTION_TYPES.MATRIX_SINGLE && (
-        <MobileMatrixSingle question={question} value={value} onChange={onChange} />
+        <MobileMatrixSingle
+          question={question}
+          value={value}
+          onChange={onChange}
+        />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.MATRIX_MULTI && (
-        <MobileMatrixMulti question={question} value={value} onChange={onChange} />
+        <MobileMatrixMulti
+          question={question}
+          value={value}
+          onChange={onChange}
+        />
       )}
     </MobileQuestionWrapper>
   );
@@ -471,11 +653,14 @@ export function SurveyQuestionRendererMobile({ question, index, value, error, on
 
 export function SurveyScreenMobile({
   survey,
+  posts = [],
   responses,
   errors,
   errorMsg,
   participantSeed,
   feedId,
+  projectId: propProjectId,
+  flags,
   onChange,
   onSubmit,
   onPageValidationFail,
@@ -483,6 +668,7 @@ export function SurveyScreenMobile({
   submitting,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const projectId = propProjectId || getProjectId() || "";
 
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
@@ -547,7 +733,14 @@ export function SurveyScreenMobile({
     const pageErrors = {};
 
     currentPage.questions.forEach((q) => {
-      if (!q || q.type === SURVEY_QUESTION_TYPES.INFO || !q.required) return;
+      if (
+        !q ||
+        q.type === SURVEY_QUESTION_TYPES.INFO ||
+        q.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+        !q.required
+      ) {
+        return;
+      }
 
       const value = responses?.[q.id];
       if (isEmptyRequiredValue(q, value)) {
@@ -591,7 +784,9 @@ export function SurveyScreenMobile({
       <div className="survey-shell">
         <div className="survey-card">
           <div className="survey-body survey-body-standalone">
-            <div className="survey-error-banner">No survey questions are available.</div>
+            <div className="survey-error-banner">
+              No survey questions are available.
+            </div>
           </div>
         </div>
       </div>
@@ -610,7 +805,9 @@ export function SurveyScreenMobile({
                     <h2 className="survey-page-title">{currentPage.title}</h2>
                   ) : null}
                   {currentPage.description ? (
-                    <div className="survey-page-subtitle">{currentPage.description}</div>
+                    <div className="survey-page-subtitle">
+                      {currentPage.description}
+                    </div>
                   ) : null}
                 </div>
 
@@ -643,19 +840,25 @@ export function SurveyScreenMobile({
             >
               <h2 className="survey-page-title">{currentPage.title}</h2>
               {currentPage.description ? (
-                <div className="survey-page-subtitle">{currentPage.description}</div>
+                <div className="survey-page-subtitle">
+                  {currentPage.description}
+                </div>
               ) : null}
             </div>
           ) : null}
 
           {currentPage.questions.map((q, idx) => {
-            const isInfo = q?.type === SURVEY_QUESTION_TYPES.INFO;
-            const displayIndex = isInfo
+            const isUnnumbered =
+              q?.type === SURVEY_QUESTION_TYPES.INFO ||
+              q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
+
+            const displayIndex = isUnnumbered
               ? null
               : questionNumberOffset +
                 currentPage.questions
                   .slice(0, idx + 1)
-                  .filter(isNumberedQuestion).length - 1;
+                  .filter(isNumberedQuestion).length -
+                1;
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
@@ -668,6 +871,11 @@ export function SurveyScreenMobile({
                 value={value}
                 error={error}
                 onChange={(nextValue) => onChange(q.id, nextValue)}
+                posts={posts}
+                projectId={projectId}
+                feedId={feedId}
+                flags={flags}
+                participantSeed={participantSeed}
               />
             );
           })}
