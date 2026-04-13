@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   normalizeSurvey,
   frontendSurveyToBackend,
@@ -30,6 +37,11 @@ import {
 const POST_REMINDER_TYPE =
   SURVEY_QUESTION_TYPES?.POST_REMINDER || "post_reminder";
 
+const DEFAULT_PARTICIPANT_INFORMATION_TITLE = "Participant Information";
+const DEFAULT_CONSENT_TITLE = "Participant Consent";
+const DEFAULT_INSTRUCTIONS_TITLE = "Instructions";
+const DEFAULT_PRE_FEED_BUTTON_LABEL = "Go to feed";
+
 function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
 }
@@ -60,11 +72,42 @@ function hasPostReminderQuestion(surveyLike) {
   return flatQuestions.some((q) => q?.type === POST_REMINDER_TYPE);
 }
 
+function normalizeSurveyMetaFields(source = {}) {
+  return {
+    participant_information_title:
+      source?.participant_information_title ||
+      DEFAULT_PARTICIPANT_INFORMATION_TITLE,
+    participant_information_html: source?.participant_information_html || "",
+    consent_title: source?.consent_title || DEFAULT_CONSENT_TITLE,
+    consent_text_html: source?.consent_text_html || "",
+    consent_decline_message_html:
+      source?.consent_decline_message_html ||
+      "You cannot proceed because you did not provide consent to participate.",
+    instructions_title: source?.instructions_title || DEFAULT_INSTRUCTIONS_TITLE,
+    instructions_html: source?.instructions_html || "",
+    pre_feed_button_label:
+      source?.pre_feed_button_label || DEFAULT_PRE_FEED_BUTTON_LABEL,
+  };
+}
+
+function applySurveyMetaDefaults(sourceSurvey = {}, projectId = "") {
+  const normalized = normalizeSurvey(deepClone(sourceSurvey || {}));
+
+  return {
+    ...normalized,
+    linked_project_id: normalized.linked_project_id || projectId || "",
+    trigger: normalized.trigger || "after_feed_submit",
+    status: normalized.status || "draft",
+    version: normalized.version || 1,
+    ...normalizeSurveyMetaFields(normalized),
+  };
+}
+
 function resetSurveyIdentityForCopy(
   sourceSurvey,
   { projectId, keepFeedLinks = true } = {}
 ) {
-  const normalized = normalizeSurvey(deepClone(sourceSurvey || {}));
+  const normalized = applySurveyMetaDefaults(sourceSurvey, projectId);
 
   const copied = {
     ...normalized,
@@ -107,7 +150,7 @@ function resetSurveyIdentityForCopy(
 }
 
 function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
-  const normalized = normalizeSurvey(deepClone(sourceSurvey || {}));
+  const normalized = applySurveyMetaDefaults(sourceSurvey, projectId);
 
   const imported = {
     ...normalized,
@@ -318,19 +361,20 @@ export function AdminSurveysPanel({
   loadFeedPosts,
 }) {
   const projectId = propProjectId || getProjectId();
-  const effectiveLoadFeedPosts = useCallback(
-  async (currentFeedId) => {
-    if (typeof loadFeedPosts === "function") {
-      return await loadFeedPosts(currentFeedId);
-    }
 
-    return await loadPostsFromBackend(currentFeedId, {
-      projectId: projectId || undefined,
-      force: true,
-    });
-  },
-  [loadFeedPosts, projectId]
-);
+  const effectiveLoadFeedPosts = useCallback(
+    async (currentFeedId) => {
+      if (typeof loadFeedPosts === "function") {
+        return await loadFeedPosts(currentFeedId);
+      }
+
+      return await loadPostsFromBackend(currentFeedId, {
+        projectId: projectId || undefined,
+        force: true,
+      });
+    },
+    [loadFeedPosts, projectId]
+  );
 
   const importFileRef = useRef(null);
   const [surveys, setSurveys] = useState([]);
@@ -381,7 +425,8 @@ export function AdminSurveysPanel({
               }),
             ]);
 
-            const normalizedFull = normalizeSurvey(full || {});
+            const normalizedFull = applySurveyMetaDefaults(full || {}, projectId);
+
             return {
               ...s,
               ...normalizedFull,
@@ -395,6 +440,7 @@ export function AdminSurveysPanel({
               linked_feed_ids: [],
               linked_project_id: projectId,
               trigger: "after_feed_submit",
+              ...normalizeSurveyMetaFields({}),
             };
           }
         })
@@ -432,7 +478,8 @@ export function AdminSurveysPanel({
         }),
       ]);
 
-      const normalized = normalizeSurvey(s || {});
+      const normalized = applySurveyMetaDefaults(s || {}, projectId);
+
       const editorSurvey = buildSurveyPagesFromFlatQuestions(
         {
           ...normalized,
@@ -461,6 +508,7 @@ export function AdminSurveysPanel({
       description: "",
       status: "draft",
       version: 1,
+      ...normalizeSurveyMetaFields({}),
       pages: [
         {
           id: "page_1",
@@ -497,13 +545,30 @@ export function AdminSurveysPanel({
   function handleExportSurvey() {
     if (!survey) return;
 
-    const normalized = normalizeSurvey(survey);
+    const normalized = {
+      ...normalizeSurvey(survey),
+      ...normalizeSurveyMetaFields(survey),
+    };
 
     const exportPayload = {
       ...frontendSurveyToBackend(normalized),
       linked_feed_ids: normalizeLinkedFeedIds(normalized.linked_feed_ids),
       linked_project_id: normalized.linked_project_id || "",
       trigger: normalized.trigger || "after_feed_submit",
+      participant_information_title:
+        normalized.participant_information_title ||
+        DEFAULT_PARTICIPANT_INFORMATION_TITLE,
+      participant_information_html:
+        normalized.participant_information_html || "",
+      consent_title: normalized.consent_title || DEFAULT_CONSENT_TITLE,
+      consent_text_html: normalized.consent_text_html || "",
+      consent_decline_message_html:
+        normalized.consent_decline_message_html || "",
+      instructions_title:
+        normalized.instructions_title || DEFAULT_INSTRUCTIONS_TITLE,
+      instructions_html: normalized.instructions_html || "",
+      pre_feed_button_label:
+        normalized.pre_feed_button_label || DEFAULT_PRE_FEED_BUTTON_LABEL,
       exported_at: new Date().toISOString(),
       export_format: "survey_v1",
     };
@@ -534,7 +599,7 @@ export function AdminSurveysPanel({
       const text = await file.text();
       const parsed = JSON.parse(text);
 
-      const normalizedImported = normalizeSurvey(parsed || {});
+      const normalizedImported = applySurveyMetaDefaults(parsed || {}, projectId);
       const importedSurvey = resetSurveyIdentityForImport(normalizedImported, {
         projectId,
       });
@@ -562,6 +627,7 @@ export function AdminSurveysPanel({
         linked_project_id: projectId,
         linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
         trigger: survey.trigger || "after_feed_submit",
+        ...normalizeSurveyMetaFields(survey),
       };
 
       const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
@@ -573,7 +639,9 @@ export function AdminSurveysPanel({
         ...normalized,
         pages: (rebuiltSurvey.pages || []).map((page) => ({
           ...(page || { id: "page_1", title: "", description: "" }),
-          questions: (page.questions || []).map((q, i) => buildSavedQuestion(q, i)),
+          questions: (page.questions || []).map((q, i) =>
+            buildSavedQuestion(q, i)
+          ),
         })),
       };
 
@@ -594,12 +662,15 @@ export function AdminSurveysPanel({
           }),
         ]);
 
-        const normalizedFresh = normalizeSurvey({
-          ...(fresh || {}),
-          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-          linked_project_id: projectId,
-          trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
-        });
+        const normalizedFresh = applySurveyMetaDefaults(
+          {
+            ...(fresh || {}),
+            linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+            linked_project_id: projectId,
+            trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
+          },
+          projectId
+        );
 
         const editorFresh = buildSurveyPagesFromFlatQuestions(
           normalizedFresh,
@@ -767,8 +838,6 @@ export function AdminSurveysPanel({
           const [currentFeedId, posts] = entry;
           nextMap[currentFeedId] = posts;
         });
-
-  
 
         setLinkedFeedPostsMap(nextMap);
       } finally {
@@ -980,6 +1049,140 @@ export function AdminSurveysPanel({
                   onChange={(v) => setSurvey({ ...survey, description: v })}
                   placeholder="Description"
                   rows={3}
+                />
+              </FieldBlock>
+            </SectionCard>
+
+            <SectionCard title="Pre-feed pages">
+              <FieldBlock
+                label="Participant information title"
+                hint="Shown as the heading on the participant information page before the feed."
+              >
+                <TextInput
+                  value={survey.participant_information_title}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      participant_information_title: v,
+                    })
+                  }
+                  placeholder={DEFAULT_PARTICIPANT_INFORMATION_TITLE}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Participant information HTML"
+                hint="Supports HTML formatting. This page is shown before consent."
+              >
+                <TextAreaInput
+                  value={survey.participant_information_html}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      participant_information_html: v,
+                    })
+                  }
+                  placeholder="Enter the participant information sheet content..."
+                  rows={10}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Consent title"
+                hint="Shown as the heading on the consent page."
+              >
+                <TextInput
+                  value={survey.consent_title}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      consent_title: v,
+                    })
+                  }
+                  placeholder={DEFAULT_CONSENT_TITLE}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Consent HTML"
+                hint="Displayed above the Yes / No consent choice."
+              >
+                <TextAreaInput
+                  value={survey.consent_text_html}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      consent_text_html: v,
+                    })
+                  }
+                  placeholder="Enter the participant consent text..."
+                  rows={7}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Decline message HTML"
+                hint="Shown in the blocking overlay/message if the participant selects No."
+              >
+                <TextAreaInput
+                  value={survey.consent_decline_message_html}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      consent_decline_message_html: v,
+                    })
+                  }
+                  placeholder="Enter the decline message..."
+                  rows={4}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Instructions title"
+                hint="Shown as the heading on the instructions page before the feed."
+              >
+                <TextInput
+                  value={survey.instructions_title}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      instructions_title: v,
+                    })
+                  }
+                  placeholder={DEFAULT_INSTRUCTIONS_TITLE}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Instructions HTML"
+                hint="Supports HTML formatting and placeholders such as ${e://Field/PROLIFIC_PID} if you inject them later in your runtime."
+              >
+                <TextAreaInput
+                  value={survey.instructions_html}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      instructions_html: v,
+                    })
+                  }
+                  placeholder="Enter the instructions shown before the feed..."
+                  rows={10}
+                />
+              </FieldBlock>
+
+              <FieldBlock
+                label="Pre-feed button label"
+                hint='Used for the button that moves participants from instructions to the feed, for example "Go to feed".'
+              >
+                <TextInput
+                  value={survey.pre_feed_button_label}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      pre_feed_button_label: v,
+                    })
+                  }
+                  placeholder={DEFAULT_PRE_FEED_BUTTON_LABEL}
                 />
               </FieldBlock>
             </SectionCard>
