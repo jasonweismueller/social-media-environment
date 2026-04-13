@@ -362,14 +362,7 @@ export default function App() {
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
 
-  const completionConfig = useMemo(
-  () => getSurveyCompletionConfig(linkedSurvey),
-  [linkedSurvey]
-);
-
-const [completionState, setCompletionState] = useState({
-  redirected: false,
-});
+  
 
   const [isMobileSurvey, setIsMobileSurvey] = useState(
     typeof window !== "undefined"
@@ -445,6 +438,15 @@ const [completionState, setCompletionState] = useState({
   const [surveyErrors, setSurveyErrors] = useState({});
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
+
+  const completionConfig = useMemo(
+  () => getSurveyCompletionConfig(linkedSurvey),
+  [linkedSurvey]
+);
+
+const [completionState, setCompletionState] = useState({
+  redirected: false,
+});
 
   const [feedSubmitted, setFeedSubmitted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -719,7 +721,7 @@ const [completionState, setCompletionState] = useState({
     } finally {
       if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
     }
-  }, [onAdmin, projectId]);
+  }, [onAdmin, projectId, setCompletionState]);
 
   useEffect(() => {
     const onUrlChange = () => {
