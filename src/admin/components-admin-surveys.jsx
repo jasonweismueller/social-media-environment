@@ -618,80 +618,102 @@ export function AdminSurveysPanel({
   }
 
   async function handleSaveSurvey() {
-    if (!survey) return;
+  if (!survey) return;
 
-    setSavingSurvey(true);
-    try {
-      const normalized = {
-        ...survey,
-        linked_project_id: projectId,
-        linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
-        trigger: survey.trigger || "after_feed_submit",
-        ...normalizeSurveyMetaFields(survey),
-      };
+  setSavingSurvey(true);
+  try {
+    const normalized = {
+      ...survey,
+      linked_project_id: projectId,
+      linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
+      trigger: survey.trigger || "after_feed_submit",
+      ...normalizeSurveyMetaFields(survey),
+    };
 
-      const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
-        normalized,
-        flattenSurveyPagesForEditor(normalized)
+    const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
+      normalized,
+      flattenSurveyPagesForEditor(normalized)
+    );
+
+    const payload = {
+      ...normalized,
+      pages: (rebuiltSurvey.pages || []).map((page) => ({
+        ...(page || { id: "page_1", title: "", description: "" }),
+        questions: (page.questions || []).map((q, i) =>
+          buildSavedQuestion(q, i)
+        ),
+      })),
+    };
+
+    console.log("SAVE PAYLOAD META", {
+      participant_information_title: payload.participant_information_title,
+      participant_information_html: payload.participant_information_html,
+      consent_title: payload.consent_title,
+      consent_text_html: payload.consent_text_html,
+      consent_decline_message_html: payload.consent_decline_message_html,
+      instructions_title: payload.instructions_title,
+      instructions_html: payload.instructions_html,
+      pre_feed_button_label: payload.pre_feed_button_label,
+    });
+
+    const res = await saveSurveyToBackend(payload, { projectId });
+
+    if (res?.ok) {
+      const savedSurveyId = res.survey_id || payload.survey_id;
+
+      const [fresh, linkedFeedIds] = await Promise.all([
+        loadSurveyFromBackend(savedSurveyId, {
+          projectId,
+          force: true,
+        }),
+        getLinkedFeedIdsForSurveyFromBackend({
+          surveyId: savedSurveyId,
+          projectId,
+          allFeeds: feeds,
+        }),
+      ]);
+
+      console.log("RELOADED SURVEY META", {
+        participant_information_title: fresh?.participant_information_title,
+        participant_information_html: fresh?.participant_information_html,
+        consent_title: fresh?.consent_title,
+        consent_text_html: fresh?.consent_text_html,
+        consent_decline_message_html: fresh?.consent_decline_message_html,
+        instructions_title: fresh?.instructions_title,
+        instructions_html: fresh?.instructions_html,
+        pre_feed_button_label: fresh?.pre_feed_button_label,
+      });
+
+      const normalizedFresh = applySurveyMetaDefaults(
+        {
+          ...(fresh || {}),
+          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+          linked_project_id: projectId,
+          trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
+        },
+        projectId
       );
 
-      const payload = {
-        ...normalized,
-        pages: (rebuiltSurvey.pages || []).map((page) => ({
-          ...(page || { id: "page_1", title: "", description: "" }),
-          questions: (page.questions || []).map((q, i) =>
-            buildSavedQuestion(q, i)
-          ),
-        })),
-      };
+      const editorFresh = buildSurveyPagesFromFlatQuestions(
+        normalizedFresh,
+        flattenSurveyPagesForEditor(normalizedFresh)
+      );
 
-      const res = await saveSurveyToBackend(payload, { projectId });
+      setSelectedSurveyId(savedSurveyId);
+      setSurvey(editorFresh);
 
-      if (res?.ok) {
-        const savedSurveyId = res.survey_id || payload.survey_id;
-
-        const [fresh, linkedFeedIds] = await Promise.all([
-          loadSurveyFromBackend(savedSurveyId, {
-            projectId,
-            force: true,
-          }),
-          getLinkedFeedIdsForSurveyFromBackend({
-            surveyId: savedSurveyId,
-            projectId,
-            allFeeds: feeds,
-          }),
-        ]);
-
-        const normalizedFresh = applySurveyMetaDefaults(
-          {
-            ...(fresh || {}),
-            linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
-            linked_project_id: projectId,
-            trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
-          },
-          projectId
-        );
-
-        const editorFresh = buildSurveyPagesFromFlatQuestions(
-          normalizedFresh,
-          flattenSurveyPagesForEditor(normalizedFresh)
-        );
-
-        setSelectedSurveyId(savedSurveyId);
-        setSurvey(editorFresh);
-
-        await loadAll();
-        alert("Survey saved");
-      } else {
-        alert(res?.err || "Failed to save survey");
-      }
-    } catch (e) {
-      console.warn("Failed to save survey:", e);
-      alert("Failed to save survey");
-    } finally {
-      setSavingSurvey(false);
+      await loadAll();
+      alert("Survey saved");
+    } else {
+      alert(res?.err || "Failed to save survey");
     }
+  } catch (e) {
+    console.warn("Failed to save survey:", e);
+    alert("Failed to save survey");
+  } finally {
+    setSavingSurvey(false);
   }
+}
 
   async function handleDeleteSurvey() {
     if (!survey?.survey_id) return;
