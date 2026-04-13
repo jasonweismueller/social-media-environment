@@ -162,8 +162,8 @@ function normalizeBipolarRows(items = [], questionId = "") {
 
       if (item && typeof item === "object") {
         const fallbackValue = makeMatrixRowValue(questionId, i);
-        const value = sanitizeStructuredValue(item.value, fallbackValue);
 
+        const value = sanitizeStructuredValue(item.value, fallbackValue);
         const label = String(item.label ?? "").trim();
         const leftLabel = String(item.left_label ?? item.label ?? "").trim();
         const rightLabel = String(item.right_label ?? "").trim();
@@ -282,6 +282,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     placeholder: String(overrides.placeholder || ""),
     post_id: String(overrides.post_id ?? ""),
     post_label: String(overrides.post_label ?? ""),
+    post_feed_id: String(overrides.post_feed_id ?? ""),
     meta: asObject(overrides.meta),
   };
 }
@@ -300,6 +301,7 @@ export function normalizeQuestion(raw = {}) {
 
   const text = String(raw.text ?? raw.label ?? defaultText);
   const questionId = sanitizeQuestionId(raw.id, `Q_${uid()}`);
+  const meta = asObject(raw.meta);
 
   const normalizedRows =
     type === SURVEY_QUESTION_TYPES.BIPOLAR
@@ -317,6 +319,21 @@ export function normalizeQuestion(raw = {}) {
     raw.feed_overrides,
     visibleInFeeds
   );
+
+  const postId =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? String(raw.post_id ?? meta.post_id ?? "")
+      : "";
+
+  const postLabel =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? String(raw.post_label ?? meta.post_label ?? "")
+      : "";
+
+  const postFeedId =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? String(raw.post_feed_id ?? meta.post_feed_id ?? "")
+      : "";
 
   return {
     id: questionId,
@@ -376,9 +393,10 @@ export function normalizeQuestion(raw = {}) {
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
     placeholder: String(raw.placeholder || ""),
-    post_id: String(raw.post_id ?? ""),
-    post_label: String(raw.post_label ?? ""),
-    meta: asObject(raw.meta),
+    post_id: postId,
+    post_label: postLabel,
+    post_feed_id: postFeedId,
+    meta: meta,
   };
 }
 
@@ -393,7 +411,16 @@ export function frontendQuestionToBackend(question = {}) {
     required: isDisplayOnlyQuestion(q) ? false : !!q.required,
     visible_in_feeds: q.visible_in_feeds,
     feed_overrides: q.feed_overrides,
-    meta: q.meta || {},
+    meta: {
+      ...(q.meta || {}),
+      ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
+        ? {
+            post_id: String(q.post_id ?? ""),
+            post_label: String(q.post_label ?? ""),
+            post_feed_id: String(q.post_feed_id ?? ""),
+          }
+        : {}),
+    },
   };
 
   switch (q.type) {
@@ -402,15 +429,16 @@ export function frontendQuestionToBackend(question = {}) {
     case SURVEY_QUESTION_TYPES.DROPDOWN:
       return {
         ...base,
-        choices: Array.isArray(q.choices) && q.choices.length
-          ? q.choices.map((choice, i) => ({
-              value: sanitizeStructuredValue(choice?.value, `opt_${i + 1}`),
-              label: String(choice?.label ?? ""),
-            }))
-          : q.options.map((opt, i) => ({
-              value: `opt_${i + 1}`,
-              label: opt,
-            })),
+        choices:
+          Array.isArray(q.choices) && q.choices.length
+            ? q.choices.map((choice, i) => ({
+                value: sanitizeStructuredValue(choice?.value, `opt_${i + 1}`),
+                label: String(choice?.label ?? ""),
+              }))
+            : q.options.map((opt, i) => ({
+                value: `opt_${i + 1}`,
+                label: opt,
+              })),
         randomize_options: !!q.randomize_options,
       };
 
@@ -443,32 +471,33 @@ export function frontendQuestionToBackend(question = {}) {
               right_label: String(row?.right_label ?? ""),
             }))
           : [],
-        columns: Array.isArray(q.columns) && q.columns.length
-          ? q.columns.map((col, i) => ({
-              value: String(
-                col?.value ??
-                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
-              ),
-              label: String(
-                col?.label ??
+        columns:
+          Array.isArray(q.columns) && q.columns.length
+            ? q.columns.map((col, i) => ({
+                value: String(
                   col?.value ??
-                  String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
-              ),
-            }))
-          : Array.from(
-              {
-                length: Math.max(
-                  2,
-                  Number.isFinite(q.max) && Number.isFinite(q.min)
-                    ? Number(q.max) - Number(q.min) + 1
-                    : 7
+                    String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
                 ),
-              },
-              (_, i) => ({
-                value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
-                label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
-              })
-            ),
+                label: String(
+                  col?.label ??
+                    col?.value ??
+                    String((Number.isFinite(q.min) ? Number(q.min) : 1) + i)
+                ),
+              }))
+            : Array.from(
+                {
+                  length: Math.max(
+                    2,
+                    Number.isFinite(q.max) && Number.isFinite(q.min)
+                      ? Number(q.max) - Number(q.min) + 1
+                      : 7
+                  ),
+                },
+                (_, i) => ({
+                  value: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+                  label: String((Number.isFinite(q.min) ? Number(q.min) : 1) + i),
+                })
+              ),
         min: q.min,
         max: q.max,
         left_label: q.left_label ?? q.min_label ?? "",
@@ -490,6 +519,7 @@ export function frontendQuestionToBackend(question = {}) {
         required: false,
         post_id: String(q.post_id ?? ""),
         post_label: String(q.post_label ?? ""),
+        post_feed_id: String(q.post_feed_id ?? ""),
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
@@ -633,7 +663,6 @@ function coerceQuestionsIntoPages(raw = {}) {
   }
 
   const legacyQuestions = Array.isArray(safeRaw.questions) ? safeRaw.questions : [];
-
   return splitQuestionsIntoPages(legacyQuestions);
 }
 
@@ -811,6 +840,7 @@ export function makeQuestionByType(type) {
         required: false,
         post_id: "",
         post_label: "",
+        post_feed_id: "",
       });
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
