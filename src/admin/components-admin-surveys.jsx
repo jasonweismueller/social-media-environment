@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+
 import {
   normalizeSurvey,
   frontendSurveyToBackend,
@@ -645,17 +646,7 @@ export function AdminSurveysPanel({
       })),
     };
 
-    console.log("SAVE PAYLOAD META", {
-      participant_information_title: payload.participant_information_title,
-      participant_information_html: payload.participant_information_html,
-      consent_title: payload.consent_title,
-      consent_text_html: payload.consent_text_html,
-      consent_decline_message_html: payload.consent_decline_message_html,
-      instructions_title: payload.instructions_title,
-      instructions_html: payload.instructions_html,
-      pre_feed_button_label: payload.pre_feed_button_label,
-    });
-
+    
     const res = await saveSurveyToBackend(payload, { projectId });
 
     if (res?.ok) {

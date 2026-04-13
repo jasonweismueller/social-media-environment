@@ -33,9 +33,9 @@ import {
 import { AdminDashboard } from "./admin/components-admin-dashboard";
 import AdminLogin from "./admin/components-admin-login";
 
-/* ========================================================================
+/* =========================================================================
    Mode & helpers
-   ====================================================================== */
+   ======================================================================= */
 const MODE = (new URLSearchParams(window.location.search).get("style") || window.CONFIG?.STYLE || "ig").toLowerCase();
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
