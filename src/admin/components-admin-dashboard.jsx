@@ -1309,10 +1309,26 @@ const randomBioBusy = !!ff.savingBio;
             >
               <div className="section-collapse-inner">
                 <AdminSurveysPanel
-                  projectId={projectId}
-                  feedId={feedId}
-                  feeds={feeds}
-                />
+  projectId={projectId}
+  feedId={feedId}
+  feeds={feeds}
+  loadFeedPosts={async (targetFeedId) => {
+    const fresh = await loadPostsFromBackend(targetFeedId, {
+      projectId: pidForBackend(projectId),
+      force: true,
+    });
+
+    const arr = Array.isArray(fresh) ? fresh : [];
+    arr.forEach((p) => {
+      if ("showTime" in p) delete p.showTime;
+      if (!p.authorType) {
+        p.authorType = p.adType === "ad" ? "company" : "female";
+      }
+    });
+
+    return arr;
+  }}
+/>
               </div>
             </div>
           </Section>
