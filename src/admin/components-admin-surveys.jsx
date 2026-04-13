@@ -11,6 +11,8 @@ import {
   deleteSurveyOnBackend,
   linkSurveyToFeedsOnBackend,
   getLinkedFeedIdsForSurveyFromBackend,
+  loadPostsFromBackend,
+  SURVEY_QUESTION_TYPES,
 } from "../utils";
 
 import {
@@ -24,6 +26,9 @@ import {
 /* =========================
    Local helpers
    ========================== */
+
+const POST_REMINDER_TYPE =
+  SURVEY_QUESTION_TYPES?.POST_REMINDER || "post_reminder";
 
 function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
@@ -50,7 +55,15 @@ function makeImportedSurveyName(name = "") {
   return base.endsWith("(Imported)") ? base : `${base} (Imported)`;
 }
 
-function resetSurveyIdentityForCopy(sourceSurvey, { projectId, keepFeedLinks = true } = {}) {
+function hasPostReminderQuestion(surveyLike) {
+  const flatQuestions = flattenSurveyPagesForEditor(surveyLike || {});
+  return flatQuestions.some((q) => q?.type === POST_REMINDER_TYPE);
+}
+
+function resetSurveyIdentityForCopy(
+  sourceSurvey,
+  { projectId, keepFeedLinks = true } = {}
+) {
   const normalized = normalizeSurvey(deepClone(sourceSurvey || {}));
 
   const copied = {
@@ -58,7 +71,9 @@ function resetSurveyIdentityForCopy(sourceSurvey, { projectId, keepFeedLinks = t
     survey_id: "",
     name: makeCopiedSurveyName(normalized.name),
     linked_project_id: projectId || "",
-    linked_feed_ids: keepFeedLinks ? normalizeLinkedFeedIds(normalized.linked_feed_ids) : [],
+    linked_feed_ids: keepFeedLinks
+      ? normalizeLinkedFeedIds(normalized.linked_feed_ids)
+      : [],
     created_at: null,
     updated_at: null,
     version: 1,
@@ -77,7 +92,9 @@ function resetSurveyIdentityForCopy(sourceSurvey, { projectId, keepFeedLinks = t
           visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
             ? [...cleanQ.visible_in_feeds]
             : [],
-          feed_overrides: cleanQ?.feed_overrides ? deepClone(cleanQ.feed_overrides) : {},
+          feed_overrides: cleanQ?.feed_overrides
+            ? deepClone(cleanQ.feed_overrides)
+            : {},
         };
       }),
     })),
@@ -116,7 +133,9 @@ function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
           visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
             ? [...cleanQ.visible_in_feeds]
             : [],
-          feed_overrides: cleanQ?.feed_overrides ? deepClone(cleanQ.feed_overrides) : {},
+          feed_overrides: cleanQ?.feed_overrides
+            ? deepClone(cleanQ.feed_overrides)
+            : {},
         };
       }),
     })),
@@ -138,7 +157,9 @@ function surveyListButtonStyle(isActive) {
     marginBottom: 8,
     background: isActive ? "#eef2ff" : "#fff",
     border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
-    boxShadow: isActive ? "0 1px 2px rgba(79,70,229,0.10)" : "0 1px 2px rgba(0,0,0,0.03)",
+    boxShadow: isActive
+      ? "0 1px 2px rgba(79,70,229,0.10)"
+      : "0 1px 2px rgba(0,0,0,0.03)",
     transition: "all 0.15s ease",
   };
 }
@@ -175,10 +196,14 @@ function SectionCard({ title, children, right = null }) {
 function FieldBlock({ label, children, hint = "" }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+        {label}
+      </div>
       {children}
       {hint ? (
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{hint}</div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+          {hint}
+        </div>
       ) : null}
     </div>
   );
@@ -286,8 +311,21 @@ function IconOnlyButton({
    Main Component
    ========================= */
 
-export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: propFeeds }) {
+export function AdminSurveysPanel({
+  projectId: propProjectId,
+  feedId,
+  feeds: propFeeds,
+  loadFeedPosts,
+}) {
   const projectId = propProjectId || getProjectId();
+  const effectiveLoadFeedPosts =
+    typeof loadFeedPosts === "function"
+      ? loadFeedPosts
+      : async (currentFeedId) =>
+          loadPostsFromBackend(currentFeedId, {
+            projectId: projectId || undefined,
+            force: true,
+          });
 
   const importFileRef = useRef(null);
   const [surveys, setSurveys] = useState([]);
@@ -297,6 +335,8 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
   const [loading, setLoading] = useState(false);
   const [savingSurvey, setSavingSurvey] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
+  const [linkedFeedPostsMap, setLinkedFeedPostsMap] = useState({});
+  const [loadingReminderPosts, setLoadingReminderPosts] = useState(false);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -370,8 +410,10 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
   async function handleSelectSurvey(id) {
     setSelectedSurveyId(id);
+
     if (!id) {
       setSurvey(null);
+      setLinkedFeedPostsMap({});
       return;
     }
 
@@ -400,6 +442,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     } catch (e) {
       console.warn("Failed to load survey:", e);
       setSurvey(null);
+      setLinkedFeedPostsMap({});
     }
   }
 
@@ -430,6 +473,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
     setSurvey(editorSurvey);
     setSelectedSurveyId(null);
+    setLinkedFeedPostsMap({});
   }
 
   function handleCopySurvey() {
@@ -442,6 +486,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
     setSurvey(copiedSurvey);
     setSelectedSurveyId(null);
+    setLinkedFeedPostsMap({});
   }
 
   function handleExportSurvey() {
@@ -491,6 +536,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
 
       setSurvey(importedSurvey);
       setSelectedSurveyId(null);
+      setLinkedFeedPostsMap({});
     } catch (e) {
       console.warn("Failed to import survey:", e);
       alert("Failed to import survey JSON.");
@@ -580,6 +626,7 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       if (res?.ok) {
         setSurvey(null);
         setSelectedSurveyId(null);
+        setLinkedFeedPostsMap({});
         await loadAll();
       } else {
         alert(res?.err || "Failed to delete survey");
@@ -656,12 +703,88 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
     );
   }, [feeds, survey]);
 
+  const needsReminderPosts = useMemo(() => {
+    return hasPostReminderQuestion(survey);
+  }, [survey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLinkedFeedPostsForReminder() {
+      if (!survey) {
+        setLinkedFeedPostsMap({});
+        setLoadingReminderPosts(false);
+        return;
+      }
+
+      if (!needsReminderPosts) {
+        setLinkedFeedPostsMap({});
+        setLoadingReminderPosts(false);
+        return;
+      }
+
+      const relevantFeeds = Array.isArray(linkedFeedsForEditor)
+        ? linkedFeedsForEditor
+        : [];
+
+      if (!relevantFeeds.length) {
+        setLinkedFeedPostsMap({});
+        setLoadingReminderPosts(false);
+        return;
+      }
+
+      setLoadingReminderPosts(true);
+
+      try {
+        const entries = await Promise.all(
+          relevantFeeds.map(async (feed) => {
+            const currentFeedId = String(feed?.feed_id || "").trim();
+            if (!currentFeedId) return null;
+
+            try {
+              const posts = await effectiveLoadFeedPosts(currentFeedId);
+              return [currentFeedId, Array.isArray(posts) ? posts : []];
+            } catch (e) {
+              console.warn(
+                `Failed to load posts for feed ${currentFeedId}:`,
+                e
+              );
+              return [currentFeedId, []];
+            }
+          })
+        );
+
+        if (cancelled) return;
+
+        const nextMap = {};
+        entries.forEach((entry) => {
+          if (!entry) return;
+          const [currentFeedId, posts] = entry;
+          nextMap[currentFeedId] = posts;
+        });
+
+        setLinkedFeedPostsMap(nextMap);
+      } finally {
+        if (!cancelled) {
+          setLoadingReminderPosts(false);
+        }
+      }
+    }
+
+    loadLinkedFeedPostsForReminder();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [survey, needsReminderPosts, linkedFeedsForEditor, effectiveLoadFeedPosts]);
+
   const pageCount = useMemo(() => {
     if (!survey) return 0;
-    const pages = buildSurveyPagesFromFlatQuestions(
-      survey,
-      flattenSurveyPagesForEditor(survey)
-    ).pages || [];
+    const pages =
+      buildSurveyPagesFromFlatQuestions(
+        survey,
+        flattenSurveyPagesForEditor(survey)
+      ).pages || [];
     return pages.length;
   }, [survey]);
 
@@ -684,7 +807,9 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
           }}
         >
           <h3 style={{ margin: 0 }}>Survey list</h3>
-          {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+          {loading && (
+            <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>
+          )}
         </div>
 
         <button
@@ -735,7 +860,9 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        {!survey && <div style={{ color: "#6b7280" }}>Select or create a survey.</div>}
+        {!survey && (
+          <div style={{ color: "#6b7280" }}>Select or create a survey.</div>
+        )}
 
         {survey && (
           <>
@@ -749,9 +876,17 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
             >
               <h3 style={{ margin: 0 }}>Survey Editor</h3>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {linkedFeedCount} linked feed{linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
+                  {linkedFeedCount} linked feed
+                  {linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
                   {pageCount === 1 ? "" : "s"}
                 </div>
 
@@ -871,7 +1006,9 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
                   overflow: "auto",
                 }}
               >
-                {feeds.length === 0 && <div style={{ color: "#6b7280" }}>No feeds found.</div>}
+                {feeds.length === 0 && (
+                  <div style={{ color: "#6b7280" }}>No feeds found.</div>
+                )}
 
                 {feeds.map((f) => (
                   <div key={f.feed_id} style={{ marginBottom: 8 }}>
@@ -885,12 +1022,16 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
                     >
                       <input
                         type="checkbox"
-                        checked={normalizeLinkedFeedIds(survey.linked_feed_ids).includes(f.feed_id)}
+                        checked={normalizeLinkedFeedIds(
+                          survey.linked_feed_ids
+                        ).includes(f.feed_id)}
                         onChange={() => toggleFeed(f.feed_id)}
                       />
                       <span>{f.name || f.feed_id}</span>
                       {feedId && f.feed_id === feedId && (
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>(current)</span>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          (current)
+                        </span>
                       )}
                     </label>
                   </div>
@@ -898,10 +1039,17 @@ export function AdminSurveysPanel({ projectId: propProjectId, feedId, feeds: pro
               </div>
             </SectionCard>
 
+            {needsReminderPosts && loadingReminderPosts && (
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                Loading linked feed posts for post reminder questions…
+              </div>
+            )}
+
             <SurveyEditor
               survey={survey}
               onSurveyChange={setSurvey}
               linkedFeeds={linkedFeedsForEditor}
+              linkedFeedPostsMap={linkedFeedPostsMap}
             />
 
             <div style={{ display: "flex", gap: 10 }}>

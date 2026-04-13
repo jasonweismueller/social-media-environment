@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   makeEmptySurvey,
   makeQuestionByType,
-  normalizeSurvey,
   SURVEY_QUESTION_TYPES,
 } from "../utils";
 
@@ -11,8 +10,8 @@ import {
    ========================== */
 
 export const EDITOR_PAGE_BREAK_TYPE = "page_break";
-
-const POST_REMINDER_TYPE = SURVEY_QUESTION_TYPES.POST_REMINDER || "post_reminder";
+const POST_REMINDER_TYPE =
+  SURVEY_QUESTION_TYPES.POST_REMINDER || "post_reminder";
 
 export const QUESTION_TYPE_LABELS = {
   [SURVEY_QUESTION_TYPES.TEXT]: "Text",
@@ -130,7 +129,8 @@ function stripHtmlForEmptyCheck(html = "") {
 }
 
 export function normalizeFeedOverridesMap(value = {}) {
-  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const input =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const out = {};
 
   Object.entries(input).forEach(([feedId, override]) => {
@@ -138,7 +138,9 @@ export function normalizeFeedOverridesMap(value = {}) {
     if (!cleanFeedId) return;
 
     const safeOverride =
-      override && typeof override === "object" && !Array.isArray(override) ? override : {};
+      override && typeof override === "object" && !Array.isArray(override)
+        ? override
+        : {};
 
     out[cleanFeedId] = {
       text: normalizeRichTextHtml(safeOverride.text ?? ""),
@@ -186,10 +188,7 @@ export function shouldAutoRewriteRowValues(question) {
 }
 
 function isEditorDisplayOnlyType(type) {
-  return (
-    type === SURVEY_QUESTION_TYPES.INFO ||
-    type === POST_REMINDER_TYPE
-  );
+  return type === SURVEY_QUESTION_TYPES.INFO || type === POST_REMINDER_TYPE;
 }
 
 export function ensureChoiceArray(items = []) {
@@ -251,7 +250,9 @@ export function rewriteQuestionRowValues(question, nextQuestionId) {
 export function makeCopiedQuestionId(existingIds = [], sourceId = "") {
   const cleanSourceId = sanitizeQuestionId(sourceId, `Q_${Date.now()}`);
   const idSet = new Set(
-    (Array.isArray(existingIds) ? existingIds : []).map((x) => String(x || "").trim())
+    (Array.isArray(existingIds) ? existingIds : []).map((x) =>
+      String(x || "").trim()
+    )
   );
 
   let nextId = `${cleanSourceId}_COPY`;
@@ -290,9 +291,9 @@ export function isCountedQuestionType(type) {
   );
 }
 
-function derivePostOptionLabel(post = {}, index = 0) {
+function derivePostOptionLabel(post = {}, index = 0, feedName = "") {
   const explicitName = String(post?.name || "").trim();
-  if (explicitName) return explicitName;
+  if (explicitName) return feedName ? `${feedName} · ${explicitName}` : explicitName;
 
   const author = String(post?.author || post?.username || "").trim();
   const text = String(post?.text || post?.caption || post?.body || "")
@@ -300,11 +301,66 @@ function derivePostOptionLabel(post = {}, index = 0) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (author && text) return `${author}: ${text.slice(0, 80)}`;
-  if (author) return author;
-  if (text) return text.slice(0, 80);
+  let base = `Post ${index + 1}`;
+  if (author && text) base = `${author}: ${text.slice(0, 80)}`;
+  else if (author) base = author;
+  else if (text) base = text.slice(0, 80);
 
-  return `Post ${index + 1}`;
+  return feedName ? `${feedName} · ${base}` : base;
+}
+
+function getRelevantFeedIdsForQuestion(q, linkedFeeds = []) {
+  const linkedFeedIds = (Array.isArray(linkedFeeds) ? linkedFeeds : [])
+    .map((feed) => String(feed?.feed_id || "").trim())
+    .filter(Boolean);
+
+  const visibleFeedIds = normalizeVisibleInFeeds(q?.visible_in_feeds);
+
+  if (visibleFeedIds.length === 0) return linkedFeedIds;
+
+  const linkedSet = new Set(linkedFeedIds);
+  return visibleFeedIds.filter((feedId) => linkedSet.has(feedId));
+}
+
+function getAvailablePostsForQuestion(q, linkedFeeds = [], linkedFeedPostsMap = {}) {
+  if (q?.type !== POST_REMINDER_TYPE) return [];
+
+  const relevantFeedIds = getRelevantFeedIdsForQuestion(q, linkedFeeds);
+  const linkedFeedLookup = new Map(
+    (Array.isArray(linkedFeeds) ? linkedFeeds : []).map((feed) => [
+      String(feed?.feed_id || "").trim(),
+      feed,
+    ])
+  );
+
+  const seen = new Set();
+  const out = [];
+
+  relevantFeedIds.forEach((feedId) => {
+    const posts = Array.isArray(linkedFeedPostsMap?.[feedId])
+      ? linkedFeedPostsMap[feedId]
+      : [];
+    const feed = linkedFeedLookup.get(feedId);
+    const feedName = String(feed?.name || feedId || "").trim();
+
+    posts.forEach((post, postIndex) => {
+      const postId = String(post?.id || "").trim();
+      if (!postId) return;
+
+      const dedupeKey = `${feedId}::${postId}`;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      out.push({
+        ...post,
+        _feed_id: feedId,
+        _feed_name: feedName,
+        _option_label: derivePostOptionLabel(post, postIndex, feedName),
+      });
+    });
+  });
+
+  return out;
 }
 
 export function normalizeQuestionForEditor(q = {}, index = 0) {
@@ -330,6 +386,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       feed_overrides: {},
       post_id: "",
       post_label: "",
+      post_feed_id: "",
       _showFeedVisibilityEditor: false,
       _showFeedOverridesEditor: false,
       meta: q?.meta || {},
@@ -363,6 +420,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     feed_overrides: normalizeFeedOverridesMap(q?.feed_overrides),
     post_id: String(q?.post_id ?? ""),
     post_label: String(q?.post_label ?? ""),
+    post_feed_id: String(q?.post_feed_id ?? q?.meta?.post_feed_id ?? ""),
     _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
     _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
     meta: q?.meta || {},
@@ -416,7 +474,9 @@ export function buildSurveyPagesFromFlatQuestions(survey, items) {
       splitPages.push(currentQuestions);
       currentQuestions = [];
     } else {
-      currentQuestions.push(normalizeQuestionForEditor(item, currentQuestions.length));
+      currentQuestions.push(
+        normalizeQuestionForEditor(item, currentQuestions.length)
+      );
     }
   });
 
@@ -494,6 +554,7 @@ export function makeBackendQuestionFromType(type, index = 0) {
     feed_overrides: normalizeFeedOverridesMap(base?.feed_overrides),
     post_id: String(base?.post_id ?? ""),
     post_label: String(base?.post_label ?? ""),
+    post_feed_id: String(base?.post_feed_id ?? ""),
     _showFeedVisibilityEditor: false,
     _showFeedOverridesEditor: false,
     meta: base?.meta || {},
@@ -502,8 +563,12 @@ export function makeBackendQuestionFromType(type, index = 0) {
   if (type === POST_REMINDER_TYPE) {
     question.text =
       normalizeRichTextHtml(
-        String(base?.text ?? "<p><b>Please look at this post again before answering.</b></p>")
-      ) || "<p><b>Please look at this post again before answering.</b></p>";
+        String(
+          base?.text ??
+            "<p><b>Please look at this post again before answering.</b></p>"
+        )
+      ) ||
+      "<p><b>Please look at this post again before answering.</b></p>";
     question.required = false;
   }
 
@@ -530,7 +595,8 @@ export function makeBackendQuestionFromType(type, index = 0) {
     type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
   ) {
     const srcRows = Array.isArray(base?.rows) && base.rows.length ? base.rows : [];
-    const srcCols = Array.isArray(base?.columns) && base.columns.length ? base.columns : [];
+    const srcCols =
+      Array.isArray(base?.columns) && base.columns.length ? base.columns : [];
     question.rows = ensureMatrixRowsFromQuestionId(srcRows, question.id);
     question.columns = ensureMatrixArray(srcCols, "col");
   }
@@ -561,8 +627,13 @@ export function buildSavedQuestion(q, index) {
     rows:
       cleanQ.type === SURVEY_QUESTION_TYPES.BIPOLAR
         ? (Array.isArray(cleanQ.rows) ? cleanQ.rows : []).map((row, i) => ({
-            value: preserveEmptyOrSanitize(row?.value, makeMatrixRowValue(cleanQ.id, i)),
-            label: String(row?.label ?? row?.left_label ?? `Row ${i + 1}`).trim(),
+            value: preserveEmptyOrSanitize(
+              row?.value,
+              makeMatrixRowValue(cleanQ.id, i)
+            ),
+            label: String(
+              row?.label ?? row?.left_label ?? `Row ${i + 1}`
+            ).trim(),
             left_label: String(row?.left_label ?? row?.label ?? "").trim(),
             right_label: String(row?.right_label ?? "").trim(),
           }))
@@ -587,8 +658,19 @@ export function buildSavedQuestion(q, index) {
       normalizeVisibleInFeeds(cleanQ.visible_in_feeds)
     ),
     post_id: cleanQ.type === POST_REMINDER_TYPE ? String(cleanQ.post_id || "") : "",
-    post_label: cleanQ.type === POST_REMINDER_TYPE ? String(cleanQ.post_label || "") : "",
-    meta: cleanQ.meta || {},
+    post_label:
+      cleanQ.type === POST_REMINDER_TYPE ? String(cleanQ.post_label || "") : "",
+    post_feed_id:
+      cleanQ.type === POST_REMINDER_TYPE
+        ? String(cleanQ.post_feed_id || "")
+        : "",
+    meta:
+      cleanQ.type === POST_REMINDER_TYPE
+        ? {
+            ...(cleanQ.meta || {}),
+            post_feed_id: String(cleanQ.post_feed_id || ""),
+          }
+        : cleanQ.meta || {},
     randomize_options: false,
   };
 }
@@ -777,27 +859,6 @@ function TextCursorIcon({ size = 14 }) {
       <path d="M4 7V5h16v2" />
       <path d="M12 5v14" />
       <path d="M8 19h8" />
-    </svg>
-  );
-}
-
-function PostCardIcon({ size = 14 }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3" y="4" width="18" height="16" rx="2" ry="2" />
-      <line x1="7" y1="8" x2="17" y2="8" />
-      <line x1="7" y1="12" x2="17" y2="12" />
-      <line x1="7" y1="16" x2="13" y2="16" />
     </svg>
   );
 }
@@ -1056,10 +1117,14 @@ function SelectInput({ value, onChange, children, style, disabled = false }) {
 function FieldBlock({ label, children, hint = "" }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+        {label}
+      </div>
       {children}
       {hint ? (
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{hint}</div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+          {hint}
+        </div>
       ) : null}
     </div>
   );
@@ -1396,7 +1461,8 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           padding: 0,
           boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
           opacity: isActive ? 1 : 0.4,
-          transition: "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
+          transition:
+            "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
           transform: isActive ? "scale(1)" : "scale(0.96)",
         }}
       >
@@ -1505,7 +1571,9 @@ function ItemTableEditor({
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{title}</div>
 
       {safeItems.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>No items yet.</div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+          No items yet.
+        </div>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
@@ -1592,7 +1660,9 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
       </div>
 
       {safeItems.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>No rows yet.</div>
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+          No rows yet.
+        </div>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
@@ -1845,8 +1915,33 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
   );
 }
 
-function PostReminderEditor({ availablePosts, value, label, onChange }) {
+function PostReminderEditor({
+  availablePosts,
+  value,
+  label,
+  selectedFeedIds = [],
+  onChange,
+}) {
   const safePosts = Array.isArray(availablePosts) ? availablePosts : [];
+  const hasRelevantFeeds = Array.isArray(selectedFeedIds) && selectedFeedIds.length > 0;
+
+  if (!hasRelevantFeeds) {
+    return (
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: 10,
+          padding: 12,
+          background: "#fafafa",
+          color: "#6b7280",
+          fontSize: 13,
+        }}
+      >
+        Link this survey to feeds first. Then you can choose which linked-feed post should be shown
+        again in the survey.
+      </div>
+    );
+  }
 
   if (safePosts.length === 0) {
     return (
@@ -1860,8 +1955,8 @@ function PostReminderEditor({ availablePosts, value, label, onChange }) {
           fontSize: 13,
         }}
       >
-        No posts are available yet. Load or create feed posts first, then choose which one should
-        be shown again in the survey.
+        No posts were found in the relevant linked feed(s). Save or load posts in those feeds first,
+        then choose which one should be shown again in the survey.
       </div>
     );
   }
@@ -1884,9 +1979,11 @@ function PostReminderEditor({ availablePosts, value, label, onChange }) {
 
           onChange({
             post_id: String(nextPostId || ""),
-            post_label: nextPostId
-              ? derivePostOptionLabel(selectedPost || {}, safePosts.indexOf(selectedPost))
-              : "",
+            post_label: nextPostId ? String(selectedPost?._option_label || "") : "",
+            post_feed_id: nextPostId ? String(selectedPost?._feed_id || "") : "",
+            meta: {
+              post_feed_id: nextPostId ? String(selectedPost?._feed_id || "") : "",
+            },
           });
         }}
       >
@@ -1896,8 +1993,8 @@ function PostReminderEditor({ availablePosts, value, label, onChange }) {
           if (!postId) return null;
 
           return (
-            <option key={postId} value={postId}>
-              {derivePostOptionLabel(post, postIndex)}
+            <option key={`${post._feed_id || "feed"}::${postId}`} value={postId}>
+              {post._option_label || derivePostOptionLabel(post, postIndex, post?._feed_name || "")}
             </option>
           );
         })}
@@ -2026,10 +2123,7 @@ function QuestionActions({
           ↓
         </button>
 
-        <IconOnlyButton
-          onClick={() => duplicateQuestion(index)}
-          title="Copy question"
-        >
+        <IconOnlyButton onClick={() => duplicateQuestion(index)} title="Copy question">
           <CopyIcon size={16} />
         </IconOnlyButton>
 
@@ -2049,7 +2143,7 @@ function QuestionCard({
   displayNumber,
   totalQuestions,
   linkedFeeds,
-  availablePosts,
+  linkedFeedPostsMap,
   updateQuestion,
   removeQuestion,
   moveQuestion,
@@ -2083,15 +2177,26 @@ function QuestionCard({
 
   const scopedFeedIds = normalizeVisibleInFeeds(q?.visible_in_feeds);
   const scopedFeeds = Array.isArray(linkedFeeds)
-    ? linkedFeeds.filter((feed) => scopedFeedIds.includes(String(feed?.feed_id || "").trim()))
+    ? linkedFeeds.filter((feed) =>
+        scopedFeedIds.includes(String(feed?.feed_id || "").trim())
+      )
     : [];
 
   const hasFeedVisibilitySelection = scopedFeedIds.length > 0;
   const safeOverrideFeeds = hasFeedVisibilitySelection ? scopedFeeds : linkedFeeds;
 
+  const reminderFeedIds = getRelevantFeedIdsForQuestion(q, linkedFeeds);
+  const availablePostsForQuestion = getAvailablePostsForQuestion(
+    q,
+    linkedFeeds,
+    linkedFeedPostsMap
+  );
+
   const shellStyle = {
     position: "relative",
-    border: isDragOver ? "2px solid #6366f1" : `1px solid ${isPageBreak ? "#9ca3af" : "#d1d5db"}`,
+    border: isDragOver
+      ? "2px solid #6366f1"
+      : `1px solid ${isPageBreak ? "#9ca3af" : "#d1d5db"}`,
     borderStyle: isPageBreak ? "dashed" : "solid",
     borderRadius: 12,
     padding: 14,
@@ -2244,12 +2349,19 @@ function QuestionCard({
                 _editorId: q._editorId,
                 id: preservedId,
                 text: q.text || next.text,
-                required: isEditorDisplayOnlyType(nextType) ? false : !!q.required,
+                required: isEditorDisplayOnlyType(nextType)
+                  ? false
+                  : !!q.required,
                 visible_if: q.visible_if || null,
                 visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
                 feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
                 post_id: nextType === POST_REMINDER_TYPE ? String(q.post_id || "") : "",
-                post_label: nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
+                post_label:
+                  nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
+                post_feed_id:
+                  nextType === POST_REMINDER_TYPE
+                    ? String(q.post_feed_id || "")
+                    : "",
                 _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
                 _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
                 meta: q.meta || {},
@@ -2306,10 +2418,11 @@ function QuestionCard({
       {isPostReminder && (
         <FieldBlock
           label="Post to show again"
-          hint="This will display the selected feed post again in the survey as a non-interactive reminder."
+          hint="This will display the selected linked-feed post again in the survey as a non-interactive reminder."
         >
           <PostReminderEditor
-            availablePosts={availablePosts}
+            availablePosts={availablePostsForQuestion}
+            selectedFeedIds={reminderFeedIds}
             value={q.post_id}
             label={q.post_label}
             onChange={(patch) => updateQuestion(index, patch)}
@@ -2321,7 +2434,9 @@ function QuestionCard({
         <ItemTableEditor
           title="Options"
           items={q.choices}
-          onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
+          onChange={(items) =>
+            updateQuestion(index, { choices: ensureChoiceArray(items) })
+          }
           prefix="opt"
           addLabel="Add option"
         />
@@ -2492,7 +2607,8 @@ function QuestionCard({
               availableFeeds={linkedFeeds}
               value={q.visible_in_feeds}
               onChange={(nextVisibleInFeeds) => {
-                const normalizedVisibleFeeds = normalizeVisibleInFeeds(nextVisibleInFeeds);
+                const normalizedVisibleFeeds =
+                  normalizeVisibleInFeeds(nextVisibleInFeeds);
                 const prunedOverrides = pruneFeedOverridesMap(
                   q.feed_overrides,
                   normalizedVisibleFeeds
@@ -2564,7 +2680,7 @@ export function SurveyEditor({
   survey,
   onSurveyChange,
   linkedFeeds = [],
-  availablePosts = [],
+  linkedFeedPostsMap = {},
 }) {
   const [draggingQuestionId, setDraggingQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
@@ -2597,7 +2713,11 @@ export function SurveyEditor({
       const current = getQuestionList(prev);
       const insertIndex = position === "above" ? index : index + 1;
       const nextQuestions = [...current];
-      nextQuestions.splice(insertIndex, 0, makeBackendQuestionFromType(type, insertIndex));
+      nextQuestions.splice(
+        insertIndex,
+        0,
+        makeBackendQuestionFromType(type, insertIndex)
+      );
       return setQuestionList(prev, nextQuestions);
     });
   }
@@ -2624,10 +2744,15 @@ export function SurveyEditor({
         visible_if: sourceQuestion?.visible_if
           ? JSON.parse(JSON.stringify(sourceQuestion.visible_if))
           : null,
-        visible_in_feeds: normalizeVisibleInFeeds(sourceQuestion?.visible_in_feeds),
-        feed_overrides: normalizeFeedOverridesMap(sourceQuestion?.feed_overrides),
+        visible_in_feeds: normalizeVisibleInFeeds(
+          sourceQuestion?.visible_in_feeds
+        ),
+        feed_overrides: normalizeFeedOverridesMap(
+          sourceQuestion?.feed_overrides
+        ),
         post_id: String(sourceQuestion?.post_id ?? ""),
         post_label: String(sourceQuestion?.post_label ?? ""),
+        post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
         _showFeedVisibilityEditor: !!sourceQuestion?._showFeedVisibilityEditor,
         _showFeedOverridesEditor: !!sourceQuestion?._showFeedOverridesEditor,
       };
@@ -2733,7 +2858,7 @@ export function SurveyEditor({
           displayNumber={questionDisplayNumbers[i]}
           totalQuestions={currentQuestions.length}
           linkedFeeds={linkedFeeds}
-          availablePosts={availablePosts}
+          linkedFeedPostsMap={linkedFeedPostsMap}
           updateQuestion={updateQuestion}
           removeQuestion={removeQuestion}
           moveQuestion={moveQuestion}
