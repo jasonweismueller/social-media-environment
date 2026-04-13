@@ -169,14 +169,46 @@ function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
 
 function getReminderApp() {
   if (typeof window === "undefined") return "fb";
+  return String(
+    window.APP ||
+      new URLSearchParams(window.location.search).get("app") ||
+      "fb"
+  ).toLowerCase() === "ig"
+    ? "ig"
+    : "fb";
+}
+
+function HtmlBlock({ html, className, style }) {
+  if (!html) return null;
   return (
-    String(
-      window.APP ||
-        new URLSearchParams(window.location.search).get("app") ||
-        "fb"
-    ).toLowerCase() === "ig"
-      ? "ig"
-      : "fb"
+    <div
+      className={className}
+      style={style}
+      dangerouslySetInnerHTML={{ __html: html || "" }}
+    />
+  );
+}
+
+function PlainOrHtmlBlock({ value, className, style }) {
+  if (!value) return null;
+
+  const asString = String(value || "");
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(asString);
+
+  if (looksLikeHtml) {
+    return (
+      <div
+        className={className}
+        style={style}
+        dangerouslySetInnerHTML={{ __html: asString }}
+      />
+    );
+  }
+
+  return (
+    <div className={className} style={style}>
+      {asString}
+    </div>
   );
 }
 
@@ -670,6 +702,9 @@ export function SurveyScreenMobile({
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
 
+  const surveyTitle = String(survey?.title || survey?.name || "").trim();
+  const surveyDescription = survey?.description || "";
+
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
     const activeFeedId = String(feedId ?? "").trim();
@@ -705,6 +740,7 @@ export function SurveyScreenMobile({
       if (currentPageIndex !== 0) setCurrentPageIndex(0);
       return;
     }
+
     if (currentPageIndex > visiblePages.length - 1) {
       setCurrentPageIndex(visiblePages.length - 1);
     }
@@ -717,6 +753,7 @@ export function SurveyScreenMobile({
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
   const isFirstPage = currentPageIndex === 0;
+  const hasMultiplePages = visiblePages.length > 1;
 
   const questionNumberOffset = useMemo(() => {
     let count = 0;
@@ -743,6 +780,7 @@ export function SurveyScreenMobile({
       }
 
       const value = responses?.[q.id];
+
       if (isEmptyRequiredValue(q, value)) {
         pageErrors[q.id] =
           q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
@@ -783,6 +821,15 @@ export function SurveyScreenMobile({
     return (
       <div className="survey-shell">
         <div className="survey-card">
+          <div className="survey-head">
+            {surveyTitle ? <h1 className="survey-title">{surveyTitle}</h1> : null}
+            {surveyDescription ? (
+              <HtmlBlock
+                html={surveyDescription}
+                className="survey-description"
+              />
+            ) : null}
+          </div>
           <div className="survey-body survey-body-standalone">
             <div className="survey-error-banner">
               No survey questions are available.
@@ -796,18 +843,36 @@ export function SurveyScreenMobile({
   return (
     <div className="survey-shell">
       <div className="survey-card">
+        {(surveyTitle || surveyDescription) && (
+          <div className="survey-head">
+            {surveyTitle ? <h1 className="survey-title">{surveyTitle}</h1> : null}
+            {surveyDescription ? (
+              <HtmlBlock
+                html={surveyDescription}
+                className="survey-description"
+              />
+            ) : null}
+          </div>
+        )}
+
         <div className="survey-body survey-body-standalone">
-          {visiblePages.length > 1 && (
+          {hasMultiplePages ? (
             <>
               <div className="survey-page-meta">
                 <div className="survey-page-title-wrap">
                   {currentPage.title ? (
-                    <h2 className="survey-page-title">{currentPage.title}</h2>
+                    <PlainOrHtmlBlock
+                      value={currentPage.title}
+                      className="survey-page-title"
+                      style={{ margin: 0 }}
+                    />
                   ) : null}
+
                   {currentPage.description ? (
-                    <div className="survey-page-subtitle">
-                      {currentPage.description}
-                    </div>
+                    <PlainOrHtmlBlock
+                      value={currentPage.description}
+                      className="survey-page-subtitle"
+                    />
                   ) : null}
                 </div>
 
@@ -831,21 +896,29 @@ export function SurveyScreenMobile({
                 ))}
               </div>
             </>
-          )}
+          ) : (
+            (currentPage.title || currentPage.description) && (
+              <div
+                className="survey-page-title-wrap"
+                style={{ marginBottom: currentPage.description ? 14 : 18 }}
+              >
+                {currentPage.title ? (
+                  <PlainOrHtmlBlock
+                    value={currentPage.title}
+                    className="survey-page-title"
+                    style={{ margin: 0 }}
+                  />
+                ) : null}
 
-          {visiblePages.length <= 1 && currentPage.title ? (
-            <div
-              className="survey-page-title-wrap"
-              style={{ marginBottom: currentPage.description ? 14 : 18 }}
-            >
-              <h2 className="survey-page-title">{currentPage.title}</h2>
-              {currentPage.description ? (
-                <div className="survey-page-subtitle">
-                  {currentPage.description}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+                {currentPage.description ? (
+                  <PlainOrHtmlBlock
+                    value={currentPage.description}
+                    className="survey-page-subtitle"
+                  />
+                ) : null}
+              </div>
+            )
+          )}
 
           {currentPage.questions.map((q, idx) => {
             const isUnnumbered =
@@ -882,7 +955,7 @@ export function SurveyScreenMobile({
 
           {errorMsg ? <div className="survey-error-banner">{errorMsg}</div> : null}
 
-          {visiblePages.length > 1 ? (
+          {hasMultiplePages ? (
             <div className="survey-nav">
               <div className="survey-nav-left">
                 {!isFirstPage ? (
