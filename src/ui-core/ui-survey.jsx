@@ -127,6 +127,342 @@ function firstNonEmpty(...values) {
   return "";
 }
 
+function replaceParticipantTokens(html = "", participantDisplayId = "") {
+  const replacement = String(participantDisplayId || "").trim();
+  const fallback =
+    replacement || "your Prolific ID";
+
+  return String(html || "")
+    .replace(/\$\{e:\/\/Field\/PROLIFIC_PID\}/g, fallback)
+    .replace(/\{\{PARTICIPANT_ID\}\}/g, fallback)
+    .replace(/\[\[PARTICIPANT_ID\]\]/g, fallback);
+}
+
+function getSurveyPrefaceContent(survey = {}, participantDisplayId = "") {
+  const participantInformationTitle = firstNonEmpty(
+    survey?.participant_information_title,
+    "Participant Information"
+  );
+
+  const participantInformationHtml = replaceParticipantTokens(
+    firstNonEmpty(
+      survey?.participant_information_html,
+      ""
+    ),
+    participantDisplayId
+  );
+
+  const consentTitle = firstNonEmpty(
+    survey?.consent_title,
+    "Consent"
+  );
+
+  const consentTextHtml = replaceParticipantTokens(
+    firstNonEmpty(
+      survey?.consent_text_html,
+      ""
+    ),
+    participantDisplayId
+  );
+
+  const consentDeclineMessageHtml = replaceParticipantTokens(
+    firstNonEmpty(
+      survey?.consent_decline_message_html,
+      "<p>You cannot proceed because you did not provide consent.</p>"
+    ),
+    participantDisplayId
+  );
+
+  const instructionsTitle = firstNonEmpty(
+    survey?.instructions_title,
+    "Instructions"
+  );
+
+  const instructionsHtml = replaceParticipantTokens(
+    firstNonEmpty(
+      survey?.instructions_html,
+      ""
+    ),
+    participantDisplayId
+  );
+
+  const preFeedButtonLabel = firstNonEmpty(
+    survey?.pre_feed_button_label,
+    "Go to feed"
+  );
+
+  return {
+    participantInformationTitle,
+    participantInformationHtml,
+    consentTitle,
+    consentTextHtml,
+    consentDeclineMessageHtml,
+    instructionsTitle,
+    instructionsHtml,
+    preFeedButtonLabel,
+  };
+}
+
+export function surveyHasPreface(survey = {}) {
+  const hasParticipantInfo = !!String(
+    survey?.participant_information_html || ""
+  ).trim();
+
+  const hasConsent = !!String(
+    survey?.consent_text_html || ""
+  ).trim();
+
+  const hasInstructions = !!String(
+    survey?.instructions_html || ""
+  ).trim();
+
+  return hasParticipantInfo || hasConsent || hasInstructions;
+}
+
+export function SurveyPrefaceFlow({
+  survey,
+  participantDisplayId = "",
+  onComplete,
+}) {
+  const content = useMemo(
+    () => getSurveyPrefaceContent(survey, participantDisplayId),
+    [survey, participantDisplayId]
+  );
+
+  const steps = useMemo(() => {
+    const out = [];
+
+    if (content.participantInformationHtml) {
+      out.push({
+        id: "participant_information",
+        title: content.participantInformationTitle,
+        html: content.participantInformationHtml,
+      });
+    }
+
+    if (content.consentTextHtml) {
+      out.push({
+        id: "consent",
+        title: content.consentTitle,
+        html: content.consentTextHtml,
+      });
+    }
+
+    if (content.instructionsHtml) {
+      out.push({
+        id: "instructions",
+        title: content.instructionsTitle,
+        html: content.instructionsHtml,
+      });
+    }
+
+    return out;
+  }, [content]);
+
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [consentChoice, setConsentChoice] = useState("");
+  const [consentError, setConsentError] = useState("");
+  const [showDeclineOverlay, setShowDeclineOverlay] = useState(false);
+
+  useEffect(() => {
+    setCurrentStepIndex(0);
+    setConsentChoice("");
+    setConsentError("");
+    setShowDeclineOverlay(false);
+  }, [survey?.survey_id]);
+
+  useLayoutEffect(() => {
+    scrollSurveyPageToTop();
+  }, [currentStepIndex]);
+
+  const currentStep = steps[currentStepIndex] || null;
+  const isFirstStep = currentStepIndex === 0;
+  const isLastStep = currentStepIndex === steps.length - 1;
+
+  const goBack = () => {
+    setConsentError("");
+    setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
+  };
+
+  const goNext = () => {
+    if (!currentStep) return;
+
+    if (currentStep.id === "consent") {
+      if (!consentChoice) {
+        setConsentError("Please select Yes or No before continuing.");
+        return;
+      }
+
+      if (consentChoice === "no") {
+        setShowDeclineOverlay(true);
+        return;
+      }
+    }
+
+    setConsentError("");
+
+    if (isLastStep) {
+      onComplete?.();
+      return;
+    }
+
+    setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
+  };
+
+  if (!steps.length) {
+    return null;
+  }
+
+  return (
+    <div className="survey-shell">
+      <div className="survey-card">
+        <div className="survey-body survey-body-standalone">
+          {steps.length > 1 && (
+            <>
+              <div className="survey-page-meta">
+                <div className="survey-page-title-wrap">
+                  <h2 className="survey-page-title">{currentStep?.title || ""}</h2>
+                </div>
+
+                <div className="survey-page-count">
+                  Page {currentStepIndex + 1} of {steps.length}
+                </div>
+              </div>
+
+              <div className="survey-progress" aria-hidden="true">
+                {steps.map((step, idx) => (
+                  <div
+                    key={step.id || idx}
+                    className={`survey-progress-step ${
+                      idx < currentStepIndex
+                        ? "is-complete"
+                        : idx === currentStepIndex
+                          ? "is-current"
+                          : "is-upcoming"
+                    }`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {steps.length <= 1 && currentStep?.title ? (
+            <div
+              className="survey-page-title-wrap"
+              style={{ marginBottom: 18 }}
+            >
+              <h2 className="survey-page-title">{currentStep.title}</h2>
+            </div>
+          ) : null}
+
+          <div className="survey-question">
+            <div
+              className="survey-question-title-content"
+              dangerouslySetInnerHTML={{ __html: currentStep?.html || "" }}
+            />
+          </div>
+
+          {currentStep?.id === "consent" && (
+            <div className="survey-question" style={{ marginTop: 14 }}>
+              <div className="survey-question-title">
+                <div className="survey-question-title-inner">
+                  <div className="survey-question-title-content">
+                    Please provide your consent to participate in this research by
+                    selecting an option below.
+                  </div>
+                </div>
+              </div>
+
+              <div className="survey-options">
+                <label className="survey-option">
+                  <input
+                    type="radio"
+                    name="survey_consent_choice"
+                    checked={consentChoice === "yes"}
+                    onChange={() => {
+                      setConsentChoice("yes");
+                      setConsentError("");
+                    }}
+                  />
+                  <span>Yes, I consent to participate.</span>
+                </label>
+
+                <label className="survey-option">
+                  <input
+                    type="radio"
+                    name="survey_consent_choice"
+                    checked={consentChoice === "no"}
+                    onChange={() => {
+                      setConsentChoice("no");
+                      setConsentError("");
+                    }}
+                  />
+                  <span>No, I do not consent.</span>
+                </label>
+              </div>
+
+              {consentError ? (
+                <div className="survey-error">{consentError}</div>
+              ) : null}
+            </div>
+          )}
+
+          <div className="survey-nav">
+            <div className="survey-nav-left">
+              {!isFirstStep ? (
+                <button
+                  type="button"
+                  className="survey-nav-btn"
+                  onClick={goBack}
+                >
+                  Back
+                </button>
+              ) : (
+                <div />
+              )}
+            </div>
+
+            <div className="survey-nav-right">
+              <button
+                type="button"
+                className="survey-nav-btn survey-nav-btn-primary"
+                onClick={goNext}
+              >
+                {isLastStep ? content.preFeedButtonLabel : "Next"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showDeclineOverlay && (
+        <div
+          className="modal-backdrop modal-backdrop-dim"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
+            <h3 style={{ margin: "0 0 10px" }}>Consent required</h3>
+            <div
+              style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 16 }}
+              dangerouslySetInnerHTML={{
+                __html: content.consentDeclineMessageHtml,
+              }}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowDeclineOverlay(false)}
+            >
+              Go back
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getReminderPostLabel(question = {}, post = {}) {
   return firstNonEmpty(
     question?.post_label,

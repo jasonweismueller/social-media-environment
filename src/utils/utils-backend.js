@@ -226,6 +226,18 @@ function makeEmptySurveyShell(surveyId = "") {
     description: "",
     version: 1,
     status: "draft",
+
+    // survey-level pre-feed / consent content
+    participant_information_title: "Participant Information",
+    participant_information_html: "",
+    consent_title: "Consent",
+    consent_text_html: "",
+    consent_decline_message_html:
+      "<p>You cannot proceed because you did not provide consent.</p>",
+    instructions_title: "Instructions",
+    instructions_html: "",
+    pre_feed_button_label: "Go to feed",
+
     pages: [],
     linked_feed_ids: [],
     linked_project_id: normalizeProjectId(),

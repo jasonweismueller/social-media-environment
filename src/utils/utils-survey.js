@@ -235,6 +235,10 @@ function isDisplayOnlyQuestion(question) {
   );
 }
 
+function normalizeRichSurveyField(value, fallback = "") {
+  return String(value ?? fallback);
+}
+
 /* =========================
    Question mapping
    ========================= */
@@ -702,6 +706,39 @@ export function makeEmptySurvey(overrides = {}) {
       : [],
     linked_project_id: safeOverrides.linked_project_id || "",
     trigger: safeOverrides.trigger || "after_feed_submit",
+
+    participant_information_title: normalizeRichSurveyField(
+      safeOverrides.participant_information_title,
+      "Participant Information"
+    ),
+    participant_information_html: normalizeRichSurveyField(
+      safeOverrides.participant_information_html,
+      ""
+    ),
+    consent_title: normalizeRichSurveyField(
+      safeOverrides.consent_title,
+      "Consent"
+    ),
+    consent_text_html: normalizeRichSurveyField(
+      safeOverrides.consent_text_html,
+      ""
+    ),
+    consent_decline_message_html: normalizeRichSurveyField(
+      safeOverrides.consent_decline_message_html,
+      "<p>You cannot proceed without providing consent.</p>"
+    ),
+    instructions_title: normalizeRichSurveyField(
+      safeOverrides.instructions_title,
+      "Instructions"
+    ),
+    instructions_html: normalizeRichSurveyField(
+      safeOverrides.instructions_html,
+      ""
+    ),
+    pre_feed_button_label: normalizeRichSurveyField(
+      safeOverrides.pre_feed_button_label,
+      "Go to feed"
+    ),
   };
 }
 
@@ -724,6 +761,39 @@ export function normalizeSurvey(raw = {}) {
       : [],
     linked_project_id: safeRaw.linked_project_id || "",
     trigger: safeRaw.trigger || "after_feed_submit",
+
+    participant_information_title: normalizeRichSurveyField(
+      safeRaw.participant_information_title,
+      "Participant Information"
+    ),
+    participant_information_html: normalizeRichSurveyField(
+      safeRaw.participant_information_html,
+      ""
+    ),
+    consent_title: normalizeRichSurveyField(
+      safeRaw.consent_title,
+      "Consent"
+    ),
+    consent_text_html: normalizeRichSurveyField(
+      safeRaw.consent_text_html,
+      ""
+    ),
+    consent_decline_message_html: normalizeRichSurveyField(
+      safeRaw.consent_decline_message_html,
+      "<p>You cannot proceed without providing consent.</p>"
+    ),
+    instructions_title: normalizeRichSurveyField(
+      safeRaw.instructions_title,
+      "Instructions"
+    ),
+    instructions_html: normalizeRichSurveyField(
+      safeRaw.instructions_html,
+      ""
+    ),
+    pre_feed_button_label: normalizeRichSurveyField(
+      safeRaw.pre_feed_button_label,
+      "Go to feed"
+    ),
   };
 }
 
@@ -737,6 +807,15 @@ export function frontendSurveyToBackend(survey = {}) {
     version: s.version,
     status: s.status,
     pages: frontendPagesToBackend(s.pages),
+
+    participant_information_title: s.participant_information_title,
+    participant_information_html: s.participant_information_html,
+    consent_title: s.consent_title,
+    consent_text_html: s.consent_text_html,
+    consent_decline_message_html: s.consent_decline_message_html,
+    instructions_title: s.instructions_title,
+    instructions_html: s.instructions_html,
+    pre_feed_button_label: s.pre_feed_button_label,
   };
 }
 

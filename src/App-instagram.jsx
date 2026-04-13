@@ -25,8 +25,14 @@ import {
 import { Feed as IGFeed } from "./ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
-  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreen, SurveyScreenMobile
+  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreenMobile
 } from "./ui-core";
+
+import {
+  SurveyScreen,
+  SurveyPrefaceFlow,
+  surveyHasPreface,
+} from "./ui-survey";
 
 import { AdminDashboard } from "./admin/components-admin-dashboard";
 import AdminLogin from "./admin/components-admin-login";
@@ -125,6 +131,13 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
       set(BASE);
     };
   }, [overlayActive, fieldSelector]);
+}
+
+function getQueryParamEverywhere(key) {
+  if (typeof window === "undefined") return "";
+  const q = new URLSearchParams(window.location.search);
+  const hashQ = new URLSearchParams(window.location.hash.split("?")[1] || "");
+  return String(q.get(key) || hashQ.get(key) || "").trim();
 }
 
 /* ---------- IG rails skeleton ---------- */
@@ -226,7 +239,6 @@ function PageWithRails({ children }) {
   );
 }
 
-/* =============================== MAIN APP ================================ */
 function elementHasImage(el) {
   if (!el) return false;
   if (el.dataset?.hasImage === "1") return true;
@@ -245,6 +257,7 @@ function elementHasImage(el) {
   );
 }
 
+/* =============================== MAIN APP ================================ */
 export default function App() {
   const sessionIdRef = useRef(uid());
   const t0Ref = useRef(now());
@@ -321,6 +334,7 @@ export default function App() {
   const [surveyResponses, setSurveyResponses] = useState({});
   const [surveyErrors, setSurveyErrors] = useState({});
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
+  const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
   const [feedSubmitted, setFeedSubmitted] = useState(false);
 
@@ -445,6 +459,7 @@ export default function App() {
     setSurveyErrorMsg("");
     setFeedSubmitted(false);
     setSubmitted(false);
+    setPrefaceCompleted(false);
 
     clearTimeout(minDelayTimerRef.current);
     minDelayStartedRef.current = false;
@@ -598,6 +613,14 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [events, setEvents] = useState([]);
 
+  const participantDisplayId = useMemo(() => {
+    return (
+      getQueryParamEverywhere("PROLIFIC_PID") ||
+      getQueryParamEverywhere("participant_id") ||
+      ""
+    );
+  }, [activeFeedId, projectId]);
+
   const shouldShowSurvey =
     !onAdmin &&
     hasEntered &&
@@ -606,10 +629,19 @@ export default function App() {
     !!linkedSurvey &&
     (surveyPhase === "ready" || surveyPhase === "submitting" || surveyPhase === "error");
 
+  const shouldShowPreface =
+    !onAdmin &&
+    !hasEntered &&
+    !feedSubmitted &&
+    !!linkedSurvey &&
+    surveyPhase === "ready" &&
+    surveyHasPreface(linkedSurvey) &&
+    !prefaceCompleted;
+
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    if (shouldShowSurvey) {
+    if (shouldShowSurvey || shouldShowPreface) {
       document.body.classList.add("survey-mode");
     } else {
       document.body.classList.remove("survey-mode");
@@ -618,12 +650,12 @@ export default function App() {
     return () => {
       document.body.classList.remove("survey-mode");
     };
-  }, [shouldShowSurvey]);
+  }, [shouldShowSurvey, shouldShowPreface]);
 
   useEffect(() => {
-    if (!shouldShowSurvey) return;
+    if (!shouldShowSurvey && !shouldShowPreface) return;
     scrollSurveyViewToTop();
-  }, [shouldShowSurvey, scrollSurveyViewToTop]);
+  }, [shouldShowSurvey, shouldShowPreface, scrollSurveyViewToTop]);
 
   useEffect(() => {
     const el = document.documentElement;
@@ -638,7 +670,7 @@ export default function App() {
     };
   }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
 
-  const overlayActive = !onAdmin && !hasEntered;
+  const overlayActive = !onAdmin && (!hasEntered || shouldShowPreface);
   useIOSInputZoomFix(
     ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea, .comment-sheet input, .comment-sheet textarea, .share-sheet input, .share-sheet textarea, .survey-shell input, .survey-shell textarea, .survey-shell select"
   );
@@ -1006,6 +1038,7 @@ export default function App() {
         className={`app-shell ${
           !onAdmin &&
           !shouldShowSurvey &&
+          !shouldShowPreface &&
           (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)
             ? "blurred"
             : ""
@@ -1021,19 +1054,19 @@ export default function App() {
                 <div className="survey-page">
                   {isMobileSurvey ? (
                     <SurveyScreenMobile
-  survey={linkedSurvey}
-  posts={orderedPosts}
-  responses={surveyResponses}
-  errors={surveyErrors}
-  errorMsg={surveyErrorMsg}
-  participantSeed={participantId || sessionIdRef.current}
-  feedId={activeFeedId}
-  onChange={handleSurveyResponseChange}
-  onSubmit={handleSurveySubmit}
-  onPageValidationFail={handleSurveyPageValidationFail}
-  onClearBanner={clearSurveyBanner}
-  submitting={surveyPhase === "submitting"}
-/>
+                      survey={linkedSurvey}
+                      posts={orderedPosts}
+                      responses={surveyResponses}
+                      errors={surveyErrors}
+                      errorMsg={surveyErrorMsg}
+                      participantSeed={participantId || sessionIdRef.current}
+                      feedId={activeFeedId}
+                      onChange={handleSurveyResponseChange}
+                      onSubmit={handleSurveySubmit}
+                      onPageValidationFail={handleSurveyPageValidationFail}
+                      onClearBanner={clearSurveyBanner}
+                      submitting={surveyPhase === "submitting"}
+                    />
                   ) : (
                     <SurveyScreen
                       survey={linkedSurvey}
@@ -1050,6 +1083,17 @@ export default function App() {
                       submitting={surveyPhase === "submitting"}
                     />
                   )}
+                </div>
+              ) : shouldShowPreface ? (
+                <div className="survey-page">
+                  <SurveyPrefaceFlow
+                    survey={linkedSurvey}
+                    participantDisplayId={participantDisplayId}
+                    onComplete={() => {
+                      setPrefaceCompleted(true);
+                      scrollSurveyViewToTop();
+                    }}
+                  />
                 </div>
               ) : (
                 <PageWithRails>
@@ -1148,7 +1192,7 @@ export default function App() {
                       ) : null}
                     </div>
 
-                    {showSkeletonLayer && !feedSubmitted && !shouldShowSurvey && (
+                    {showSkeletonLayer && !feedSubmitted && !shouldShowSurvey && !shouldShowPreface && (
                       <div
                         aria-hidden={gateOpen}
                         style={{
@@ -1214,7 +1258,7 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {!onAdmin && !hasEntered && (
+      {!onAdmin && !hasEntered && !shouldShowPreface && (
         <ParticipantOverlay
           onSubmit={(id) => {
             const ts = now();
@@ -1239,14 +1283,14 @@ export default function App() {
         />
       )}
 
-      {!onAdmin && hasEntered && !feedSubmitted && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
+      {!onAdmin && hasEntered && !feedSubmitted && !shouldShowPreface && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
         <LoadingOverlay
           title="Preparing your feed…"
           subtitle={(flags.randomize_avatars || flags.randomize_images) ? "Almost ready..." : "Fetching posts and setting things up."}
         />
       )}
 
-      {!onAdmin && hasEntered && !feedSubmitted && feedPhase === "error" && (
+      {!onAdmin && hasEntered && !feedSubmitted && !shouldShowPreface && feedPhase === "error" && (
         <div className="modal-backdrop modal-backdrop-dim" role="dialog" aria-modal="true" aria-live="assertive">
           <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
             <div className="spinner-ring" aria-hidden="true" style={{ display: "none" }} />
