@@ -462,11 +462,17 @@ const [completionState, setCompletionState] = useState({
   const [avatarPools, setAvatarPools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
-  const [initialBootLoading, setInitialBootLoading] = useState(true);
+  const [initialBootLoading, setInitialBootLoading] = useState(!onAdmin);
 
   const [minDelayDone, setMinDelayDone] = useState(true);
   const minDelayStartedRef = useRef(false);
   const minDelayTimerRef = useRef(null);
+
+  useEffect(() => {
+  if (onAdmin) {
+    setInitialBootLoading(false);
+  }
+}, [onAdmin]);
 
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
@@ -1560,12 +1566,12 @@ finalizeStudyCompletion();
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {initialBootLoading && (
-        <LoadingOverlay
-          title="Loading study…"
-          subtitle="Preparing your session"
-        />
-      )}
+      {!onAdmin && initialBootLoading && (
+  <LoadingOverlay
+    title="Loading study…"
+    subtitle="Preparing your session"
+  />
+)}
 
       {shouldShowParticipantOverlay && (
         <ParticipantOverlay
