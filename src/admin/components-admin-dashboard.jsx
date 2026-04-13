@@ -29,10 +29,13 @@ import {
   deleteProjectOnBackend,
   setProjectId as persistProjectId,
   getProjectId,
-  GS_ENDPOINT, APP, getAdminToken,
+  GS_ENDPOINT,
+  APP,
+  getAdminToken,
   readPostNames,
   writePostNames,
-  normalizeFlagsForStore, normalizeFlagsForRead,
+  normalizeFlagsForStore,
+  normalizeFlagsForRead,
 } from "../utils";
 
 import { Modal, LoadingOverlay } from "../ui-core";
@@ -42,23 +45,30 @@ import { AdminSurveysPanel } from "./components-admin-surveys";
 import { randomAvatarByKind } from "../avatar-utils";
 
 // Dynamically choose correct editor (FB or IG)
-import { genNeutralAvatarDataUrl, makeRandomPost } from "./components-admin-editor-facebook";
+import {
+  genNeutralAvatarDataUrl,
+  makeRandomPost,
+} from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
 
 // Pick based on current app (set in main-facebook.jsx or main-instagram.jsx)
-const app = (window.APP || new URLSearchParams(window.location.search).get("app") || "fb").toLowerCase();
+const app = (
+  window.APP ||
+  new URLSearchParams(window.location.search).get("app") ||
+  "fb"
+).toLowerCase();
 const AdminPostEditor = app === "ig" ? AdminPostEditorIG : AdminPostEditorFB;
 
 /* ---------- small access gate ---------------- */
 function RoleGate({ min = "viewer", children, elseRender = null }) {
-  return hasAdminRole(min) ? children : (elseRender ?? null);
+  return hasAdminRole(min) ? children : elseRender ?? null;
 }
 
 /* ---------- local backups + snapshots ----------------- */
-function saveLocalBackup(projectId, feedId, app, posts) {
+function saveLocalBackup(projectId, feedId, appName, posts) {
   try {
-    const k = `backup::${app || "fb"}::${projectId || "global"}::${feedId}`;
+    const k = `backup::${appName || "fb"}::${projectId || "global"}::${feedId}`;
     const list = JSON.parse(localStorage.getItem(k) || "[]");
     const entry = { t: new Date().toISOString(), posts };
     const next = [entry, ...list].slice(0, 5);
@@ -71,11 +81,17 @@ async function snapshotToS3({ posts, projectId, feedId, app = "fb" }) {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `${projectId || "global"}-${feedId}-${ts}.json`;
     const { cdnUrl } = await uploadJsonToS3ViaSigner({
-      data: { app, projectId: projectId || "global", feedId, ts: new Date().toISOString(), posts },
+      data: {
+        app,
+        projectId: projectId || "global",
+        feedId,
+        ts: new Date().toISOString(),
+        posts,
+      },
       projectId,
       feedId,
       prefix: `backups/${app}/${projectId || "global"}/${feedId}`,
-      filename
+      filename,
     });
     return cdnUrl;
   } catch (e) {
@@ -90,7 +106,6 @@ async function fetchParticipantsStats(projectId, feedId) {
     const admin = getAdminToken?.();
     if (!admin || !feedId) return null;
 
-    // Respect project scoping: omit project_id when "global" or empty
     const params = new URLSearchParams({
       path: "participants_stats",
       app: APP,
@@ -100,7 +115,10 @@ async function fetchParticipantsStats(projectId, feedId) {
     const effPid = projectId && projectId !== "global" ? String(projectId) : "";
     if (effPid) params.set("project_id", effPid);
 
-    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, { mode: "cors", cache: "no-store" });
+    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, {
+      mode: "cors",
+      cache: "no-store",
+    });
     if (!res.ok) return null;
     const json = await res.json().catch(() => null);
     return json || null;
@@ -126,18 +144,24 @@ async function getFeedFlagsFromBackend({ projectId, feedId }) {
       cache: "no-store",
     });
     const json = await res.json().catch(() => ({}));
-    const raw = (json && json.flags) ? json.flags : {};
+    const raw = json && json.flags ? json.flags : {};
     const norm = normalizeFlagsForRead(raw);
     return {
-      randomize_times:   !!(norm.randomize_times   ?? norm.random_time),
+      randomize_times: !!(norm.randomize_times ?? norm.random_time),
       randomize_avatars: !!(norm.randomize_avatars ?? norm.random_avatar),
-      randomize_names:   !!(norm.randomize_names   ?? norm.random_name),
-      randomize_images:  !!(norm.randomize_images  ?? norm.random_image ?? norm.rand_images),
-      randomize_bios:    !!(norm.randomize_bios    ?? norm.random_bio),
+      randomize_names: !!(norm.randomize_names ?? norm.random_name),
+      randomize_images: !!(norm.randomize_images ?? norm.random_image ?? norm.rand_images),
+      randomize_bios: !!(norm.randomize_bios ?? norm.random_bio),
     };
-   } catch {
-    return { randomize_times: false, randomize_avatars: false, randomize_names: false, randomize_images: false};
-   }
+  } catch {
+    return {
+      randomize_times: false,
+      randomize_avatars: false,
+      randomize_names: false,
+      randomize_images: false,
+      randomize_bios: false,
+    };
+  }
 }
 
 async function setFeedFlagsOnBackend({ projectId, feedId, patch }) {
@@ -207,23 +231,13 @@ function Section({ title, subtitle, right = null, children }) {
       <div className="admin-section-header">
         <div className="admin-section-title-wrap">
           <h3>{title}</h3>
-          {subtitle && (
-            <div className="subtle admin-section-subtitle">
-              {subtitle}
-            </div>
-          )}
+          {subtitle && <div className="subtle admin-section-subtitle">{subtitle}</div>}
         </div>
 
-        {!!right && (
-          <div className="admin-section-actions">
-            {right}
-          </div>
-        )}
+        {!!right && <div className="admin-section-actions">{right}</div>}
       </div>
 
-      <div className="admin-section-body">
-        {children}
-      </div>
+      <div className="admin-section-body">{children}</div>
     </section>
   );
 }
@@ -236,7 +250,16 @@ function ChipToggle({ label, checked, onChange }) {
       aria-pressed={checked}
       style={{ borderRadius: 999, padding: ".35rem .7rem" }}
     >
-      <span style={{ display:"inline-block", width:8, height:8, borderRadius:"50%", marginRight:8, background: checked ? "var(--accent, #2563eb)" : "var(--line)" }} />
+      <span
+        style={{
+          display: "inline-block",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          marginRight: 8,
+          background: checked ? "var(--accent, #2563eb)" : "var(--line)",
+        }}
+      />
       {label}
     </button>
   );
@@ -244,14 +267,18 @@ function ChipToggle({ label, checked, onChange }) {
 
 /* ----------------------------- Admin Dashboard ------------------------------ */
 export function AdminDashboard({
-  posts, setPosts,
-  randomize, setRandomize,
-  showComposer, setShowComposer, // (kept for API parity, not used here)
-  resetLog,                      // "
-  onPublishPosts,                // optional override (kept)
+  posts,
+  setPosts,
+  randomize,
+  setRandomize,
+  showComposer,
+  setShowComposer,
+  resetLog,
+  onPublishPosts,
   onLogout,
 }) {
   const pidForBackend = (pid) => (pid && pid !== "global" ? pid : undefined);
+
   const [sessExpiringSec, setSessExpiringSec] = useState(null);
   const [sessExpired, setSessExpired] = useState(false);
   const [touching, setTouching] = useState(false);
@@ -286,12 +313,12 @@ export function AdminDashboard({
   const projectsAbortRef = useRef(null);
 
   // collapse toggles
-const [feedsCollapsed] = useState(true); // intentionally unused
-const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
-const [postsCollapsed, setPostsCollapsed] = useState(true);
-const [surveysCollapsed, setSurveysCollapsed] = useState(true);
-const [usersCollapsed, setUsersCollapsed] = useState(true);
-const [showAllParticipants, setShowAllParticipants] = useState(false);
+  const [feedsCollapsed] = useState(true); // intentionally unused
+  const [participantsCollapsed, setParticipantsCollapsed] = useState(true);
+  const [postsCollapsed, setPostsCollapsed] = useState(true);
+  const [surveysCollapsed, setSurveysCollapsed] = useState(true);
+  const [usersCollapsed, setUsersCollapsed] = useState(true);
+  const [showAllParticipants, setShowAllParticipants] = useState(false);
 
   // global wipe policy
   const [wipeOnChange, setWipeOnChange] = useState(null);
@@ -310,6 +337,9 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
   // feed flags per project+feed
   const [feedFlags, setFeedFlags] = useState({});
 
+  // counts
+  const [usersCount, setUsersCount] = useState(null);
+
   // UX overlay control
   const showOverlay =
     isSaving ||
@@ -322,11 +352,11 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
   const loadStatsFor = async (id) => {
     if (!id) return;
     const k = keyFor(projectId, id);
-    if (feedStats[k]) return; // already loaded for this (project,feed)
+    if (feedStats[k]) return;
     const s = await fetchParticipantsStats(projectId, id);
     setFeedStats((m) => ({
       ...m,
-      [k]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null }
+      [k]: s || { total: 0, submitted: 0, avg_ms_enter_to_submit: null },
     }));
   };
 
@@ -360,9 +390,6 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
     persistProjectId(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
 
-  // counts
-  const [usersCount, setUsersCount] = useState(null);
-
   useEffect(() => {
     if (!projectsLoading && !feedsLoading) {
       setBooting(false);
@@ -372,7 +399,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
   useEffect(() => {
     if (feedId) loadStatsFor(feedId);
     if (feedId) loadFlagsFor(feedId);
-  }, [feedId, projectId]); // include projectId
+  }, [feedId, projectId]);
 
   const curStats = feedStats[keyFor(projectId, feedId)];
 
@@ -399,7 +426,10 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
       warnAtSec: 120,
       tickMs: 1000,
       onExpiring: (leftSec) => setSessExpiringSec(leftSec),
-      onExpired: () => { setSessExpired(true); setSessExpiringSec(0); },
+      onExpired: () => {
+        setSessExpired(true);
+        setSessExpiringSec(0);
+      },
     });
     return stop;
   }, []);
@@ -416,22 +446,28 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
     projectsAbortRef.current = ctrl;
     setProjectsError("");
     setProjectsLoading(true);
+
     try {
       const [list, backendDefault] = await Promise.all([
-        listProjectsFromBackend({ signal: ctrl.signal }).catch(() => [{ project_id: "global", name: "Global" }]),
+        listProjectsFromBackend({ signal: ctrl.signal }).catch(() => [
+          { project_id: "global", name: "Global" },
+        ]),
         getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
       ]);
+
       if (ctrl.signal.aborted) return;
-      const projList = (Array.isArray(list) && list.length) ? list : [{ project_id: "global", name: "Global" }];
+
+      const projList =
+        Array.isArray(list) && list.length ? list : [{ project_id: "global", name: "Global" }];
       setProjects(projList);
       setDefaultProjectId(backendDefault || null);
 
-      // URL > state/storage > backend default > first
       let fromUrl = "";
       try {
         const sp = new URLSearchParams(window.location.search);
         fromUrl = sp.get("project") || sp.get("project_id") || "";
       } catch {}
+
       const desired =
         fromUrl ||
         projectId ||
@@ -440,14 +476,18 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
         projList[0]?.project_id ||
         "global";
 
-      const chosen = projList.find(p => p.project_id === desired) || projList[0];
+      const chosen = projList.find((p) => p.project_id === desired) || projList[0];
       const chosenId = chosen?.project_id || "global";
       setProjectId(chosenId);
       persistProjectId(chosenId, { persist: true, updateUrl: false });
       setProjectName(chosen?.name || chosenId || "Global");
     } catch (e) {
       const isAbort = e?.name === "AbortError";
-      setProjectsError(isAbort ? "Project loading was interrupted. You can try again." : "Failed to load projects from the backend. Please try again.");
+      setProjectsError(
+        isAbort
+          ? "Project loading was interrupted. You can try again."
+          : "Failed to load projects from the backend. Please try again."
+      );
     } finally {
       if (projectsAbortRef.current === ctrl) projectsAbortRef.current = null;
       setProjectsLoading(false);
@@ -476,9 +516,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
       setDefaultFeedId(backendDefault || null);
 
       const chosen =
-        feedsList.find(f => f.feed_id === backendDefault) ||
-        feedsList[0] ||
-        null;
+        feedsList.find((f) => f.feed_id === backendDefault) || feedsList[0] || null;
 
       if (chosen) {
         setFeedId(chosen.feed_id);
@@ -488,19 +526,28 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
         if (cached) {
           setPosts(cached);
         } else {
-          const fresh = await loadPostsFromBackend(
-            chosen.feed_id,
-            { projectId: pidForBackend(projectId), force: true, signal: ctrl.signal }
-          );
+          const fresh = await loadPostsFromBackend(chosen.feed_id, {
+            projectId: pidForBackend(projectId),
+            force: true,
+            signal: ctrl.signal,
+          });
           if (ctrl.signal.aborted) return;
           const arr = Array.isArray(fresh) ? fresh : [];
-          arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
+          arr.forEach((p) => {
+            if ("showTime" in p) delete p.showTime;
+            if (!p.authorType) {
+              p.authorType = p.adType === "ad" ? "company" : "female";
+            }
+          });
           setPosts(arr);
           setCachedPosts(projectId, chosen.feed_id, chosen.checksum, arr);
         }
+
         setPostNames(readPostNames(projectId, chosen.feed_id) || {});
         loadFlagsFor(chosen.feed_id);
-        if (backendDefault && backendDefault !== chosen.feed_id) loadFlagsFor(backendDefault);
+        if (backendDefault && backendDefault !== chosen.feed_id) {
+          loadFlagsFor(backendDefault);
+        }
       } else {
         setFeedId("");
         setFeedName("");
@@ -514,17 +561,43 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
       } catch {}
     } catch (e) {
       const isAbort = e?.name === "AbortError";
-      setFeedsError(isAbort ? "Feed loading was interrupted. You can try again." : "Failed to load feeds from the backend. Please try again.");
+      setFeedsError(
+        isAbort
+          ? "Feed loading was interrupted. You can try again."
+          : "Failed to load feeds from the backend. Please try again."
+      );
     } finally {
       if (feedsAbortRef.current === ctrl) feedsAbortRef.current = null;
       setFeedsLoading(false);
     }
   }, [setPosts, projectId]);
 
+  const loadFeedPostsForSurveys = useCallback(
+    async (targetFeedId) => {
+      const fresh = await loadPostsFromBackend(targetFeedId, {
+        projectId: pidForBackend(projectId),
+        force: true,
+      });
+
+      const arr = Array.isArray(fresh) ? fresh : [];
+      arr.forEach((p) => {
+        if ("showTime" in p) delete p.showTime;
+        if (!p.authorType) {
+          p.authorType = p.adType === "ad" ? "company" : "female";
+        }
+      });
+
+      return arr;
+    },
+    [projectId]
+  );
+
   // Initial load
   useEffect(() => {
     loadProjects();
-    return () => { projectsAbortRef.current?.abort?.(); };
+    return () => {
+      projectsAbortRef.current?.abort?.();
+    };
   }, [loadProjects]);
 
   useEffect(() => {
@@ -532,7 +605,9 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
     setFeedStats({});
     setFeedFlags({});
     loadFeeds();
-    return () => { feedsAbortRef.current?.abort?.(); };
+    return () => {
+      feedsAbortRef.current?.abort?.();
+    };
   }, [projectId, loadFeeds]);
 
   useEffect(() => {
@@ -552,7 +627,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
   }, [isSaving]);
 
   const selectFeed = async (id) => {
-    const row = feeds.find(f => String(f.feed_id) === String(id));
+    const row = feeds.find((f) => String(f.feed_id) === String(id));
     setFeedId(id);
     setFeedName(row?.name || id);
 
@@ -560,39 +635,60 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
     if (cached) {
       setPosts(cached);
     } else {
-      const fresh = await loadPostsFromBackend(id, { projectId: pidForBackend(projectId), force: true });
+      const fresh = await loadPostsFromBackend(id, {
+        projectId: pidForBackend(projectId),
+        force: true,
+      });
       const arr = Array.isArray(fresh) ? fresh : [];
-      arr.forEach(p => { if ("showTime" in p) delete p.showTime; });
+      arr.forEach((p) => {
+        if ("showTime" in p) delete p.showTime;
+        if (!p.authorType) {
+          p.authorType = p.adType === "ad" ? "company" : "female";
+        }
+      });
       setPosts(arr);
       if (row) setCachedPosts(projectId, id, row.checksum, arr);
     }
+
     setPostNames(readPostNames(projectId, id) || {});
     loadFlagsFor(id);
   };
 
   const createNewProject = async () => {
-    const id = prompt("New project ID (letters/numbers/underscores):", `proj_${(projects.length || 0) + 1}`);
+    const id = prompt(
+      "New project ID (letters/numbers/underscores):",
+      `proj_${(projects.length || 0) + 1}`
+    );
     if (!id) return;
     const name = prompt("Optional project name:", id) || id;
-    const ok = await (createProjectOnBackend?.({ projectId: id, name }).catch(() => true));
-    if (!ok) { alert("Failed to create project."); return; }
-    setProjects(prev => [{ project_id: id, name }, ...prev]);
+    const ok = await createProjectOnBackend?.({ projectId: id, name }).catch(() => true);
+    if (!ok) {
+      alert("Failed to create project.");
+      return;
+    }
+    setProjects((prev) => [{ project_id: id, name }, ...prev]);
     setProjectId(id);
     setProjectName(name);
-    setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
+    setFeeds([]);
+    setFeedId("");
+    setFeedName("");
+    setPosts([]);
     loadFeeds();
   };
 
   const createNewFeed = () => {
-    const id = prompt("New feed ID (letters/numbers/underscores):", `feed_${(feeds.length || 0) + 1}`);
+    const id = prompt(
+      "New feed ID (letters/numbers/underscores):",
+      `feed_${(feeds.length || 0) + 1}`
+    );
     if (!id) return;
     const name = prompt("Optional feed name (shown in admin):", id) || id;
     setFeedId(id);
     setFeedName(name);
     setPosts([]);
     setPostNames({});
-    setFeeds(prev => {
-      const exists = prev.some(f => String(f.feed_id) === String(id));
+    setFeeds((prev) => {
+      const exists = prev.some((f) => String(f.feed_id) === String(id));
       return exists ? prev : [{ feed_id: id, name, checksum: "", updated_at: "" }, ...prev];
     });
   };
@@ -638,6 +734,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
       adButtonText: "",
     });
   };
+
   const openEdit = (p) => {
     setIsNew(false);
     setEditing({
@@ -659,8 +756,14 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
   };
 
   const saveEditing = () => {
-    if (!editing.author?.trim()) { alert("Author is required."); return; }
-    if (!editing.text?.trim()) { alert("Post text is required."); return; }
+    if (!editing.author?.trim()) {
+      alert("Author is required.");
+      return;
+    }
+    if (!editing.text?.trim()) {
+      alert("Post text is required.");
+      return;
+    }
 
     setPosts((arr) => {
       const idx = arr.findIndex((p) => p.id === editing.id);
@@ -673,18 +776,25 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
 
       if (clean.postName && !clean.name) clean.name = clean.postName;
 
-      // avatar rules
       if (clean.avatarMode === "random" && !clean.avatarUrl) {
-        clean.avatarUrl = randomAvatarByKind(clean.avatarRandomKind || "any", clean.id || clean.author || "seed", clean.author || "", randomAvatarUrl);
+        clean.avatarUrl = randomAvatarByKind(
+          clean.avatarRandomKind || "any",
+          clean.id || clean.author || "seed",
+          clean.author || "",
+          randomAvatarUrl
+        );
       }
       if (clean.avatarMode === "random" && clean.avatarRandomKind === "company") {
-        clean.avatarUrl = randomAvatarByKind("company", clean.id || clean.author || "seed", clean.author || "");
+        clean.avatarUrl = randomAvatarByKind(
+          "company",
+          clean.id || clean.author || "seed",
+          clean.author || ""
+        );
       }
       if (clean.avatarMode === "neutral") {
         clean.avatarUrl = genNeutralAvatarDataUrl(64);
       }
 
-      // media exclusivity
       if (clean.videoMode !== "none") {
         clean.imageMode = "none";
         clean.image = null;
@@ -707,6 +817,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
 
       return nextPosts;
     });
+
     setEditing(null);
   };
 
@@ -725,11 +836,14 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
           <div className="title">
             <span>Admin session is expiring</span>
             <span className="subtle">
-              (~{Math.max(0, Math.floor(sessExpiringSec / 60))}m {String(sessExpiringSec % 60).padStart(2,"0")}s left)
+              (~{Math.max(0, Math.floor(sessExpiringSec / 60))}m{" "}
+              {String(sessExpiringSec % 60).padStart(2, "0")}s left)
             </span>
           </div>
           <div className="actions">
-            <button className="btn ghost" onClick={() => setSessExpiringSec(null)}>Dismiss</button>
+            <button className="btn ghost" onClick={() => setSessExpiringSec(null)}>
+              Dismiss
+            </button>
             <button className="btn" onClick={keepAlive} disabled={touching}>
               {touching ? "Refreshing…" : "Stay signed in"}
             </button>
@@ -740,18 +854,26 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
       {showOverlay && (
         <LoadingOverlay
           title={isSaving ? "Saving feed…" : "Loading dashboard…"}
-          subtitle={isSaving ? "Creating snapshot & publishing your changes"
-            : "Fetching projects, feeds and posts from backend"}
+          subtitle={
+            isSaving
+              ? "Creating snapshot & publishing your changes"
+              : "Fetching projects, feeds and posts from backend"
+          }
         />
       )}
+
       {!feedsLoading && !!feedsError && (
         <div aria-live="assertive" className="admin-expired-backdrop">
           <div className="admin-expired-dialog">
             <h3>Feed loading failed</h3>
             <p className="subtle">{feedsError}</p>
             <div className="admin-expired-actions">
-              <button className="btn" onClick={() => loadFeeds()}>Try again</button>
-              <button className="btn ghost" onClick={() => setFeedsError("")}>Dismiss</button>
+              <button className="btn" onClick={() => loadFeeds()}>
+                Try again
+              </button>
+              <button className="btn ghost" onClick={() => setFeedsError("")}>
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
@@ -765,48 +887,62 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
           userSelect: showBlur ? "none" : "auto",
         }}
       >
-
         <Section
-  title={app === "ig" ? "Instagram Admin Dashboard" : "Facebook Admin Dashboard"}
-  subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
-          right={<button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">Log out</button>}
+          title={app === "ig" ? "Instagram Admin Dashboard" : "Facebook Admin Dashboard"}
+          subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
+          right={
+            <button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">
+              Log out
+            </button>
+          }
         />
 
-        <div style={{ display:"grid", gap:"1rem", gridTemplateColumns:"minmax(0,1fr)" }} className="admin-grid">
-
+        <div
+          style={{ display: "grid", gap: "1rem", gridTemplateColumns: "minmax(0,1fr)" }}
+          className="admin-grid"
+        >
           {/* Projects */}
           <Section
             title={`Projects (${projects.length || 0})`}
             subtitle="Choose the project first; feeds and participants are scoped to the selected project."
             right={
               <>
-                <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+                <div className="feed-picker" style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
                   <span className="subtle">Project:</span>
                   <select
                     className="select"
                     value={projectId || "global"}
                     onChange={async (e) => {
                       const pid = e.target.value;
-                      const row = projects.find(p => p.project_id === pid);
+                      const row = projects.find((p) => p.project_id === pid);
                       setBooting(true);
                       setProjectId(pid);
                       setProjectName(row?.name || pid);
                       persistProjectId(pid, { persist: true, updateUrl: true });
-                      setFeeds([]); setFeedId(""); setFeedName(""); setPosts([]);
+                      setFeeds([]);
+                      setFeedId("");
+                      setFeedName("");
+                      setPosts([]);
                     }}
                     title="Choose project"
                     style={{ minWidth: 220 }}
                   >
                     {projects.map((p) => (
                       <option key={p.project_id} value={p.project_id}>
-                        {(p.name || p.project_id)}{p.project_id === defaultProjectId ? " (default)" : ""}
+                        {(p.name || p.project_id)}
+                        {p.project_id === defaultProjectId ? " (default)" : ""}
                       </option>
                     ))}
                   </select>
-                  <button className="btn" onClick={() => loadProjects()} title="Reload project list">Refresh Projects</button>
+                  <button className="btn" onClick={() => loadProjects()} title="Reload project list">
+                    Refresh Projects
+                  </button>
                 </div>
+
                 <RoleGate min="editor">
-                  <button className="btn ghost" onClick={createNewProject}>+ New project</button>
+                  <button className="btn ghost" onClick={createNewProject}>
+                    + New project
+                  </button>
                   <button
                     className="btn ghost"
                     onClick={async () => {
@@ -819,15 +955,25 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
                     Default
                   </button>
                 </RoleGate>
+
                 <RoleGate min="owner">
                   <button
                     className="btn ghost danger"
                     onClick={async () => {
                       if (!projectId) return;
-                      if (!confirm(`Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`)) return;
+                      if (
+                        !confirm(
+                          `Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`
+                        )
+                      ) {
+                        return;
+                      }
                       const ok = await deleteProjectOnBackend?.(projectId);
-                      if (!ok) { alert("Failed to delete project."); return; }
-                      const next = projects.filter(p => p.project_id !== projectId);
+                      if (!ok) {
+                        alert("Failed to delete project.");
+                        return;
+                      }
+                      const next = projects.filter((p) => p.project_id !== projectId);
                       setProjects(next);
                       const fallback = next[0] || { project_id: "global", name: "Global" };
                       setProjectId(fallback.project_id);
@@ -848,7 +994,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
             subtitle="Keep the UI minimal: choose the editing feed via dropdown. By default, only the Default and Loaded feeds are shown; expand to see all."
             right={
               <>
-                <div className="feed-picker" style={{ display:"flex", alignItems:"center", gap:".5rem" }}>
+                <div className="feed-picker" style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
                   <span className="subtle">Editing:</span>
                   <select
                     className="select"
@@ -859,22 +1005,29 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
                   >
                     {feeds.map((f) => (
                       <option key={f.feed_id} value={f.feed_id}>
-                        {(f.name || f.feed_id)}{f.feed_id === defaultFeedId ? " (default)" : ""}
+                        {(f.name || f.feed_id)}
+                        {f.feed_id === defaultFeedId ? " (default)" : ""}
                       </option>
                     ))}
                   </select>
 
                   <button
                     className="btn ghost"
-                    onClick={() => setShowAllFeeds(v => !v)}
-                    title={showAllFeeds ? "Hide full list and show only Default + Loaded" : "Show all feeds in the registry"}
+                    onClick={() => setShowAllFeeds((v) => !v)}
+                    title={
+                      showAllFeeds
+                        ? "Hide full list and show only Default + Loaded"
+                        : "Show all feeds in the registry"
+                    }
                   >
                     {showAllFeeds ? "Hide full list" : "All feeds…"}
                   </button>
                 </div>
 
                 <RoleGate min="editor">
-                  <button className="btn ghost" onClick={createNewFeed}>+ New feed</button>
+                  <button className="btn ghost" onClick={createNewFeed}>
+                    + New feed
+                  </button>
                 </RoleGate>
 
                 <button className="btn" onClick={() => loadFeeds()} title="Reload feed registry from backend">
@@ -909,16 +1062,16 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
             }
           >
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr className="subtle" style={{ textAlign:"left" }}>
+                  <tr className="subtle" style={{ textAlign: "left" }}>
                     <th style={{ padding: ".4rem .5rem", width: 36 }} />
                     <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>Name</th>
                     <th style={{ padding: ".4rem .5rem", minWidth: 100 }}>ID</th>
                     <th style={{ padding: ".4rem .5rem", minWidth: 80 }}>Updated</th>
                     <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Total</th>
                     <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Submitted</th>
-                    <th style={{ padding: ".4rem .5rem", textAlign: "center"}}>Avg (m:ss)</th>
+                    <th style={{ padding: ".4rem .5rem", textAlign: "center" }}>Avg (m:ss)</th>
                     <th style={{ padding: ".4rem .5rem", minWidth: 520 }}>Actions</th>
                   </tr>
                 </thead>
@@ -927,7 +1080,7 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
                     const importantIds = Array.from(new Set([defaultFeedId, feedId].filter(Boolean)));
                     const visible = showAllFeeds
                       ? feeds
-                      : feeds.filter(f => importantIds.includes(f.feed_id));
+                      : feeds.filter((f) => importantIds.includes(f.feed_id));
 
                     if (!visible.length) {
                       return (
@@ -941,22 +1094,21 @@ const [showAllParticipants, setShowAllParticipants] = useState(false);
 
                     return visible.map((f) => {
                       const isDefault = f.feed_id === defaultFeedId;
-                      const isLoaded  = f.feed_id === feedId;
-                      const stats     = feedStats[keyFor(projectId, f.feed_id)];
-                      const rowKey    = keyFor(projectId, f.feed_id);
-                      const ff        = feedFlags[rowKey] || {};
-                      const randomTimeActive   = !!(ff.randomize_times ?? ff.random_time);
+                      const isLoaded = f.feed_id === feedId;
+                      const stats = feedStats[keyFor(projectId, f.feed_id)];
+                      const rowKey = keyFor(projectId, f.feed_id);
+                      const ff = feedFlags[rowKey] || {};
+                      const randomTimeActive = !!(ff.randomize_times ?? ff.random_time);
                       const randomAvatarActive = !!(ff.randomize_avatars ?? ff.random_avatar);
-                      const randomNameActive   = !!(ff.randomize_names   ?? ff.random_name);
-                      const randomImageActive  = !!(ff.randomize_images  ?? ff.random_image);
-                      const randomTimeBusy   = !!ff.saving || !!ff.loading;
+                      const randomNameActive = !!(ff.randomize_names ?? ff.random_name);
+                      const randomImageActive = !!(ff.randomize_images ?? ff.random_image);
+                      const randomTimeBusy = !!ff.saving || !!ff.loading;
                       const randomAvatarBusy = !!ff.savingAv || !!ff.loading;
-                      const randomNameBusy   = !!ff.savingNm || !!ff.loading;
-                      const randomImageBusy  = !!ff.savingImg|| !!ff.loading;
-                      const anySaving        = !!(ff.saving || ff.savingAv || ff.savingNm || ff.savingImg);
+                      const randomNameBusy = !!ff.savingNm || !!ff.loading;
+                      const randomImageBusy = !!ff.savingImg || !!ff.loading;
+                      const anySaving = !!(ff.saving || ff.savingAv || ff.savingNm || ff.savingImg);
                       const randomBioActive = !!(ff.randomize_bios ?? ff.random_bio);
-const randomBioBusy = !!ff.savingBio;
-
+                      const randomBioBusy = !!ff.savingBio;
 
                       return (
                         <tr
@@ -968,23 +1120,49 @@ const randomBioBusy = !!ff.savingBio;
                           <td style={{ padding: ".5rem .5rem" }}>
                             <span className="feed-dot" aria-hidden="true" />
                           </td>
-                          <td style={{ padding: ".5rem .5rem", fontWeight: 600, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                            {f.name || f.feed_id} {isDefault ? <span className="subtle">· default</span> : null}
+                          <td
+                            style={{
+                              padding: ".5rem .5rem",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {f.name || f.feed_id}{" "}
+                            {isDefault ? <span className="subtle">· default</span> : null}
                             {isLoaded && !isDefault ? <span className="subtle"> · loaded</span> : null}
                           </td>
-                          <td style={{ padding: ".5rem .5rem", fontFamily: "monospace" }}>{f.feed_id}</td>
+                          <td style={{ padding: ".5rem .5rem", fontFamily: "monospace" }}>
+                            {f.feed_id}
+                          </td>
                           <td style={{ padding: ".5rem .5rem" }}>
-                            <span className="subtle">{f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}</span>
+                            <span className="subtle">
+                              {f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}
+                            </span>
                           </td>
 
-                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.total : "—"}</td>
-                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>{stats ? stats.submitted : "—"}</td>
                           <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
-                            {stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
+                            {stats ? stats.total : "—"}
+                          </td>
+                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
+                            {stats ? stats.submitted : "—"}
+                          </td>
+                          <td style={{ padding: ".5rem .5rem", textAlign: "center" }}>
+                            {stats && stats.avg_ms_enter_to_submit != null
+                              ? msToMinSec(stats.avg_ms_enter_to_submit)
+                              : "—"}
                           </td>
 
                           <td style={{ padding: ".5rem .5rem" }}>
-                            <div style={{ display:"flex", flexWrap:"wrap", gap:".4rem", alignItems:"center" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: ".4rem",
+                                alignItems: "center",
+                              }}
+                            >
                               <button
                                 className="btn"
                                 title="Load this feed into the editor"
@@ -1015,8 +1193,14 @@ const randomBioBusy = !!ff.savingBio;
                                     if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
                                     if (ff.saving || ff.savingAv || ff.savingNm) return;
 
-                                    const curVal = !!((feedFlags[rowKey]?.randomize_times ?? feedFlags[rowKey]?.random_time));
-                                    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: true } }));
+                                    const curVal = !!(
+                                      feedFlags[rowKey]?.randomize_times ??
+                                      feedFlags[rowKey]?.random_time
+                                    );
+                                    setFeedFlags((m) => ({
+                                      ...m,
+                                      [rowKey]: { ...(m[rowKey] || {}), saving: true },
+                                    }));
 
                                     try {
                                       const res = await setFeedFlagsOnBackend({
@@ -1024,17 +1208,29 @@ const randomBioBusy = !!ff.savingBio;
                                         feedId: f.feed_id,
                                         patch: { random_time: !curVal },
                                       });
-                                      if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+                                      if (!res?.ok) {
+                                        throw new Error(res?.err || "Failed to update feed flag.");
+                                      }
 
                                       await loadFlagsFor(f.feed_id, { force: true });
                                     } catch (e) {
-                                      alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+                                      alert(
+                                        e.message ||
+                                          "Failed to update feed flag. Please re-login and try again."
+                                      );
                                     } finally {
-                                      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), saving: false } }));
+                                      setFeedFlags((m) => ({
+                                        ...m,
+                                        [rowKey]: { ...(m[rowKey] || {}), saving: false },
+                                      }));
                                     }
                                   }}
                                 >
-                                  {randomTimeBusy ? "Random time…" : (randomTimeActive ? "Random time: ON" : "Random time: OFF")}
+                                  {randomTimeBusy
+                                    ? "Random time…"
+                                    : randomTimeActive
+                                      ? "Random time: ON"
+                                      : "Random time: OFF"}
                                 </button>
 
                                 <button
@@ -1045,8 +1241,14 @@ const randomBioBusy = !!ff.savingBio;
                                     if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
                                     if (ff.saving || ff.savingAv || ff.savingNm) return;
 
-                                    const cur = !!((feedFlags[rowKey]?.randomize_avatars ?? feedFlags[rowKey]?.random_avatar));
-                                    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: true } }));
+                                    const cur = !!(
+                                      feedFlags[rowKey]?.randomize_avatars ??
+                                      feedFlags[rowKey]?.random_avatar
+                                    );
+                                    setFeedFlags((m) => ({
+                                      ...m,
+                                      [rowKey]: { ...(m[rowKey] || {}), savingAv: true },
+                                    }));
 
                                     try {
                                       const res = await setFeedFlagsOnBackend({
@@ -1054,50 +1256,77 @@ const randomBioBusy = !!ff.savingBio;
                                         feedId: f.feed_id,
                                         patch: { random_avatar: !cur },
                                       });
-                                      if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+                                      if (!res?.ok) {
+                                        throw new Error(res?.err || "Failed to update feed flag.");
+                                      }
 
                                       await loadFlagsFor(f.feed_id, { force: true });
                                     } catch (e) {
-                                      alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+                                      alert(
+                                        e.message ||
+                                          "Failed to update feed flag. Please re-login and try again."
+                                      );
                                     } finally {
-                                      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingAv: false } }));
+                                      setFeedFlags((m) => ({
+                                        ...m,
+                                        [rowKey]: { ...(m[rowKey] || {}), savingAv: false },
+                                      }));
                                     }
                                   }}
                                 >
-                                  {randomAvatarBusy ? "Random avatar…" : (randomAvatarActive ? "Random avatar: ON" : "Random avatar: OFF")}
+                                  {randomAvatarBusy
+                                    ? "Random avatar…"
+                                    : randomAvatarActive
+                                      ? "Random avatar: ON"
+                                      : "Random avatar: OFF"}
                                 </button>
 
+                                <button
+                                  className={`btn ghost ${randomImageActive ? "active" : ""}`}
+                                  title="When ON, this feed randomizes post images from the topic folder (deterministic per session)."
+                                  disabled={randomImageBusy || (anySaving && !ff.savingImg)}
+                                  onClick={async () => {
+                                    if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+                                    if (ff.saving || ff.savingAv || ff.savingNm || ff.savingImg) return;
 
+                                    const cur = !!(
+                                      feedFlags[rowKey]?.randomize_images ??
+                                      feedFlags[rowKey]?.random_image
+                                    );
+                                    setFeedFlags((m) => ({
+                                      ...m,
+                                      [rowKey]: { ...(m[rowKey] || {}), savingImg: true },
+                                    }));
 
-
-  <button
-    className={`btn ghost ${randomImageActive ? "active" : ""}`}
-    title="When ON, this feed randomizes post images from the topic folder (deterministic per session)."
-    disabled={randomImageBusy || (anySaving && !ff.savingImg)}
-    onClick={async () => {
-      if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
-      if (ff.saving || ff.savingAv || ff.savingNm || ff.savingImg) return;
-
-      const cur = !!((feedFlags[rowKey]?.randomize_images ?? feedFlags[rowKey]?.random_image));
-      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingImg: true } }));
-
-      try {
-        const res = await setFeedFlagsOnBackend({
-          projectId,
-          feedId: f.feed_id,
-          patch: { random_image: !cur },
-        });
-        if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
-        await loadFlagsFor(f.feed_id, { force: true });
-      } catch (e) {
-        alert(e.message || "Failed to update feed flag. Please re-login and try again.");
-      } finally {
-        setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingImg: false } }));
-      }
-    }}
-  >
-    {randomImageBusy ? "Random image…" : (randomImageActive ? "Random image: ON" : "Random image: OFF")}
-  </button>
+                                    try {
+                                      const res = await setFeedFlagsOnBackend({
+                                        projectId,
+                                        feedId: f.feed_id,
+                                        patch: { random_image: !cur },
+                                      });
+                                      if (!res?.ok) {
+                                        throw new Error(res?.err || "Failed to update feed flag.");
+                                      }
+                                      await loadFlagsFor(f.feed_id, { force: true });
+                                    } catch (e) {
+                                      alert(
+                                        e.message ||
+                                          "Failed to update feed flag. Please re-login and try again."
+                                      );
+                                    } finally {
+                                      setFeedFlags((m) => ({
+                                        ...m,
+                                        [rowKey]: { ...(m[rowKey] || {}), savingImg: false },
+                                      }));
+                                    }
+                                  }}
+                                >
+                                  {randomImageBusy
+                                    ? "Random image…"
+                                    : randomImageActive
+                                      ? "Random image: ON"
+                                      : "Random image: OFF"}
+                                </button>
 
                                 <button
                                   className={`btn ghost ${randomNameActive ? "active" : ""}`}
@@ -1107,8 +1336,14 @@ const randomBioBusy = !!ff.savingBio;
                                     if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
                                     if (ff.saving || ff.savingAv || ff.savingNm) return;
 
-                                    const cur = !!((feedFlags[rowKey]?.randomize_names ?? feedFlags[rowKey]?.random_name));
-                                    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: true } }));
+                                    const cur = !!(
+                                      feedFlags[rowKey]?.randomize_names ??
+                                      feedFlags[rowKey]?.random_name
+                                    );
+                                    setFeedFlags((m) => ({
+                                      ...m,
+                                      [rowKey]: { ...(m[rowKey] || {}), savingNm: true },
+                                    }));
 
                                     try {
                                       const res = await setFeedFlagsOnBackend({
@@ -1116,47 +1351,85 @@ const randomBioBusy = !!ff.savingBio;
                                         feedId: f.feed_id,
                                         patch: { random_name: !cur },
                                       });
-                                      if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
+                                      if (!res?.ok) {
+                                        throw new Error(res?.err || "Failed to update feed flag.");
+                                      }
 
                                       await loadFlagsFor(f.feed_id, { force: true });
                                     } catch (e) {
-                                      alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+                                      alert(
+                                        e.message ||
+                                          "Failed to update feed flag. Please re-login and try again."
+                                      );
                                     } finally {
-                                      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingNm: false } }));
+                                      setFeedFlags((m) => ({
+                                        ...m,
+                                        [rowKey]: { ...(m[rowKey] || {}), savingNm: false },
+                                      }));
                                     }
                                   }}
                                 >
-                                  {randomNameBusy ? "Random name…" : (randomNameActive ? "Random name: ON" : "Random name: OFF")}
+                                  {randomNameBusy
+                                    ? "Random name…"
+                                    : randomNameActive
+                                      ? "Random name: ON"
+                                      : "Random name: OFF"}
                                 </button>
 
                                 <button
-  className={`btn ghost ${randomBioActive ? "active" : ""}`}
-  title="When ON, this feed randomizes profile bio stats and text (deterministic per session)."
-  disabled={randomBioBusy || (anySaving && !ff.savingBio)}
-  onClick={async () => {
-    if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
-    if (ff.saving || ff.savingAv || ff.savingNm || ff.savingImg || ff.savingBio) return;
+                                  className={`btn ghost ${randomBioActive ? "active" : ""}`}
+                                  title="When ON, this feed randomizes profile bio stats and text (deterministic per session)."
+                                  disabled={randomBioBusy || (anySaving && !ff.savingBio)}
+                                  onClick={async () => {
+                                    if (!ff.loaded && !ff.loading) await loadFlagsFor(f.feed_id);
+                                    if (
+                                      ff.saving ||
+                                      ff.savingAv ||
+                                      ff.savingNm ||
+                                      ff.savingImg ||
+                                      ff.savingBio
+                                    ) {
+                                      return;
+                                    }
 
-    const cur = !!((feedFlags[rowKey]?.randomize_bios ?? feedFlags[rowKey]?.random_bio));
-    setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingBio: true } }));
+                                    const cur = !!(
+                                      feedFlags[rowKey]?.randomize_bios ??
+                                      feedFlags[rowKey]?.random_bio
+                                    );
+                                    setFeedFlags((m) => ({
+                                      ...m,
+                                      [rowKey]: { ...(m[rowKey] || {}), savingBio: true },
+                                    }));
 
-    try {
-      const res = await setFeedFlagsOnBackend({
-        projectId,
-        feedId: f.feed_id,
-        patch: { random_bio: !cur },
-      });
-      if (!res?.ok) throw new Error(res?.err || "Failed to update feed flag.");
-      await loadFlagsFor(f.feed_id, { force: true });
-    } catch (e) {
-      alert(e.message || "Failed to update feed flag. Please re-login and try again.");
-    } finally {
-      setFeedFlags(m => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingBio: false } }));
-    }
-  }}
->
-  {randomBioBusy ? "Random bio…" : (randomBioActive ? "Random bio: ON" : "Random bio: OFF")}
-</button>
+                                    try {
+                                      const res = await setFeedFlagsOnBackend({
+                                        projectId,
+                                        feedId: f.feed_id,
+                                        patch: { random_bio: !cur },
+                                      });
+                                      if (!res?.ok) {
+                                        throw new Error(res?.err || "Failed to update feed flag.");
+                                      }
+                                      await loadFlagsFor(f.feed_id, { force: true });
+                                    } catch (e) {
+                                      alert(
+                                        e.message ||
+                                          "Failed to update feed flag. Please re-login and try again."
+                                      );
+                                    } finally {
+                                      setFeedFlags((m) => ({
+                                        ...m,
+                                        [rowKey]: { ...(m[rowKey] || {}), savingBio: false },
+                                      }));
+                                    }
+                                  }}
+                                >
+                                  {randomBioBusy
+                                    ? "Random bio…"
+                                    : randomBioActive
+                                      ? "Random bio: ON"
+                                      : "Random bio: OFF"}
+                                </button>
 
                                 <button
                                   className="btn"
@@ -1172,25 +1445,38 @@ const randomBioBusy = !!ff.savingBio;
 
                                     setIsSaving(true);
                                     try {
-                                      saveLocalBackup(projectId, feedId, "fb", posts);
-                                      await snapshotToS3({ posts, projectId, feedId, app: "fb" });
+                                      saveLocalBackup(projectId, feedId, APP, posts);
+                                      await snapshotToS3({
+                                        posts,
+                                        projectId,
+                                        feedId,
+                                        app: APP,
+                                      });
                                       const ok = await savePostsToBackend(posts, {
                                         projectId: pidForBackend(projectId),
                                         feedId: f.feed_id,
                                         name: f.name || f.feed_id,
-                                        app: "fb",
+                                        app: APP,
                                       });
+
                                       if (ok) {
-                                        const list = await listFeedsFromBackend({ projectId: pidForBackend(projectId) });
+                                        const list = await listFeedsFromBackend({
+                                          projectId: pidForBackend(projectId),
+                                        });
                                         const nextFeeds = Array.isArray(list) ? list : [];
                                         setFeeds(nextFeeds);
                                         const row = nextFeeds.find((x) => x.feed_id === f.feed_id);
                                         if (row) {
-                                          const fresh = await loadPostsFromBackend(f.feed_id, { projectId: pidForBackend(projectId), force: true });
+                                          const fresh = await loadPostsFromBackend(f.feed_id, {
+                                            projectId: pidForBackend(projectId),
+                                            force: true,
+                                          });
                                           const arr = Array.isArray(fresh) ? fresh : [];
-                                          arr.forEach(p => {
+                                          arr.forEach((p) => {
                                             if ("showTime" in p) delete p.showTime;
-                                            if (!p.authorType) p.authorType = p.adType === "ad" ? "company" : "female";
+                                            if (!p.authorType) {
+                                              p.authorType = p.adType === "ad" ? "company" : "female";
+                                            }
                                           });
                                           setPosts(arr);
                                           setCachedPosts(projectId, f.feed_id, row.checksum, arr);
@@ -1230,8 +1516,8 @@ const randomBioBusy = !!ff.savingBio;
                                     typeof buildFeedShareUrl === "function"
                                       ? buildFeedShareUrl({ ...f, project_id: projectId })
                                       : `${window.location.origin}/?project=${encodeURIComponent(
-                                        projectId || "global"
-                                      )}&feed=${encodeURIComponent(f.feed_id)}`;
+                                          projectId || "global"
+                                        )}&feed=${encodeURIComponent(f.feed_id)}`;
 
                                   await navigator.clipboard.writeText(url).catch(() => {});
                                   alert("Link copied:\n" + url);
@@ -1245,21 +1531,27 @@ const randomBioBusy = !!ff.savingBio;
                                   className="btn ghost danger"
                                   title="Delete the entire feed (posts, participants, registry)"
                                   onClick={async () => {
-                                    const okGo = confirm(`Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`);
+                                    const okGo = confirm(
+                                      `Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`
+                                    );
                                     if (!okGo) return;
                                     const ok = await deleteFeedOnBackend(f.feed_id);
                                     if (ok) {
                                       if (f.feed_id === feedId) {
-                                        const next = feeds.filter(x => x.feed_id !== f.feed_id);
+                                        const next = feeds.filter((x) => x.feed_id !== f.feed_id);
                                         const nextSel = next[0] || null;
                                         setFeeds(next);
                                         if (nextSel) {
                                           await selectFeed(nextSel.feed_id);
                                         } else {
-                                          setFeedId(""); setFeedName(""); setPosts([]);
+                                          setFeedId("");
+                                          setFeedName("");
+                                          setPosts([]);
                                         }
                                       } else {
-                                        setFeeds(prev => prev.filter(x => x.feed_id !== f.feed_id));
+                                        setFeeds((prev) =>
+                                          prev.filter((x) => x.feed_id !== f.feed_id)
+                                        );
                                       }
                                       if (defaultFeedId === f.feed_id) setDefaultFeedId(null);
                                       alert("Feed deleted.");
@@ -1282,7 +1574,6 @@ const randomBioBusy = !!ff.savingBio;
             </div>
           </Section>
 
-
           {/* Surveys */}
           <Section
             title="Surveys"
@@ -1291,13 +1582,13 @@ const randomBioBusy = !!ff.savingBio;
               <button
                 type="button"
                 className="btn ghost section-chev"
-                onClick={() => setSurveysCollapsed(v => !v)}
+                onClick={() => setSurveysCollapsed((v) => !v)}
                 aria-expanded={!surveysCollapsed}
                 aria-controls="surveys-body"
                 title={surveysCollapsed ? "Expand" : "Collapse"}
               >
                 <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                  <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z" />
                 </svg>
               </button>
             }
@@ -1309,34 +1600,14 @@ const randomBioBusy = !!ff.savingBio;
             >
               <div className="section-collapse-inner">
                 <AdminSurveysPanel
-  projectId={projectId}
-  feedId={feedId}
-  feeds={feeds}
-  loadFeedPosts={async (targetFeedId) => {
-    const fresh = await loadPostsFromBackend(targetFeedId, {
-      projectId: pidForBackend(projectId),
-      force: true,
-    });
-
-    const arr = Array.isArray(fresh) ? fresh : [];
-    arr.forEach((p) => {
-      if ("showTime" in p) delete p.showTime;
-      if (!p.authorType) {
-        p.authorType = p.adType === "ad" ? "company" : "female";
-      }
-    });
-
-    return arr;
-  }}
-/>
+                  projectId={projectId}
+                  feedId={feedId}
+                  feeds={feeds}
+                  loadFeedPosts={loadFeedPostsForSurveys}
+                />
               </div>
             </div>
           </Section>
-
-
-
-
-
 
           {/* Participants */}
           <Section
@@ -1351,13 +1622,17 @@ const randomBioBusy = !!ff.savingBio;
               </>
             }
             right={
-              <div style={{ display:"flex", gap:".4rem", alignItems:"center", flexWrap:"wrap" }}>
+              <div style={{ display: "flex", gap: ".4rem", alignItems: "center", flexWrap: "wrap" }}>
                 {!participantsCollapsed && (
                   <>
                     <button
                       className="btn ghost"
-                      onClick={() => setShowAllParticipants(s => !s)}
-                      title={showAllParticipants ? "Show only the first 5 participants" : "Show all participants"}
+                      onClick={() => setShowAllParticipants((s) => !s)}
+                      title={
+                        showAllParticipants
+                          ? "Show only the first 5 participants"
+                          : "Show all participants"
+                      }
                     >
                       {showAllParticipants ? "Show first 5" : "Show all"}
                     </button>
@@ -1374,7 +1649,7 @@ const randomBioBusy = !!ff.savingBio;
                           if (!okGo) return;
                           const ok = await wipeParticipantsOnBackend(feedId);
                           if (ok) {
-                            setParticipantsRefreshKey(k => k + 1);
+                            setParticipantsRefreshKey((k) => k + 1);
                             alert("Participants wiped.");
                           } else {
                             alert("Failed to wipe participants. Please re-login and try again.");
@@ -1391,13 +1666,13 @@ const randomBioBusy = !!ff.savingBio;
                 <button
                   type="button"
                   className="btn ghost section-chev"
-                  onClick={() => setParticipantsCollapsed(v => !v)}
+                  onClick={() => setParticipantsCollapsed((v) => !v)}
                   aria-expanded={!participantsCollapsed}
                   aria-controls="participants-body"
                   title={participantsCollapsed ? "Expand" : "Collapse"}
                 >
                   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z" />
                   </svg>
                 </button>
               </div>
@@ -1410,15 +1685,15 @@ const randomBioBusy = !!ff.savingBio;
             >
               <div className="section-collapse-inner">
                 <ParticipantsPanel
-  key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
-  projectId={projectId}
-  feedId={feedId}
-  postNamesMap={postNames}
-  posts={posts}
-  compact
-  limit={showAllParticipants ? undefined : 5}
-  onCountChange={setParticipantsCount}
-/>
+                  key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
+                  projectId={projectId}
+                  feedId={feedId}
+                  postNamesMap={postNames}
+                  posts={posts}
+                  compact
+                  limit={showAllParticipants ? undefined : 5}
+                  onCountChange={setParticipantsCount}
+                />
               </div>
             </div>
           </Section>
@@ -1438,16 +1713,19 @@ const randomBioBusy = !!ff.savingBio;
                     <button
                       className="btn"
                       onClick={async () => {
-                        const fresh = await loadPostsFromBackend(feedId, { projectId: pidForBackend(projectId), force: true });
+                        const fresh = await loadPostsFromBackend(feedId, {
+                          projectId: pidForBackend(projectId),
+                          force: true,
+                        });
                         const arr = Array.isArray(fresh) ? fresh : [];
-                        arr.forEach(p => { 
-                          if ("showTime" in p) delete p.showTime; 
+                        arr.forEach((p) => {
+                          if ("showTime" in p) delete p.showTime;
                           if (!p.authorType) {
                             p.authorType = p.adType === "ad" ? "company" : "female";
                           }
                         });
                         setPosts(arr);
-                        const row = feeds.find(f => f.feed_id === feedId);
+                        const row = feeds.find((f) => f.feed_id === feedId);
                         if (row) setCachedPosts(projectId, feedId, row.checksum, arr);
                         setPostNames(readPostNames(projectId, feedId) || {});
                       }}
@@ -1461,27 +1739,38 @@ const randomBioBusy = !!ff.savingBio;
                       title="Export current posts as JSON"
                       onClick={() => {
                         const payload = {
-                          app: "fb",
+                          app: APP,
                           projectId: projectId || "global",
                           feedId,
                           ts: new Date().toISOString(),
-                          posts: posts.map(p => ({
+                          posts: posts.map((p) => ({
                             ...p,
-                            name: (p.name ?? (postNames?.[p.id]) ?? "").trim() || undefined,
+                            name: (p.name ?? postNames?.[p.id] ?? "").trim() || undefined,
                           })),
                         };
-                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], {
+                          type: "application/json",
+                        });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
-                        a.download = `${projectId || "global"}-${feedId}-${new Date().toISOString().replace(/[:.]/g,"-")}.json`;
-                        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+                        a.download = `${projectId || "global"}-${feedId}-${new Date()
+                          .toISOString()
+                          .replace(/[:.]/g, "-")}.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
                       }}
                     >
                       Export JSON
                     </button>
 
-                    <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
+                    <label
+                      className="btn ghost"
+                      title="Import posts from a JSON backup"
+                      style={{ cursor: "pointer" }}
+                    >
                       Import JSON
                       <input
                         type="file"
@@ -1493,9 +1782,18 @@ const randomBioBusy = !!ff.savingBio;
                           try {
                             const text = await f.text();
                             const parsed = JSON.parse(text);
-                            const imported = Array.isArray(parsed) ? parsed : (parsed.posts || []);
-                            if (!Array.isArray(imported)) { alert("This file doesn't look like a posts backup."); return; }
-                            if (!confirm(`Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`)) return;
+                            const imported = Array.isArray(parsed) ? parsed : parsed.posts || [];
+                            if (!Array.isArray(imported)) {
+                              alert("This file doesn't look like a posts backup.");
+                              return;
+                            }
+                            if (
+                              !confirm(
+                                `Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`
+                              )
+                            ) {
+                              return;
+                            }
                             setPosts(imported);
                             alert("Imported. Remember to Save to publish back to the backend.");
                           } catch (err) {
@@ -1510,7 +1808,7 @@ const randomBioBusy = !!ff.savingBio;
 
                     <button
                       className="btn ghost"
-                      onClick={() => setShowAllPosts(s => !s)}
+                      onClick={() => setShowAllPosts((s) => !s)}
                       title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
                     >
                       {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
@@ -1518,11 +1816,26 @@ const randomBioBusy = !!ff.savingBio;
 
                     <RoleGate min="editor">
                       <ChipToggle label="Randomize order" checked={!!randomize} onChange={setRandomize} />
-                      <button className="btn" onClick={() => { const p = makeRandomPost(); setIsNew(true); setEditing(p); }} title="Generate a synthetic post">
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          const p = makeRandomPost();
+                          setIsNew(true);
+                          setEditing(p);
+                        }}
+                        title="Generate a synthetic post"
+                      >
                         + Random Post
                       </button>
-                      <button className="btn ghost" onClick={openNew}>+ Add Post</button>
-                      <button className="btn ghost danger" onClick={clearFeed} disabled={!posts.length} title="Delete all posts from this feed">
+                      <button className="btn ghost" onClick={openNew}>
+                        + Add Post
+                      </button>
+                      <button
+                        className="btn ghost danger"
+                        onClick={clearFeed}
+                        disabled={!posts.length}
+                        title="Delete all posts from this feed"
+                      >
                         Clear Feed
                       </button>
                     </RoleGate>
@@ -1532,13 +1845,13 @@ const randomBioBusy = !!ff.savingBio;
                 <button
                   type="button"
                   className="btn ghost section-chev"
-                  onClick={() => setPostsCollapsed(v => !v)}
+                  onClick={() => setPostsCollapsed((v) => !v)}
                   aria-expanded={!postsCollapsed}
                   aria-controls="posts-body"
                   title={postsCollapsed ? "Expand" : "Collapse"}
                 >
                   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z" />
                   </svg>
                 </button>
               </>
@@ -1585,21 +1898,33 @@ const randomBioBusy = !!ff.savingBio;
                                 {p.author || <span className="subtle">—</span>}
                                 {p.badge ? " ✔" : ""}
                               </td>
-                              <td style={{ padding: 8, maxWidth: 520, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              <td
+                                style={{
+                                  padding: 8,
+                                  maxWidth: 520,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
                                 {p.text || <span className="subtle">—</span>}
                               </td>
                               <td style={{ padding: 8 }}>
                                 <span className="subtle">{p.time ? p.time : "—"}</span>
                               </td>
                               <td style={{ padding: 8 }}>
-                                {p.videoMode !== "none"
-                                  ? "🎬 video"
-                                  : p.imageMode !== "none"
-                                    ? "🖼️ image"
-                                    : <span className="subtle">none</span>}
+                                {p.videoMode !== "none" ? (
+                                  "🎬 video"
+                                ) : p.imageMode !== "none" ? (
+                                  "🖼️ image"
+                                ) : (
+                                  <span className="subtle">none</span>
+                                )}
                               </td>
                               <td style={{ padding: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button className="btn" onClick={() => openEdit(p)}>Edit</button>
+                                <button className="btn" onClick={() => openEdit(p)}>
+                                  Edit
+                                </button>
                                 <button
                                   className="btn ghost"
                                   title="Rename this post for CSV columns"
@@ -1609,14 +1934,17 @@ const randomBioBusy = !!ff.savingBio;
                                     if (next === null) return;
                                     const name = (next || "").trim();
                                     const map = { ...(postNames || {}) };
-                                    if (name) map[p.id] = name; else delete map[p.id];
+                                    if (name) map[p.id] = name;
+                                    else delete map[p.id];
                                     setPostNames(map);
                                     writePostNames(projectId, feedId, map);
                                   }}
                                 >
                                   Rename
                                 </button>
-                                <button className="btn ghost danger" onClick={() => removePost(p.id)}>Delete</button>
+                                <button className="btn ghost danger" onClick={() => removePost(p.id)}>
+                                  Delete
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -1638,13 +1966,13 @@ const randomBioBusy = !!ff.savingBio;
                 <button
                   type="button"
                   className="btn ghost section-chev"
-                  onClick={() => setUsersCollapsed(v => !v)}
+                  onClick={() => setUsersCollapsed((v) => !v)}
                   aria-expanded={!usersCollapsed}
                   aria-controls="users-body"
                   title={usersCollapsed ? "Expand" : "Collapse"}
                 >
                   <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z"/>
+                    <path d="M5.8 7.8a1 1 0 0 1 1.4 0L10 10.6l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 9.2a1 1 0 0 1 0-1.4z" />
                   </svg>
                 </button>
               }
@@ -1674,9 +2002,20 @@ const randomBioBusy = !!ff.savingBio;
           wide
           footer={
             <>
-              <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
-              <RoleGate min="editor" elseRender={<button className="btn" disabled title="Viewer mode">Save</button>}>
-                <button className="btn primary" onClick={saveEditing}>{isNew ? "Add" : "Save"}</button>
+              <button className="btn" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <RoleGate
+                min="editor"
+                elseRender={
+                  <button className="btn" disabled title="Viewer mode">
+                    Save
+                  </button>
+                }
+              >
+                <button className="btn primary" onClick={saveEditing}>
+                  {isNew ? "Add" : "Save"}
+                </button>
               </RoleGate>
             </>
           }
@@ -1697,12 +2036,20 @@ const randomBioBusy = !!ff.savingBio;
         <div aria-live="assertive" className="admin-expired-backdrop">
           <div className="admin-expired-dialog">
             <h3>Session expired</h3>
-            <p className="subtle">Your admin token has expired. Please re-authenticate to continue.</p>
+            <p className="subtle">
+              Your admin token has expired. Please re-authenticate to continue.
+            </p>
             <div className="admin-expired-actions">
               <button className="btn ghost" onClick={keepAlive} disabled={touching}>
                 {touching ? "Trying…" : "Try to refresh"}
               </button>
-              <button className="btn primary" onClick={() => { setSessExpired(false); onLogout?.(); }}>
+              <button
+                className="btn primary"
+                onClick={() => {
+                  setSessExpired(false);
+                  onLogout?.();
+                }}
+              >
                 Go to login
               </button>
             </div>

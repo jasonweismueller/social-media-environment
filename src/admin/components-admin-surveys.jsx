@@ -763,8 +763,7 @@ export function AdminSurveysPanel({
           nextMap[currentFeedId] = posts;
         });
 
-      console.log("linkedFeedsForEditor", linkedFeedsForEditor);
-console.log("nextMap", nextMap);
+  
 
         setLinkedFeedPostsMap(nextMap);
       } finally {
