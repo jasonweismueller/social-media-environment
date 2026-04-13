@@ -20,6 +20,7 @@ import {
   normalizeSurvey as normalizeFrontendSurvey,
   makeEmptySurveyResponses,
   validateSurveyResponses,
+  getTrackingIdsFromUrl
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
@@ -55,6 +56,7 @@ function normalizeFlags(raw) {
       f = {};
     }
   }
+
 
   const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
 
@@ -166,6 +168,8 @@ function getQueryParamEverywhere(key) {
   const hashQ = new URLSearchParams(window.location.hash.split("?")[1] || "");
   return String(q.get(key) || hashQ.get(key) || "").trim();
 }
+
+
 
 /* ---------- IG rails skeleton ---------- */
 function RailBox({ largeAvatar = false }) {
@@ -361,6 +365,9 @@ export default function App() {
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
+
+  const trackingIds = useMemo(() => getTrackingIdsFromUrl(), []);
+  const prefilledParticipantId = trackingIds.prolific_pid || "";
 
   
 
@@ -1575,7 +1582,8 @@ finalizeStudyCompletion();
 
       {shouldShowParticipantOverlay && (
         <ParticipantOverlay
-          onSubmit={(id) => {
+  initialValue={prefilledParticipantId}
+  onSubmit={(id) => {
             const ts = now();
             setParticipantId(id);
             setHasEntered(true);

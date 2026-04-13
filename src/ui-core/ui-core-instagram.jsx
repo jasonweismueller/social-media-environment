@@ -2,7 +2,9 @@
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { fakeNamesFor as utilsFakeNamesFor,uid  } from "../utils";
-import { tryEnterFullscreen, exitFullscreen } from "../utils";
+import { tryEnterFullscreen, exitFullscreen, } from "../utils";
+
+
 
 /* ------------------------------- Tiny helper ------------------------------- */
 function useIsMobile(breakpointPx = 700) {
@@ -378,8 +380,14 @@ export function neutralAvatarDataUrl(size = 28) {
 }
 
 /* ----------------- Overlays ------------- */
-export function ParticipantOverlay({ onSubmit }) {
-  const [tempId, setTempId] = useState("");
+export function ParticipantOverlay({ initialValue = "", onSubmit }) {
+  const [tempId, setTempId] = useState(initialValue || "");
+
+  useEffect(() => {
+    if (initialValue && !tempId) {
+      setTempId(initialValue);
+    }
+  }, [initialValue, tempId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -387,14 +395,15 @@ export function ParticipantOverlay({ onSubmit }) {
     if (!cleanId) return;
 
     // On mobile, request fullscreen right on the same gesture
-    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 700px)").matches;
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 700px)").matches;
+
     if (isMobile) {
-      // Try the root first
       tryEnterFullscreen(document.documentElement);
-      // Retry shortly after the overlay begins closing (helps Safari timing)
+
       setTimeout(() => {
         tryEnterFullscreen(document.querySelector(".app") || document.body);
-        // Android soft-hide bar nudge (no-op elsewhere)
         window.scrollTo(0, 1);
       }, 120);
     }
@@ -403,13 +412,31 @@ export function ParticipantOverlay({ onSubmit }) {
   };
 
   return (
-    <div className="modal-backdrop" style={{ background: "rgba(0,0,0,0.6)", zIndex: 100 }}>
+    <div
+      className="modal-backdrop"
+      style={{ background: "rgba(0,0,0,0.6)", zIndex: 100 }}
+    >
       <div className="modal" style={{ maxWidth: 400, width: "100%" }}>
-        <div className="modal-head"><h3 style={{ margin: 0 }}>Enter Participant ID</h3></div>
+        <div className="modal-head">
+          <h3 style={{ margin: 0 }}>Enter Participant ID</h3>
+        </div>
+
         <div className="modal-body">
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
-            <input className="input" value={tempId} onChange={(e) => setTempId(e.target.value)} placeholder="Your ID" required />
-            <button type="submit" className="btn primary">Continue</button>
+          <form
+            onSubmit={handleSubmit}
+            style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}
+          >
+            <input
+              className="input"
+              value={tempId}
+              onChange={(e) => setTempId(e.target.value)}
+              placeholder={initialValue ? "" : "Your ID"}
+              required
+            />
+
+            <button type="submit" className="btn primary">
+              Continue
+            </button>
           </form>
         </div>
       </div>
