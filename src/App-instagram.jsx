@@ -25,14 +25,10 @@ import {
 import { Feed as IGFeed } from "./ui-posts";
 import {
   ParticipantOverlay, ThankYouOverlay,
-  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreenMobile
-} from "./ui-core";
-
-import {
-  SurveyScreen,
+  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreenMobile, SurveyScreen,
   SurveyPrefaceFlow,
-  surveyHasPreface,
-} from "./ui-survey";
+  surveyHasPreface
+} from "./ui-core";
 
 import { AdminDashboard } from "./admin/components-admin-dashboard";
 import AdminLogin from "./admin/components-admin-login";
