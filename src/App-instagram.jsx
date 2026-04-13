@@ -27,7 +27,7 @@ import {
   ParticipantOverlay, ThankYouOverlay,
   RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreenMobile, SurveyScreen,
   SurveyPrefaceFlow,
-  surveyHasPreface
+  surveyHasPreface,
 } from "./ui-core";
 
 import { AdminDashboard } from "./admin/components-admin-dashboard";
@@ -36,7 +36,12 @@ import AdminLogin from "./admin/components-admin-login";
 /* =========================================================================
    Mode & helpers
    ======================================================================= */
-const MODE = (new URLSearchParams(window.location.search).get("style") || window.CONFIG?.STYLE || "ig").toLowerCase();
+const MODE = (
+  new URLSearchParams(window.location.search).get("style") ||
+  window.CONFIG?.STYLE ||
+  "ig"
+).toLowerCase();
+
 if (typeof document !== "undefined") {
   document.body.classList.toggle("ig-mode", MODE === "ig");
 }
@@ -50,16 +55,37 @@ function normalizeFlags(raw) {
       f = {};
     }
   }
+
   const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
-  const randomize_times = truthy(f.randomize_times ?? f.randomize_time ?? f.random_time ?? false);
-  const randomize_avatars = truthy(f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false);
-  const randomize_names = truthy(f.randomize_names ?? f.rand_names ?? false);
-  const randomize_images = truthy(f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false);
-  const randomize_bios = truthy(f.randomize_bios ?? f.rand_bios ?? false);
-  return { randomize_times, randomize_avatars, randomize_names, randomize_images, randomize_bios };
+
+  const randomize_times = truthy(
+    f.randomize_times ?? f.randomize_time ?? f.random_time ?? false
+  );
+  const randomize_avatars = truthy(
+    f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false
+  );
+  const randomize_names = truthy(
+    f.randomize_names ?? f.rand_names ?? false
+  );
+  const randomize_images = truthy(
+    f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false
+  );
+  const randomize_bios = truthy(
+    f.randomize_bios ?? f.rand_bios ?? false
+  );
+
+  return {
+    randomize_times,
+    randomize_avatars,
+    randomize_names,
+    randomize_images,
+    randomize_bios,
+  };
 }
 
-function useIOSInputZoomFix(selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea") {
+function useIOSInputZoomFix(
+  selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea"
+) {
   useEffect(() => {
     const ua = navigator.userAgent || "";
     const isIOS = /iP(hone|ad|od)/.test(ua);
@@ -83,7 +109,10 @@ function useIOSInputZoomFix(selector = ".participant-overlay input, .participant
   }, [selector]);
 }
 
-function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-overlay input" } = {}) {
+function useIOSViewportGuard({
+  overlayActive,
+  fieldSelector = ".participant-overlay input",
+} = {}) {
   useEffect(() => {
     const ua = navigator.userAgent || "";
     const isIOS = /iP(hone|ad|od)/.test(ua);
@@ -97,7 +126,8 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
     }
 
     const BASE = "width=device-width, initial-scale=1, viewport-fit=cover";
-    const LOCK = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
+    const LOCK =
+      "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover";
 
     const set = (content) => vp && vp.setAttribute("content", content);
     const nudge = () => {
@@ -110,6 +140,7 @@ function useIOSViewportGuard({ overlayActive, fieldSelector = ".participant-over
     const onFocus = (e) => {
       if (e.target?.matches?.(fieldSelector)) set(LOCK);
     };
+
     const onBlur = (e) => {
       if (e.target?.matches?.(fieldSelector)) {
         set(BASE);
@@ -154,7 +185,12 @@ function RailBox({ largeAvatar = false }) {
 }
 
 function RailBanner({ tall = false }) {
-  return <div className="ghost-card banner" style={{ height: tall ? 220 : 170, borderRadius: 14 }} />;
+  return (
+    <div
+      className="ghost-card banner"
+      style={{ height: tall ? 220 : 170, borderRadius: 14 }}
+    />
+  );
 }
 
 function RailList({ rows = 4 }) {
@@ -171,7 +207,11 @@ function RailList({ rows = 4 }) {
 }
 
 function RailStack({ children }) {
-  return <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>{children}</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>
+      {children}
+    </div>
+  );
 }
 
 function PageWithRails({ children }) {
@@ -190,11 +230,13 @@ function PageWithRails({ children }) {
       const patternHeights = [H_BOX, H_LIST, H_BOX];
       let n = 0;
       let acc = 0;
+
       while (acc + patternHeights[n % patternHeights.length] <= remaining) {
         acc += patternHeights[n % patternHeights.length];
         n += 1;
         if (n > 50) break;
       }
+
       const safeCount = Math.max(8, Math.min(n, 30));
       setRightCount(safeCount);
     };
@@ -208,7 +250,8 @@ function PageWithRails({ children }) {
     <div
       className="page"
       style={{
-        gridTemplateColumns: "minmax(0,2fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,2.25fr)",
+        gridTemplateColumns:
+          "minmax(0,2fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,2.25fr)",
         columnGap: "var(--gap)",
       }}
     >
@@ -221,12 +264,18 @@ function PageWithRails({ children }) {
           <RailBanner />
         </RailStack>
       </aside>
+
       <div className="container feed">{children}</div>
+
       <aside className="rail rail-right" aria-hidden="true">
         <RailStack>
           <RailBanner tall />
           {Array.from({ length: rightCount }).map((_, i) =>
-            i % 3 === 1 ? <RailList key={i} rows={4} /> : <RailBox key={i} largeAvatar={i % 5 === 0} />
+            i % 3 === 1 ? (
+              <RailList key={i} rows={4} />
+            ) : (
+              <RailBox key={i} largeAvatar={i % 5 === 0} />
+            )
           )}
           <RailBanner />
         </RailStack>
@@ -238,7 +287,11 @@ function PageWithRails({ children }) {
 function elementHasImage(el) {
   if (!el) return false;
   if (el.dataset?.hasImage === "1") return true;
-  const root = el.matches?.("[data-post-id]") ? el : el.closest?.("[data-post-id]") || el;
+
+  const root = el.matches?.("[data-post-id]")
+    ? el
+    : el.closest?.("[data-post-id]") || el;
+
   return !!root.querySelector?.(
     [
       ":scope .image-btn img:not(.avatar-img)",
@@ -274,7 +327,6 @@ export default function App() {
     const onChange = (e) => setIsMobileSurvey(e.matches);
 
     setIsMobileSurvey(mq.matches);
-
     mq.addEventListener?.("change", onChange);
     mq.addListener?.(onChange);
 
@@ -285,6 +337,7 @@ export default function App() {
   }, []);
 
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
+
   useEffect(() => {
     setProjectIdUtil(projectId, { persist: true, updateUrl: false });
   }, [projectId]);
@@ -295,6 +348,7 @@ export default function App() {
       const hashQuery = window.location.hash.split("?")[1] || "";
       const getFlag = (key) => q.get(key) ?? new URLSearchParams(hashQuery).get(key);
       const p = getFlag("project_id") || getFlag("project");
+
       if (p != null && String(p) !== projectId) {
         setProjectIdState(String(p));
         setProjectIdUtil(String(p), { persist: true, updateUrl: false });
@@ -312,14 +366,17 @@ export default function App() {
   }, [projectId]);
 
   const [runSeed] = useState(() =>
-    (crypto?.getRandomValues
+    crypto?.getRandomValues
       ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
 
-  const onAdmin = typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
+  const onAdmin =
+    typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
 
-  const [activeFeedId, setActiveFeedId] = useState(!onAdmin ? getFeedIdFromUrl() : null);
+  const [activeFeedId, setActiveFeedId] = useState(
+    !onAdmin ? getFeedIdFromUrl() : null
+  );
   const [posts, setPosts] = useState([]);
   const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
@@ -333,6 +390,7 @@ export default function App() {
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
   const [feedSubmitted, setFeedSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const [flags, setFlags] = useState({
     randomize_times: false,
@@ -341,13 +399,16 @@ export default function App() {
     randomize_images: false,
     randomize_bios: false,
   });
+
   const [avatarPools, setAvatarPools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
+  const [initialBootLoading, setInitialBootLoading] = useState(true);
 
   const [minDelayDone, setMinDelayDone] = useState(true);
   const minDelayStartedRef = useRef(false);
   const minDelayTimerRef = useRef(null);
+
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
   if (typeof document !== "undefined") {
@@ -368,6 +429,7 @@ export default function App() {
       const udebugParam = q.get("udebug") || hashQ.get("udebug");
 
       const shouldEnable = debugParam === "1" || udebugParam === "vp";
+
       if (shouldEnable) {
         document.body.classList.add("debug-vp");
       } else {
@@ -388,6 +450,7 @@ export default function App() {
   }, []);
 
   const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
+
   useEffect(() => {
     const readOffsets = () => {
       const topEl =
@@ -395,7 +458,10 @@ export default function App() {
         document.querySelector(".topbar") ||
         null;
 
-      const top = topEl ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0) : 0;
+      const top = topEl
+        ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0)
+        : 0;
+
       const bottom = 0;
 
       setVpOff({ top, bottom });
@@ -437,8 +503,6 @@ export default function App() {
     setTimeout(run, 80);
   }, []);
 
-  const [submitted, setSubmitted] = useState(false);
-
   const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
 
@@ -446,6 +510,7 @@ export default function App() {
     const ctrl = new AbortController();
     feedAbortRef.current = ctrl;
 
+    setInitialBootLoading(true);
     setFeedPhase("loading");
     setFeedError("");
     setFlagsReady(false);
@@ -468,18 +533,24 @@ export default function App() {
         listFeedsFromBackend({ signal: ctrl.signal }),
         getDefaultFeedFromBackend({ signal: ctrl.signal }),
       ]);
+
       if (ctrl.signal.aborted) return;
 
       const urlFeedId = getFeedIdFromUrl();
       const chosen =
         (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
-        (feedsList || []).find((f) => f.feed_id === (backendDefault?.feed_id || backendDefault)) ||
+        (feedsList || []).find(
+          (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
+        ) ||
         (feedsList || [])[0] ||
         null;
 
-      if (!chosen) throw new Error("No feeds are available.");
+      if (!chosen) {
+        throw new Error("No feeds are available.");
+      }
 
       setActiveFeedId(chosen.feed_id);
+
       try {
         setFeedIdInUrl(chosen.feed_id, { replace: true });
       } catch {}
@@ -511,11 +582,17 @@ export default function App() {
       }).catch(() => null);
 
       if (cached) {
-        const [resFlags, surveyDef] = await Promise.all([flagsPromise, surveyPromise]);
+        const [resFlags, surveyDef] = await Promise.all([
+          flagsPromise,
+          surveyPromise,
+        ]);
+
         if (ctrl.signal.aborted) return;
 
         const nextFlags = normalizeFlags(resFlags);
-        const normalizedSurvey = surveyDef ? normalizeFrontendSurvey(surveyDef) : null;
+        const normalizedSurvey = surveyDef
+          ? normalizeFrontendSurvey(surveyDef)
+          : null;
 
         setFlags(nextFlags);
         setFlagsReady(true);
@@ -525,30 +602,41 @@ export default function App() {
 
         setPosts(cached);
         setLinkedSurvey(normalizedSurvey);
-        setSurveyResponses(normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {});
+        setSurveyResponses(
+          normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
+        );
         setSurveyErrors({});
         setSurveyErrorMsg("");
         setSurveyPhase(normalizedSurvey ? "ready" : "idle");
         setFeedPhase("ready");
+        setInitialBootLoading(false);
         return;
       }
 
       const [fresh, resFlags, surveyDef] = await Promise.all([
-        loadPostsFromBackend(chosen.feed_id, { force: true, signal: ctrl.signal }),
+        loadPostsFromBackend(chosen.feed_id, {
+          force: true,
+          signal: ctrl.signal,
+        }),
         flagsPromise,
         surveyPromise,
       ]);
+
       if (ctrl.signal.aborted) return;
 
       const arr = Array.isArray(fresh) ? fresh : [];
       const nextFlags = normalizeFlags(resFlags);
-      const normalizedSurvey = surveyDef ? normalizeFrontendSurvey(surveyDef) : null;
+      const normalizedSurvey = surveyDef
+        ? normalizeFrontendSurvey(surveyDef)
+        : null;
 
       setFlags(nextFlags);
       setFlagsReady(true);
       setPosts(arr);
       setLinkedSurvey(normalizedSurvey);
-      setSurveyResponses(normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {});
+      setSurveyResponses(
+        normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
+      );
       setSurveyErrors({});
       setSurveyErrorMsg("");
       setSurveyPhase(normalizedSurvey ? "ready" : "idle");
@@ -556,15 +644,20 @@ export default function App() {
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
         localStorage.setItem(k, JSON.stringify(arr));
-        localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum: chosen.checksum, t: Date.now() }));
+        localStorage.setItem(
+          `${k}::meta`,
+          JSON.stringify({ checksum: chosen.checksum, t: Date.now() })
+        );
       } catch {}
 
       setFeedPhase("ready");
+      setInitialBootLoading(false);
     } catch (e) {
       if (e?.name === "AbortError") return;
       console.warn("Feed load failed:", e);
       setFeedError(e?.message || "Failed to load the feed. Please try again.");
       setFeedPhase("error");
+      setInitialBootLoading(false);
     } finally {
       if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
     }
@@ -574,7 +667,11 @@ export default function App() {
     const onUrlChange = () => {
       const fid = getFeedIdFromUrl();
       const pid = getProjectIdUtil();
-      if (pid) setProjectIdUtil(pid, { persist: true, updateUrl: false });
+
+      if (pid) {
+        setProjectIdUtil(pid, { persist: true, updateUrl: false });
+      }
+
       if (fid && fid !== activeFeedId) {
         setFeedIdInUrl(fid, { replace: true });
         setActiveFeedId(fid);
@@ -598,6 +695,7 @@ export default function App() {
   }, [onAdmin, startLoadFeed, projectId]);
 
   const [adminAuthed, setAdminAuthed] = useState(false);
+
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
@@ -624,7 +722,9 @@ export default function App() {
     feedSubmitted &&
     !submitted &&
     !!linkedSurvey &&
-    (surveyPhase === "ready" || surveyPhase === "submitting" || surveyPhase === "error");
+    (surveyPhase === "ready" ||
+      surveyPhase === "submitting" ||
+      surveyPhase === "error");
 
   const shouldShowPreface =
     !onAdmin &&
@@ -642,6 +742,7 @@ export default function App() {
 
   const shouldShowParticipantOverlay =
     !onAdmin &&
+    !initialBootLoading &&
     !hasEntered &&
     !surveyBooting &&
     !shouldShowPreface;
@@ -668,17 +769,39 @@ export default function App() {
   useEffect(() => {
     const el = document.documentElement;
     const prev = el.style.overflow;
+
     const shouldLock =
       !onAdmin &&
-      (surveyBooting || !hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone);
+      (
+        initialBootLoading ||
+        surveyBooting ||
+        !hasEntered ||
+        feedPhase !== "ready" ||
+        submitted ||
+        !flagsReady ||
+        !assetsReady ||
+        !minDelayDone
+      );
 
     el.style.overflow = shouldLock ? "hidden" : "";
+
     return () => {
       el.style.overflow = prev;
     };
-  }, [surveyBooting, hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
+  }, [
+    initialBootLoading,
+    surveyBooting,
+    hasEntered,
+    feedPhase,
+    submitted,
+    onAdmin,
+    flagsReady,
+    assetsReady,
+    minDelayDone,
+  ]);
 
   const overlayActive = !onAdmin && (!hasEntered || shouldShowPreface);
+
   useIOSInputZoomFix(
     ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea, .comment-sheet input, .comment-sheet textarea, .share-sheet input, .share-sheet textarea, .survey-shell input, .survey-shell textarea, .survey-shell select"
   );
@@ -697,22 +820,31 @@ export default function App() {
 
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
+
     const randOn = !!flags?.randomize_avatars || !!flags?.randomize_images;
+
     if (randOn && !minDelayStartedRef.current) {
       minDelayStartedRef.current = true;
       setMinDelayDone(false);
       clearTimeout(minDelayTimerRef.current);
       minDelayTimerRef.current = setTimeout(() => setMinDelayDone(true), 1500);
     }
+
     if (!randOn) {
       clearTimeout(minDelayTimerRef.current);
       setMinDelayDone(true);
     }
-  }, [onAdmin, hasEntered, feedPhase, submitted, flags?.randomize_avatars, flags?.randomize_images]);
+  }, [
+    onAdmin,
+    hasEntered,
+    feedPhase,
+    submitted,
+    flags?.randomize_avatars,
+    flags?.randomize_images,
+  ]);
 
   useEffect(() => {
     if (!feedSubmitted) return;
-
     if (surveyPhase === "loading") return;
 
     if (linkedSurvey && surveyPhase === "ready") {
@@ -738,7 +870,11 @@ export default function App() {
     }
 
     const types = new Set(
-      posts.map((p) => (p?.authorType === "male" || p?.authorType === "company" ? p.authorType : "female"))
+      posts.map((p) =>
+        p?.authorType === "male" || p?.authorType === "company"
+          ? p.authorType
+          : "female"
+      )
     );
 
     if (types.size === 0) {
@@ -748,6 +884,7 @@ export default function App() {
     }
 
     let cancelled = false;
+
     (async () => {
       try {
         const jobs = [];
@@ -755,9 +892,13 @@ export default function App() {
         if (randAvOn) {
           const typesArr = Array.from(types);
           jobs.push(
-            Promise.all(typesArr.map(async (t) => [t, await getAvatarPool(t)])).then((entries) => {
-              if (!cancelled) setAvatarPools(Object.fromEntries(entries));
-            })
+            Promise.all(typesArr.map(async (t) => [t, await getAvatarPool(t)])).then(
+              (entries) => {
+                if (!cancelled) {
+                  setAvatarPools(Object.fromEntries(entries));
+                }
+              }
+            )
           );
         } else {
           setAvatarPools(null);
@@ -773,13 +914,17 @@ export default function App() {
                 .map((t) => t.toLowerCase())
             )
           );
+
           if (topics.length) {
             jobs.push(Promise.allSettled(topics.map((t) => getImagePool(t))));
           }
         }
 
         await Promise.allSettled(jobs);
-        if (!cancelled) setAssetsReady(true);
+
+        if (!cancelled) {
+          setAssetsReady(true);
+        }
       } catch (err) {
         if (!cancelled) {
           console.debug("[asset preload error]", err);
@@ -858,6 +1003,7 @@ export default function App() {
     if (!linkedSurvey) return;
 
     const validation = validateSurveyResponses(linkedSurvey, surveyResponses);
+
     if (!validation.ok) {
       setSurveyErrors(validation.errors || {});
       setSurveyErrorMsg("Please complete the highlighted questions.");
@@ -900,6 +1046,7 @@ export default function App() {
 
   const registerViewRef = (postId) => (el) => {
     const prev = viewRefs.current.get(postId);
+
     if (prev && ioRef.current) {
       try {
         ioRef.current.unobserve(prev);
@@ -929,8 +1076,13 @@ export default function App() {
     const bottomBound = vh - vpOff.bottom;
     const effectiveVH = Math.max(0, bottomBound - topBound);
     const post_h_px = Math.max(0, Math.round(r.height || 0));
-    const visH = Math.max(0, Math.min(r.bottom, bottomBound) - Math.max(r.top, topBound));
-    const vis_frac = post_h_px ? Number((visH / post_h_px).toFixed(4)) : 0;
+    const visH = Math.max(
+      0,
+      Math.min(r.bottom, bottomBound) - Math.max(r.top, topBound)
+    );
+    const vis_frac = post_h_px
+      ? Number((visH / post_h_px).toFixed(4))
+      : 0;
 
     return { vis_frac, post_h_px, viewport_h_px: effectiveVH, el };
   };
@@ -956,7 +1108,16 @@ export default function App() {
   }, [onAdmin]);
 
   useEffect(() => {
-    if (!hasEntered || feedPhase !== "ready" || submitted || onAdmin || shouldShowSurvey || feedSubmitted) return;
+    if (
+      !hasEntered ||
+      feedPhase !== "ready" ||
+      submitted ||
+      onAdmin ||
+      shouldShowSurvey ||
+      feedSubmitted
+    ) {
+      return;
+    }
 
     const DEBUG_VP =
       new URLSearchParams(window.location.search).get("debugvp") === "1" ||
@@ -966,13 +1127,13 @@ export default function App() {
     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
       : 0.5;
+
     const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
       ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
       : ENTER_FRAC;
 
     const enteredSet = new Set();
     const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
-
     const rootMargin = `${-vpOff.top}px 0px ${-vpOff.bottom}px 0px`;
 
     const io = new IntersectionObserver(
@@ -983,7 +1144,9 @@ export default function App() {
 
           const el = e.target;
           const m = measureVis(postId);
-          const vis_frac = m ? m.vis_frac : Number((e.intersectionRatio || 0).toFixed(4));
+          const vis_frac = m
+            ? m.vis_frac
+            : Number((e.intersectionRatio || 0).toFixed(4));
 
           const isImg = elementHasImage(el);
           const TH = isImg ? IMG_FRAC : ENTER_FRAC;
@@ -1003,10 +1166,18 @@ export default function App() {
 
           if (nowIn && !wasIn) {
             enteredSet.add(postId);
-            log("vp_enter", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
+            log("vp_enter", {
+              post_id: postId,
+              vis_frac,
+              feed_id: activeFeedId || null,
+            });
           } else if (!nowIn && wasIn) {
             enteredSet.delete(postId);
-            log("vp_exit", { post_id: postId, vis_frac, feed_id: activeFeedId || null });
+            log("vp_exit", {
+              post_id: postId,
+              vis_frac,
+              feed_id: activeFeedId || null,
+            });
           }
         }
       },
@@ -1014,13 +1185,18 @@ export default function App() {
     );
 
     ioRef.current = io;
+
     for (const [, el] of viewRefs.current) {
       if (el) io.observe(el);
     }
 
     const onHide = () => {
       enteredSet.forEach((id) =>
-        log("vp_exit", { post_id: id, reason: "page_hide", feed_id: activeFeedId || null })
+        log("vp_exit", {
+          post_id: id,
+          reason: "page_hide",
+          feed_id: activeFeedId || null,
+        })
       );
       enteredSet.clear();
     };
@@ -1038,7 +1214,18 @@ export default function App() {
       window.removeEventListener("pagehide", onHide);
       window.removeEventListener("beforeunload", onHide);
     };
-  }, [orderedPosts, hasEntered, feedPhase, submitted, onAdmin, vpOff.top, vpOff.bottom, activeFeedId, shouldShowSurvey, feedSubmitted]);
+  }, [
+    orderedPosts,
+    hasEntered,
+    feedPhase,
+    submitted,
+    onAdmin,
+    vpOff.top,
+    vpOff.bottom,
+    activeFeedId,
+    shouldShowSurvey,
+    feedSubmitted,
+  ]);
 
   return (
     <Router>
@@ -1047,13 +1234,16 @@ export default function App() {
           !onAdmin &&
           !shouldShowSurvey &&
           !shouldShowPreface &&
-          (surveyBooting ||
+          (
+            initialBootLoading ||
+            surveyBooting ||
             !hasEntered ||
             feedPhase !== "ready" ||
             submitted ||
             !flagsReady ||
             !assetsReady ||
-            !minDelayDone)
+            !minDelayDone
+          )
             ? "blurred"
             : ""
         }`}
@@ -1111,7 +1301,12 @@ export default function App() {
                 </div>
               ) : (
                 <PageWithRails>
-                  <div style={{ position: "relative", minHeight: "calc(100vh - var(--vp-top, 0px))" }}>
+                  <div
+                    style={{
+                      position: "relative",
+                      minHeight: "calc(100vh - var(--vp-top, 0px))",
+                    }}
+                  >
                     <div
                       aria-hidden={!canShowFeed}
                       style={{
@@ -1135,16 +1330,22 @@ export default function App() {
                           runSeed={runSeed}
                           app={APP}
                           projectId={projectId}
-                          submitButtonLabel={linkedSurvey ? "Submit Feed & Continue to Questions" : "Submit Feed"}
+                          submitButtonLabel={
+                            linkedSurvey
+                              ? "Submit Feed & Continue to Questions"
+                              : "Submit Feed"
+                          }
                           feedId={activeFeedId}
                           avatarPools={avatarPools}
                           onSubmit={async () => {
                             if (feedSubmitted || submitted || disabled) return;
+
                             setDisabled(true);
 
                             const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
                               ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
                               : 0.5;
+
                             const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
                               ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
                               : ENTER_FRAC;
@@ -1152,9 +1353,11 @@ export default function App() {
                             for (const [post_id, elNode] of viewRefs.current) {
                               const m = measureVis(post_id);
                               if (!m) continue;
+
                               const { vis_frac } = m;
                               const isImg = elementHasImage(elNode);
                               const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+
                               if (vis_frac >= TH) {
                                 log("vp_exit", {
                                   post_id,
@@ -1182,6 +1385,7 @@ export default function App() {
                             const eventsWithSubmit = [...events, submitEvent];
                             const feed_id = activeFeedId || null;
                             const feed_checksum = computeFeedId(posts);
+
                             const row = buildParticipantRow({
                               session_id: sessionIdRef.current,
                               participant_id: participantId,
@@ -1190,8 +1394,14 @@ export default function App() {
                               feed_id,
                               feed_checksum,
                             });
+
                             const header = buildMinimalHeader(posts);
-                            const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+                            const ok = await sendToSheet(
+                              header,
+                              row,
+                              eventsWithSubmit,
+                              feed_id
+                            );
 
                             showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
 
@@ -1206,19 +1416,22 @@ export default function App() {
                       ) : null}
                     </div>
 
-                    {showSkeletonLayer && !feedSubmitted && !shouldShowSurvey && !shouldShowPreface && (
-                      <div
-                        aria-hidden={gateOpen}
-                        style={{
-                          position: "relative",
-                          zIndex: 2,
-                          opacity: gateOpen ? 0 : 1,
-                          transition: "opacity 320ms ease",
-                        }}
-                      >
-                        <SkeletonFeed />
-                      </div>
-                    )}
+                    {showSkeletonLayer &&
+                      !feedSubmitted &&
+                      !shouldShowSurvey &&
+                      !shouldShowPreface && (
+                        <div
+                          aria-hidden={gateOpen}
+                          style={{
+                            position: "relative",
+                            zIndex: 2,
+                            opacity: gateOpen ? 0 : 1,
+                            transition: "opacity 320ms ease",
+                          }}
+                        >
+                          <SkeletonFeed />
+                        </div>
+                      )}
                   </div>
                 </PageWithRails>
               )
@@ -1272,7 +1485,7 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {surveyBooting && (
+      {initialBootLoading && (
         <LoadingOverlay
           title="Loading study…"
           subtitle="Preparing your session"
@@ -1287,6 +1500,7 @@ export default function App() {
             setHasEntered(true);
             enterTsRef.current = ts;
             lastNonScrollTsRef.current = null;
+
             log("participant_id_entered", {
               id,
               feed_id: activeFeedId || null,
@@ -1294,7 +1508,12 @@ export default function App() {
             });
 
             const vp = document.querySelector('meta[name="viewport"]');
-            if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
+            if (vp) {
+              vp.setAttribute(
+                "content",
+                "width=device-width, initial-scale=1, viewport-fit=cover"
+              );
+            }
 
             requestAnimationFrame(() => {
               window.scrollTo(0, 0);
@@ -1304,27 +1523,62 @@ export default function App() {
         />
       )}
 
-      {!onAdmin && hasEntered && !feedSubmitted && !shouldShowPreface && (feedPhase === "loading" || !flagsReady || !assetsReady || !minDelayDone) && (
-        <LoadingOverlay
-          title="Preparing your feed…"
-          subtitle={(flags.randomize_avatars || flags.randomize_images) ? "Almost ready..." : "Fetching posts and setting things up."}
-        />
-      )}
+      {!onAdmin &&
+        hasEntered &&
+        !feedSubmitted &&
+        !shouldShowPreface &&
+        (feedPhase === "loading" ||
+          !flagsReady ||
+          !assetsReady ||
+          !minDelayDone) && (
+          <LoadingOverlay
+            title="Preparing your feed…"
+            subtitle={
+              flags.randomize_avatars || flags.randomize_images
+                ? "Almost ready..."
+                : "Fetching posts and setting things up."
+            }
+          />
+        )}
 
-      {!onAdmin && hasEntered && !feedSubmitted && !shouldShowPreface && feedPhase === "error" && (
-        <div className="modal-backdrop modal-backdrop-dim" role="dialog" aria-modal="true" aria-live="assertive">
-          <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>
-            <div className="spinner-ring" aria-hidden="true" style={{ display: "none" }} />
-            <h3 style={{ margin: "0 0 6px" }}>Couldn’t load your feed</h3>
-            <div style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 12 }}>
-              {feedError || "Network error or service unavailable."}
-            </div>
-            <div>
-              <button className="btn" onClick={startLoadFeed}>Try again</button>
+      {!onAdmin &&
+        hasEntered &&
+        !feedSubmitted &&
+        !shouldShowPreface &&
+        feedPhase === "error" && (
+          <div
+            className="modal-backdrop modal-backdrop-dim"
+            role="dialog"
+            aria-modal="true"
+            aria-live="assertive"
+          >
+            <div
+              className="modal modal-compact"
+              style={{ textAlign: "center", paddingTop: 24 }}
+            >
+              <div
+                className="spinner-ring"
+                aria-hidden="true"
+                style={{ display: "none" }}
+              />
+              <h3 style={{ margin: "0 0 6px" }}>Couldn’t load your feed</h3>
+              <div
+                style={{
+                  color: "var(--muted)",
+                  fontSize: ".95rem",
+                  marginBottom: 12,
+                }}
+              >
+                {feedError || "Network error or service unavailable."}
+              </div>
+              <div>
+                <button className="btn" onClick={startLoadFeed}>
+                  Try again
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {submitted && <ThankYouOverlay sessionId={sessionIdRef.current} />}
     </Router>
