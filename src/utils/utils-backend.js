@@ -314,7 +314,14 @@ function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MO
       const questionId = String(q?.id || "").trim();
       const questionType = String(q?.type || "").trim();
       if (!questionId) return;
-      if (questionType === "info" || questionType === "page_break") return;
+
+      if (
+        questionType === "info" ||
+        questionType === "page_break" ||
+        questionType === "post_reminder"
+      ) {
+        return;
+      }
 
       const questionText = String(q?.text || questionId).trim() || questionId;
       const rows = Array.isArray(q?.rows) ? q.rows : [];
