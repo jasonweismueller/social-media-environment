@@ -333,6 +333,10 @@ function getAvailablePostsForQuestion(q, linkedFeeds = [], linkedFeedPostsMap = 
     ])
   );
 
+  console.log("question", q);
+console.log("relevantFeedIds", relevantFeedIds);
+console.log("linkedFeedPostsMap", linkedFeedPostsMap);
+
   const seen = new Set();
   const out = [];
 
