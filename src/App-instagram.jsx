@@ -437,6 +437,8 @@ export default function App() {
     setTimeout(run, 80);
   }, []);
 
+  const [submitted, setSubmitted] = useState(false);
+
   const startLoadFeed = useCallback(async () => {
     if (onAdmin) return;
 
@@ -604,7 +606,6 @@ export default function App() {
   const [showComposer, setShowComposer] = useState(false);
   const [participantId, setParticipantId] = useState("");
   const [hasEntered, setHasEntered] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [toast, setToast] = useState(null);
   const [events, setEvents] = useState([]);
@@ -634,6 +635,17 @@ export default function App() {
     surveyHasPreface(linkedSurvey) &&
     !prefaceCompleted;
 
+  const surveyBooting =
+    !onAdmin &&
+    !hasEntered &&
+    (feedPhase === "loading" || surveyPhase === "loading");
+
+  const shouldShowParticipantOverlay =
+    !onAdmin &&
+    !hasEntered &&
+    !surveyBooting &&
+    !shouldShowPreface;
+
   useEffect(() => {
     if (typeof document === "undefined") return;
 
@@ -658,13 +670,13 @@ export default function App() {
     const prev = el.style.overflow;
     const shouldLock =
       !onAdmin &&
-      (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone);
+      (surveyBooting || !hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone);
 
     el.style.overflow = shouldLock ? "hidden" : "";
     return () => {
       el.style.overflow = prev;
     };
-  }, [hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
+  }, [surveyBooting, hasEntered, feedPhase, submitted, onAdmin, flagsReady, assetsReady, minDelayDone]);
 
   const overlayActive = !onAdmin && (!hasEntered || shouldShowPreface);
   useIOSInputZoomFix(
@@ -1035,7 +1047,13 @@ export default function App() {
           !onAdmin &&
           !shouldShowSurvey &&
           !shouldShowPreface &&
-          (!hasEntered || feedPhase !== "ready" || submitted || !flagsReady || !assetsReady || !minDelayDone)
+          (surveyBooting ||
+            !hasEntered ||
+            feedPhase !== "ready" ||
+            submitted ||
+            !flagsReady ||
+            !assetsReady ||
+            !minDelayDone)
             ? "blurred"
             : ""
         }`}
@@ -1254,7 +1272,14 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {!onAdmin && !hasEntered && !shouldShowPreface && (
+      {surveyBooting && (
+        <LoadingOverlay
+          title="Loading study…"
+          subtitle="Preparing your session"
+        />
+      )}
+
+      {shouldShowParticipantOverlay && (
         <ParticipantOverlay
           onSubmit={(id) => {
             const ts = now();
