@@ -686,7 +686,6 @@ export function frontendPagesToBackend(pages = []) {
 /* =========================
    Survey mapping
    ========================= */
-
 export function makeEmptySurvey(overrides = {}) {
   const safeOverrides = asObject(overrides);
   const pages = coerceQuestionsIntoPages(safeOverrides);
@@ -717,7 +716,7 @@ export function makeEmptySurvey(overrides = {}) {
     ),
     consent_title: normalizeRichSurveyField(
       safeOverrides.consent_title,
-      "Consent"
+      "Participant Consent"
     ),
     consent_text_html: normalizeRichSurveyField(
       safeOverrides.consent_text_html,
@@ -725,7 +724,7 @@ export function makeEmptySurvey(overrides = {}) {
     ),
     consent_decline_message_html: normalizeRichSurveyField(
       safeOverrides.consent_decline_message_html,
-      "<p>You cannot proceed without providing consent.</p>"
+      "You cannot proceed because you did not provide consent to participate."
     ),
     instructions_title: normalizeRichSurveyField(
       safeOverrides.instructions_title,
@@ -738,6 +737,23 @@ export function makeEmptySurvey(overrides = {}) {
     pre_feed_button_label: normalizeRichSurveyField(
       safeOverrides.pre_feed_button_label,
       "Go to feed"
+    ),
+
+    thank_you_message_html: normalizeRichSurveyField(
+      safeOverrides.thank_you_message_html,
+      "<p>Thank you for completing the study.</p><p>You may now close this window.</p>"
+    ),
+    completion_code: normalizeRichSurveyField(
+      safeOverrides.completion_code,
+      ""
+    ),
+    completion_mode:
+      String(safeOverrides.completion_mode || "").trim().toLowerCase() === "redirect"
+        ? "redirect"
+        : "message",
+    completion_redirect_url: normalizeRichSurveyField(
+      safeOverrides.completion_redirect_url,
+      ""
     ),
   };
 }
@@ -772,7 +788,7 @@ export function normalizeSurvey(raw = {}) {
     ),
     consent_title: normalizeRichSurveyField(
       safeRaw.consent_title,
-      "Consent"
+      "Participant Consent"
     ),
     consent_text_html: normalizeRichSurveyField(
       safeRaw.consent_text_html,
@@ -780,7 +796,7 @@ export function normalizeSurvey(raw = {}) {
     ),
     consent_decline_message_html: normalizeRichSurveyField(
       safeRaw.consent_decline_message_html,
-      "<p>You cannot proceed without providing consent.</p>"
+      "You cannot proceed because you did not provide consent to participate."
     ),
     instructions_title: normalizeRichSurveyField(
       safeRaw.instructions_title,
@@ -793,6 +809,23 @@ export function normalizeSurvey(raw = {}) {
     pre_feed_button_label: normalizeRichSurveyField(
       safeRaw.pre_feed_button_label,
       "Go to feed"
+    ),
+
+    thank_you_message_html: normalizeRichSurveyField(
+      safeRaw.thank_you_message_html,
+      "<p>Thank you for completing the study.</p><p>You may now close this window.</p>"
+    ),
+    completion_code: normalizeRichSurveyField(
+      safeRaw.completion_code,
+      ""
+    ),
+    completion_mode:
+      String(safeRaw.completion_mode || "").trim().toLowerCase() === "redirect"
+        ? "redirect"
+        : "message",
+    completion_redirect_url: normalizeRichSurveyField(
+      safeRaw.completion_redirect_url,
+      ""
     ),
   };
 }
@@ -816,6 +849,11 @@ export function frontendSurveyToBackend(survey = {}) {
     instructions_title: s.instructions_title,
     instructions_html: s.instructions_html,
     pre_feed_button_label: s.pre_feed_button_label,
+
+    thank_you_message_html: s.thank_you_message_html,
+    completion_code: s.completion_code,
+    completion_mode: s.completion_mode,
+    completion_redirect_url: s.completion_redirect_url,
   };
 }
 

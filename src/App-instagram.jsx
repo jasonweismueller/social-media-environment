@@ -306,6 +306,54 @@ function elementHasImage(el) {
   );
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const s = String(value ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function getSurveyCompletionConfig(survey) {
+  const mode = firstNonEmptyString(
+    survey?.completion_mode,
+    survey?.thank_you_mode,
+    "overlay"
+  ).toLowerCase();
+
+  const redirectUrl = firstNonEmptyString(
+    survey?.completion_redirect_url,
+    survey?.redirect_url,
+    ""
+  );
+
+  const title = firstNonEmptyString(
+    survey?.completion_title,
+    survey?.thank_you_title,
+    "Thank you"
+  );
+
+  const messageHtml = firstNonEmptyString(
+    survey?.completion_message_html,
+    survey?.thank_you_message_html,
+    "<p>Your response has been recorded.</p>"
+  );
+
+  const code = firstNonEmptyString(
+    survey?.completion_code,
+    survey?.thank_you_code,
+    ""
+  );
+
+  return {
+    mode: mode === "redirect" ? "redirect" : "overlay",
+    redirectUrl,
+    title,
+    messageHtml,
+    code,
+  };
+}
+
 /* =============================== MAIN APP ================================ */
 export default function App() {
   const sessionIdRef = useRef(uid());
@@ -313,6 +361,15 @@ export default function App() {
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
+
+  const completionConfig = useMemo(
+  () => getSurveyCompletionConfig(linkedSurvey),
+  [linkedSurvey]
+);
+
+const [completionState, setCompletionState] = useState({
+  redirected: false,
+});
 
   const [isMobileSurvey, setIsMobileSurvey] = useState(
     typeof window !== "undefined"
@@ -523,6 +580,7 @@ export default function App() {
     setFeedSubmitted(false);
     setSubmitted(false);
     setPrefaceCompleted(false);
+    setCompletionState({ redirected: false });
 
     clearTimeout(minDelayTimerRef.current);
     minDelayStartedRef.current = false;
@@ -844,18 +902,18 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (!feedSubmitted) return;
-    if (surveyPhase === "loading") return;
+  if (!feedSubmitted) return;
+  if (surveyPhase === "loading") return;
 
-    if (linkedSurvey && surveyPhase === "ready") {
-      setSubmitted(false);
-      return;
-    }
+  if (linkedSurvey && surveyPhase === "ready") {
+    setSubmitted(false);
+    return;
+  }
 
-    if (!linkedSurvey && surveyPhase === "idle") {
-      setSubmitted(true);
-    }
-  }, [feedSubmitted, linkedSurvey, surveyPhase]);
+  if (!linkedSurvey && surveyPhase === "idle") {
+    setSubmitted(true);
+  }
+}, [feedSubmitted, linkedSurvey, surveyPhase]);
 
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
@@ -999,6 +1057,21 @@ export default function App() {
     setSurveyErrorMsg("");
   }, []);
 
+  const finalizeStudyCompletion = useCallback(() => {
+  const shouldRedirect =
+    linkedSurvey &&
+    completionConfig.mode === "redirect" &&
+    completionConfig.redirectUrl;
+
+  if (shouldRedirect) {
+    setCompletionState({ redirected: true });
+    window.location.assign(completionConfig.redirectUrl);
+    return;
+  }
+
+  setSubmitted(true);
+}, [linkedSurvey, completionConfig]);
+
   const handleSurveySubmit = useCallback(async () => {
     if (!linkedSurvey) return;
 
@@ -1032,13 +1105,13 @@ export default function App() {
       }
 
       setSurveyPhase("done");
-      setSubmitted(true);
+finalizeStudyCompletion();
     } catch (e) {
       console.warn("Survey submission failed:", e);
       setSurveyPhase("error");
       setSurveyErrorMsg("Failed to submit the survey. Please try again.");
     }
-  }, [linkedSurvey, surveyResponses, activeFeedId, projectId, participantId]);
+  }, [linkedSurvey, surveyResponses, activeFeedId, projectId, participantId, finalizeStudyCompletion,]);
 
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
@@ -1580,7 +1653,15 @@ export default function App() {
           </div>
         )}
 
-      {submitted && <ThankYouOverlay sessionId={sessionIdRef.current} />}
+      {submitted && !completionState.redirected && (
+  <ThankYouOverlay
+    sessionId={sessionIdRef.current}
+    title={linkedSurvey ? completionConfig.title : undefined}
+    messageHtml={linkedSurvey ? completionConfig.messageHtml : undefined}
+    completionCode={linkedSurvey ? completionConfig.code : undefined}
+    hideSessionId={!!linkedSurvey}
+  />
+)}
     </Router>
   );
 }
