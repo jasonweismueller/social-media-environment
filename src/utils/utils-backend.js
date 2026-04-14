@@ -51,11 +51,12 @@ async function loadPublicSurveyDefinitionForFeed(
 
     if (!data || Array.isArray(data) || !data.survey_id) return null;
 
-    const out = {
+        const out = {
       ...makeEmptySurveyShell(surveyId),
       ...data,
       survey_id: data.survey_id || surveyId,
       linked_project_id: projectId || "",
+      delivery_mode: normalizeSurveyDeliveryMode(data.delivery_mode),
     };
 
     __setCachedSurvey(surveyId, projectId, out);
@@ -213,6 +214,12 @@ function uniqueStrings(arr = []) {
   );
 }
 
+function normalizeSurveyDeliveryMode(value) {
+  return String(value || "").trim().toLowerCase() === "survey_only"
+    ? "survey_only"
+    : "feed_then_survey";
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -229,7 +236,6 @@ function makeEmptySurveyShell(surveyId = "") {
     version: 1,
     status: "draft",
 
-    // survey-level pre-feed / consent content
     participant_information_title: "Participant Information",
     participant_information_html: "",
     consent_title: "Consent",
@@ -244,6 +250,14 @@ function makeEmptySurveyShell(surveyId = "") {
     linked_feed_ids: [],
     linked_project_id: normalizeProjectId(),
     trigger: "after_feed_submit",
+
+    // Only meaningful when a survey exists
+    delivery_mode: "feed_then_survey",
+    thank_you_message_html:
+      "<p>Your response has been recorded.</p>",
+    completion_code: "",
+    completion_mode: "message",
+    completion_redirect_url: "",
   };
 }
 
@@ -552,7 +566,62 @@ export async function getSurveyBootForFeedFromBackend(
       { retries: 1, timeoutMs: 8000 }
     );
 
-    return data && typeof data === "object" ? data : null;
+    if (!data || typeof data !== "object") return null;
+
+    if (!data.has_survey) {
+      return {
+        has_survey: false,
+        survey_id: "",
+        trigger: "",
+        has_preface: false,
+        preface: {
+          participant_information: false,
+          consent: false,
+          instructions: false,
+        },
+        participant_information_title: "",
+        participant_information_html: "",
+        consent_title: "",
+        consent_text_html: "",
+        consent_decline_message_html: "",
+        instructions_title: "",
+        instructions_html: "",
+        pre_feed_button_label: "",
+      };
+    }
+
+    const deliveryMode = normalizeSurveyDeliveryMode(data.delivery_mode);
+    const defaultButtonLabel =
+      deliveryMode === "survey_only" ? "Start survey" : "Go to feed";
+
+    return {
+      ...data,
+      has_survey: true,
+      survey_id: String(data.survey_id || ""),
+      trigger: String(data.trigger || "after_feed_submit"),
+      delivery_mode: deliveryMode,
+      has_preface: !!data.has_preface,
+      preface: {
+        participant_information: !!data?.preface?.participant_information,
+        consent: !!data?.preface?.consent,
+        instructions: !!data?.preface?.instructions,
+      },
+      participant_information_title: String(
+        data.participant_information_title || "Participant Information"
+      ),
+      participant_information_html: String(data.participant_information_html || ""),
+      consent_title: String(data.consent_title || "Participant Consent"),
+      consent_text_html: String(data.consent_text_html || ""),
+      consent_decline_message_html: String(
+        data.consent_decline_message_html ||
+          "<p>You cannot proceed because you did not provide consent to participate.</p>"
+      ),
+      instructions_title: String(data.instructions_title || "Instructions"),
+      instructions_html: String(data.instructions_html || ""),
+      pre_feed_button_label: String(
+        data.pre_feed_button_label || defaultButtonLabel
+      ),
+    };
   } catch (e) {
     console.warn("getSurveyBootForFeedFromBackend failed:", e);
     return null;
@@ -1635,11 +1704,12 @@ export async function loadSurveyFromBackend(
       return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
     }
 
-    const out = {
+        const out = {
       ...makeEmptySurveyShell(surveyId),
       ...survey,
       survey_id: survey.survey_id || surveyId,
       linked_project_id: projectId || "",
+      delivery_mode: normalizeSurveyDeliveryMode(survey.delivery_mode),
     };
 
     __setCachedSurvey(surveyId, projectId, out);
@@ -1685,7 +1755,7 @@ export async function getSurveyForFeedFromBackend(
       force,
     });
 
-    const out = def
+       const out = def
       ? {
           ...makeEmptySurveyShell(link.survey_id),
           ...def,
@@ -1694,6 +1764,7 @@ export async function getSurveyForFeedFromBackend(
           linked_feed_ids: [feedId],
           linked_project_id: projectId || "",
           trigger: link.trigger || "after_feed_submit",
+          delivery_mode: normalizeSurveyDeliveryMode(def.delivery_mode),
         }
       : null;
 
@@ -1719,7 +1790,10 @@ export async function saveSurveyToBackend(survey, { projectId = getProjectId() }
       app: APP,
       admin_token,
       project_id: projectId || undefined,
-      definition: survey,
+            definition: {
+        ...survey,
+        delivery_mode: normalizeSurveyDeliveryMode(survey?.delivery_mode),
+      },
     };
     if (surveyId) payload.survey_id = surveyId;
 

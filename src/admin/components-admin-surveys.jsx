@@ -43,8 +43,12 @@ const DEFAULT_INSTRUCTIONS_TITLE = "Instructions";
 const DEFAULT_PRE_FEED_BUTTON_LABEL = "Go to feed";
 const DEFAULT_THANK_YOU_MESSAGE_HTML =
   "<p>Thank you for completing the study.</p><p>You may now close this window.</p>";
+
 const COMPLETION_MODE_MESSAGE = "message";
 const COMPLETION_MODE_REDIRECT = "redirect";
+
+const DELIVERY_MODE_FEED_THEN_SURVEY = "feed_then_survey";
+const DELIVERY_MODE_SURVEY_ONLY = "survey_only";
 
 function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
@@ -82,6 +86,12 @@ function normalizeCompletionMode(value) {
     : COMPLETION_MODE_MESSAGE;
 }
 
+function normalizeDeliveryMode(value) {
+  return value === DELIVERY_MODE_SURVEY_ONLY
+    ? DELIVERY_MODE_SURVEY_ONLY
+    : DELIVERY_MODE_FEED_THEN_SURVEY;
+}
+
 function normalizeSurveyMetaFields(source = {}) {
   return {
     participant_information_title:
@@ -102,6 +112,7 @@ function normalizeSurveyMetaFields(source = {}) {
     completion_code: String(source?.completion_code || ""),
     completion_mode: normalizeCompletionMode(source?.completion_mode),
     completion_redirect_url: String(source?.completion_redirect_url || ""),
+    delivery_mode: normalizeDeliveryMode(source?.delivery_mode),
   };
 }
 
@@ -137,6 +148,8 @@ function resetSurveyIdentityForCopy(
     version: 1,
     status: normalized.status || "draft",
     trigger: normalized.trigger || "after_feed_submit",
+    delivery_mode:
+      normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
     pages: (normalized.pages || []).map((page, pageIndex) => ({
       ...page,
       id: page?.id || `page_${pageIndex + 1}`,
@@ -178,6 +191,8 @@ function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
     version: 1,
     status: "draft",
     trigger: normalized.trigger || "after_feed_submit",
+    delivery_mode:
+      normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
     pages: (normalized.pages || []).map((page, pageIndex) => ({
       ...page,
       id: page?.id || `page_${pageIndex + 1}`,
@@ -469,6 +484,9 @@ export function AdminSurveysPanel({
               linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
               linked_project_id: projectId,
               trigger: normalizedFull.trigger || "after_feed_submit",
+              delivery_mode:
+                normalizedFull.delivery_mode ||
+                DELIVERY_MODE_FEED_THEN_SURVEY,
             };
           } catch {
             return {
@@ -476,6 +494,7 @@ export function AdminSurveysPanel({
               linked_feed_ids: [],
               linked_project_id: projectId,
               trigger: "after_feed_submit",
+              delivery_mode: DELIVERY_MODE_FEED_THEN_SURVEY,
               ...normalizeSurveyMetaFields({}),
             };
           }
@@ -522,6 +541,8 @@ export function AdminSurveysPanel({
           linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
           linked_project_id: projectId,
           trigger: normalized.trigger || "after_feed_submit",
+          delivery_mode:
+            normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
         },
         flattenSurveyPagesForEditor(normalized)
       );
@@ -539,6 +560,7 @@ export function AdminSurveysPanel({
       linked_project_id: projectId,
       linked_feed_ids: [],
       trigger: "after_feed_submit",
+      delivery_mode: DELIVERY_MODE_FEED_THEN_SURVEY,
       survey_id: "",
       name: "",
       description: "",
@@ -584,6 +606,7 @@ export function AdminSurveysPanel({
     const normalized = {
       ...normalizeSurvey(survey),
       ...normalizeSurveyMetaFields(survey),
+      delivery_mode: normalizeDeliveryMode(survey?.delivery_mode),
     };
 
     const exportPayload = {
@@ -591,6 +614,8 @@ export function AdminSurveysPanel({
       linked_feed_ids: normalizeLinkedFeedIds(normalized.linked_feed_ids),
       linked_project_id: normalized.linked_project_id || "",
       trigger: normalized.trigger || "after_feed_submit",
+      delivery_mode:
+        normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
       participant_information_title:
         normalized.participant_information_title ||
         DEFAULT_PARTICIPANT_INFORMATION_TITLE,
@@ -670,6 +695,7 @@ export function AdminSurveysPanel({
         linked_project_id: projectId,
         linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
         trigger: survey.trigger || "after_feed_submit",
+        delivery_mode: normalizeDeliveryMode(survey.delivery_mode),
         ...normalizeSurveyMetaFields(survey),
       };
 
@@ -688,8 +714,6 @@ export function AdminSurveysPanel({
         })),
       };
 
-  
-
       const res = await saveSurveyToBackend(payload, { projectId });
 
       if (res?.ok) {
@@ -707,13 +731,16 @@ export function AdminSurveysPanel({
           }),
         ]);
 
-
         const normalizedFresh = applySurveyMetaDefaults(
           {
             ...(fresh || {}),
             linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
             linked_project_id: projectId,
             trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
+            delivery_mode:
+              fresh?.delivery_mode ||
+              normalized.delivery_mode ||
+              DELIVERY_MODE_FEED_THEN_SURVEY,
           },
           projectId
         );
@@ -913,6 +940,10 @@ export function AdminSurveysPanel({
   const completionMode =
     normalizeCompletionMode(survey?.completion_mode) || COMPLETION_MODE_MESSAGE;
 
+  const deliveryMode =
+    normalizeDeliveryMode(survey?.delivery_mode) ||
+    DELIVERY_MODE_FEED_THEN_SURVEY;
+
   return (
     <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
       <div
@@ -1100,6 +1131,28 @@ export function AdminSurveysPanel({
                   rows={3}
                 />
               </FieldBlock>
+
+              <FieldBlock
+                label="Study flow"
+                hint="Choose whether participants see the linked feed before the survey, or skip the feed and go directly to the survey."
+              >
+                <SelectInput
+                  value={deliveryMode}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      delivery_mode: normalizeDeliveryMode(v),
+                    })
+                  }
+                >
+                  <option value={DELIVERY_MODE_FEED_THEN_SURVEY}>
+                    Feed, then survey
+                  </option>
+                  <option value={DELIVERY_MODE_SURVEY_ONLY}>
+                    Survey only (skip feed)
+                  </option>
+                </SelectInput>
+              </FieldBlock>
             </SectionCard>
 
             <SectionCard title="Pre-feed pages">
@@ -1188,7 +1241,7 @@ export function AdminSurveysPanel({
 
               <FieldBlock
                 label="Instructions title"
-                hint="Shown as the heading on the instructions page before the feed."
+                hint="Shown as the heading on the instructions page before the feed or survey."
               >
                 <TextInput
                   value={survey.instructions_title}
@@ -1214,14 +1267,18 @@ export function AdminSurveysPanel({
                       instructions_html: v,
                     })
                   }
-                  placeholder="Enter the instructions shown before the feed..."
+                  placeholder="Enter the instructions shown before the feed or survey..."
                   rows={10}
                 />
               </FieldBlock>
 
               <FieldBlock
-                label="Pre-feed button label"
-                hint='Used for the button that moves participants from instructions to the feed, for example "Go to feed".'
+                label="Pre-start button label"
+                hint={
+                  deliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                    ? 'Used for the button that moves participants from instructions to the survey, for example "Start survey".'
+                    : 'Used for the button that moves participants from instructions to the feed, for example "Go to feed".'
+                }
               >
                 <TextInput
                   value={survey.pre_feed_button_label}
@@ -1231,7 +1288,11 @@ export function AdminSurveysPanel({
                       pre_feed_button_label: v,
                     })
                   }
-                  placeholder={DEFAULT_PRE_FEED_BUTTON_LABEL}
+                  placeholder={
+                    deliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                      ? "Start survey"
+                      : DEFAULT_PRE_FEED_BUTTON_LABEL
+                  }
                 />
               </FieldBlock>
             </SectionCard>
@@ -1353,6 +1414,18 @@ export function AdminSurveysPanel({
                 </button>
               }
             >
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#6b7280",
+                  marginBottom: 10,
+                }}
+              >
+                Keep at least one linked feed even in survey-only mode so the
+                study entry point, feed-specific question visibility, and post
+                reminder logic still work consistently.
+              </div>
+
               <div
                 style={{
                   border: "1px solid #d1d5db",

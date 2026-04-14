@@ -755,6 +755,10 @@ export function makeEmptySurvey(overrides = {}) {
       safeOverrides.completion_redirect_url,
       ""
     ),
+    delivery_mode:
+  String(safeOverrides.delivery_mode || "").trim().toLowerCase() === "survey_only"
+    ? "survey_only"
+    : "feed_then_survey",
   };
 }
 
@@ -827,6 +831,10 @@ export function normalizeSurvey(raw = {}) {
       safeRaw.completion_redirect_url,
       ""
     ),
+    delivery_mode:
+  String(safeRaw.delivery_mode || "").trim().toLowerCase() === "survey_only"
+    ? "survey_only"
+    : "feed_then_survey",
   };
 }
 
@@ -854,6 +862,7 @@ export function frontendSurveyToBackend(survey = {}) {
     completion_code: s.completion_code,
     completion_mode: s.completion_mode,
     completion_redirect_url: s.completion_redirect_url,
+    delivery_mode: s.delivery_mode,
   };
 }
 
