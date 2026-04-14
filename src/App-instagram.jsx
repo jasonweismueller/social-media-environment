@@ -57,31 +57,24 @@ function normalizeFlags(raw) {
     }
   }
 
-
   const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
 
-  const randomize_times = truthy(
-    f.randomize_times ?? f.randomize_time ?? f.random_time ?? false
-  );
-  const randomize_avatars = truthy(
-    f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false
-  );
-  const randomize_names = truthy(
-    f.randomize_names ?? f.rand_names ?? false
-  );
-  const randomize_images = truthy(
-    f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false
-  );
-  const randomize_bios = truthy(
-    f.randomize_bios ?? f.rand_bios ?? false
-  );
-
   return {
-    randomize_times,
-    randomize_avatars,
-    randomize_names,
-    randomize_images,
-    randomize_bios,
+    randomize_times: truthy(
+      f.randomize_times ?? f.randomize_time ?? f.random_time ?? false
+    ),
+    randomize_avatars: truthy(
+      f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false
+    ),
+    randomize_names: truthy(
+      f.randomize_names ?? f.rand_names ?? false
+    ),
+    randomize_images: truthy(
+      f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false
+    ),
+    randomize_bios: truthy(
+      f.randomize_bios ?? f.rand_bios ?? false
+    ),
   };
 }
 
@@ -169,7 +162,100 @@ function getQueryParamEverywhere(key) {
   return String(q.get(key) || hashQ.get(key) || "").trim();
 }
 
+async function fetchSurveyBootForFeed(feedId, { projectId, signal } = {}) {
+  if (!feedId) return null;
 
+  const url = new URL(GS_ENDPOINT);
+  url.searchParams.set("path", "feed_survey_boot");
+  url.searchParams.set("app", APP);
+  url.searchParams.set("feed_id", String(feedId));
+  if (projectId) url.searchParams.set("project_id", String(projectId));
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    signal,
+    credentials: "omit",
+    cache: "no-store",
+  });
+
+  if (!res.ok) throw new Error(`Survey boot request failed (${res.status})`);
+  return await res.json();
+}
+
+function getSurveyBootCacheKey(projectId, feedId) {
+  return `survey_boot::${projectId || ""}::${feedId || ""}`;
+}
+
+function readSurveyBootCache(projectId, feedId) {
+  try {
+    const raw = localStorage.getItem(getSurveyBootCacheKey(projectId, feedId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSurveyBootCache(projectId, feedId, value) {
+  try {
+    localStorage.setItem(
+      getSurveyBootCacheKey(projectId, feedId),
+      JSON.stringify({
+        ...(value || {}),
+        _cached_at: Date.now(),
+      })
+    );
+  } catch {}
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const s = String(value ?? "").trim();
+    if (s) return s;
+  }
+  return "";
+}
+
+function getSurveyCompletionConfig(survey) {
+  const mode = firstNonEmptyString(
+    survey?.completion_mode,
+    survey?.thank_you_mode,
+    "overlay"
+  ).toLowerCase();
+
+  const redirectUrl = firstNonEmptyString(
+    survey?.completion_redirect_url,
+    survey?.redirect_url,
+    ""
+  );
+
+  const title = firstNonEmptyString(
+    survey?.completion_title,
+    survey?.thank_you_title,
+    "Thank you"
+  );
+
+  const messageHtml = firstNonEmptyString(
+    survey?.completion_message_html,
+    survey?.thank_you_message_html,
+    "<p>Your response has been recorded.</p>"
+  );
+
+  const code = firstNonEmptyString(
+    survey?.completion_code,
+    survey?.thank_you_code,
+    ""
+  );
+
+  return {
+    mode: mode === "redirect" ? "redirect" : "overlay",
+    redirectUrl,
+    title,
+    messageHtml,
+    code,
+  };
+}
 
 /* ---------- IG rails skeleton ---------- */
 function RailBox({ largeAvatar = false }) {
@@ -310,54 +396,6 @@ function elementHasImage(el) {
   );
 }
 
-function firstNonEmptyString(...values) {
-  for (const value of values) {
-    const s = String(value ?? "").trim();
-    if (s) return s;
-  }
-  return "";
-}
-
-function getSurveyCompletionConfig(survey) {
-  const mode = firstNonEmptyString(
-    survey?.completion_mode,
-    survey?.thank_you_mode,
-    "overlay"
-  ).toLowerCase();
-
-  const redirectUrl = firstNonEmptyString(
-    survey?.completion_redirect_url,
-    survey?.redirect_url,
-    ""
-  );
-
-  const title = firstNonEmptyString(
-    survey?.completion_title,
-    survey?.thank_you_title,
-    "Thank you"
-  );
-
-  const messageHtml = firstNonEmptyString(
-    survey?.completion_message_html,
-    survey?.thank_you_message_html,
-    "<p>Your response has been recorded.</p>"
-  );
-
-  const code = firstNonEmptyString(
-    survey?.completion_code,
-    survey?.thank_you_code,
-    ""
-  );
-
-  return {
-    mode: mode === "redirect" ? "redirect" : "overlay",
-    redirectUrl,
-    title,
-    messageHtml,
-    code,
-  };
-}
-
 /* =============================== MAIN APP ================================ */
 export default function App() {
   const sessionIdRef = useRef(uid());
@@ -368,8 +406,6 @@ export default function App() {
 
   const trackingIds = useMemo(() => getTrackingIdsFromUrl(), []);
   const prefilledParticipantId = trackingIds.prolific_pid || "";
-
-  
 
   const [isMobileSurvey, setIsMobileSurvey] = useState(
     typeof window !== "undefined"
@@ -439,6 +475,7 @@ export default function App() {
   const [feedError, setFeedError] = useState("");
   const feedAbortRef = useRef(null);
 
+  const [surveyBoot, setSurveyBoot] = useState(null);
   const [linkedSurvey, setLinkedSurvey] = useState(null);
   const [surveyPhase, setSurveyPhase] = useState("idle");
   const [surveyResponses, setSurveyResponses] = useState({});
@@ -447,13 +484,13 @@ export default function App() {
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
   const completionConfig = useMemo(
-  () => getSurveyCompletionConfig(linkedSurvey),
-  [linkedSurvey]
-);
+    () => getSurveyCompletionConfig(linkedSurvey),
+    [linkedSurvey]
+  );
 
-const [completionState, setCompletionState] = useState({
-  redirected: false,
-});
+  const [completionState, setCompletionState] = useState({
+    redirected: false,
+  });
 
   const [feedSubmitted, setFeedSubmitted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -476,10 +513,10 @@ const [completionState, setCompletionState] = useState({
   const minDelayTimerRef = useRef(null);
 
   useEffect(() => {
-  if (onAdmin) {
-    setInitialBootLoading(false);
-  }
-}, [onAdmin]);
+    if (onAdmin) {
+      setInitialBootLoading(false);
+    }
+  }, [onAdmin]);
 
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
@@ -587,8 +624,9 @@ const [completionState, setCompletionState] = useState({
     setFeedError("");
     setFlagsReady(false);
     setAssetsReady(false);
+    setSurveyBoot(null);
     setLinkedSurvey(null);
-    setSurveyPhase("loading");
+    setSurveyPhase("idle");
     setSurveyResponses({});
     setSurveyErrors({});
     setSurveyErrorMsg("");
@@ -628,15 +666,17 @@ const [completionState, setCompletionState] = useState({
         setFeedIdInUrl(chosen.feed_id, { replace: true });
       } catch {}
 
-      let cached = null;
+      let cachedPosts = null;
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
         const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
         if (meta?.checksum === chosen.checksum) {
           const data = JSON.parse(localStorage.getItem(k) || "null");
-          if (Array.isArray(data)) cached = data;
+          if (Array.isArray(data)) cachedPosts = data;
         }
       } catch {}
+
+      const cachedBoot = readSurveyBootCache(projectId, chosen.feed_id);
 
       const flagsPromise = fetchFeedFlags({
         app: APP,
@@ -648,71 +688,42 @@ const [completionState, setCompletionState] = useState({
         signal: ctrl.signal,
       }).catch(() => ({}));
 
-      const surveyPromise = getSurveyForFeedFromBackend(chosen.feed_id, {
+      const bootPromise = fetchSurveyBootForFeed(chosen.feed_id, {
         projectId: projectId || undefined,
         signal: ctrl.signal,
-        force: true,
       }).catch(() => null);
 
-      if (cached) {
-        const [resFlags, surveyDef] = await Promise.all([
-          flagsPromise,
-          surveyPromise,
-        ]);
+      const postsPromise = cachedPosts
+        ? Promise.resolve(cachedPosts)
+        : loadPostsFromBackend(chosen.feed_id, {
+            force: true,
+            signal: ctrl.signal,
+          }).catch(() => []);
 
-        if (ctrl.signal.aborted) return;
-
-        const nextFlags = normalizeFlags(resFlags);
-        const normalizedSurvey = surveyDef
-          ? normalizeFrontendSurvey(surveyDef)
-          : null;
-
-        setFlags(nextFlags);
-        setFlagsReady(true);
-
-        window.__DEBUG_FLAGS = nextFlags;
-        console.log("[IG FLAGS]", nextFlags);
-
-        setPosts(cached);
-        setLinkedSurvey(normalizedSurvey);
-        setSurveyResponses(
-          normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
-        );
-        setSurveyErrors({});
-        setSurveyErrorMsg("");
-        setSurveyPhase(normalizedSurvey ? "ready" : "idle");
-        setFeedPhase("ready");
-        setInitialBootLoading(false);
-        return;
-      }
-
-      const [fresh, resFlags, surveyDef] = await Promise.all([
-        loadPostsFromBackend(chosen.feed_id, {
-          force: true,
-          signal: ctrl.signal,
-        }),
+      const [rawPosts, resFlags, bootInfo] = await Promise.all([
+        postsPromise,
         flagsPromise,
-        surveyPromise,
+        bootPromise,
       ]);
 
       if (ctrl.signal.aborted) return;
 
-      const arr = Array.isArray(fresh) ? fresh : [];
+      const arr = Array.isArray(rawPosts) ? rawPosts : [];
       const nextFlags = normalizeFlags(resFlags);
-      const normalizedSurvey = surveyDef
-        ? normalizeFrontendSurvey(surveyDef)
-        : null;
+      const nextBoot = bootInfo || cachedBoot || {
+        has_survey: false,
+        survey_id: "",
+        has_preface: false,
+      };
 
       setFlags(nextFlags);
       setFlagsReady(true);
       setPosts(arr);
-      setLinkedSurvey(normalizedSurvey);
-      setSurveyResponses(
-        normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
-      );
-      setSurveyErrors({});
-      setSurveyErrorMsg("");
-      setSurveyPhase(normalizedSurvey ? "ready" : "idle");
+      setSurveyBoot(nextBoot);
+
+      if (nextBoot && typeof nextBoot === "object") {
+        writeSurveyBootCache(projectId, chosen.feed_id, nextBoot);
+      }
 
       try {
         const k = `posts::${projectId || ""}::${chosen.feed_id}`;
@@ -722,6 +733,36 @@ const [completionState, setCompletionState] = useState({
           JSON.stringify({ checksum: chosen.checksum, t: Date.now() })
         );
       } catch {}
+
+      if (nextBoot?.has_survey && nextBoot?.survey_id) {
+        setSurveyPhase("loading");
+
+        const surveyDef = await getSurveyForFeedFromBackend(chosen.feed_id, {
+          projectId: projectId || undefined,
+          signal: ctrl.signal,
+          force: true,
+        }).catch(() => null);
+
+        if (ctrl.signal.aborted) return;
+
+        const normalizedSurvey = surveyDef
+          ? normalizeFrontendSurvey(surveyDef)
+          : null;
+
+        setLinkedSurvey(normalizedSurvey);
+        setSurveyResponses(
+          normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
+        );
+        setSurveyErrors({});
+        setSurveyErrorMsg("");
+        setSurveyPhase(normalizedSurvey ? "ready" : "idle");
+      } else {
+        setLinkedSurvey(null);
+        setSurveyResponses({});
+        setSurveyErrors({});
+        setSurveyErrorMsg("");
+        setSurveyPhase("idle");
+      }
 
       setFeedPhase("ready");
       setInitialBootLoading(false);
@@ -734,7 +775,7 @@ const [completionState, setCompletionState] = useState({
     } finally {
       if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
     }
-  }, [onAdmin, projectId, setCompletionState]);
+  }, [onAdmin, projectId]);
 
   useEffect(() => {
     const onUrlChange = () => {
@@ -917,18 +958,18 @@ const [completionState, setCompletionState] = useState({
   ]);
 
   useEffect(() => {
-  if (!feedSubmitted) return;
-  if (surveyPhase === "loading") return;
+    if (!feedSubmitted) return;
+    if (surveyPhase === "loading") return;
 
-  if (linkedSurvey && surveyPhase === "ready") {
-    setSubmitted(false);
-    return;
-  }
+    if (linkedSurvey && surveyPhase === "ready") {
+      setSubmitted(false);
+      return;
+    }
 
-  if (!linkedSurvey && surveyPhase === "idle") {
-    setSubmitted(true);
-  }
-}, [feedSubmitted, linkedSurvey, surveyPhase]);
+    if (!linkedSurvey && surveyPhase === "idle") {
+      setSubmitted(true);
+    }
+  }, [feedSubmitted, linkedSurvey, surveyPhase]);
 
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
@@ -1073,19 +1114,19 @@ const [completionState, setCompletionState] = useState({
   }, []);
 
   const finalizeStudyCompletion = useCallback(() => {
-  const shouldRedirect =
-    linkedSurvey &&
-    completionConfig.mode === "redirect" &&
-    completionConfig.redirectUrl;
+    const shouldRedirect =
+      linkedSurvey &&
+      completionConfig.mode === "redirect" &&
+      completionConfig.redirectUrl;
 
-  if (shouldRedirect) {
-    setCompletionState({ redirected: true });
-    window.location.assign(completionConfig.redirectUrl);
-    return;
-  }
+    if (shouldRedirect) {
+      setCompletionState({ redirected: true });
+      window.location.assign(completionConfig.redirectUrl);
+      return;
+    }
 
-  setSubmitted(true);
-}, [linkedSurvey, completionConfig]);
+    setSubmitted(true);
+  }, [linkedSurvey, completionConfig]);
 
   const handleSurveySubmit = useCallback(async () => {
     if (!linkedSurvey) return;
@@ -1120,13 +1161,20 @@ const [completionState, setCompletionState] = useState({
       }
 
       setSurveyPhase("done");
-finalizeStudyCompletion();
+      finalizeStudyCompletion();
     } catch (e) {
       console.warn("Survey submission failed:", e);
       setSurveyPhase("error");
       setSurveyErrorMsg("Failed to submit the survey. Please try again.");
     }
-  }, [linkedSurvey, surveyResponses, activeFeedId, projectId, participantId, finalizeStudyCompletion,]);
+  }, [
+    linkedSurvey,
+    surveyResponses,
+    activeFeedId,
+    projectId,
+    participantId,
+    finalizeStudyCompletion,
+  ]);
 
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
@@ -1314,6 +1362,20 @@ finalizeStudyCompletion();
     shouldShowSurvey,
     feedSubmitted,
   ]);
+
+  const loadingStudyOverlay =
+    !onAdmin && initialBootLoading;
+
+  const preparingFeedOverlay =
+    !onAdmin &&
+    hasEntered &&
+    !feedSubmitted &&
+    !shouldShowPreface &&
+    (feedPhase === "loading" ||
+      surveyPhase === "loading" ||
+      !flagsReady ||
+      !assetsReady ||
+      !minDelayDone);
 
   return (
     <Router>
@@ -1573,17 +1635,17 @@ finalizeStudyCompletion();
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {!onAdmin && initialBootLoading && (
-  <LoadingOverlay
-    title="Loading study…"
-    subtitle="Preparing your session"
-  />
-)}
+      {loadingStudyOverlay && (
+        <LoadingOverlay
+          title="Loading study…"
+          subtitle="Preparing your session"
+        />
+      )}
 
       {shouldShowParticipantOverlay && (
         <ParticipantOverlay
-  initialValue={prefilledParticipantId}
-  onSubmit={(id) => {
+          initialValue={prefilledParticipantId}
+          onSubmit={(id) => {
             const ts = now();
             setParticipantId(id);
             setHasEntered(true);
@@ -1612,23 +1674,18 @@ finalizeStudyCompletion();
         />
       )}
 
-      {!onAdmin &&
-        hasEntered &&
-        !feedSubmitted &&
-        !shouldShowPreface &&
-        (feedPhase === "loading" ||
-          !flagsReady ||
-          !assetsReady ||
-          !minDelayDone) && (
-          <LoadingOverlay
-            title="Preparing your feed…"
-            subtitle={
-              flags.randomize_avatars || flags.randomize_images
-                ? "Almost ready..."
+      {preparingFeedOverlay && (
+        <LoadingOverlay
+          title="Preparing your feed…"
+          subtitle={
+            flags.randomize_avatars || flags.randomize_images
+              ? "Almost ready..."
+              : surveyPhase === "loading"
+                ? "Loading the next stage..."
                 : "Fetching posts and setting things up."
-            }
-          />
-        )}
+          }
+        />
+      )}
 
       {!onAdmin &&
         hasEntered &&
@@ -1670,14 +1727,14 @@ finalizeStudyCompletion();
         )}
 
       {submitted && !completionState.redirected && (
-  <ThankYouOverlay
-    sessionId={sessionIdRef.current}
-    title={linkedSurvey ? completionConfig.title : undefined}
-    messageHtml={linkedSurvey ? completionConfig.messageHtml : undefined}
-    completionCode={linkedSurvey ? completionConfig.code : undefined}
-    hideSessionId={!!linkedSurvey}
-  />
-)}
+        <ThankYouOverlay
+          sessionId={sessionIdRef.current}
+          title={linkedSurvey ? completionConfig.title : undefined}
+          messageHtml={linkedSurvey ? completionConfig.messageHtml : undefined}
+          completionCode={linkedSurvey ? completionConfig.code : undefined}
+          hideSessionId={!!linkedSurvey}
+        />
+      )}
     </Router>
   );
 }
