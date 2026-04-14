@@ -144,6 +144,8 @@ const SURVEYS_GET_URL = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}`;
 const SURVEY_DEFINITION_GET_URL = () => `${GS_ENDPOINT}?path=survey_definition&app=${getApp()}`;
 const FEED_SURVEY_GET_URL = () => `${GS_ENDPOINT}?path=feed_survey&app=${getApp()}`;
 const SURVEY_RESPONSES_GET_URL = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}`;
+const FEED_SURVEY_BOOT_GET_URL = () =>
+  `${GS_ENDPOINT}?path=feed_survey_boot&app=${getApp()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
