@@ -531,6 +531,32 @@ function makeSurveyResponseLookup(surveyRows = [], surveyColumns = []) {
   return { bySessionId, byParticipantId };
 }
 
+export async function getSurveyBootForFeedFromBackend(
+  feedId,
+  { projectId = getProjectId(), signal } = {}
+) {
+  if (!feedId) return null;
+
+  try {
+    const url = buildQueryUrl(FEED_SURVEY_BOOT_GET_URL(), {
+      feed_id: feedId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    return data && typeof data === "object" ? data : null;
+  } catch (e) {
+    console.warn("getSurveyBootForFeedFromBackend failed:", e);
+    return null;
+  }
+}
+
 function mergeParticipantRowsWithSurveyRows({
   participantRows = [],
   surveyRows = [],

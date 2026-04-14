@@ -30,11 +30,11 @@ import {
   setProjectId as setProjectIdUtil,
   setFeedIdInUrl,
   APP,
-  GS_ENDPOINT,
   fetchFeedFlags,
   getAvatarPool,
   getImagePool,
   getSurveyForFeedFromBackend,
+  getSurveyBootForFeedFromBackend,
   sendSurveyResponseToBackend,
   normalizeSurvey as normalizeFrontendSurvey,
   makeEmptySurveyResponses,
@@ -183,26 +183,6 @@ function getQueryParamEverywhere(key) {
   return String(q.get(key) || hashQ.get(key) || "").trim();
 }
 
-async function fetchSurveyBootForFeed(feedId, { projectId, signal } = {}) {
-  if (!feedId) return null;
-
-  const url = new URL(GS_ENDPOINT);
-  url.searchParams.set("path", "feed_survey_boot");
-  url.searchParams.set("app", APP);
-  url.searchParams.set("feed_id", String(feedId));
-  if (projectId) url.searchParams.set("project_id", String(projectId));
-
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    signal,
-    credentials: "omit",
-    cache: "no-store",
-  });
-
-  if (!res.ok) throw new Error(`Survey boot request failed (${res.status})`);
-  return await res.json();
-}
-
 function getSurveyBootCacheKey(projectId, feedId) {
   return `survey_boot::${projectId || ""}::${feedId || ""}`;
 }
@@ -300,6 +280,41 @@ function getSurveyCompletionConfig(survey) {
     title,
     messageHtml,
     code,
+  };
+}
+
+function makePrefaceSurveyFromBoot(boot) {
+  if (!boot?.has_survey || !boot?.has_preface) return null;
+
+  return {
+    survey_id: String(boot.survey_id || ""),
+    name: String(boot.name || ""),
+    description: String(boot.description || ""),
+    version: 1,
+    status: "published",
+
+    participant_information_title: String(
+      boot.participant_information_title || "Participant Information"
+    ),
+    participant_information_html: String(boot.participant_information_html || ""),
+
+    consent_title: String(boot.consent_title || "Participant Consent"),
+    consent_text_html: String(boot.consent_text_html || ""),
+    consent_decline_message_html: String(
+      boot.consent_decline_message_html ||
+        "You cannot proceed because you did not provide consent to participate."
+    ),
+
+    instructions_title: String(boot.instructions_title || "Instructions"),
+    instructions_html: String(boot.instructions_html || ""),
+    pre_feed_button_label: String(boot.pre_feed_button_label || "Go to feed"),
+
+    thank_you_message_html: "",
+    completion_code: "",
+    completion_mode: "overlay",
+    completion_redirect_url: "",
+
+    pages: [],
   };
 }
 
@@ -552,6 +567,11 @@ export default function App() {
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
+  const prefaceSurvey = useMemo(
+    () => makePrefaceSurveyFromBoot(surveyBoot),
+    [surveyBoot]
+  );
+
   const completionConfig = useMemo(
     () => getSurveyCompletionConfig(linkedSurvey),
     [linkedSurvey]
@@ -676,33 +696,32 @@ export default function App() {
     setTimeout(run, 80);
   }, []);
 
-  const resolveChosenFeed = useCallback(
-    async (signal) => {
-      const [feedsList, backendDefault] = await Promise.all([
-        listFeedsFromBackend({ signal }),
-        getDefaultFeedFromBackend({ signal }),
-      ]);
+  const resolveChosenFeed = useCallback(async (signal) => {
+    const [feedsList, backendDefault] = await Promise.all([
+      listFeedsFromBackend({ signal }),
+      getDefaultFeedFromBackend({ signal }),
+    ]);
 
-      if (signal?.aborted) return null;
+    if (signal?.aborted) return null;
 
-      const urlFeedId = getFeedIdFromUrl();
-      const chosen =
-        (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
-        (feedsList || []).find(
-          (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
-        ) ||
-        (feedsList || [])[0] ||
-        null;
-
-      return chosen;
-    },
-    []
-  );
+    const urlFeedId = getFeedIdFromUrl();
+    return (
+      (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
+      (feedsList || []).find(
+        (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
+      ) ||
+      (feedsList || [])[0] ||
+      null
+    );
+  }, []);
 
   const startBoot = useCallback(async () => {
     if (onAdmin) return;
 
     bootAbortRef.current?.abort?.();
+    surveyAbortRef.current?.abort?.();
+    contentAbortRef.current?.abort?.();
+
     const ctrl = new AbortController();
     bootAbortRef.current = ctrl;
 
@@ -757,7 +776,7 @@ export default function App() {
         };
 
       try {
-        const freshBoot = await fetchSurveyBootForFeed(chosen.feed_id, {
+        const freshBoot = await getSurveyBootForFeedFromBackend(chosen.feed_id, {
           projectId: projectId || undefined,
           signal: ctrl.signal,
         });
@@ -765,11 +784,7 @@ export default function App() {
         if (ctrl.signal.aborted) return;
 
         if (freshBoot && typeof freshBoot === "object") {
-          nextBoot = {
-            has_survey: !!freshBoot.has_survey,
-            survey_id: String(freshBoot.survey_id || ""),
-            has_preface: !!freshBoot.has_preface,
-          };
+          nextBoot = freshBoot;
           writeSurveyBootCache(projectId, chosen.feed_id, nextBoot);
         }
       } catch {
@@ -861,32 +876,17 @@ export default function App() {
         : loadPostsFromBackend(activeFeedId, {
             force: true,
             signal: ctrl.signal,
+            projectId: projectId || undefined,
           }).catch(() => []);
 
       const flagsPromise = fetchFeedFlags({
         app: APP,
         projectId: projectId || undefined,
         feedId: activeFeedId || undefined,
-        project_id: projectId || undefined,
-        feed_id: activeFeedId || undefined,
-        endpoint: GS_ENDPOINT,
         signal: ctrl.signal,
       }).catch(() => ({}));
 
-      const surveyPromise =
-        surveyBoot?.has_survey && !linkedSurvey
-          ? getSurveyForFeedFromBackend(activeFeedId, {
-              projectId: projectId || undefined,
-              signal: ctrl.signal,
-              force: true,
-            }).catch(() => null)
-          : Promise.resolve(linkedSurvey);
-
-      const [rawPosts, resFlags, surveyDefOrExisting] = await Promise.all([
-        postsPromise,
-        flagsPromise,
-        surveyPromise,
-      ]);
+      const [rawPosts, resFlags] = await Promise.all([postsPromise, flagsPromise]);
 
       if (ctrl.signal.aborted) return;
 
@@ -901,26 +901,6 @@ export default function App() {
         writePostsCache(projectId, activeFeedId, arr);
       }
 
-      if (surveyBoot?.has_survey && !linkedSurvey) {
-        const normalizedSurvey = surveyDefOrExisting
-          ? normalizeFrontendSurvey(surveyDefOrExisting)
-          : null;
-
-        setLinkedSurvey(normalizedSurvey);
-        setSurveyResponses(
-          normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
-        );
-        setSurveyErrors({});
-        setSurveyErrorMsg("");
-        setSurveyPhase(normalizedSurvey ? "ready" : "idle");
-      } else if (!surveyBoot?.has_survey) {
-        setLinkedSurvey(null);
-        setSurveyResponses({});
-        setSurveyErrors({});
-        setSurveyErrorMsg("");
-        setSurveyPhase("idle");
-      }
-
       setFeedPhase("ready");
       setContentPhase("ready");
     } catch (e) {
@@ -929,15 +909,12 @@ export default function App() {
       setFeedError(e?.message || "Failed to load the feed. Please try again.");
       setFeedPhase("error");
       setContentPhase("error");
-      if (surveyBoot?.has_survey && !linkedSurvey) {
-        setSurveyPhase("error");
-      }
     } finally {
       if (contentAbortRef.current === ctrl) {
         contentAbortRef.current = null;
       }
     }
-  }, [onAdmin, activeFeedId, contentPhase, projectId, surveyBoot, linkedSurvey]);
+  }, [onAdmin, activeFeedId, contentPhase, projectId]);
 
   useEffect(() => {
     if (!onAdmin) startBoot();
@@ -978,10 +955,8 @@ export default function App() {
   useEffect(() => {
     if (
       !onAdmin &&
-      bootPhase === "ready" &&
+      feedSubmitted &&
       surveyBoot?.has_survey &&
-      surveyBoot?.has_preface &&
-      !prefaceCompleted &&
       !linkedSurvey &&
       surveyPhase === "idle"
     ) {
@@ -989,9 +964,8 @@ export default function App() {
     }
   }, [
     onAdmin,
-    bootPhase,
+    feedSubmitted,
     surveyBoot,
-    prefaceCompleted,
     linkedSurvey,
     surveyPhase,
     ensureSurveyLoaded,
@@ -1034,8 +1008,7 @@ export default function App() {
     bootPhase === "ready" &&
     !hasEntered &&
     !feedSubmitted &&
-    !!surveyBoot?.has_survey &&
-    !!surveyBoot?.has_preface &&
+    !!prefaceSurvey &&
     !prefaceCompleted;
 
   const shouldShowParticipantOverlay =
@@ -1070,13 +1043,19 @@ export default function App() {
     const shouldLock =
       !onAdmin &&
       (bootPhase === "loading" ||
-        !hasEntered ||
-        contentPhase === "loading" ||
-        feedPhase === "loading" ||
-        submitted ||
-        !flagsReady ||
-        !assetsReady ||
-        !minDelayDone);
+        (!hasEntered &&
+          !shouldShowPreface &&
+          !shouldShowParticipantOverlay &&
+          bootPhase !== "error") ||
+        (hasEntered &&
+          !feedSubmitted &&
+          (contentPhase === "loading" ||
+            feedPhase === "loading" ||
+            !flagsReady ||
+            !assetsReady ||
+            !minDelayDone)) ||
+        (feedSubmitted && surveyPhase === "loading") ||
+        submitted);
 
     el.style.overflow = shouldLock ? "hidden" : "";
 
@@ -1086,13 +1065,17 @@ export default function App() {
   }, [
     bootPhase,
     hasEntered,
+    shouldShowPreface,
+    shouldShowParticipantOverlay,
     contentPhase,
     feedPhase,
-    submitted,
-    onAdmin,
     flagsReady,
     assetsReady,
     minDelayDone,
+    feedSubmitted,
+    surveyPhase,
+    submitted,
+    onAdmin,
   ]);
 
   const overlayActive = !onAdmin && (!hasEntered || shouldShowPreface);
@@ -1147,10 +1130,14 @@ export default function App() {
       return;
     }
 
-    if (!linkedSurvey && surveyPhase === "idle") {
+    if (!surveyBoot?.has_survey && surveyPhase === "idle") {
       setSubmitted(true);
     }
-  }, [feedSubmitted, linkedSurvey, surveyPhase]);
+
+    if (surveyBoot?.has_survey && !linkedSurvey && surveyPhase === "error") {
+      setSubmitted(false);
+    }
+  }, [feedSubmitted, linkedSurvey, surveyPhase, surveyBoot]);
 
   useEffect(() => {
     if (onAdmin || !hasEntered || feedPhase !== "ready" || submitted) return;
@@ -1551,13 +1538,18 @@ export default function App() {
     !onAdmin &&
     hasEntered &&
     !feedSubmitted &&
-    !shouldShowPreface &&
     (contentPhase === "loading" ||
       feedPhase === "loading" ||
-      surveyPhase === "loading" ||
       !flagsReady ||
       !assetsReady ||
       !minDelayDone);
+
+  const loadingNextStageOverlay =
+    !onAdmin &&
+    feedSubmitted &&
+    !submitted &&
+    surveyBoot?.has_survey &&
+    surveyPhase === "loading";
 
   const showBootError =
     !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
@@ -1570,13 +1562,18 @@ export default function App() {
           !shouldShowSurvey &&
           !shouldShowPreface &&
           (bootPhase === "loading" ||
-          !hasEntered ||
-          contentPhase === "loading" ||
-          feedPhase !== "ready" ||
-          submitted ||
-          !flagsReady ||
-          !assetsReady ||
-          !minDelayDone)
+            (!hasEntered &&
+              !shouldShowParticipantOverlay &&
+              bootPhase !== "error") ||
+            (hasEntered &&
+              !feedSubmitted &&
+              (contentPhase === "loading" ||
+                feedPhase !== "ready" ||
+                !flagsReady ||
+                !assetsReady ||
+                !minDelayDone)) ||
+            loadingNextStageOverlay ||
+            submitted)
             ? "blurred"
             : ""
         }`}
@@ -1623,21 +1620,14 @@ export default function App() {
                 </div>
               ) : shouldShowPreface ? (
                 <div className="survey-page">
-                  {linkedSurvey ? (
-                    <SurveyPrefaceFlow
-                      survey={linkedSurvey}
-                      participantDisplayId={participantDisplayId}
-                      onComplete={async () => {
-                        setPrefaceCompleted(true);
-                        scrollSurveyViewToTop();
-                      }}
-                    />
-                  ) : (
-                    <LoadingOverlay
-                      title="Loading study…"
-                      subtitle="Preparing the first page"
-                    />
-                  )}
+                  <SurveyPrefaceFlow
+                    survey={prefaceSurvey}
+                    participantDisplayId={participantDisplayId}
+                    onComplete={() => {
+                      setPrefaceCompleted(true);
+                      scrollSurveyViewToTop();
+                    }}
+                  />
                 </div>
               ) : (
                 <PageWithRails>
@@ -1671,7 +1661,7 @@ export default function App() {
                           app={APP}
                           projectId={projectId}
                           submitButtonLabel={
-                            linkedSurvey
+                            surveyBoot?.has_survey
                               ? "Submit Feed & Continue to Questions"
                               : "Submit Feed"
                           }
@@ -1803,7 +1793,9 @@ export default function App() {
                     try {
                       const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
-                        const fresh = await loadPostsFromBackend(ctx?.feedId);
+                        const fresh = await loadPostsFromBackend(ctx?.feedId, {
+                          projectId: ctx?.projectId,
+                        });
                         setPosts(fresh || []);
                         showToast("Feed saved to backend");
                       } else {
@@ -1908,17 +1900,21 @@ export default function App() {
           subtitle={
             flags.randomize_avatars || flags.randomize_images
               ? "Almost ready..."
-              : surveyPhase === "loading"
-              ? "Loading the next stage..."
-              : "Loading posts and the next stage."
+              : "Loading posts and feed settings."
           }
+        />
+      )}
+
+      {loadingNextStageOverlay && (
+        <LoadingOverlay
+          title="Loading next stage…"
+          subtitle="Preparing the questions"
         />
       )}
 
       {!onAdmin &&
         hasEntered &&
         !feedSubmitted &&
-        !shouldShowPreface &&
         feedPhase === "error" && (
           <div
             className="modal-backdrop modal-backdrop-dim"
@@ -1930,11 +1926,6 @@ export default function App() {
               className="modal modal-compact"
               style={{ textAlign: "center", paddingTop: 24 }}
             >
-              <div
-                className="spinner-ring"
-                aria-hidden="true"
-                style={{ display: "none" }}
-              />
               <h3 style={{ margin: "0 0 6px" }}>Couldn’t load your feed</h3>
               <div
                 style={{
