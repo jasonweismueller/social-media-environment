@@ -834,6 +834,21 @@ export default function App() {
           has_survey: false,
           survey_id: "",
           has_preface: false,
+          preface: {
+            participant_information: false,
+            consent: false,
+            instructions: false,
+          },
+          participant_information_title: "Participant Information",
+          participant_information_html: "",
+          consent_title: "Consent",
+          consent_text_html: "",
+          consent_decline_message_html:
+            "<p>You cannot proceed because you did not provide consent.</p>",
+          instructions_title: "Instructions",
+          instructions_html: "",
+          pre_feed_button_label: "Go to feed",
+          trigger: "after_feed_submit",
         };
 
       try {
@@ -856,11 +871,37 @@ export default function App() {
 
         if (freshBoot && typeof freshBoot === "object") {
           nextBoot = {
+            ...freshBoot,
             has_survey: !!freshBoot.has_survey,
             survey_id: String(freshBoot.survey_id || ""),
             has_preface: !!freshBoot.has_preface,
-            preface: freshBoot.preface || null,
-            trigger: freshBoot.trigger || "",
+            preface: freshBoot.preface || {
+              participant_information: !!String(
+                freshBoot.participant_information_html || ""
+              ).trim(),
+              consent: !!String(freshBoot.consent_text_html || "").trim(),
+              instructions: !!String(freshBoot.instructions_html || "").trim(),
+            },
+            trigger: String(freshBoot.trigger || "after_feed_submit"),
+            participant_information_title: String(
+              freshBoot.participant_information_title || "Participant Information"
+            ),
+            participant_information_html: String(
+              freshBoot.participant_information_html || ""
+            ),
+            consent_title: String(freshBoot.consent_title || "Consent"),
+            consent_text_html: String(freshBoot.consent_text_html || ""),
+            consent_decline_message_html: String(
+              freshBoot.consent_decline_message_html ||
+                "<p>You cannot proceed because you did not provide consent.</p>"
+            ),
+            instructions_title: String(
+              freshBoot.instructions_title || "Instructions"
+            ),
+            instructions_html: String(freshBoot.instructions_html || ""),
+            pre_feed_button_label: String(
+              freshBoot.pre_feed_button_label || "Go to feed"
+            ),
           };
           writeSurveyBootCache(projectId, chosen.feed_id, nextBoot);
         }
@@ -1030,35 +1071,9 @@ export default function App() {
         }
       })();
 
-      const surveyPromise =
-        surveyBoot?.has_survey && !linkedSurvey
-          ? (async () => {
-              const ts = timerStart("content.surveyDefinition", {
-                activeFeedId,
-                projectId,
-              });
-              try {
-                const result = await getSurveyForFeedFromBackend(activeFeedId, {
-                  projectId: projectId || undefined,
-                  signal: ctrl.signal,
-                  force: true,
-                }).catch(() => null);
-                ts.end({
-                  hasResult: !!result,
-                  pages: result?.pages?.length || 0,
-                });
-                return result;
-              } catch (e) {
-                ts.fail(e);
-                throw e;
-              }
-            })()
-          : Promise.resolve(linkedSurvey);
-
-      const [rawPosts, resFlags, surveyDefOrExisting] = await Promise.all([
+      const [rawPosts, resFlags] = await Promise.all([
         postsPromise,
         flagsPromise,
-        surveyPromise,
       ]);
 
       if (ctrl.signal.aborted) {
@@ -1077,19 +1092,7 @@ export default function App() {
         writePostsCache(projectId, activeFeedId, arr);
       }
 
-      if (surveyBoot?.has_survey && !linkedSurvey) {
-        const normalizedSurvey = surveyDefOrExisting
-          ? normalizeFrontendSurvey(surveyDefOrExisting)
-          : null;
-
-        setLinkedSurvey(normalizedSurvey);
-        setSurveyResponses(
-          normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
-        );
-        setSurveyErrors({});
-        setSurveyErrorMsg("");
-        setSurveyPhase(normalizedSurvey ? "ready" : "idle");
-      } else if (!surveyBoot?.has_survey) {
+      if (!surveyBoot?.has_survey) {
         setLinkedSurvey(null);
         setSurveyResponses({});
         setSurveyErrors({});
@@ -1103,9 +1106,7 @@ export default function App() {
       t.end({
         postsCount: arr.length,
         nextFlags,
-        surveyPhaseAfter: surveyBoot?.has_survey
-          ? (surveyDefOrExisting ? "ready-ish" : "idle")
-          : "idle",
+        surveyPhaseAfter: surveyPhase,
       });
     } catch (e) {
       if (e?.name === "AbortError") {
@@ -1116,16 +1117,13 @@ export default function App() {
       setFeedError(e?.message || "Failed to load the feed. Please try again.");
       setFeedPhase("error");
       setContentPhase("error");
-      if (surveyBoot?.has_survey && !linkedSurvey) {
-        setSurveyPhase("error");
-      }
       t.fail(e);
     } finally {
       if (contentAbortRef.current === ctrl) {
         contentAbortRef.current = null;
       }
     }
-  }, [onAdmin, activeFeedId, contentPhase, projectId, surveyBoot, linkedSurvey]);
+  }, [onAdmin, activeFeedId, contentPhase, projectId, surveyBoot, linkedSurvey, surveyPhase]);
 
   useEffect(() => {
     if (!onAdmin) startBoot();
@@ -1168,29 +1166,6 @@ export default function App() {
       window.removeEventListener("popstate", onUrlChange);
     };
   }, [activeFeedId, startBoot]);
-
-  useEffect(() => {
-    if (
-      !onAdmin &&
-      bootPhase === "ready" &&
-      surveyBoot?.has_survey &&
-      surveyBoot?.has_preface &&
-      !prefaceCompleted &&
-      !linkedSurvey &&
-      surveyPhase === "idle"
-    ) {
-      dbg("preface detected -> loading survey early");
-      ensureSurveyLoaded();
-    }
-  }, [
-    onAdmin,
-    bootPhase,
-    surveyBoot,
-    prefaceCompleted,
-    linkedSurvey,
-    surveyPhase,
-    ensureSurveyLoaded,
-  ]);
 
   const [adminAuthed, setAdminAuthed] = useState(false);
 
@@ -1268,6 +1243,7 @@ export default function App() {
         !hasEntered ||
         contentPhase === "loading" ||
         feedPhase === "loading" ||
+        surveyPhase === "loading" ||
         submitted ||
         !flagsReady ||
         !assetsReady ||
@@ -1283,6 +1259,7 @@ export default function App() {
     hasEntered,
     contentPhase,
     feedPhase,
+    surveyPhase,
     submitted,
     onAdmin,
     flagsReady,
@@ -1820,10 +1797,18 @@ export default function App() {
     !shouldShowPreface &&
     (contentPhase === "loading" ||
       feedPhase === "loading" ||
-      surveyPhase === "loading" ||
       !flagsReady ||
       !assetsReady ||
       !minDelayDone);
+
+  const loadingNextStageOverlay =
+    !onAdmin &&
+    hasEntered &&
+    feedSubmitted &&
+    !submitted &&
+    !!surveyBoot?.has_survey &&
+    surveyPhase === "loading" &&
+    !shouldShowSurvey;
 
   const showBootError =
     !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
@@ -1836,13 +1821,14 @@ export default function App() {
           !shouldShowSurvey &&
           !shouldShowPreface &&
           (bootPhase === "loading" ||
-          !hasEntered ||
-          contentPhase === "loading" ||
-          feedPhase !== "ready" ||
-          submitted ||
-          !flagsReady ||
-          !assetsReady ||
-          !minDelayDone)
+            !hasEntered ||
+            contentPhase === "loading" ||
+            feedPhase !== "ready" ||
+            surveyPhase === "loading" ||
+            submitted ||
+            !flagsReady ||
+            !assetsReady ||
+            !minDelayDone)
             ? "blurred"
             : ""
         }`}
@@ -1889,9 +1875,9 @@ export default function App() {
                 </div>
               ) : shouldShowPreface ? (
                 <div className="survey-page">
-                  {linkedSurvey ? (
+                  {surveyBoot ? (
                     <SurveyPrefaceFlow
-                      survey={linkedSurvey}
+                      survey={surveyBoot}
                       participantDisplayId={participantDisplayId}
                       onComplete={async () => {
                         dbg("preface completed");
@@ -1938,7 +1924,7 @@ export default function App() {
                           app={APP}
                           projectId={projectId}
                           submitButtonLabel={
-                            linkedSurvey
+                            surveyBoot?.has_survey
                               ? "Submit Feed & Continue to Questions"
                               : "Submit Feed"
                           }
@@ -2034,8 +2020,24 @@ export default function App() {
                             );
 
                             if (ok) {
-                              setFeedSubmitted(true);
-                              scrollSurveyViewToTop();
+                              if (surveyBoot?.has_survey) {
+                                setFeedSubmitted(true);
+                                setSurveyPhase("loading");
+                                const loadedSurvey = await ensureSurveyLoaded();
+
+                                if (loadedSurvey) {
+                                  scrollSurveyViewToTop();
+                                } else {
+                                  setSurveyPhase("error");
+                                  setSurveyErrorMsg("Failed to load the survey.");
+                                  showToast(
+                                    "Feed submitted, but the survey could not be loaded."
+                                  );
+                                }
+                              } else {
+                                setFeedSubmitted(true);
+                                scrollSurveyViewToTop();
+                              }
                             }
 
                             setDisabled(false);
@@ -2198,10 +2200,15 @@ export default function App() {
           subtitle={
             flags.randomize_avatars || flags.randomize_images
               ? "Almost ready..."
-              : surveyPhase === "loading"
-              ? "Loading the next stage..."
-              : "Loading posts and the next stage."
+              : "Loading the feed."
           }
+        />
+      )}
+
+      {loadingNextStageOverlay && (
+        <LoadingOverlay
+          title="Loading questions…"
+          subtitle="Preparing the next stage"
         />
       )}
 
