@@ -363,43 +363,34 @@ export function SurveyPrefaceFlow({
           </div>
 
           {currentStep?.id === "consent" && (
-            <div className="survey-question" style={{ marginTop: 14 }}>
-              <div className="survey-question-title">
-                <div className="survey-question-title-inner">
-                  <div className="survey-question-title-content">
-                    Please provide your consent to participate in this research by
-                    selecting an option below.
-                  </div>
-                </div>
-              </div>
+  <div className="survey-question" style={{ marginTop: 14 }}>
+    <div className="survey-options">
+      <label className="survey-option">
+        <input
+          type="radio"
+          name="survey_consent_choice"
+          checked={consentChoice === "yes"}
+          onChange={() => {
+            setConsentChoice("yes");
+            setConsentError("");
+          }}
+        />
+        <span>Yes, I consent to participate.</span>
+      </label>
 
-              <div className="survey-options">
-                <label className="survey-option">
-                  <input
-                    type="radio"
-                    name="survey_consent_choice"
-                    checked={consentChoice === "yes"}
-                    onChange={() => {
-                      setConsentChoice("yes");
-                      setConsentError("");
-                    }}
-                  />
-                  <span>Yes, I consent to participate.</span>
-                </label>
-
-                <label className="survey-option">
-                  <input
-                    type="radio"
-                    name="survey_consent_choice"
-                    checked={consentChoice === "no"}
-                    onChange={() => {
-                      setConsentChoice("no");
-                      setConsentError("");
-                    }}
-                  />
-                  <span>No, I do not consent.</span>
-                </label>
-              </div>
+      <label className="survey-option">
+        <input
+          type="radio"
+          name="survey_consent_choice"
+          checked={consentChoice === "no"}
+          onChange={() => {
+            setConsentChoice("no");
+            setConsentError("");
+          }}
+        />
+        <span>No, I do not consent.</span>
+      </label>
+    </div>
 
               {consentError ? (
                 <div className="survey-error">{consentError}</div>
