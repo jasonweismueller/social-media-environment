@@ -688,10 +688,10 @@ export function AdminSurveysPanel({
         })),
       };
 
-      console.log("[BEFORE SAVE] survey state", survey);
-    console.log("[BEFORE SAVE] normalized", normalized);
-    console.log("[BEFORE SAVE] payload", payload);
-    console.log("[BEFORE SAVE] completion fields", {
+      console.error("[BEFORE SAVE] survey state", survey);
+    console.error("[BEFORE SAVE] normalized", normalized);
+    console.error("[BEFORE SAVE] payload", payload);
+    console.error("[BEFORE SAVE] completion fields", {
       completion_mode: payload.completion_mode,
       completion_redirect_url: payload.completion_redirect_url,
       completion_code: payload.completion_code,
@@ -714,8 +714,8 @@ export function AdminSurveysPanel({
           }),
         ]);
 
-        console.log("[AFTER SAVE] fresh from backend", fresh);
-      console.log("[AFTER SAVE] fresh completion fields", {
+        console.error("[AFTER SAVE] fresh from backend", fresh);
+      console.error("[AFTER SAVE] fresh completion fields", {
         completion_mode: fresh?.completion_mode,
         completion_redirect_url: fresh?.completion_redirect_url,
         completion_code: fresh?.completion_code,
