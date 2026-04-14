@@ -1,18 +1,37 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles-instagram.css";
 
 import {
-  uid, now, fmtTime, clamp,
-  loadPostsFromBackend, savePostsToBackend,
-  sendToSheet, buildMinimalHeader, buildParticipantRow,
-  computeFeedId, getDefaultFeedFromBackend,
-  hasAdminSession, adminLogout, listFeedsFromBackend,
-  getFeedIdFromUrl, VIEWPORT_ENTER_FRACTION, VIEWPORT_ENTER_FRACTION_IMAGE,
+  uid,
+  now,
+  fmtTime,
+  clamp,
+  loadPostsFromBackend,
+  savePostsToBackend,
+  sendToSheet,
+  buildMinimalHeader,
+  buildParticipantRow,
+  computeFeedId,
+  getDefaultFeedFromBackend,
+  hasAdminSession,
+  adminLogout,
+  listFeedsFromBackend,
+  getFeedIdFromUrl,
+  VIEWPORT_ENTER_FRACTION,
+  VIEWPORT_ENTER_FRACTION_IMAGE,
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   setFeedIdInUrl,
-  APP, GS_ENDPOINT, fetchFeedFlags,
+  APP,
+  GS_ENDPOINT,
+  fetchFeedFlags,
   getAvatarPool,
   getImagePool,
   getSurveyForFeedFromBackend,
@@ -20,15 +39,19 @@ import {
   normalizeSurvey as normalizeFrontendSurvey,
   makeEmptySurveyResponses,
   validateSurveyResponses,
-  getTrackingIdsFromUrl
+  getTrackingIdsFromUrl,
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
 import {
-  ParticipantOverlay, ThankYouOverlay,
-  RouteAwareTopbar, SkeletonFeed, LoadingOverlay, SurveyScreenMobile, SurveyScreen,
+  ParticipantOverlay,
+  ThankYouOverlay,
+  RouteAwareTopbar,
+  SkeletonFeed,
+  LoadingOverlay,
+  SurveyScreenMobile,
+  SurveyScreen,
   SurveyPrefaceFlow,
-  surveyHasPreface,
 } from "./ui-core";
 
 import { AdminDashboard } from "./admin/components-admin-dashboard";
@@ -37,6 +60,7 @@ import AdminLogin from "./admin/components-admin-login";
 /* =========================================================================
    Mode & helpers
    ======================================================================= */
+
 const MODE = (
   new URLSearchParams(window.location.search).get("style") ||
   window.CONFIG?.STYLE ||
@@ -66,15 +90,11 @@ function normalizeFlags(raw) {
     randomize_avatars: truthy(
       f.randomize_avatars ?? f.randomize_avatar ?? f.rand_avatar ?? false
     ),
-    randomize_names: truthy(
-      f.randomize_names ?? f.rand_names ?? false
-    ),
+    randomize_names: truthy(f.randomize_names ?? f.rand_names ?? false),
     randomize_images: truthy(
       f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false
     ),
-    randomize_bios: truthy(
-      f.randomize_bios ?? f.rand_bios ?? false
-    ),
+    randomize_bios: truthy(f.randomize_bios ?? f.rand_bios ?? false),
   };
 }
 
@@ -87,7 +107,8 @@ function useIOSInputZoomFix(
     if (!isIOS) return;
 
     const htmlStyle = document.documentElement.style;
-    const prevAdj = htmlStyle.webkitTextSizeAdjust || htmlStyle.textSizeAdjust || "";
+    const prevAdj =
+      htmlStyle.webkitTextSizeAdjust || htmlStyle.textSizeAdjust || "";
     htmlStyle.webkitTextSizeAdjust = "100%";
     htmlStyle.textSizeAdjust = "100%";
 
@@ -209,6 +230,31 @@ function writeSurveyBootCache(projectId, feedId, value) {
   } catch {}
 }
 
+function getPostsCacheKey(projectId, feedId) {
+  return `posts::${projectId || ""}::${feedId || ""}`;
+}
+
+function readPostsCache(projectId, feedId) {
+  try {
+    const raw = localStorage.getItem(getPostsCacheKey(projectId, feedId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePostsCache(projectId, feedId, posts) {
+  try {
+    localStorage.setItem(getPostsCacheKey(projectId, feedId), JSON.stringify(posts));
+    localStorage.setItem(
+      `${getPostsCacheKey(projectId, feedId)}::meta`,
+      JSON.stringify({ t: Date.now() })
+    );
+  } catch {}
+}
+
 function firstNonEmptyString(...values) {
   for (const value of values) {
     const s = String(value ?? "").trim();
@@ -258,6 +304,7 @@ function getSurveyCompletionConfig(survey) {
 }
 
 /* ---------- IG rails skeleton ---------- */
+
 function RailBox({ largeAvatar = false }) {
   return (
     <div className="ghost-card box" style={{ padding: ".8rem", borderRadius: 14 }}>
@@ -268,8 +315,12 @@ function RailBox({ largeAvatar = false }) {
           <div className="ghost-line w-35" />
         </div>
       </div>
-      <div className="ghost-row"><div className="ghost-line w-70" /></div>
-      <div className="ghost-row"><div className="ghost-line w-45" /></div>
+      <div className="ghost-row">
+        <div className="ghost-line w-70" />
+      </div>
+      <div className="ghost-row">
+        <div className="ghost-line w-45" />
+      </div>
     </div>
   );
 }
@@ -298,7 +349,14 @@ function RailList({ rows = 4 }) {
 
 function RailStack({ children }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "14px",
+        width: "100%",
+      }}
+    >
       {children}
     </div>
   );
@@ -397,12 +455,17 @@ function elementHasImage(el) {
 }
 
 /* =============================== MAIN APP ================================ */
+
 export default function App() {
   const sessionIdRef = useRef(uid());
   const t0Ref = useRef(now());
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
+
+  const bootAbortRef = useRef(null);
+  const surveyAbortRef = useRef(null);
+  const contentAbortRef = useRef(null);
 
   const trackingIds = useMemo(() => getTrackingIdsFromUrl(), []);
   const prefilledParticipantId = trackingIds.prolific_pid || "";
@@ -439,7 +502,8 @@ export default function App() {
     const syncFromUrl = () => {
       const q = new URLSearchParams(window.location.search);
       const hashQuery = window.location.hash.split("?")[1] || "";
-      const getFlag = (key) => q.get(key) ?? new URLSearchParams(hashQuery).get(key);
+      const getFlag = (key) =>
+        q.get(key) ?? new URLSearchParams(hashQuery).get(key);
       const p = getFlag("project_id") || getFlag("project");
 
       if (p != null && String(p) !== projectId) {
@@ -470,10 +534,15 @@ export default function App() {
   const [activeFeedId, setActiveFeedId] = useState(
     !onAdmin ? getFeedIdFromUrl() : null
   );
+
   const [posts, setPosts] = useState([]);
   const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
-  const feedAbortRef = useRef(null);
+
+  const [bootPhase, setBootPhase] = useState(onAdmin ? "ready" : "idle");
+  const [bootError, setBootError] = useState("");
+
+  const [contentPhase, setContentPhase] = useState("idle");
 
   const [surveyBoot, setSurveyBoot] = useState(null);
   const [linkedSurvey, setLinkedSurvey] = useState(null);
@@ -506,17 +575,10 @@ export default function App() {
   const [avatarPools, setAvatarPools] = useState(null);
   const [assetsReady, setAssetsReady] = useState(false);
   const [flagsReady, setFlagsReady] = useState(false);
-  const [initialBootLoading, setInitialBootLoading] = useState(!onAdmin);
 
   const [minDelayDone, setMinDelayDone] = useState(true);
   const minDelayStartedRef = useRef(false);
   const minDelayTimerRef = useRef(null);
-
-  useEffect(() => {
-    if (onAdmin) {
-      setInitialBootLoading(false);
-    }
-  }, [onAdmin]);
 
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
@@ -568,7 +630,9 @@ export default function App() {
         null;
 
       const top = topEl
-        ? Math.ceil(topEl.getBoundingClientRect().height || topEl.offsetHeight || 0)
+        ? Math.ceil(
+            topEl.getBoundingClientRect().height || topEl.offsetHeight || 0
+          )
         : 0;
 
       const bottom = 0;
@@ -612,24 +676,53 @@ export default function App() {
     setTimeout(run, 80);
   }, []);
 
-  const startLoadFeed = useCallback(async () => {
+  const resolveChosenFeed = useCallback(
+    async (signal) => {
+      const [feedsList, backendDefault] = await Promise.all([
+        listFeedsFromBackend({ signal }),
+        getDefaultFeedFromBackend({ signal }),
+      ]);
+
+      if (signal?.aborted) return null;
+
+      const urlFeedId = getFeedIdFromUrl();
+      const chosen =
+        (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
+        (feedsList || []).find(
+          (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
+        ) ||
+        (feedsList || [])[0] ||
+        null;
+
+      return chosen;
+    },
+    []
+  );
+
+  const startBoot = useCallback(async () => {
     if (onAdmin) return;
 
-    feedAbortRef.current?.abort?.();
+    bootAbortRef.current?.abort?.();
     const ctrl = new AbortController();
-    feedAbortRef.current = ctrl;
+    bootAbortRef.current = ctrl;
 
-    setInitialBootLoading(true);
-    setFeedPhase("loading");
-    setFeedError("");
-    setFlagsReady(false);
-    setAssetsReady(false);
+    setBootPhase("loading");
+    setBootError("");
+
     setSurveyBoot(null);
     setLinkedSurvey(null);
     setSurveyPhase("idle");
     setSurveyResponses({});
     setSurveyErrors({});
     setSurveyErrorMsg("");
+
+    setPosts([]);
+    setFeedPhase("idle");
+    setFeedError("");
+    setContentPhase("idle");
+    setFlagsReady(false);
+    setAssetsReady(false);
+
     setFeedSubmitted(false);
     setSubmitted(false);
     setPrefaceCompleted(false);
@@ -640,21 +733,9 @@ export default function App() {
     setMinDelayDone(true);
 
     try {
-      const [feedsList, backendDefault] = await Promise.all([
-        listFeedsFromBackend({ signal: ctrl.signal }),
-        getDefaultFeedFromBackend({ signal: ctrl.signal }),
-      ]);
+      const chosen = await resolveChosenFeed(ctrl.signal);
 
       if (ctrl.signal.aborted) return;
-
-      const urlFeedId = getFeedIdFromUrl();
-      const chosen =
-        (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
-        (feedsList || []).find(
-          (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
-        ) ||
-        (feedsList || [])[0] ||
-        null;
 
       if (!chosen) {
         throw new Error("No feeds are available.");
@@ -666,87 +747,163 @@ export default function App() {
         setFeedIdInUrl(chosen.feed_id, { replace: true });
       } catch {}
 
-      let cachedPosts = null;
-      try {
-        const k = `posts::${projectId || ""}::${chosen.feed_id}`;
-        const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
-        if (meta?.checksum === chosen.checksum) {
-          const data = JSON.parse(localStorage.getItem(k) || "null");
-          if (Array.isArray(data)) cachedPosts = data;
-        }
-      } catch {}
-
       const cachedBoot = readSurveyBootCache(projectId, chosen.feed_id);
 
-      const flagsPromise = fetchFeedFlags({
-        app: APP,
-        projectId: projectId || undefined,
-        feedId: chosen.feed_id || undefined,
-        project_id: projectId || undefined,
-        feed_id: chosen.feed_id || undefined,
-        endpoint: GS_ENDPOINT,
-        signal: ctrl.signal,
-      }).catch(() => ({}));
+      let nextBoot =
+        cachedBoot || {
+          has_survey: false,
+          survey_id: "",
+          has_preface: false,
+        };
 
-      const bootPromise = fetchSurveyBootForFeed(chosen.feed_id, {
+      try {
+        const freshBoot = await fetchSurveyBootForFeed(chosen.feed_id, {
+          projectId: projectId || undefined,
+          signal: ctrl.signal,
+        });
+
+        if (ctrl.signal.aborted) return;
+
+        if (freshBoot && typeof freshBoot === "object") {
+          nextBoot = {
+            has_survey: !!freshBoot.has_survey,
+            survey_id: String(freshBoot.survey_id || ""),
+            has_preface: !!freshBoot.has_preface,
+          };
+          writeSurveyBootCache(projectId, chosen.feed_id, nextBoot);
+        }
+      } catch {
+        // keep cached boot if available
+      }
+
+      setSurveyBoot(nextBoot);
+      setBootPhase("ready");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      console.warn("Boot load failed:", e);
+      setBootError(e?.message || "Failed to start the study.");
+      setBootPhase("error");
+    } finally {
+      if (bootAbortRef.current === ctrl) {
+        bootAbortRef.current = null;
+      }
+    }
+  }, [onAdmin, projectId, resolveChosenFeed]);
+
+  const ensureSurveyLoaded = useCallback(async () => {
+    if (onAdmin) return null;
+    if (!activeFeedId) return null;
+    if (!surveyBoot?.has_survey) return null;
+    if (linkedSurvey) return linkedSurvey;
+    if (surveyPhase === "loading") return null;
+
+    surveyAbortRef.current?.abort?.();
+    const ctrl = new AbortController();
+    surveyAbortRef.current = ctrl;
+
+    setSurveyPhase("loading");
+    setSurveyErrorMsg("");
+
+    try {
+      const surveyDef = await getSurveyForFeedFromBackend(activeFeedId, {
         projectId: projectId || undefined,
         signal: ctrl.signal,
+        force: true,
       }).catch(() => null);
+
+      if (ctrl.signal.aborted) return null;
+
+      const normalizedSurvey = surveyDef
+        ? normalizeFrontendSurvey(surveyDef)
+        : null;
+
+      setLinkedSurvey(normalizedSurvey);
+      setSurveyResponses(
+        normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
+      );
+      setSurveyErrors({});
+      setSurveyErrorMsg("");
+      setSurveyPhase(normalizedSurvey ? "ready" : "idle");
+
+      return normalizedSurvey;
+    } catch (e) {
+      if (e?.name === "AbortError") return null;
+      console.warn("Survey load failed:", e);
+      setSurveyPhase("error");
+      setSurveyErrorMsg("Failed to load the survey.");
+      return null;
+    } finally {
+      if (surveyAbortRef.current === ctrl) {
+        surveyAbortRef.current = null;
+      }
+    }
+  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, surveyPhase, projectId]);
+
+  const loadStudyContent = useCallback(async () => {
+    if (onAdmin || !activeFeedId) return;
+    if (contentPhase === "loading") return;
+
+    contentAbortRef.current?.abort?.();
+    const ctrl = new AbortController();
+    contentAbortRef.current = ctrl;
+
+    setContentPhase("loading");
+    setFeedPhase("loading");
+    setFeedError("");
+    setFlagsReady(false);
+    setAssetsReady(false);
+
+    try {
+      const cachedPosts = readPostsCache(projectId, activeFeedId);
 
       const postsPromise = cachedPosts
         ? Promise.resolve(cachedPosts)
-        : loadPostsFromBackend(chosen.feed_id, {
+        : loadPostsFromBackend(activeFeedId, {
             force: true,
             signal: ctrl.signal,
           }).catch(() => []);
 
-      const [rawPosts, resFlags, bootInfo] = await Promise.all([
+      const flagsPromise = fetchFeedFlags({
+        app: APP,
+        projectId: projectId || undefined,
+        feedId: activeFeedId || undefined,
+        project_id: projectId || undefined,
+        feed_id: activeFeedId || undefined,
+        endpoint: GS_ENDPOINT,
+        signal: ctrl.signal,
+      }).catch(() => ({}));
+
+      const surveyPromise =
+        surveyBoot?.has_survey && !linkedSurvey
+          ? getSurveyForFeedFromBackend(activeFeedId, {
+              projectId: projectId || undefined,
+              signal: ctrl.signal,
+              force: true,
+            }).catch(() => null)
+          : Promise.resolve(linkedSurvey);
+
+      const [rawPosts, resFlags, surveyDefOrExisting] = await Promise.all([
         postsPromise,
         flagsPromise,
-        bootPromise,
+        surveyPromise,
       ]);
 
       if (ctrl.signal.aborted) return;
 
       const arr = Array.isArray(rawPosts) ? rawPosts : [];
       const nextFlags = normalizeFlags(resFlags);
-      const nextBoot = bootInfo || cachedBoot || {
-        has_survey: false,
-        survey_id: "",
-        has_preface: false,
-      };
 
+      setPosts(arr);
       setFlags(nextFlags);
       setFlagsReady(true);
-      setPosts(arr);
-      setSurveyBoot(nextBoot);
 
-      if (nextBoot && typeof nextBoot === "object") {
-        writeSurveyBootCache(projectId, chosen.feed_id, nextBoot);
+      if (!cachedPosts) {
+        writePostsCache(projectId, activeFeedId, arr);
       }
 
-      try {
-        const k = `posts::${projectId || ""}::${chosen.feed_id}`;
-        localStorage.setItem(k, JSON.stringify(arr));
-        localStorage.setItem(
-          `${k}::meta`,
-          JSON.stringify({ checksum: chosen.checksum, t: Date.now() })
-        );
-      } catch {}
-
-      if (nextBoot?.has_survey && nextBoot?.survey_id) {
-        setSurveyPhase("loading");
-
-        const surveyDef = await getSurveyForFeedFromBackend(chosen.feed_id, {
-          projectId: projectId || undefined,
-          signal: ctrl.signal,
-          force: true,
-        }).catch(() => null);
-
-        if (ctrl.signal.aborted) return;
-
-        const normalizedSurvey = surveyDef
-          ? normalizeFrontendSurvey(surveyDef)
+      if (surveyBoot?.has_survey && !linkedSurvey) {
+        const normalizedSurvey = surveyDefOrExisting
+          ? normalizeFrontendSurvey(surveyDefOrExisting)
           : null;
 
         setLinkedSurvey(normalizedSurvey);
@@ -756,7 +913,7 @@ export default function App() {
         setSurveyErrors({});
         setSurveyErrorMsg("");
         setSurveyPhase(normalizedSurvey ? "ready" : "idle");
-      } else {
+      } else if (!surveyBoot?.has_survey) {
         setLinkedSurvey(null);
         setSurveyResponses({});
         setSurveyErrors({});
@@ -765,17 +922,32 @@ export default function App() {
       }
 
       setFeedPhase("ready");
-      setInitialBootLoading(false);
+      setContentPhase("ready");
     } catch (e) {
       if (e?.name === "AbortError") return;
-      console.warn("Feed load failed:", e);
+      console.warn("Content load failed:", e);
       setFeedError(e?.message || "Failed to load the feed. Please try again.");
       setFeedPhase("error");
-      setInitialBootLoading(false);
+      setContentPhase("error");
+      if (surveyBoot?.has_survey && !linkedSurvey) {
+        setSurveyPhase("error");
+      }
     } finally {
-      if (feedAbortRef.current === ctrl) feedAbortRef.current = null;
+      if (contentAbortRef.current === ctrl) {
+        contentAbortRef.current = null;
+      }
     }
-  }, [onAdmin, projectId]);
+  }, [onAdmin, activeFeedId, contentPhase, projectId, surveyBoot, linkedSurvey]);
+
+  useEffect(() => {
+    if (!onAdmin) startBoot();
+
+    return () => {
+      bootAbortRef.current?.abort?.();
+      surveyAbortRef.current?.abort?.();
+      contentAbortRef.current?.abort?.();
+    };
+  }, [onAdmin, startBoot, projectId]);
 
   useEffect(() => {
     const onUrlChange = () => {
@@ -789,7 +961,7 @@ export default function App() {
       if (fid && fid !== activeFeedId) {
         setFeedIdInUrl(fid, { replace: true });
         setActiveFeedId(fid);
-        startLoadFeed();
+        startBoot();
       }
     };
 
@@ -801,12 +973,29 @@ export default function App() {
       window.removeEventListener("hashchange", onUrlChange);
       window.removeEventListener("popstate", onUrlChange);
     };
-  }, [activeFeedId, startLoadFeed]);
+  }, [activeFeedId, startBoot]);
 
   useEffect(() => {
-    if (!onAdmin) startLoadFeed();
-    return () => feedAbortRef.current?.abort?.();
-  }, [onAdmin, startLoadFeed, projectId]);
+    if (
+      !onAdmin &&
+      bootPhase === "ready" &&
+      surveyBoot?.has_survey &&
+      surveyBoot?.has_preface &&
+      !prefaceCompleted &&
+      !linkedSurvey &&
+      surveyPhase === "idle"
+    ) {
+      ensureSurveyLoaded();
+    }
+  }, [
+    onAdmin,
+    bootPhase,
+    surveyBoot,
+    prefaceCompleted,
+    linkedSurvey,
+    surveyPhase,
+    ensureSurveyLoaded,
+  ]);
 
   const [adminAuthed, setAdminAuthed] = useState(false);
 
@@ -842,23 +1031,17 @@ export default function App() {
 
   const shouldShowPreface =
     !onAdmin &&
+    bootPhase === "ready" &&
     !hasEntered &&
     !feedSubmitted &&
-    !!linkedSurvey &&
-    surveyPhase === "ready" &&
-    surveyHasPreface(linkedSurvey) &&
+    !!surveyBoot?.has_survey &&
+    !!surveyBoot?.has_preface &&
     !prefaceCompleted;
-
-  const surveyBooting =
-    !onAdmin &&
-    !hasEntered &&
-    (feedPhase === "loading" || surveyPhase === "loading");
 
   const shouldShowParticipantOverlay =
     !onAdmin &&
-    !initialBootLoading &&
+    bootPhase === "ready" &&
     !hasEntered &&
-    !surveyBooting &&
     !shouldShowPreface;
 
   useEffect(() => {
@@ -886,16 +1069,14 @@ export default function App() {
 
     const shouldLock =
       !onAdmin &&
-      (
-        initialBootLoading ||
-        surveyBooting ||
+      (bootPhase === "loading" ||
         !hasEntered ||
-        feedPhase !== "ready" ||
+        contentPhase === "loading" ||
+        feedPhase === "loading" ||
         submitted ||
         !flagsReady ||
         !assetsReady ||
-        !minDelayDone
-      );
+        !minDelayDone);
 
     el.style.overflow = shouldLock ? "hidden" : "";
 
@@ -903,9 +1084,9 @@ export default function App() {
       el.style.overflow = prev;
     };
   }, [
-    initialBootLoading,
-    surveyBooting,
+    bootPhase,
     hasEntered,
+    contentPhase,
     feedPhase,
     submitted,
     onAdmin,
@@ -1258,7 +1439,8 @@ export default function App() {
     const DEBUG_VP =
       new URLSearchParams(window.location.search).get("debugvp") === "1" ||
       (window.location.hash.split("?")[1] &&
-        new URLSearchParams(window.location.hash.split("?")[1]).get("debugvp") === "1");
+        new URLSearchParams(window.location.hash.split("?")[1]).get("debugvp") ===
+          "1");
 
     const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
       ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
@@ -1363,19 +1545,22 @@ export default function App() {
     feedSubmitted,
   ]);
 
-  const loadingStudyOverlay =
-    !onAdmin && initialBootLoading;
+  const loadingStudyOverlay = !onAdmin && bootPhase === "loading";
 
   const preparingFeedOverlay =
     !onAdmin &&
     hasEntered &&
     !feedSubmitted &&
     !shouldShowPreface &&
-    (feedPhase === "loading" ||
+    (contentPhase === "loading" ||
+      feedPhase === "loading" ||
       surveyPhase === "loading" ||
       !flagsReady ||
       !assetsReady ||
       !minDelayDone);
+
+  const showBootError =
+    !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
 
   return (
     <Router>
@@ -1384,16 +1569,14 @@ export default function App() {
           !onAdmin &&
           !shouldShowSurvey &&
           !shouldShowPreface &&
-          (
-            initialBootLoading ||
-            surveyBooting ||
-            !hasEntered ||
-            feedPhase !== "ready" ||
-            submitted ||
-            !flagsReady ||
-            !assetsReady ||
-            !minDelayDone
-          )
+          (bootPhase === "loading" ||
+          !hasEntered ||
+          contentPhase === "loading" ||
+          feedPhase !== "ready" ||
+          submitted ||
+          !flagsReady ||
+          !assetsReady ||
+          !minDelayDone)
             ? "blurred"
             : ""
         }`}
@@ -1440,14 +1623,21 @@ export default function App() {
                 </div>
               ) : shouldShowPreface ? (
                 <div className="survey-page">
-                  <SurveyPrefaceFlow
-                    survey={linkedSurvey}
-                    participantDisplayId={participantDisplayId}
-                    onComplete={() => {
-                      setPrefaceCompleted(true);
-                      scrollSurveyViewToTop();
-                    }}
-                  />
+                  {linkedSurvey ? (
+                    <SurveyPrefaceFlow
+                      survey={linkedSurvey}
+                      participantDisplayId={participantDisplayId}
+                      onComplete={async () => {
+                        setPrefaceCompleted(true);
+                        scrollSurveyViewToTop();
+                      }}
+                    />
+                  ) : (
+                    <LoadingOverlay
+                      title="Loading study…"
+                      subtitle="Preparing the first page"
+                    />
+                  )}
                 </div>
               ) : (
                 <PageWithRails>
@@ -1492,11 +1682,15 @@ export default function App() {
 
                             setDisabled(true);
 
-                            const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                            const ENTER_FRAC = Number.isFinite(
+                              Number(VIEWPORT_ENTER_FRACTION)
+                            )
                               ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
                               : 0.5;
 
-                            const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                            const IMG_FRAC = Number.isFinite(
+                              Number(VIEWPORT_ENTER_FRACTION_IMAGE)
+                            )
                               ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
                               : ENTER_FRAC;
 
@@ -1553,7 +1747,9 @@ export default function App() {
                               feed_id
                             );
 
-                            showToast(ok ? "Submitted ✔︎" : "Sync failed. Please try again.");
+                            showToast(
+                              ok ? "Submitted ✔︎" : "Sync failed. Please try again."
+                            );
 
                             if (ok) {
                               setFeedSubmitted(true);
@@ -1638,14 +1834,44 @@ export default function App() {
       {loadingStudyOverlay && (
         <LoadingOverlay
           title="Loading study…"
-          subtitle="Preparing your session"
+          subtitle="Checking the study setup"
         />
+      )}
+
+      {showBootError && (
+        <div
+          className="modal-backdrop modal-backdrop-dim"
+          role="dialog"
+          aria-modal="true"
+          aria-live="assertive"
+        >
+          <div
+            className="modal modal-compact"
+            style={{ textAlign: "center", paddingTop: 24 }}
+          >
+            <h3 style={{ margin: "0 0 6px" }}>Couldn’t start the study</h3>
+            <div
+              style={{
+                color: "var(--muted)",
+                fontSize: ".95rem",
+                marginBottom: 12,
+              }}
+            >
+              {bootError || "Network error or service unavailable."}
+            </div>
+            <div>
+              <button className="btn" onClick={startBoot}>
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {shouldShowParticipantOverlay && (
         <ParticipantOverlay
           initialValue={prefilledParticipantId}
-          onSubmit={(id) => {
+          onSubmit={async (id) => {
             const ts = now();
             setParticipantId(id);
             setHasEntered(true);
@@ -1670,6 +1896,8 @@ export default function App() {
               window.scrollTo(0, 0);
               window.dispatchEvent(new Event("resize"));
             });
+
+            await loadStudyContent();
           }}
         />
       )}
@@ -1681,8 +1909,8 @@ export default function App() {
             flags.randomize_avatars || flags.randomize_images
               ? "Almost ready..."
               : surveyPhase === "loading"
-                ? "Loading the next stage..."
-                : "Fetching posts and setting things up."
+              ? "Loading the next stage..."
+              : "Loading posts and the next stage."
           }
         />
       )}
@@ -1718,7 +1946,7 @@ export default function App() {
                 {feedError || "Network error or service unavailable."}
               </div>
               <div>
-                <button className="btn" onClick={startLoadFeed}>
+                <button className="btn" onClick={loadStudyContent}>
                   Try again
                 </button>
               </div>
