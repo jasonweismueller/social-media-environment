@@ -74,7 +74,7 @@ if (typeof document !== "undefined") {
 
 /* ------------------------- debug helpers ------------------------- */
 
-const DEBUG_APP_LOAD = false;
+const DEBUG_APP_LOAD = true;
 
 function dbg(...args) {
   if (!DEBUG_APP_LOAD) return;
@@ -84,6 +84,17 @@ function dbg(...args) {
 function dbgWarn(...args) {
   if (!DEBUG_APP_LOAD) return;
   console.warn("[APP LOAD]", ...args);
+}
+
+function dbgGroup(label, obj) {
+  if (!DEBUG_APP_LOAD) return;
+  try {
+    console.groupCollapsed(`[APP LOAD] ${label}`);
+    console.log(obj);
+    console.groupEnd();
+  } catch {
+    console.log(`[APP LOAD] ${label}`, obj);
+  }
 }
 
 function timerStart(label, extra = {}) {
@@ -1004,10 +1015,22 @@ export default function App() {
   }, [onAdmin, projectId, resolveChosenFeed]);
 
   const ensureSurveyLoaded = useCallback(async () => {
-    if (onAdmin) return null;
-    if (!activeFeedId) return null;
-    if (!surveyBoot?.has_survey) return null;
-    if (linkedSurvey) return linkedSurvey;
+    if (onAdmin) {
+      dbg("ensureSurveyLoaded skipped", { reason: "onAdmin" });
+      return null;
+    }
+    if (!activeFeedId) {
+      dbg("ensureSurveyLoaded skipped", { reason: "no_activeFeedId" });
+      return null;
+    }
+    if (!surveyBoot?.has_survey) {
+      dbg("ensureSurveyLoaded skipped", { reason: "surveyBoot_has_no_survey" });
+      return null;
+    }
+    if (linkedSurvey) {
+      dbg("ensureSurveyLoaded skipped", { reason: "linkedSurvey_already_loaded" });
+      return linkedSurvey;
+    }
 
     const t = timerStart("ensureSurveyLoaded", {
       projectId,
@@ -1980,27 +2003,68 @@ export default function App() {
       !linkedSurvey ||
       surveyOnlyPrereqPhase !== "ready");
 
+  const shouldBlurShell =
+    !onAdmin &&
+    !shouldShowSurvey &&
+    !shouldShowPreface &&
+    !showSurveyOnlyLoadingOverlay &&
+    (bootPhase === "loading" ||
+      !hasEntered ||
+      (requiresFeedStage && contentPhase === "loading") ||
+      (requiresFeedStage && feedPhase !== "ready") ||
+      surveyPhase === "loading" ||
+      submitted ||
+      (requiresFeedStage && !flagsReady) ||
+      (requiresFeedStage && !assetsReady) ||
+      (requiresFeedStage && !minDelayDone));
+
+  useEffect(() => {
+    dbgGroup("overlay selectors", {
+      loadingStudyOverlay,
+      showBootError,
+      shouldShowParticipantOverlay,
+      shouldShowPreface,
+      showSurveyOnlyLoadingOverlay,
+      preparingFeedOverlay,
+      loadingNextStageOverlay,
+      shouldShowSurvey,
+      shouldBlurShell,
+      canShowFeed,
+      gateOpen,
+      showSkeletonLayer,
+    });
+  }, [
+    loadingStudyOverlay,
+    showBootError,
+    shouldShowParticipantOverlay,
+    shouldShowPreface,
+    showSurveyOnlyLoadingOverlay,
+    preparingFeedOverlay,
+    loadingNextStageOverlay,
+    shouldShowSurvey,
+    shouldBlurShell,
+    canShowFeed,
+    gateOpen,
+    showSkeletonLayer,
+  ]);
+
+  useEffect(() => {
+    let routeBranch = "none";
+    if (shouldShowSurvey) routeBranch = "survey";
+    else if (shouldShowPreface) routeBranch = "preface";
+    else if (showSurveyOnlyLoadingOverlay) routeBranch = "survey_only_loading";
+    else if (requiresFeedStage) routeBranch = "feed_stage";
+    dbg("route branch", { routeBranch });
+  }, [
+    shouldShowSurvey,
+    shouldShowPreface,
+    showSurveyOnlyLoadingOverlay,
+    requiresFeedStage,
+  ]);
+
   return (
     <Router>
-      <div
-        className={`app-shell ${
-          !onAdmin &&
-          !shouldShowSurvey &&
-          !shouldShowPreface &&
-          !showSurveyOnlyLoadingOverlay &&
-          (bootPhase === "loading" ||
-            !hasEntered ||
-            (requiresFeedStage && contentPhase === "loading") ||
-            (requiresFeedStage && feedPhase !== "ready") ||
-            surveyPhase === "loading" ||
-            submitted ||
-            (requiresFeedStage && !flagsReady) ||
-            (requiresFeedStage && !assetsReady) ||
-            (requiresFeedStage && !minDelayDone))
-            ? "blurred"
-            : ""
-        }`}
-      >
+      <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
         <RouteAwareTopbar />
 
         <Routes>
@@ -2052,6 +2116,13 @@ export default function App() {
                       survey={surveyBoot}
                       participantDisplayId={participantDisplayId}
                       onComplete={async () => {
+                        dbg("preface onComplete fired", {
+                          isSurveyOnlyMode,
+                          surveyPhaseBefore: surveyPhase,
+                          prereqPhaseBefore: surveyOnlyPrereqPhase,
+                          hasLinkedSurveyBefore: !!linkedSurvey,
+                        });
+
                         setPrefaceCompleted(true);
 
                         if (isSurveyOnlyMode) {
@@ -2059,6 +2130,11 @@ export default function App() {
                             ensureSurveyLoaded(),
                             preloadSurveyOnlyAssets(),
                           ]);
+
+                          dbg("preface onComplete resolved", {
+                            loadedSurvey: !!loadedSurvey,
+                            preloadOk,
+                          });
 
                           if (!loadedSurvey) {
                             setSurveyPhase("error");
@@ -2219,6 +2295,10 @@ export default function App() {
                               if (surveyBoot?.has_survey) {
                                 setFeedSubmitted(true);
                                 const loadedSurvey = await ensureSurveyLoaded();
+
+                                dbg("feed submit survey load result", {
+                                  loadedSurvey: !!loadedSurvey,
+                                });
 
                                 if (loadedSurvey) {
                                   scrollSurveyViewToTop();
@@ -2387,11 +2467,23 @@ export default function App() {
               window.dispatchEvent(new Event("resize"));
             });
 
+            dbg("participantOverlaySubmit start", {
+              isSurveyOnlyMode,
+              surveyPhaseBefore: surveyPhase,
+              prereqPhaseBefore: surveyOnlyPrereqPhase,
+              hasLinkedSurveyBefore: !!linkedSurvey,
+            });
+
             if (isSurveyOnlyMode) {
               const [loadedSurvey, preloadOk] = await Promise.all([
                 ensureSurveyLoaded(),
                 preloadSurveyOnlyAssets(),
               ]);
+
+              dbg("participantOverlaySubmit resolved", {
+                loadedSurvey: !!loadedSurvey,
+                preloadOk,
+              });
 
               if (!loadedSurvey) {
                 setSurveyPhase("error");
