@@ -873,6 +873,8 @@ export default function App() {
     setFeedSubmitted(false);
     setSubmitted(false);
     setPrefaceCompleted(false);
+    setHasEntered(false);
+    setParticipantId("");
     setCompletionState({ redirected: false });
 
     clearTimeout(minDelayTimerRef.current);
@@ -1366,17 +1368,15 @@ export default function App() {
     !onAdmin &&
     bootPhase === "ready" &&
     !hasEntered &&
-    !feedSubmitted &&
     !!surveyBoot?.has_survey &&
     !!surveyBoot?.has_preface &&
     !prefaceCompleted;
 
   const shouldShowParticipantOverlay =
-  !onAdmin &&
-  bootPhase === "ready" &&
-  !hasEntered &&
-  !prefaceCompleted &&
-  !shouldShowPreface;
+    !onAdmin &&
+    bootPhase === "ready" &&
+    !hasEntered &&
+    !shouldShowPreface;
 
   const surveyOnlyReady =
     isSurveyOnlyMode &&
@@ -1389,13 +1389,7 @@ export default function App() {
     hasEntered &&
     !submitted &&
     !!linkedSurvey &&
-    (
-      isSurveyOnlyMode
-        ? surveyOnlyReady ||
-          surveyPhase === "submitting" ||
-          surveyPhase === "error"
-        : feedSubmitted
-    ) &&
+    (isSurveyOnlyMode ? surveyOnlyReady || surveyPhase === "submitting" || surveyPhase === "error" : feedSubmitted) &&
     (surveyPhase === "ready" ||
       surveyPhase === "submitting" ||
       surveyPhase === "error");
@@ -1999,6 +1993,7 @@ export default function App() {
     !submitted &&
     !shouldShowSurvey &&
     !shouldShowPreface &&
+    !shouldShowParticipantOverlay &&
     (surveyPhase === "loading" ||
       surveyOnlyPrereqPhase === "loading" ||
       !linkedSurvey ||
@@ -2125,33 +2120,7 @@ export default function App() {
                         });
 
                         setPrefaceCompleted(true);
-setHasEntered(true);
-
-                        if (isSurveyOnlyMode) {
-                          const [loadedSurvey, preloadOk] = await Promise.all([
-                            ensureSurveyLoaded(),
-                            preloadSurveyOnlyAssets(),
-                          ]);
-
-                          dbg("preface onComplete resolved", {
-                            loadedSurvey: !!loadedSurvey,
-                            preloadOk,
-                          });
-
-                          if (!loadedSurvey) {
-                            setSurveyPhase("error");
-                            setSurveyErrorMsg("Failed to load the survey.");
-                          } else if (!preloadOk) {
-                            setSurveyPhase("error");
-                            setSurveyErrorMsg(
-                              "Failed to prepare the survey content."
-                            );
-                          } else {
-                            scrollSurveyViewToTop();
-                          }
-                        } else {
-                          scrollSurveyViewToTop();
-                        }
+                        scrollSurveyViewToTop();
                       }}
                     />
                   ) : (
@@ -2474,6 +2443,7 @@ setHasEntered(true);
               surveyPhaseBefore: surveyPhase,
               prereqPhaseBefore: surveyOnlyPrereqPhase,
               hasLinkedSurveyBefore: !!linkedSurvey,
+              prefaceCompleted,
             });
 
             if (isSurveyOnlyMode) {
