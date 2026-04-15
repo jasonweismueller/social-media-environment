@@ -67,6 +67,48 @@ async function loadPublicSurveyDefinitionForFeed(
   }
 }
 
+async function loadPublicSurveyDefinition(
+  surveyId,
+  { projectId = getProjectId(), signal, force = false } = {}
+) {
+  if (!surveyId) return null;
+
+  if (!force) {
+    const cached = __getCachedSurvey(surveyId, projectId);
+    if (cached) return cached;
+  }
+
+  try {
+    const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
+      survey_id: surveyId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    if (!data || Array.isArray(data) || !data.survey_id) return null;
+
+    const out = {
+      ...makeEmptySurveyShell(surveyId),
+      ...data,
+      survey_id: data.survey_id || surveyId,
+      linked_project_id: projectId || "",
+      delivery_mode: normalizeSurveyDeliveryMode(data.delivery_mode),
+    };
+
+    __setCachedSurvey(surveyId, projectId, out);
+    return out;
+  } catch (e) {
+    console.warn("loadPublicSurveyDefinition failed:", e);
+    return null;
+  }
+}
+
 export async function getLinkedFeedIdsForSurveyFromBackend({
   surveyId,
   projectId = getProjectId(),
@@ -147,6 +189,14 @@ const FEED_SURVEY_GET_URL = () => `${GS_ENDPOINT}?path=feed_survey&app=${getApp(
 const SURVEY_RESPONSES_GET_URL = () => `${GS_ENDPOINT}?path=survey_responses&app=${getApp()}`;
 const FEED_SURVEY_BOOT_GET_URL = () =>
   `${GS_ENDPOINT}?path=feed_survey_boot&app=${getApp()}`;
+const SURVEY_BOOT_GET_URL = () => `${GS_ENDPOINT}?path=survey_boot&app=${getApp()}`;
+const SURVEY_RESPONSES_BY_SURVEY_GET_URL = () =>
+  `${GS_ENDPOINT}?path=survey_responses_by_survey&app=${getApp()}`;
+const SURVEY_PARTICIPANTS_GET_URL = () =>
+  `${GS_ENDPOINT}?path=survey_participants&app=${getApp()}`;
+const SURVEY_PARTICIPANTS_STATS_GET_URL = () =>
+  `${GS_ENDPOINT}?path=survey_participants_stats&app=${getApp()}`;
+const POST_BY_ID_GET_URL = () => `${GS_ENDPOINT}?path=post_by_id&app=${getApp()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -628,6 +678,66 @@ export async function getSurveyBootForFeedFromBackend(
   }
 }
 
+
+export async function getSurveyBootFromBackend(
+  surveyId,
+  { projectId = getProjectId(), signal } = {}
+) {
+  if (!surveyId) return null;
+
+  try {
+    const url = buildQueryUrl(SURVEY_BOOT_GET_URL(), {
+      survey_id: surveyId,
+      project_id: projectId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    if (!data || typeof data !== "object") return null;
+
+    const deliveryMode = normalizeSurveyDeliveryMode(data.delivery_mode);
+    const defaultButtonLabel =
+      deliveryMode === "survey_only" ? "Start survey" : "Go to feed";
+
+    return {
+      ...data,
+      has_survey: !!data.has_survey,
+      survey_id: String(data.survey_id || surveyId || ""),
+      trigger: String(data.trigger || "after_feed_submit"),
+      delivery_mode: deliveryMode,
+      has_preface: !!data.has_preface,
+      preface: {
+        participant_information: !!data?.preface?.participant_information,
+        consent: !!data?.preface?.consent,
+        instructions: !!data?.preface?.instructions,
+      },
+      participant_information_title: String(
+        data.participant_information_title || "Participant Information"
+      ),
+      participant_information_html: String(data.participant_information_html || ""),
+      consent_title: String(data.consent_title || "Participant Consent"),
+      consent_text_html: String(data.consent_text_html || ""),
+      consent_decline_message_html: String(
+        data.consent_decline_message_html ||
+          "<p>You cannot proceed because you did not provide consent to participate.</p>"
+      ),
+      instructions_title: String(data.instructions_title || "Instructions"),
+      instructions_html: String(data.instructions_html || ""),
+      pre_feed_button_label: String(
+        data.pre_feed_button_label || defaultButtonLabel
+      ),
+    };
+  } catch (e) {
+    console.warn("getSurveyBootFromBackend failed:", e);
+    return null;
+  }
+}
+
 function mergeParticipantRowsWithSurveyRows({
   participantRows = [],
   surveyRows = [],
@@ -791,6 +901,74 @@ export async function loadMergedParticipantSurveyRoster({
     surveyResponses: Array.isArray(surveyResponses) ? surveyResponses : [],
     survey: surveyDefinition || null,
     surveyLink,
+    surveyColumns: merged.surveyColumns,
+    surveyColumnKeys: merged.surveyColumnKeys,
+    surveyColumnLabels: merged.surveyColumnLabels,
+    hasSurvey: true,
+    hasMergedSurveyColumns: !!merged.hasSurveyColumns,
+  };
+}
+
+export async function loadSurveyOnlyRoster({
+  surveyId,
+  projectId = getProjectId(),
+  signal,
+  fillValue = "NA",
+  forceSurveyDefinition = false,
+  labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE,
+} = {}) {
+  const effectiveSurveyId = String(surveyId || "").trim();
+  if (!effectiveSurveyId) {
+    return {
+      rows: [],
+      participants: [],
+      surveyResponses: [],
+      survey: null,
+      surveyColumns: [],
+      surveyColumnKeys: [],
+      surveyColumnLabels: [],
+      hasSurvey: false,
+      hasMergedSurveyColumns: false,
+    };
+  }
+
+  const [surveyDefinition, surveyResponses] = await Promise.all([
+    loadPublicSurveyDefinition(effectiveSurveyId, {
+      projectId,
+      signal,
+      force: !!forceSurveyDefinition,
+    }),
+    loadSurveyResponsesBySurveyRoster(effectiveSurveyId, {
+      projectId,
+      signal,
+    }),
+  ]);
+
+  const participantRows = (Array.isArray(surveyResponses) ? surveyResponses : []).map((row) => ({
+    session_id: row?.session_id ?? "",
+    participant_id: row?.participant_id ?? "",
+    ip_address: row?.ip_address ?? "",
+    prolific_pid: row?.prolific_pid ?? "",
+    entered_at_iso: row?.entered_at_iso ?? row?.submitted_at_iso ?? "",
+    submitted_at_iso: row?.submitted_at_iso ?? "",
+    feed_id: row?.feed_id ?? "SURVEY_ONLY",
+    survey_id: row?.survey_id ?? effectiveSurveyId,
+    project_id: row?.project_id ?? projectId ?? "",
+  }));
+
+  const merged = mergeParticipantRowsWithSurveyRows({
+    participantRows,
+    surveyRows: surveyResponses,
+    surveyDefinition,
+    fillValue,
+    labelMode,
+  });
+
+  return {
+    rows: merged.rows,
+    participants: participantRows,
+    surveyResponses: Array.isArray(surveyResponses) ? surveyResponses : [],
+    survey: surveyDefinition || null,
     surveyColumns: merged.surveyColumns,
     surveyColumnKeys: merged.surveyColumnKeys,
     surveyColumnLabels: merged.surveyColumnLabels,
@@ -1175,9 +1353,11 @@ export async function adminLogout() {
 }
 
 /* --------------------- Logging participants & events ---------------------- */
-export async function sendToSheet(header, row, _events, feed_id) {
-  if (!feed_id) {
-    console.warn("sendToSheet: feed_id required");
+export async function sendToSheet(header, row, _events, feed_id, options = {}) {
+  const survey_id = String(options?.survey_id || row?.survey_id || "");
+
+  if (!feed_id && !survey_id) {
+    console.warn("sendToSheet: feed_id or survey_id required");
     return false;
   }
 
@@ -1185,7 +1365,8 @@ export async function sendToSheet(header, row, _events, feed_id) {
     token: GS_TOKEN,
     action: "log_participant",
     app: APP,
-    feed_id,
+    feed_id: feed_id || "",
+    survey_id: survey_id || undefined,
     header,
     row,
     project_id: getProjectId() || undefined,
@@ -1248,7 +1429,7 @@ export async function sendSurveyResponseToBackend(args = {}) {
     action: "log_survey_response",
     app: APP,
     survey_id,
-    feed_id: args.feed_id || legacyRow.feed_id || "",
+    feed_id: args.feed_id || legacyRow.feed_id || "SURVEY_ONLY",
     project_id: args.project_id || legacyRow.project_id || getProjectId() || undefined,
     session_id: args.session_id || legacyRow.session_id || "",
     participant_id: args.participant_id || legacyRow.participant_id || "",
@@ -1777,6 +1958,29 @@ export async function getSurveyForFeedFromBackend(
   }
 }
 
+export async function getSurveyFromBackend(
+  surveyId,
+  { projectId = getProjectId(), signal, force = false } = {}
+) {
+  if (!surveyId) return null;
+
+  const def = await loadPublicSurveyDefinition(surveyId, {
+    projectId,
+    signal,
+    force,
+  });
+
+  return def
+    ? {
+        ...makeEmptySurveyShell(surveyId),
+        ...def,
+        survey_id: def.survey_id || surveyId,
+        linked_project_id: projectId || "",
+        delivery_mode: normalizeSurveyDeliveryMode(def.delivery_mode),
+      }
+    : null;
+}
+
 export async function saveSurveyToBackend(survey, { projectId = getProjectId() } = {}) {
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
@@ -2003,6 +2207,47 @@ export async function loadSurveyResponsesRoster(arg1, arg2) {
   }
 }
 
+export async function loadSurveyResponsesBySurveyRoster(arg1, arg2) {
+  let surveyId = null;
+  let opts = {};
+
+  if (typeof arg1 === "string") {
+    surveyId = arg1 || null;
+    opts = arg2 || {};
+  } else if (arg1 && typeof arg1 === "object") {
+    surveyId = arg1.surveyId || null;
+    opts = arg1;
+  }
+
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("loadSurveyResponsesBySurveyRoster: missing admin_token");
+    return [];
+  }
+
+  const projectId = opts.projectId || getProjectId();
+
+  try {
+    const url = buildQueryUrl(SURVEY_RESPONSES_BY_SURVEY_GET_URL(), {
+      project_id: projectId || undefined,
+      survey_id: surveyId || undefined,
+      admin_token,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal: opts.signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    return Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.warn("loadSurveyResponsesBySurveyRoster failed:", e);
+    return [];
+  }
+}
+
 /* --------------------------- File upload: local signer (legacy) ------------ */
 export async function uploadVideoToBackend(
   fileOrDataUrl,
@@ -2220,6 +2465,118 @@ export async function loadParticipantsRoster(arg1, arg2) {
   } catch (e) {
     console.warn("loadParticipantsRoster failed:", e);
     return [];
+  }
+}
+
+export async function loadSurveyParticipantsRoster(arg1, arg2) {
+  let surveyId = null;
+  let opts = {};
+
+  if (typeof arg1 === "string") {
+    surveyId = arg1 || null;
+    opts = arg2 || {};
+  } else if (arg1 && typeof arg1 === "object") {
+    surveyId = arg1.surveyId || null;
+    opts = arg1;
+  }
+
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("loadSurveyParticipantsRoster: missing admin_token");
+    return [];
+  }
+
+  const projectId = opts.projectId || getProjectId();
+
+  try {
+    const url = buildQueryUrl(SURVEY_PARTICIPANTS_GET_URL(), {
+      project_id: projectId || undefined,
+      survey_id: surveyId || undefined,
+      admin_token,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal: opts.signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    if (Array.isArray(data)) return data;
+    return Array.isArray(data?.rows) ? data.rows : [];
+  } catch (e) {
+    console.warn("loadSurveyParticipantsRoster failed:", e);
+    return [];
+  }
+}
+
+export async function loadSurveyParticipantsStats(arg1, arg2) {
+  let surveyId = null;
+  let opts = {};
+
+  if (typeof arg1 === "string") {
+    surveyId = arg1 || null;
+    opts = arg2 || {};
+  } else if (arg1 && typeof arg1 === "object") {
+    surveyId = arg1.surveyId || null;
+    opts = arg1;
+  }
+
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("loadSurveyParticipantsStats: missing admin_token");
+    return { total: 0 };
+  }
+
+  const projectId = opts.projectId || getProjectId();
+
+  try {
+    const url = buildQueryUrl(SURVEY_PARTICIPANTS_STATS_GET_URL(), {
+      project_id: projectId || undefined,
+      survey_id: surveyId || undefined,
+      admin_token,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal: opts.signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    return data && typeof data === "object" ? data : { total: 0 };
+  } catch (e) {
+    console.warn("loadSurveyParticipantsStats failed:", e);
+    return { total: 0 };
+  }
+}
+
+export async function loadPostByIdFromBackend({
+  feedId,
+  postId,
+  projectId = getProjectId(),
+  signal,
+} = {}) {
+  if (!feedId || !postId) return null;
+
+  try {
+    const url = buildQueryUrl(POST_BY_ID_GET_URL(), {
+      project_id: projectId || undefined,
+      feed_id: feedId || undefined,
+      post_id: postId || undefined,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    return data && typeof data === "object" ? data : null;
+  } catch (e) {
+    console.warn("loadPostByIdFromBackend failed:", e);
+    return null;
   }
 }
 
