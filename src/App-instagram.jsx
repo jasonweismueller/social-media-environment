@@ -482,7 +482,6 @@ export default function App() {
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
-  
 
   const bootAbortRef = useRef(null);
   const surveyAbortRef = useRef(null);
@@ -497,58 +496,7 @@ export default function App() {
       : false
   );
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const mq = window.matchMedia("(max-width: 700px)");
-    const onChange = (e) => setIsMobileSurvey(e.matches);
-
-    setIsMobileSurvey(mq.matches);
-    mq.addEventListener?.("change", onChange);
-    mq.addListener?.(onChange);
-
-    return () => {
-      mq.removeEventListener?.("change", onChange);
-      mq.removeListener?.(onChange);
-    };
-  }, []);
-
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
-
-  useEffect(() => {
-    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
-  }, [projectId]);
-
-  useEffect(() => {
-    const syncFromUrl = () => {
-      const q = new URLSearchParams(window.location.search);
-      const hashQuery = window.location.hash.split("?")[1] || "";
-      const getFlag = (key) =>
-        q.get(key) ?? new URLSearchParams(hashQuery).get(key);
-      const p = getFlag("project_id") || getFlag("project");
-
-      if (p != null && String(p) !== projectId) {
-        dbg("project sync from URL", { old: projectId, next: String(p) });
-        setProjectIdState(String(p));
-        setProjectIdUtil(String(p), { persist: true, updateUrl: false });
-      }
-    };
-
-    window.addEventListener("hashchange", syncFromUrl);
-    window.addEventListener("popstate", syncFromUrl);
-    syncFromUrl();
-
-    return () => {
-      window.removeEventListener("hashchange", syncFromUrl);
-      window.removeEventListener("popstate", syncFromUrl);
-    };
-  }, [projectId]);
-
-  const [runSeed] = useState(() =>
-    crypto?.getRandomValues
-      ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
 
   const onAdmin =
     typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
@@ -565,6 +513,7 @@ export default function App() {
   const [bootError, setBootError] = useState("");
 
   const [contentPhase, setContentPhase] = useState("idle");
+  const [surveyOnlyPrereqPhase, setSurveyOnlyPrereqPhase] = useState("idle");
 
   const [surveyBoot, setSurveyBoot] = useState(null);
   const [linkedSurvey, setLinkedSurvey] = useState(null);
@@ -573,8 +522,6 @@ export default function App() {
   const [surveyErrors, setSurveyErrors] = useState({});
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
-
-  
 
   const isSurveyOnlyMode =
     !!surveyBoot?.has_survey &&
@@ -610,12 +557,76 @@ export default function App() {
   const minDelayStartedRef = useRef(false);
   const minDelayTimerRef = useRef(null);
 
+  const [randomize, setRandomize] = useState(true);
+  const [showComposer, setShowComposer] = useState(false);
+  const [participantId, setParticipantId] = useState("");
+  const [hasEntered, setHasEntered] = useState(false);
+  const [disabled, setDisabled] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [adminAuthed, setAdminAuthed] = useState(false);
+
+  const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
+  const [showSkeletonLayer, setShowSkeletonLayer] = useState(true);
+
+  const [runSeed] = useState(() =>
+    crypto?.getRandomValues
+      ? Array.from(crypto.getRandomValues(new Uint32Array(2))).join("-")
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(max-width: 700px)");
+    const onChange = (e) => setIsMobileSurvey(e.matches);
+
+    setIsMobileSurvey(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    mq.addListener?.(onChange);
+
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      mq.removeListener?.(onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    setProjectIdUtil(projectId, { persist: true, updateUrl: false });
+  }, [projectId]);
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const q = new URLSearchParams(window.location.search);
+      const hashQuery = window.location.hash.split("?")[1] || "";
+      const getFlag = (key) =>
+        q.get(key) ?? new URLSearchParams(hashQuery).get(key);
+      const p = getFlag("project_id") || getFlag("project");
+
+      if (p != null && String(p) !== projectId) {
+        dbg("project sync from URL", { old: projectId, next: String(p) });
+        setProjectIdState(String(p));
+        setProjectIdUtil(String(p), { persist: true, updateUrl: false });
+      }
+    };
+
+    window.addEventListener("hashchange", syncFromUrl);
+    window.addEventListener("popstate", syncFromUrl);
+    syncFromUrl();
+
+    return () => {
+      window.removeEventListener("hashchange", syncFromUrl);
+      window.removeEventListener("popstate", syncFromUrl);
+    };
+  }, [projectId]);
+
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
 
   useEffect(() => {
     dbg("state: phases", {
       bootPhase,
       contentPhase,
+      surveyOnlyPrereqPhase,
       feedPhase,
       surveyPhase,
       flagsReady,
@@ -633,11 +644,15 @@ export default function App() {
   }, [
     bootPhase,
     contentPhase,
+    surveyOnlyPrereqPhase,
     feedPhase,
     surveyPhase,
     flagsReady,
     assetsReady,
     minDelayDone,
+    hasEntered,
+    feedSubmitted,
+    submitted,
     activeFeedId,
     projectId,
     surveyBoot,
@@ -682,8 +697,6 @@ export default function App() {
       window.removeEventListener("load", apply);
     };
   }, []);
-
-  const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
 
   useEffect(() => {
     const readOffsets = () => {
@@ -737,6 +750,44 @@ export default function App() {
     requestAnimationFrame(run);
     setTimeout(run, 0);
     setTimeout(run, 80);
+  }, []);
+
+  const participantDisplayId = useMemo(() => {
+    return (
+      getQueryParamEverywhere("PROLIFIC_PID") ||
+      getQueryParamEverywhere("participant_id") ||
+      ""
+    );
+  }, [activeFeedId, projectId]);
+
+  const log = useCallback((action, meta = {}) => {
+    const ts = now();
+    setEvents((prev) => [
+      ...prev,
+      {
+        session_id: sessionIdRef.current,
+        participant_id: participantId || null,
+        timestamp_iso: fmtTime(ts),
+        elapsed_ms: ts - t0Ref.current,
+        ts_ms: ts,
+        action,
+        ...meta,
+      },
+    ]);
+  }, [participantId]);
+
+  useEffect(() => {
+    dbg("session_start effect mounted");
+    log("session_start", {
+      user_agent: navigator.userAgent,
+      feed_id: activeFeedId || null,
+      project_id: projectId || null,
+    });
+
+    const onEnd = () => log("session_end", { total_events: events.length });
+    window.addEventListener("beforeunload", onEnd);
+    return () => window.removeEventListener("beforeunload", onEnd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const resolveChosenFeed = useCallback(
@@ -804,6 +855,7 @@ export default function App() {
     setFeedPhase("idle");
     setFeedError("");
     setContentPhase("idle");
+    setSurveyOnlyPrereqPhase("idle");
     setFlagsReady(false);
     setAssetsReady(false);
 
@@ -956,7 +1008,6 @@ export default function App() {
     if (!activeFeedId) return null;
     if (!surveyBoot?.has_survey) return null;
     if (linkedSurvey) return linkedSurvey;
-    if (surveyPhase === "loading") return null;
 
     const t = timerStart("ensureSurveyLoaded", {
       projectId,
@@ -1017,14 +1068,95 @@ export default function App() {
         surveyAbortRef.current = null;
       }
     }
-  }, [
-    onAdmin,
-    activeFeedId,
-    surveyBoot,
-    linkedSurvey,
-    surveyPhase,
-    projectId,
-  ]);
+  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId]);
+
+  const preloadSurveyOnlyAssets = useCallback(async () => {
+    if (onAdmin || !activeFeedId) return true;
+
+    const t = timerStart("preloadSurveyOnlyAssets", {
+      projectId,
+      activeFeedId,
+    });
+
+    contentAbortRef.current?.abort?.();
+    const ctrl = new AbortController();
+    contentAbortRef.current = ctrl;
+
+    setSurveyOnlyPrereqPhase("loading");
+    setContentPhase("loading");
+
+    try {
+      const cachedPosts = readPostsCache(projectId, activeFeedId);
+
+      const postsPromise = cachedPosts
+        ? Promise.resolve(cachedPosts)
+        : loadPostsFromBackend(activeFeedId, {
+            force: true,
+            signal: ctrl.signal,
+            projectId,
+          }).catch(() => []);
+
+      const flagsPromise = fetchFeedFlags({
+        app: APP,
+        projectId: projectId || undefined,
+        feedId: activeFeedId || undefined,
+        project_id: projectId || undefined,
+        feed_id: activeFeedId || undefined,
+        endpoint: GS_ENDPOINT,
+        signal: ctrl.signal,
+      }).catch(() => ({}));
+
+      const [rawPosts, rawFlags] = await Promise.all([
+        postsPromise,
+        flagsPromise,
+      ]);
+
+      if (ctrl.signal.aborted) {
+        t.end({ aborted: true });
+        return false;
+      }
+
+      const arr = Array.isArray(rawPosts) ? rawPosts : [];
+      const nextFlags = normalizeFlags(rawFlags);
+
+      setPosts(arr);
+      setFlags(nextFlags);
+      setFlagsReady(true);
+
+      if (!cachedPosts && arr.length > 0) {
+        writePostsCache(projectId, activeFeedId, arr);
+      }
+
+      setAvatarPools(null);
+      setAssetsReady(true);
+      setMinDelayDone(true);
+      setFeedPhase("ready");
+      setContentPhase("ready");
+      setSurveyOnlyPrereqPhase("ready");
+
+      t.end({
+        postsCount: arr.length,
+        nextFlags,
+      });
+
+      return true;
+    } catch (e) {
+      if (e?.name === "AbortError") {
+        t.end({ aborted: true });
+        return false;
+      }
+
+      dbgWarn("Survey-only hidden preload failed:", e);
+      setSurveyOnlyPrereqPhase("error");
+      setContentPhase("error");
+      t.fail(e);
+      return false;
+    } finally {
+      if (contentAbortRef.current === ctrl) {
+        contentAbortRef.current = null;
+      }
+    }
+  }, [onAdmin, activeFeedId, projectId]);
 
   const loadStudyContent = useCallback(async () => {
     if (onAdmin || !activeFeedId) return;
@@ -1063,11 +1195,11 @@ export default function App() {
         try {
           const result = cachedPosts
             ? cachedPosts
-           : await loadPostsFromBackend(activeFeedId, {
-    force: true,
-    signal: ctrl.signal,
-    projectId,
-  });
+            : await loadPostsFromBackend(activeFeedId, {
+                force: true,
+                signal: ctrl.signal,
+                projectId,
+              });
           tp.end({ count: Array.isArray(result) ? result.length : 0 });
           return result;
         } catch (e) {
@@ -1117,8 +1249,8 @@ export default function App() {
       setFlagsReady(true);
 
       if (!cachedPosts && Array.isArray(arr) && arr.length > 0) {
-  writePostsCache(projectId, activeFeedId, arr);
-}
+        writePostsCache(projectId, activeFeedId, arr);
+      }
 
       if (!surveyBoot?.has_survey) {
         setLinkedSurvey(null);
@@ -1203,37 +1335,9 @@ export default function App() {
     };
   }, [activeFeedId, startBoot]);
 
-  const [adminAuthed, setAdminAuthed] = useState(false);
-
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
   }, [onAdmin]);
-
-  const [randomize, setRandomize] = useState(true);
-  const [showComposer, setShowComposer] = useState(false);
-  const [participantId, setParticipantId] = useState("");
-  const [hasEntered, setHasEntered] = useState(false);
-  const [disabled, setDisabled] = useState(false);
-  const [toast, setToast] = useState(null);
-  const [events, setEvents] = useState([]);
-
-  const participantDisplayId = useMemo(() => {
-    return (
-      getQueryParamEverywhere("PROLIFIC_PID") ||
-      getQueryParamEverywhere("participant_id") ||
-      ""
-    );
-  }, [activeFeedId, projectId]);
-
-  const shouldShowSurvey =
-    !onAdmin &&
-    hasEntered &&
-    !submitted &&
-    !!linkedSurvey &&
-    (isSurveyOnlyMode || feedSubmitted) &&
-    (surveyPhase === "ready" ||
-      surveyPhase === "submitting" ||
-      surveyPhase === "error");
 
   const shouldShowPreface =
     !onAdmin &&
@@ -1249,6 +1353,28 @@ export default function App() {
     bootPhase === "ready" &&
     !hasEntered &&
     !shouldShowPreface;
+
+  const surveyOnlyReady =
+    isSurveyOnlyMode &&
+    !!linkedSurvey &&
+    surveyPhase === "ready" &&
+    surveyOnlyPrereqPhase === "ready";
+
+  const shouldShowSurvey =
+    !onAdmin &&
+    hasEntered &&
+    !submitted &&
+    !!linkedSurvey &&
+    (
+      isSurveyOnlyMode
+        ? surveyOnlyReady ||
+          surveyPhase === "submitting" ||
+          surveyPhase === "error"
+        : feedSubmitted
+    ) &&
+    (surveyPhase === "ready" ||
+      surveyPhase === "submitting" ||
+      surveyPhase === "error");
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1274,16 +1400,16 @@ export default function App() {
     const prev = el.style.overflow;
 
     const shouldLock =
-  !onAdmin &&
-  (bootPhase === "loading" ||
-    !hasEntered ||
-    (requiresFeedStage && contentPhase === "loading") ||
-    (requiresFeedStage && feedPhase !== "ready") ||
-    (surveyPhase === "loading" && !isSurveyOnlySurveyLoading) ||
-    submitted ||
-    (requiresFeedStage && !flagsReady) ||
-    (requiresFeedStage && !assetsReady) ||
-    (requiresFeedStage && !minDelayDone));
+      !onAdmin &&
+      (bootPhase === "loading" ||
+        !hasEntered ||
+        (requiresFeedStage && contentPhase === "loading") ||
+        (requiresFeedStage && feedPhase !== "ready") ||
+        surveyPhase === "loading" ||
+        submitted ||
+        (requiresFeedStage && !flagsReady) ||
+        (requiresFeedStage && !assetsReady) ||
+        (requiresFeedStage && !minDelayDone));
 
     el.style.overflow = shouldLock ? "hidden" : "";
 
@@ -1512,39 +1638,9 @@ export default function App() {
     };
   }, [onAdmin, isSurveyOnlyMode, hasEntered, feedPhase, submitted, posts, flags]);
 
-  const showToast = (msg) => {
+  const showToast = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 1500);
-  };
-
-  const log = (action, meta = {}) => {
-    const ts = now();
-    setEvents((prev) => [
-      ...prev,
-      {
-        session_id: sessionIdRef.current,
-        participant_id: participantId || null,
-        timestamp_iso: fmtTime(ts),
-        elapsed_ms: ts - t0Ref.current,
-        ts_ms: ts,
-        action,
-        ...meta,
-      },
-    ]);
-  };
-
-  useEffect(() => {
-    dbg("session_start effect mounted");
-    log("session_start", {
-      user_agent: navigator.userAgent,
-      feed_id: activeFeedId || null,
-      project_id: projectId || null,
-    });
-
-    const onEnd = () => log("session_end", { total_events: events.length });
-    window.addEventListener("beforeunload", onEnd);
-    return () => window.removeEventListener("beforeunload", onEnd);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSurveyResponseChange = useCallback((questionId, value) => {
@@ -1708,7 +1804,6 @@ export default function App() {
     !feedSubmitted;
 
   const gateOpen = canShowFeed && flagsReady && assetsReady && minDelayDone;
-  const [showSkeletonLayer, setShowSkeletonLayer] = useState(true);
 
   useEffect(() => {
     if (canShowFeed) setShowSkeletonLayer(true);
@@ -1721,10 +1816,6 @@ export default function App() {
     }
     setShowSkeletonLayer(true);
   }, [gateOpen]);
-
-  useEffect(() => {
-    if (onAdmin && hasAdminSession()) setAdminAuthed(true);
-  }, [onAdmin]);
 
   useEffect(() => {
     if (
@@ -1847,6 +1938,7 @@ export default function App() {
     activeFeedId,
     shouldShowSurvey,
     feedSubmitted,
+    log,
   ]);
 
   const loadingStudyOverlay = !onAdmin && bootPhase === "loading";
@@ -1864,46 +1956,50 @@ export default function App() {
       !minDelayDone);
 
   const loadingNextStageOverlay =
-  !onAdmin &&
-  hasEntered &&
-  !submitted &&
-  !!surveyBoot?.has_survey &&
-  !isSurveyOnlyMode &&
-  feedSubmitted &&
-  surveyPhase === "loading" &&
-  !shouldShowSurvey;
+    !onAdmin &&
+    hasEntered &&
+    !submitted &&
+    !!surveyBoot?.has_survey &&
+    !isSurveyOnlyMode &&
+    feedSubmitted &&
+    surveyPhase === "loading" &&
+    !shouldShowSurvey;
 
   const showBootError =
     !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
 
-  const isSurveyOnlySurveyLoading =
-  isSurveyOnlyMode &&
-  hasEntered &&
-  !submitted &&
-  surveyPhase === "loading" &&
-  !linkedSurvey &&
-  !shouldShowSurvey &&
-  !shouldShowPreface;
+  const showSurveyOnlyLoadingOverlay =
+    !onAdmin &&
+    hasEntered &&
+    isSurveyOnlyMode &&
+    !submitted &&
+    !shouldShowSurvey &&
+    !shouldShowPreface &&
+    (surveyPhase === "loading" ||
+      surveyOnlyPrereqPhase === "loading" ||
+      !linkedSurvey ||
+      surveyOnlyPrereqPhase !== "ready");
 
   return (
     <Router>
       <div
         className={`app-shell ${
-  !onAdmin &&
-  !shouldShowSurvey &&
-  !shouldShowPreface &&
-  (bootPhase === "loading" ||
-    !hasEntered ||
-    (requiresFeedStage && contentPhase === "loading") ||
-    (requiresFeedStage && feedPhase !== "ready") ||
-    (surveyPhase === "loading" && !isSurveyOnlySurveyLoading) ||
-    submitted ||
-    (requiresFeedStage && !flagsReady) ||
-    (requiresFeedStage && !assetsReady) ||
-    (requiresFeedStage && !minDelayDone))
-    ? "blurred"
-    : ""
-}`}
+          !onAdmin &&
+          !shouldShowSurvey &&
+          !shouldShowPreface &&
+          !showSurveyOnlyLoadingOverlay &&
+          (bootPhase === "loading" ||
+            !hasEntered ||
+            (requiresFeedStage && contentPhase === "loading") ||
+            (requiresFeedStage && feedPhase !== "ready") ||
+            surveyPhase === "loading" ||
+            submitted ||
+            (requiresFeedStage && !flagsReady) ||
+            (requiresFeedStage && !assetsReady) ||
+            (requiresFeedStage && !minDelayDone))
+            ? "blurred"
+            : ""
+        }`}
       >
         <RouteAwareTopbar />
 
@@ -1911,77 +2007,88 @@ export default function App() {
           <Route
             path="/"
             element={
-  shouldShowSurvey ? (
-    <div className="survey-page">
-      {isMobileSurvey ? (
-        <SurveyScreenMobile
-          survey={linkedSurvey}
-          posts={orderedPosts}
-          responses={surveyResponses}
-          errors={surveyErrors}
-          errorMsg={surveyErrorMsg}
-          participantSeed={participantId || sessionIdRef.current}
-          feedId={activeFeedId}
-          onChange={handleSurveyResponseChange}
-          onSubmit={handleSurveySubmit}
-          onPageValidationFail={handleSurveyPageValidationFail}
-          onClearBanner={clearSurveyBanner}
-          submitting={surveyPhase === "submitting"}
-        />
-      ) : (
-        <SurveyScreen
-          survey={linkedSurvey}
-          posts={orderedPosts}
-          responses={surveyResponses}
-          errors={surveyErrors}
-          errorMsg={surveyErrorMsg}
-          participantSeed={participantId || sessionIdRef.current}
-          feedId={activeFeedId}
-          onChange={handleSurveyResponseChange}
-          onSubmit={handleSurveySubmit}
-          onPageValidationFail={handleSurveyPageValidationFail}
-          onClearBanner={clearSurveyBanner}
-          submitting={surveyPhase === "submitting"}
-        />
-      )}
-    </div>
-  ) : shouldShowPreface ? (
-    <div className="survey-page">
-      {surveyBoot ? (
-        <SurveyPrefaceFlow
-          survey={surveyBoot}
-          participantDisplayId={participantDisplayId}
-          onComplete={async () => {
-            setPrefaceCompleted(true);
+              shouldShowSurvey ? (
+                <div className="survey-page">
+                  {isMobileSurvey ? (
+                    <SurveyScreenMobile
+                      survey={linkedSurvey}
+                      posts={orderedPosts}
+                      responses={surveyResponses}
+                      errors={surveyErrors}
+                      errorMsg={surveyErrorMsg}
+                      participantSeed={participantId || sessionIdRef.current}
+                      feedId={activeFeedId}
+                      projectId={projectId}
+                      flags={flags}
+                      onChange={handleSurveyResponseChange}
+                      onSubmit={handleSurveySubmit}
+                      onPageValidationFail={handleSurveyPageValidationFail}
+                      onClearBanner={clearSurveyBanner}
+                      submitting={surveyPhase === "submitting"}
+                    />
+                  ) : (
+                    <SurveyScreen
+                      survey={linkedSurvey}
+                      posts={orderedPosts}
+                      responses={surveyResponses}
+                      errors={surveyErrors}
+                      errorMsg={surveyErrorMsg}
+                      participantSeed={participantId || sessionIdRef.current}
+                      feedId={activeFeedId}
+                      projectId={projectId}
+                      flags={flags}
+                      onChange={handleSurveyResponseChange}
+                      onSubmit={handleSurveySubmit}
+                      onPageValidationFail={handleSurveyPageValidationFail}
+                      onClearBanner={clearSurveyBanner}
+                      submitting={surveyPhase === "submitting"}
+                    />
+                  )}
+                </div>
+              ) : shouldShowPreface ? (
+                <div className="survey-page">
+                  {surveyBoot ? (
+                    <SurveyPrefaceFlow
+                      survey={surveyBoot}
+                      participantDisplayId={participantDisplayId}
+                      onComplete={async () => {
+                        setPrefaceCompleted(true);
 
-            if (isSurveyOnlyMode) {
-              setSurveyPhase("loading");
-              const loadedSurvey = await ensureSurveyLoaded();
+                        if (isSurveyOnlyMode) {
+                          const [loadedSurvey, preloadOk] = await Promise.all([
+                            ensureSurveyLoaded(),
+                            preloadSurveyOnlyAssets(),
+                          ]);
 
-              if (!loadedSurvey) {
-                setSurveyPhase("error");
-                setSurveyErrorMsg("Failed to load the survey.");
-              } else {
-                scrollSurveyViewToTop();
-              }
-            } else {
-              scrollSurveyViewToTop();
-            }
-          }}
-        />
-      ) : (
-        <LoadingOverlay
-          title="Loading study…"
-          subtitle="Preparing the first page"
-        />
-      )}
-    </div>
-  ) : isSurveyOnlySurveyLoading ? (
-    <LoadingOverlay
-      title="Loading questions…"
-      subtitle="Preparing the survey"
-    />
-  ) : (
+                          if (!loadedSurvey) {
+                            setSurveyPhase("error");
+                            setSurveyErrorMsg("Failed to load the survey.");
+                          } else if (!preloadOk) {
+                            setSurveyPhase("error");
+                            setSurveyErrorMsg(
+                              "Failed to prepare the survey content."
+                            );
+                          } else {
+                            scrollSurveyViewToTop();
+                          }
+                        } else {
+                          scrollSurveyViewToTop();
+                        }
+                      }}
+                    />
+                  ) : (
+                    <LoadingOverlay
+                      title="Loading study…"
+                      subtitle="Preparing the first page"
+                    />
+                  )}
+                </div>
+              ) : showSurveyOnlyLoadingOverlay ? (
+                <LoadingOverlay
+                  title="Loading questions…"
+                  subtitle="Preparing the survey"
+                />
+              ) : requiresFeedStage ? (
                 <PageWithRails>
                   <div
                     style={{
@@ -2111,7 +2218,6 @@ export default function App() {
                             if (ok) {
                               if (surveyBoot?.has_survey) {
                                 setFeedSubmitted(true);
-                                setSurveyPhase("loading");
                                 const loadedSurvey = await ensureSurveyLoaded();
 
                                 if (loadedSurvey) {
@@ -2137,10 +2243,10 @@ export default function App() {
                     </div>
 
                     {showSkeletonLayer &&
-  !isSurveyOnlyMode &&
-  !feedSubmitted &&
-  !shouldShowSurvey &&
-  !shouldShowPreface && (
+                      !isSurveyOnlyMode &&
+                      !feedSubmitted &&
+                      !shouldShowSurvey &&
+                      !shouldShowPreface && (
                         <div
                           aria-hidden={gateOpen}
                           style={{
@@ -2155,7 +2261,7 @@ export default function App() {
                       )}
                   </div>
                 </PageWithRails>
-              )
+              ) : null
             }
           />
 
@@ -2179,9 +2285,9 @@ export default function App() {
                       const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
                         const fresh = await loadPostsFromBackend(ctx?.feedId, {
-  projectId: ctx?.projectId || projectId,
-  force: true,
-});
+                          projectId: ctx?.projectId || projectId,
+                          force: true,
+                        });
                         setPosts(fresh || []);
                         showToast("Feed saved to backend");
                       } else {
@@ -2282,12 +2388,17 @@ export default function App() {
             });
 
             if (isSurveyOnlyMode) {
-              setSurveyPhase("loading");
-              const loadedSurvey = await ensureSurveyLoaded();
+              const [loadedSurvey, preloadOk] = await Promise.all([
+                ensureSurveyLoaded(),
+                preloadSurveyOnlyAssets(),
+              ]);
 
               if (!loadedSurvey) {
                 setSurveyPhase("error");
                 setSurveyErrorMsg("Failed to load the survey.");
+              } else if (!preloadOk) {
+                setSurveyPhase("error");
+                setSurveyErrorMsg("Failed to prepare the survey content.");
               } else {
                 scrollSurveyViewToTop();
               }
