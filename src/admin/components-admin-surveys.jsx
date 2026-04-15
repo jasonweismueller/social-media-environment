@@ -1045,6 +1045,21 @@ export function AdminSurveysPanel({
     });
   }, [projectId, survey?.linked_feed_ids, feedId, studyApp]);
 
+  const surveyOnlyLaunchUrl = surveyLaunchUrl;
+
+  const linkedFeedLaunchUrl = useMemo(() => {
+    if (!survey?.survey_id) return "";
+    const preferredFeedId =
+      firstLinkedFeedIdForLaunch(survey?.linked_feed_ids) || feedId || "";
+    if (!preferredFeedId) return "";
+    return buildFeedSurveyLaunchUrl({
+      projectId,
+      surveyId: survey.survey_id,
+      feedId: preferredFeedId,
+      app: studyApp,
+    });
+  }, [projectId, survey?.survey_id, survey?.linked_feed_ids, feedId, studyApp]);
+
   const needsLinkedFeedContext = useMemo(() => {
     if (!survey) return false;
 
