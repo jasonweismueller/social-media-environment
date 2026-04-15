@@ -520,7 +520,7 @@ export default function App() {
   const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
 
-  const [bootPhase, setBootPhase] = useState(onAdmin ? "ready" : "idle");
+  const [bootPhase, setBootPhase] = useState(onAdmin ? "ready" : "loading");
   const [bootError, setBootError] = useState("");
 
   const [contentPhase, setContentPhase] = useState("idle");
