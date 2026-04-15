@@ -482,6 +482,7 @@ export default function App() {
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
+  
 
   const bootAbortRef = useRef(null);
   const surveyAbortRef = useRef(null);
@@ -572,6 +573,8 @@ export default function App() {
   const [surveyErrors, setSurveyErrors] = useState({});
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
+
+  
 
   const isSurveyOnlyMode =
     !!surveyBoot?.has_survey &&
@@ -1860,16 +1863,24 @@ export default function App() {
       !minDelayDone);
 
   const loadingNextStageOverlay =
-    !onAdmin &&
-    hasEntered &&
-    !submitted &&
-    !!surveyBoot?.has_survey &&
-    (isSurveyOnlyMode || feedSubmitted) &&
-    surveyPhase === "loading" &&
-    !shouldShowSurvey;
+  !onAdmin &&
+  hasEntered &&
+  !submitted &&
+  !!surveyBoot?.has_survey &&
+  !isSurveyOnlyMode &&
+  feedSubmitted &&
+  surveyPhase === "loading" &&
+  !shouldShowSurvey;
 
   const showBootError =
     !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
+
+  const showSurveyOnlyLoadingOverlay =
+  !onAdmin &&
+  hasEntered &&
+  isSurveyOnlyMode &&
+  surveyPhase === "loading" &&
+  !linkedSurvey;
 
   return (
     <Router>
@@ -1897,72 +1908,77 @@ export default function App() {
           <Route
             path="/"
             element={
-              shouldShowSurvey ? (
-                <div className="survey-page">
-                  {isMobileSurvey ? (
-                    <SurveyScreenMobile
-                      survey={linkedSurvey}
-                      posts={orderedPosts}
-                      responses={surveyResponses}
-                      errors={surveyErrors}
-                      errorMsg={surveyErrorMsg}
-                      participantSeed={participantId || sessionIdRef.current}
-                      feedId={activeFeedId}
-                      onChange={handleSurveyResponseChange}
-                      onSubmit={handleSurveySubmit}
-                      onPageValidationFail={handleSurveyPageValidationFail}
-                      onClearBanner={clearSurveyBanner}
-                      submitting={surveyPhase === "submitting"}
-                    />
-                  ) : (
-                    <SurveyScreen
-                      survey={linkedSurvey}
-                      posts={orderedPosts}
-                      responses={surveyResponses}
-                      errors={surveyErrors}
-                      errorMsg={surveyErrorMsg}
-                      participantSeed={participantId || sessionIdRef.current}
-                      feedId={activeFeedId}
-                      onChange={handleSurveyResponseChange}
-                      onSubmit={handleSurveySubmit}
-                      onPageValidationFail={handleSurveyPageValidationFail}
-                      onClearBanner={clearSurveyBanner}
-                      submitting={surveyPhase === "submitting"}
-                    />
-                  )}
-                </div>
-              ) : shouldShowPreface ? (
-                <div className="survey-page">
-                  {surveyBoot ? (
-                    <SurveyPrefaceFlow
-                      survey={surveyBoot}
-                      participantDisplayId={participantDisplayId}
-                      onComplete={async () => {
-                        setPrefaceCompleted(true);
+  shouldShowSurvey ? (
+    <div className="survey-page">
+      {isMobileSurvey ? (
+        <SurveyScreenMobile
+          survey={linkedSurvey}
+          posts={orderedPosts}
+          responses={surveyResponses}
+          errors={surveyErrors}
+          errorMsg={surveyErrorMsg}
+          participantSeed={participantId || sessionIdRef.current}
+          feedId={activeFeedId}
+          onChange={handleSurveyResponseChange}
+          onSubmit={handleSurveySubmit}
+          onPageValidationFail={handleSurveyPageValidationFail}
+          onClearBanner={clearSurveyBanner}
+          submitting={surveyPhase === "submitting"}
+        />
+      ) : (
+        <SurveyScreen
+          survey={linkedSurvey}
+          posts={orderedPosts}
+          responses={surveyResponses}
+          errors={surveyErrors}
+          errorMsg={surveyErrorMsg}
+          participantSeed={participantId || sessionIdRef.current}
+          feedId={activeFeedId}
+          onChange={handleSurveyResponseChange}
+          onSubmit={handleSurveySubmit}
+          onPageValidationFail={handleSurveyPageValidationFail}
+          onClearBanner={clearSurveyBanner}
+          submitting={surveyPhase === "submitting"}
+        />
+      )}
+    </div>
+  ) : shouldShowPreface ? (
+    <div className="survey-page">
+      {surveyBoot ? (
+        <SurveyPrefaceFlow
+          survey={surveyBoot}
+          participantDisplayId={participantDisplayId}
+          onComplete={async () => {
+            setPrefaceCompleted(true);
 
-                        if (isSurveyOnlyMode) {
-                          setSurveyPhase("loading");
-                          const loadedSurvey = await ensureSurveyLoaded();
+            if (isSurveyOnlyMode) {
+              setSurveyPhase("loading");
+              const loadedSurvey = await ensureSurveyLoaded();
 
-                          if (!loadedSurvey) {
-                            setSurveyPhase("error");
-                            setSurveyErrorMsg("Failed to load the survey.");
-                          } else {
-                            scrollSurveyViewToTop();
-                          }
-                        } else {
-                          scrollSurveyViewToTop();
-                        }
-                      }}
-                    />
-                  ) : (
-                    <LoadingOverlay
-                      title="Loading study…"
-                      subtitle="Preparing the first page"
-                    />
-                  )}
-                </div>
-              ) : (
+              if (!loadedSurvey) {
+                setSurveyPhase("error");
+                setSurveyErrorMsg("Failed to load the survey.");
+              } else {
+                scrollSurveyViewToTop();
+              }
+            } else {
+              scrollSurveyViewToTop();
+            }
+          }}
+        />
+      ) : (
+        <LoadingOverlay
+          title="Loading study…"
+          subtitle="Preparing the first page"
+        />
+      )}
+    </div>
+  ) : showSurveyOnlyLoadingOverlay ? (
+    <LoadingOverlay
+      title="Loading questions…"
+      subtitle="Preparing the survey"
+    />
+  ) : (
                 <PageWithRails>
                   <div
                     style={{
@@ -2118,9 +2134,10 @@ export default function App() {
                     </div>
 
                     {showSkeletonLayer &&
-                      !feedSubmitted &&
-                      !shouldShowSurvey &&
-                      !shouldShowPreface && (
+  !isSurveyOnlyMode &&
+  !feedSubmitted &&
+  !shouldShowSurvey &&
+  !shouldShowPreface && (
                         <div
                           aria-hidden={gateOpen}
                           style={{
