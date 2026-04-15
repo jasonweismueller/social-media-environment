@@ -1879,8 +1879,10 @@ export default function App() {
   !onAdmin &&
   hasEntered &&
   isSurveyOnlyMode &&
-  surveyPhase === "loading" &&
-  !linkedSurvey;
+  !submitted &&
+  !linkedSurvey &&
+  !shouldShowSurvey &&
+  !shouldShowPreface;
 
   return (
     <Router>
