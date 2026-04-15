@@ -2415,7 +2415,7 @@ export default function App() {
 
             const ts = now();
             setParticipantId(id);
-            setHasEntered(true);
+      
             enterTsRef.current = ts;
             lastNonScrollTsRef.current = null;
 
