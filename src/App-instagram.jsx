@@ -74,7 +74,7 @@ if (typeof document !== "undefined") {
 
 /* ------------------------- debug helpers ------------------------- */
 
-const DEBUG_APP_LOAD = true;
+const DEBUG_APP_LOAD = false;
 
 function dbg(...args) {
   if (!DEBUG_APP_LOAD) return;
