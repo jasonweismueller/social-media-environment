@@ -75,6 +75,68 @@ function makeImportedSurveyName(name = "") {
   return base.endsWith("(Imported)") ? base : `${base} (Imported)`;
 }
 
+function getCurrentStudyApp() {
+  if (typeof window === "undefined") return "fb";
+  const raw =
+    window.APP ||
+    new URLSearchParams(window.location.search).get("app") ||
+    "fb";
+  return String(raw).toLowerCase() === "ig" ? "ig" : "fb";
+}
+
+function getStudyBaseUrl() {
+  if (typeof window === "undefined") return "https://studyfeed.org/";
+  const origin = window.location?.origin || "https://studyfeed.org";
+  return `${origin}/`;
+}
+
+function buildFeedLaunchUrl({ projectId, feedId, app }) {
+  const params = new URLSearchParams();
+  if (feedId) params.set("feed", String(feedId));
+  if (projectId) params.set("project", String(projectId));
+  if (app) params.set("app", String(app));
+  return `${getStudyBaseUrl()}?${params.toString()}`;
+}
+
+function buildSurveyLaunchUrl({ projectId, surveyId, app }) {
+  const params = new URLSearchParams();
+  if (surveyId) params.set("survey", String(surveyId));
+  if (projectId) params.set("project", String(projectId));
+  if (app) params.set("app", String(app));
+  return `${getStudyBaseUrl()}?${params.toString()}`;
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || "");
+  if (!value) return false;
+
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch (_) {}
+
+  try {
+    const el = document.createElement("textarea");
+    el.value = value;
+    el.setAttribute("readonly", "readonly");
+    el.style.position = "absolute";
+    el.style.left = "-9999px";
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    el.remove();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function firstLinkedFeedIdForLaunch(linkedFeedIds = []) {
+  return normalizeLinkedFeedIds(linkedFeedIds)[0] || "";
+}
+
 function hasPostReminderQuestion(surveyLike) {
   const flatQuestions = flattenSurveyPagesForEditor(surveyLike || {});
   return flatQuestions.some((q) => q?.type === POST_REMINDER_TYPE);
@@ -437,6 +499,7 @@ export function AdminSurveysPanel({
   const [savingLinks, setSavingLinks] = useState(false);
   const [linkedFeedPostsMap, setLinkedFeedPostsMap] = useState({});
   const [loadingReminderPosts, setLoadingReminderPosts] = useState(false);
+  const [copiedLinkState, setCopiedLinkState] = useState("");
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -943,6 +1006,52 @@ export function AdminSurveysPanel({
   const deliveryMode =
     normalizeDeliveryMode(survey?.delivery_mode) ||
     DELIVERY_MODE_FEED_THEN_SURVEY;
+  const studyApp = useMemo(() => getCurrentStudyApp(), []);
+  const surveyLaunchUrl = useMemo(() => {
+    if (!survey?.survey_id) return "";
+    return buildSurveyLaunchUrl({
+      projectId,
+      surveyId: survey.survey_id,
+      app: studyApp,
+    });
+  }, [projectId, survey?.survey_id, studyApp]);
+
+  const selectedFeedLaunchUrl = useMemo(() => {
+    const preferredFeedId =
+      firstLinkedFeedIdForLaunch(survey?.linked_feed_ids) || feedId || "";
+    if (!preferredFeedId) return "";
+    return buildFeedLaunchUrl({
+      projectId,
+      feedId: preferredFeedId,
+      app: studyApp,
+    });
+  }, [projectId, survey?.linked_feed_ids, feedId, studyApp]);
+
+  const needsLinkedFeedContext = useMemo(() => {
+    if (!survey) return false;
+
+    const flatQuestions = flattenSurveyPagesForEditor(survey || {});
+    const hasFeedSpecificVisibility = flatQuestions.some((q) =>
+      Array.isArray(q?.visible_in_feeds) && q.visible_in_feeds.length > 0
+    );
+    const hasReminderWithoutFeed = flatQuestions.some(
+      (q) =>
+        q?.type === POST_REMINDER_TYPE &&
+        !String(q?.post_feed_id || q?.meta?.post_feed_id || "").trim()
+    );
+
+    return (
+      deliveryMode === DELIVERY_MODE_FEED_THEN_SURVEY ||
+      hasFeedSpecificVisibility ||
+      hasReminderWithoutFeed
+    );
+  }, [survey, deliveryMode]);
+
+  useEffect(() => {
+    if (!copiedLinkState) return;
+    const timer = setTimeout(() => setCopiedLinkState(""), 1800);
+    return () => clearTimeout(timer);
+  }, [copiedLinkState]);
 
   return (
     <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
@@ -1394,6 +1503,107 @@ export function AdminSurveysPanel({
               )}
             </SectionCard>
 
+            {!!survey?.survey_id && (
+              <SectionCard title="Launch links and IDs">
+                <FieldBlock
+                  label="Survey ID"
+                  hint="Use this for direct survey launches and survey-level exports."
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <TextInput
+                      value={survey.survey_id || ""}
+                      onChange={() => {}}
+                      placeholder=""
+                      style={{ background: "#f9fafb" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await copyTextToClipboard(survey.survey_id || "");
+                        setCopiedLinkState(ok ? "survey_id" : "");
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {copiedLinkState === "survey_id" ? "Copied" : "Copy ID"}
+                    </button>
+                  </div>
+                </FieldBlock>
+
+                <FieldBlock
+                  label="Survey-only launch URL"
+                  hint="Use this when participants should go directly from the preface and participant step to the survey."
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <TextInput
+                      value={surveyLaunchUrl}
+                      onChange={() => {}}
+                      placeholder=""
+                      style={{ background: "#f9fafb" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await copyTextToClipboard(surveyLaunchUrl);
+                        setCopiedLinkState(ok ? "survey_url" : "");
+                      }}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {copiedLinkState === "survey_url" ? "Copied" : "Copy link"}
+                    </button>
+                  </div>
+                </FieldBlock>
+
+                <FieldBlock
+                  label="Primary feed launch URL"
+                  hint="Useful for feed-only or feed-then-survey studies. Uses the first linked feed, or the current feed if available."
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <TextInput
+                      value={selectedFeedLaunchUrl}
+                      onChange={() => {}}
+                      placeholder=""
+                      style={{ background: "#f9fafb" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await copyTextToClipboard(selectedFeedLaunchUrl);
+                        setCopiedLinkState(ok ? "feed_url" : "");
+                      }}
+                      disabled={!selectedFeedLaunchUrl}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: selectedFeedLaunchUrl ? "pointer" : "not-allowed",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {copiedLinkState === "feed_url" ? "Copied" : "Copy link"}
+                    </button>
+                  </div>
+                </FieldBlock>
+              </SectionCard>
+            )}
+
             <SectionCard
               title="Link to feeds"
               right={
@@ -1410,20 +1620,24 @@ export function AdminSurveysPanel({
                     fontWeight: 600,
                   }}
                 >
-                  {savingLinks ? "Saving..." : "Save Feed Links"}
+                  {savingLinks ? "Saving..." : "Save Linked Feeds"}
                 </button>
               }
             >
               <div
                 style={{
                   fontSize: 12,
-                  color: "#6b7280",
+                  color: needsLinkedFeedContext ? "#92400e" : "#065f46",
+                  background: needsLinkedFeedContext ? "#fffbeb" : "#ecfdf5",
+                  border: `1px solid ${needsLinkedFeedContext ? "#f59e0b" : "#10b981"}`,
+                  borderRadius: 10,
+                  padding: "10px 12px",
                   marginBottom: 10,
                 }}
               >
-                Keep at least one linked feed even in survey-only mode so the
-                study entry point, feed-specific question visibility, and post
-                reminder logic still work consistently.
+                {needsLinkedFeedContext
+                  ? "This survey currently still depends on feed context. Keep at least one linked feed unless you remove feed-specific visibility or add explicit post_feed_id values to all reminder questions."
+                  : "This survey can run as a direct survey-only study without linked feed context."}
               </div>
 
               <div

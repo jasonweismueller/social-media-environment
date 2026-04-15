@@ -29,6 +29,7 @@ import {
   deleteProjectOnBackend,
   setProjectId as persistProjectId,
   getProjectId,
+  getSurveyIdFromUrl,
   GS_ENDPOINT,
   APP,
   getAdminToken,
@@ -327,6 +328,7 @@ export function AdminDashboard({
   // feeds
   const [feeds, setFeeds] = useState([]);
   const [feedId, setFeedId] = useState("");
+  const surveyId = getSurveyIdFromUrl();
   const [feedName, setFeedName] = useState("");
   const [feedsLoading, setFeedsLoading] = useState(false);
   const [feedsError, setFeedsError] = useState("");
@@ -1685,9 +1687,10 @@ export function AdminDashboard({
             >
               <div className="section-collapse-inner">
                 <ParticipantsPanel
-                  key={`pp::${projectId}::${feedId}::${participantsRefreshKey}`}
+                  key={`pp::${projectId}::${feedId || "nofeed"}::${surveyId || "nosurvey"}::${participantsRefreshKey}`}
                   projectId={projectId}
                   feedId={feedId}
+                  surveyId={surveyId}
                   postNamesMap={postNames}
                   posts={posts}
                   compact

@@ -240,6 +240,61 @@ function normalizeRichSurveyField(value, fallback = "") {
 }
 
 /* =========================
+   Post reminder helpers
+   ========================= */
+
+export function isPostReminderQuestion(question) {
+  return question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
+}
+
+export function questionHasPostReminderTarget(question) {
+  if (!isPostReminderQuestion(question)) return false;
+  const normalized = normalizeQuestion(question);
+  return !!String(normalized.post_id ?? "").trim();
+}
+
+export function getPostReminderRequest(question, fallbackFeedId = "") {
+  const normalized = normalizeQuestion(question);
+  if (!isPostReminderQuestion(normalized)) return null;
+
+  const postId = String(normalized.post_id ?? "").trim();
+  const feedId = String(normalized.post_feed_id ?? fallbackFeedId ?? "").trim();
+
+  if (!postId) return null;
+
+  return {
+    post_id: postId,
+    post_feed_id: feedId,
+    post_label: String(normalized.post_label ?? "").trim(),
+  };
+}
+
+export function collectSurveyPostReminderTargets(survey, fallbackFeedId = "") {
+  return surveyQuestions(survey)
+    .filter(isPostReminderQuestion)
+    .map((q) => getPostReminderRequest(q, fallbackFeedId))
+    .filter(Boolean);
+}
+
+export function surveyHasPostReminders(survey) {
+  return collectSurveyPostReminderTargets(survey).length > 0;
+}
+
+export function surveyCanLazyLoadAllPostReminders(survey, fallbackFeedId = "") {
+  const targets = collectSurveyPostReminderTargets(survey, fallbackFeedId);
+  if (!targets.length) return true;
+  return targets.every((target) => !!String(target.post_feed_id ?? "").trim());
+}
+
+export function surveyNeedsFeedContext(survey, fallbackFeedId = "") {
+  const normalized = normalizeSurvey(survey);
+  const deliveryMode = String(normalized.delivery_mode || "").trim().toLowerCase();
+
+  if (deliveryMode === "feed_then_survey") return true;
+  return !surveyCanLazyLoadAllPostReminders(normalized, fallbackFeedId);
+}
+
+/* =========================
    Question mapping
    ========================= */
 
@@ -400,7 +455,16 @@ export function normalizeQuestion(raw = {}) {
     post_id: postId,
     post_label: postLabel,
     post_feed_id: postFeedId,
-    meta: meta,
+    meta: {
+      ...meta,
+      ...(type === SURVEY_QUESTION_TYPES.POST_REMINDER
+        ? {
+            post_id: postId,
+            post_label: postLabel,
+            post_feed_id: postFeedId,
+          }
+        : {}),
+    },
   };
 }
 
@@ -686,6 +750,7 @@ export function frontendPagesToBackend(pages = []) {
 /* =========================
    Survey mapping
    ========================= */
+
 export function makeEmptySurvey(overrides = {}) {
   const safeOverrides = asObject(overrides);
   const pages = coerceQuestionsIntoPages(safeOverrides);
@@ -756,9 +821,9 @@ export function makeEmptySurvey(overrides = {}) {
       ""
     ),
     delivery_mode:
-  String(safeOverrides.delivery_mode || "").trim().toLowerCase() === "survey_only"
-    ? "survey_only"
-    : "feed_then_survey",
+      String(safeOverrides.delivery_mode || "").trim().toLowerCase() === "survey_only"
+        ? "survey_only"
+        : "feed_then_survey",
   };
 }
 
@@ -832,9 +897,9 @@ export function normalizeSurvey(raw = {}) {
       ""
     ),
     delivery_mode:
-  String(safeRaw.delivery_mode || "").trim().toLowerCase() === "survey_only"
-    ? "survey_only"
-    : "feed_then_survey",
+      String(safeRaw.delivery_mode || "").trim().toLowerCase() === "survey_only"
+        ? "survey_only"
+        : "feed_then_survey",
   };
 }
 

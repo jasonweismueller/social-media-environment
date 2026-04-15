@@ -494,10 +494,92 @@ function PostReminderCard({
   flags,
   participantSeed,
 }) {
-  const post = getQuestionReminderPost(question, posts);
-  const fallbackLabel = getReminderPostLabel(question, post || {});
   const reminderFeedId = getReminderPostFeedId(question, feedId);
+  const targetPostId = String(question?.post_id || "").trim();
+  const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
+
+  const inlinePost = useMemo(
+    () => getQuestionReminderPost(question, posts),
+    [question, posts]
+  );
+
+  const [lazyPost, setLazyPost] = useState(null);
+  const [lazyStatus, setLazyStatus] = useState("idle");
+  const [lazyError, setLazyError] = useState("");
+  const requestKeyRef = useRef("");
+  const requestKey = `${resolvedProjectId}::${reminderFeedId || ""}::${targetPostId}`;
+
+  useEffect(() => {
+    const nextInlinePost = getQuestionReminderPost(question, posts);
+    if (nextInlinePost) {
+      setLazyPost(null);
+      setLazyStatus("ready");
+      setLazyError("");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (!targetPostId) {
+      setLazyPost(null);
+      setLazyStatus("idle");
+      setLazyError("");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (!reminderFeedId) {
+      setLazyPost(null);
+      setLazyStatus("error");
+      setLazyError("This reminder post does not have a source feed yet.");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    setLazyPost(null);
+    setLazyStatus("loading");
+    setLazyError("");
+    requestKeyRef.current = requestKey;
+
+    (async () => {
+      const fetched = await loadPostByIdFromBackend({
+        projectId: resolvedProjectId,
+        feedId: reminderFeedId,
+        postId: targetPostId,
+        signal: controller.signal,
+      });
+
+      if (cancelled || requestKeyRef.current !== requestKey) return;
+
+      if (fetched) {
+        setLazyPost(fetched);
+        setLazyStatus("ready");
+        setLazyError("");
+      } else {
+        setLazyPost(null);
+        setLazyStatus("error");
+        setLazyError("The reminder post could not be loaded.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    question,
+    posts,
+    resolvedProjectId,
+    reminderFeedId,
+    targetPostId,
+    requestKey,
+  ]);
+
+  const post = getQuestionReminderPost(question, posts, lazyPost);
+  const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   if (!post) {
     return (
@@ -522,9 +604,15 @@ function PostReminderCard({
             fontSize: 14,
           }}
         >
-          {fallbackLabel
-            ? `Reminder post selected: ${fallbackLabel}`
-            : "No reminder post has been selected for this survey item yet."}
+          {lazyStatus === "loading"
+            ? (fallbackLabel
+                ? `Loading reminder post: ${fallbackLabel}...`
+                : "Loading reminder post...")
+            : lazyError
+              ? lazyError
+              : fallbackLabel
+                ? `Reminder post selected: ${fallbackLabel}`
+                : "No reminder post has been selected for this survey item yet."}
         </div>
       </div>
     );
@@ -555,7 +643,7 @@ function PostReminderCard({
           disabled={true}
           registerViewRef={() => undefined}
           app={app}
-          projectId={projectId || getProjectId() || ""}
+          projectId={resolvedProjectId}
           feedId={reminderFeedId || ""}
           runSeed={participantSeed || "survey-reminder-preview"}
           flags={flags || {}}

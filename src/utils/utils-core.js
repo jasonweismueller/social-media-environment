@@ -24,8 +24,6 @@ export function toCSV(rows, header, headerLabels) {
     return s;
   };
 
-
-
   const lines = [];
   if (header) {
     const firstRow = Array.isArray(headerLabels) && headerLabels.length === header.length
@@ -42,8 +40,6 @@ export const toggleInSet = (setObj, id) => {
   next.has(id) ? next.delete(id) : next.add(id);
   return next;
 };
-
-
 
 export const CF_BASE =
   (window.CONFIG && window.CONFIG.CF_BASE) ||
@@ -95,7 +91,10 @@ export function setProjectId(projectId, { persist = true, updateUrl = true } = {
     try {
       const url = new URL(window.location.href);
       if (pid) url.searchParams.set("project", pid);
-      else url.searchParams.delete("project");
+      else {
+        url.searchParams.delete("project");
+        url.searchParams.delete("project_id");
+      }
       history.replaceState({}, "", url.toString());
     } catch {}
   }
@@ -121,8 +120,37 @@ export function setFeedIdInUrl(feedId, { replace = false } = {}) {
   try {
     const url = new URL(window.location.href);
     const sp = url.searchParams;
-    if (!feedId) sp.delete("feed");
-    else sp.set("feed", String(feedId));
+    if (!feedId) {
+      sp.delete("feed");
+      sp.delete("feed_id");
+    } else {
+      sp.set("feed", String(feedId));
+    }
+    url.search = sp.toString();
+    const next = url.toString();
+    replace ? history.replaceState({}, "", next) : history.pushState({}, "", next);
+  } catch {}
+}
+
+export function getSurveyIdFromUrl() {
+  try {
+    const sp = getCombinedSearchParams();
+    return sp.get("survey") || sp.get("survey_id") || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setSurveyIdInUrl(surveyId, { replace = false } = {}) {
+  try {
+    const url = new URL(window.location.href);
+    const sp = url.searchParams;
+    if (!surveyId) {
+      sp.delete("survey");
+      sp.delete("survey_id");
+    } else {
+      sp.set("survey", String(surveyId));
+    }
     url.search = sp.toString();
     const next = url.toString();
     replace ? history.replaceState({}, "", next) : history.pushState({}, "", next);
@@ -149,30 +177,60 @@ export function getAppParam() {
     if (fromWin === "ig" || fromWin === "instagram") return "ig";
     if (fromWin === "fb" || fromWin === "facebook") return "fb";
 
-    return ""; // default: none
+    return "";
   } catch {
     return "";
   }
 }
 
-export function buildFeedShareUrl(feedOrId) {
-  const origin = "https://studyfeed.org"; // fixed base
-  const fid = typeof feedOrId === "string" ? feedOrId : feedOrId?.feed_id || "";
-  const pid = getProjectId();
-  const app = getAppParam();
-
+function buildStudyUrl({ feedId = "", surveyId = "", projectId = "", app = "" } = {}) {
+  const origin = "https://studyfeed.org";
   const qp = new URLSearchParams();
 
-  if (fid) qp.set("feed", fid);
-  if (pid) qp.set("project", pid);
-  if (app) qp.set("app", app);
+  if (feedId) qp.set("feed", String(feedId));
+  if (surveyId) qp.set("survey", String(surveyId));
+  if (projectId) qp.set("project", String(projectId));
+  if (app) qp.set("app", String(app));
 
-  return `${origin}/?${qp.toString()}`;
+  const qs = qp.toString();
+  return `${origin}/${qs ? `?${qs}` : ""}`;
+}
+
+export function buildFeedShareUrl(feedOrId, extra = {}) {
+  const fid = typeof feedOrId === "string" ? feedOrId : feedOrId?.feed_id || "";
+  const pid = extra.projectId || getProjectId();
+  const app = extra.app || getAppParam();
+  const surveyId =
+    extra.surveyId ||
+    (typeof feedOrId === "object" ? feedOrId?.survey_id || "" : "");
+
+  return buildStudyUrl({
+    feedId: fid,
+    surveyId,
+    projectId: pid,
+    app,
+  });
+}
+
+export function buildSurveyShareUrl(surveyOrId, extra = {}) {
+  const sid = typeof surveyOrId === "string" ? surveyOrId : surveyOrId?.survey_id || "";
+  const fid =
+    extra.feedId ||
+    (typeof surveyOrId === "object" ? surveyOrId?.feed_id || "" : "");
+  const pid = extra.projectId || getProjectId();
+  const app = extra.app || getAppParam();
+
+  return buildStudyUrl({
+    feedId: fid,
+    surveyId: sid,
+    projectId: pid,
+    app,
+  });
 }
 
 /* ============================ RNG + time display ============================ */
 function seedToInt(s){
-  let h = 2166136261 >>> 0; // FNV-ish
+  let h = 2166136261 >>> 0;
   const str = String(s||"");
   for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
   return h >>> 0;
@@ -185,7 +243,7 @@ export function displayTimeForPost(post, { randomize, seedParts=[] } = {}){
   if (!randomize) return post?.time || "";
   const seed = [...seedParts, post?.id ?? ""].join("::");
   const r = rng(seed);
-  const hours = 1 + Math.floor(r() * 23); // 1..23
+  const hours = 1 + Math.floor(r() * 23);
   return `${hours}h`;
 }
 
@@ -488,17 +546,18 @@ export function startViewportTracker({
 /* -------- participant row/header builders (client) ------------------------ */
 export function buildMinimalHeader(posts) {
   const base = [
-  "session_id",
-  "participant_id",
-  "prolific_pid",
-  "session_id_ext",
-  "study_id",
-  "entered_at_iso",
-  "submitted_at_iso",
-  "ms_enter_to_submit",
-  "ms_enter_to_last_interaction",
-  "feed_id",
-];
+    "session_id",
+    "participant_id",
+    "prolific_pid",
+    "session_id_ext",
+    "study_id",
+    "entered_at_iso",
+    "submitted_at_iso",
+    "ms_enter_to_submit",
+    "ms_enter_to_last_interaction",
+    "feed_id",
+    "survey_id",
+  ];
 
   const perPost = [];
   posts.forEach((p) => {
@@ -511,25 +570,21 @@ export function buildMinimalHeader(posts) {
       `${id}_expanded`,
       `${id}_commented`,
       `${id}_comment_texts`,
-
       `${id}_reported_misinfo`,
       `${id}_dwell_s`,
-
-      /* IG additions */
       `${id}_saved`,
-
-  `${id}_shared`,
-  `${id}_share_target`,
-  `${id}_share_text`,
-  `${id}_cta_clicked`,
-  `${id}_bio_opened`,
-`${id}_bio_url_clicked`,
-`${id}_mention_clicked`,
-`${id}_note_opened`,
-`${id}_note_view_details`,
-`${id}_note_link_clicked`,
-`${id}_note_helpful_rated`,
-`${id}_note_helpful_value`
+      `${id}_shared`,
+      `${id}_share_target`,
+      `${id}_share_text`,
+      `${id}_cta_clicked`,
+      `${id}_bio_opened`,
+      `${id}_bio_url_clicked`,
+      `${id}_mention_clicked`,
+      `${id}_note_opened`,
+      `${id}_note_view_details`,
+      `${id}_note_link_clicked`,
+      `${id}_note_helpful_rated`,
+      `${id}_note_helpful_value`
     );
   });
 
@@ -594,10 +649,11 @@ export function buildParticipantRow({
   events,
   posts,
   feed_id,
+  survey_id,
   feed_checksum,
 }) {
   const entered   = events.find(e => e.action === "participant_id_entered");
-  const submitted = events.find(e => e.action === "feed_submit");
+  const submitted = events.find(e => e.action === "feed_submit" || e.action === "survey_submit");
 
   const entered_at_iso   = entered?.timestamp_iso || null;
   const submitted_at_iso = submitted?.timestamp_iso || null;
@@ -619,12 +675,10 @@ export function buildParticipantRow({
 
   const dwellAgg = computePostDwellFromEvents(events);
 
-
-  
   const per = new Map();
   const ensure = (id) => {
     if (!per.has(id)) {
-           per.set(id, {
+      per.set(id, {
         reaction_type: "",
         expandable: false,
         expanded: false,
@@ -653,127 +707,118 @@ export function buildParticipantRow({
     const { action, post_id } = e || {};
     if (!post_id) continue;
     const p = ensure(post_id);
-switch (action) {
-  /* EXISTING FACEBOOK */
-  case "react_pick":
-    p.reaction_type = (e.type || "").trim() || "like";
-    break;
+    switch (action) {
+      case "react_pick":
+        p.reaction_type = (e.type || "").trim() || "like";
+        break;
 
-  case "react_clear":
-    if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
-      p.reaction_type = "";
+      case "react_clear":
+        if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
+          p.reaction_type = "";
+        }
+        break;
+
+      case "text_clamped":
+        p.expandable = true;
+        break;
+
+      case "expand_text":
+        p.expanded = true;
+        break;
+
+      case "comment_submit":
+        p.commented = true;
+        if (e.text) p.comment_texts = [String(e.text)];
+        break;
+
+      case "share":
+        p.shared = true;
+        break;
+
+      case "report_misinformation_click":
+        p.reported_misinfo = true;
+        break;
+
+      case "save":
+        p.saved = true;
+        break;
+
+      case "note_helpful_rate":
+        p.note_helpful_rated = true;
+        p.note_helpful_value = String(e.value || "").trim();
+        break;
+
+      case "share_target":
+        {
+          const friendList =
+            typeof e.friends === "string" && e.friends.trim()
+              ? e.friends.trim()
+              : e.friend
+              ? String(e.friend)
+              : "";
+
+          p.share_target = friendList;
+          p.share_text   = e.message ? String(e.message) : "";
+        }
+        break;
+
+      case "cta_click":
+        p.cta_clicked = true;
+        break;
+
+      case "bio_open":
+        p.bio_opened = true;
+        break;
+
+      case "bio_url_click":
+        p.bio_url_clicked = true;
+        break;
+
+      case "mention_clicked":
+        p.mention_clicked = true;
+        break;
+
+      case "note_modal_open":
+        p.note_opened = true;
+        break;
+
+      case "note_view_details":
+        p.note_view_details = true;
+        break;
+
+      case "note_link_open":
+        p.note_link_clicked = true;
+        break;
+
+      case "report":
+        p.reported_misinfo = true;
+        break;
+
+      default:
+        break;
     }
-    break;
-
-  case "text_clamped":
-    p.expandable = true;
-    break;
-
-  case "expand_text":
-    p.expanded = true;
-    break;
-
-  case "comment_submit":
-    p.commented = true;
-    if (e.text) p.comment_texts = [String(e.text)];
-    break;
-
-  case "share":
-    p.shared = true;
-    break;
-
-  case "report_misinformation_click":
-    p.reported_misinfo = true;
-    break;
-
-case "save":
-    p.saved = true;
-    break;
-  
-    case "note_helpful_rate":
-  p.note_helpful_rated = true;
-  p.note_helpful_value = String(e.value || "").trim();
-  break;
-
-
-
-  /* -------------------------------------------
-   * IG-ONLY EVENTS (SAFE ADDITIONS)
-   * ------------------------------------------- */
-
-
-  // When user picks a target → we count this as a real share
-case "share_target":
-  const friendList =
-  typeof e.friends === "string" && e.friends.trim()
-    ? e.friends.trim()
-    : e.friend
-    ? String(e.friend)
-    : "";
-
-  p.share_target = friendList;
-  p.share_text   = e.message ? String(e.message) : "";
-  break;
-
-// CTA click is participant-level behavior only
-case "cta_click":
-  p.cta_clicked = true;
-  break;
-
-case "bio_open":
-  p.bio_opened = true;
-  break;
-
-case "bio_url_click":
-  p.bio_url_clicked = true;
-  break;
-
-case "mention_clicked":
-  p.mention_clicked = true;
-  break;
-
-case "note_modal_open":
-  p.note_opened = true;
-  break;
-
-case "note_view_details":
-  p.note_view_details = true;
-  break;
-
-case "note_link_open":
-  p.note_link_clicked = true;
-  break;
-
-
-  /* IG desktop/mobile menu report */
-  case "report":
-    p.reported_misinfo = true;
-    break;
-
-  default:
-    break;
-}
   }
 
-const tracking = getTrackingIdsFromUrl();
+  const tracking = getTrackingIdsFromUrl();
 
-const row = {
-  session_id,
-  participant_id: participant_id || null,
-  prolific_pid: tracking.prolific_pid || null,
-  session_id_ext: tracking.session_id_ext || null,
-  study_id: tracking.study_id || null,
-  entered_at_iso,
-  submitted_at_iso,
-  ms_enter_to_submit,
-  ms_enter_to_last_interaction,
-  feed_id: feed_id || null,
-  feed_checksum: feed_checksum || null,
-};
+  const row = {
+    session_id,
+    participant_id: participant_id || null,
+    prolific_pid: tracking.prolific_pid || null,
+    session_id_ext: tracking.session_id_ext || null,
+    study_id: tracking.study_id || null,
+    entered_at_iso,
+    submitted_at_iso,
+    ms_enter_to_submit,
+    ms_enter_to_last_interaction,
+    feed_id: feed_id || null,
+    survey_id: survey_id || null,
+    feed_checksum: feed_checksum || null,
+  };
 
   for (const p of posts) {
     const id = p.id || "unknown";
-       const agg = per.get(id) || {
+    const agg = per.get(id) || {
       reaction_type: "",
       expandable: false,
       expanded: false,
@@ -794,7 +839,7 @@ const row = {
       note_helpful_rated: false,
       note_helpful_value: "",
     };
-        const reactedFlag = agg.reaction_type ? 1 : 0;
+    const reactedFlag = agg.reaction_type ? 1 : 0;
     const shareTargetClean = String(agg.share_target || "").trim();
     const hasTarget = shareTargetClean !== "";
 
@@ -809,7 +854,7 @@ const row = {
       ? agg.comment_texts.join(" | ")
       : "";
 
-    row[`${id}_saved`] = APP === "ig" ? (agg.saved ? 1 : 0) : 0;
+    row[`${id}_saved`] = typeof APP !== "undefined" && APP === "ig" ? (agg.saved ? 1 : 0) : 0;
 
     row[`${id}_shared`] = agg.shared || hasTarget ? 1 : 0;
     row[`${id}_share_target`] = hasTarget ? shareTargetClean : "";
@@ -838,9 +883,6 @@ export function extractPerPostFromRosterRow(row) {
 
   const blob = row.per_post_json || row.per_post || row.perPostJson || null;
 
-  /* =========================================================================
-   * 1) JSON-BASED PER_POST (preferred path)
-   * ========================================================================= */
   if (blob) {
     try {
       const parsed = typeof blob === "string" ? JSON.parse(blob) : blob;
@@ -848,37 +890,36 @@ export function extractPerPostFromRosterRow(row) {
 
       const outEnsure = (id) => {
         if (!clean[id]) {
-         clean[id] = {
-  reacted: 0,
-  commented: 0,
-  shared: 0,
-  reported: 0,
-  expandable: 0,
-  expanded: 0,
-  saved: 0,
-  reactions: [],
-  reaction_types: [],
-  reaction_type: "",
-  comment_text: "",
-  comment_count: 0,
-  dwell_s: 0,
-  share_target: "",
-  share_text: "",
-  cta_clicked: 0,
-  bio_opened: 0,
-  bio_url_clicked: 0,
-  mention_clicked: 0,
-  note_opened: 0,
-  note_view_details: 0,
-  note_link_clicked: 0,
-  note_helpful_rated: 0,
-  note_helpful_value: "",
-};
+          clean[id] = {
+            reacted: 0,
+            commented: 0,
+            shared: 0,
+            reported: 0,
+            expandable: 0,
+            expanded: 0,
+            saved: 0,
+            reactions: [],
+            reaction_types: [],
+            reaction_type: "",
+            comment_text: "",
+            comment_count: 0,
+            dwell_s: 0,
+            share_target: "",
+            share_text: "",
+            cta_clicked: 0,
+            bio_opened: 0,
+            bio_url_clicked: 0,
+            mention_clicked: 0,
+            note_opened: 0,
+            note_view_details: 0,
+            note_link_clicked: 0,
+            note_helpful_rated: 0,
+            note_helpful_value: "",
+          };
         }
         return clean[id];
       };
 
-      // Parse JSON fields
       for (const [id, agg] of Object.entries(parsed || {})) {
         const rx = agg?.reactions || agg?.reaction_types || [];
         const rxArr = Array.isArray(rx)
@@ -901,8 +942,10 @@ export function extractPerPostFromRosterRow(row) {
         obj.reacted = obj.reaction_type ? 1 : 0;
 
         obj.comment_text = cText;
-        obj.commented = cText ? 1 : 0;
-        obj.comment_count = cText ? 1 : 0;
+        if (cText) {
+          obj.commented = 1;
+          obj.comment_count = 1;
+        }
 
         obj.expandable = Number(agg?.expandable || 0);
         obj.expanded = Number(agg?.expanded || 0);
@@ -916,16 +959,14 @@ export function extractPerPostFromRosterRow(row) {
         if (obj.share_target) obj.shared = 1;
 
         obj.cta_clicked = Number(agg?.cta_clicked || 0);
-
         obj.bio_opened = Number(agg?.bio_opened || 0);
-obj.bio_url_clicked = Number(agg?.bio_url_clicked || 0);
-obj.mention_clicked = Number(agg?.mention_clicked || 0);
-
-obj.note_opened = Number(agg?.note_opened || 0);
-obj.note_view_details = Number(agg?.note_view_details || 0);
-obj.note_link_clicked = Number(agg?.note_link_clicked || 0);
-obj.note_helpful_rated = Number(agg?.note_helpful_rated || 0);
-obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
+        obj.bio_url_clicked = Number(agg?.bio_url_clicked || 0);
+        obj.mention_clicked = Number(agg?.mention_clicked || 0);
+        obj.note_opened = Number(agg?.note_opened || 0);
+        obj.note_view_details = Number(agg?.note_view_details || 0);
+        obj.note_link_clicked = Number(agg?.note_link_clicked || 0);
+        obj.note_helpful_rated = Number(agg?.note_helpful_rated || 0);
+        obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
 
         obj.dwell_s = Number.isFinite(agg?.dwell_s)
           ? agg.dwell_s
@@ -934,11 +975,9 @@ obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
           : 0;
       }
 
-      // Additional per-row overrides (if any)
       for (const [key, val] of Object.entries(row)) {
         let m;
 
-        // --- commented fallback ---
         m = /^(.+?)_commented$/.exec(key);
         if (m) {
           const obj = outEnsure(m[1]);
@@ -946,7 +985,6 @@ obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
           continue;
         }
 
-        // --- comment texts fallback ---
         m = /^(.+?)_comment_texts$/.exec(key);
         if (m) {
           const obj = outEnsure(m[1]);
@@ -959,7 +997,6 @@ obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
           continue;
         }
 
-        // --- IG share target ---
         m = /^(.+?)_share_target$/.exec(key);
         if (m) {
           const obj = outEnsure(m[1]);
@@ -969,14 +1006,12 @@ obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
           continue;
         }
 
-        // --- IG share text ---
         m = /^(.+?)_share_text$/.exec(key);
         if (m) {
           outEnsure(m[1]).share_text = String(val || "").trim();
           continue;
         }
 
-        // --- IG CTA ---
         m = /^(.+?)_cta_clicked$/.exec(key);
         if (m) {
           outEnsure(m[1]).cta_clicked = Number(val || 0);
@@ -984,12 +1019,11 @@ obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
         }
 
         m = /^(.+?)_note_helpful_value$/.exec(key);
-if (m) {
-  outEnsure(m[1]).note_helpful_value = String(val || "").trim();
-  continue;
-}
+        if (m) {
+          outEnsure(m[1]).note_helpful_value = String(val || "").trim();
+          continue;
+        }
 
-        // --- reaction type fallback ---
         m = /^(.+?)_reaction_type$/.exec(key);
         if (m) {
           const obj = outEnsure(m[1]);
@@ -1006,31 +1040,27 @@ if (m) {
     } catch {}
   }
 
-  /* =========================================================================
-   * 2) FALLBACK PARSER (no JSON)
-   * ========================================================================= */
-
   const out = {};
   const ensure = (id) => {
     if (!out[id]) {
-     out[id] = {
-  reacted: 0, commented: 0, shared: 0, reported: 0,
-  expandable: 0, expanded: 0,
-  saved: 0,
-  reactions: [], reaction_types: [], reaction_type: "",
-  comment_text: "", comment_count: 0,
-  share_target: "", share_text: "",
-  cta_clicked: 0,
-  dwell_s: 0,
-  bio_opened: 0,
-  bio_url_clicked: 0,
-  mention_clicked: 0,
-  note_opened: 0,
-  note_view_details: 0,
-  note_link_clicked: 0,
-note_helpful_rated: 0,
-note_helpful_value: ""
-};
+      out[id] = {
+        reacted: 0, commented: 0, shared: 0, reported: 0,
+        expandable: 0, expanded: 0,
+        saved: 0,
+        reactions: [], reaction_types: [], reaction_type: "",
+        comment_text: "", comment_count: 0,
+        share_target: "", share_text: "",
+        cta_clicked: 0,
+        dwell_s: 0,
+        bio_opened: 0,
+        bio_url_clicked: 0,
+        mention_clicked: 0,
+        note_opened: 0,
+        note_view_details: 0,
+        note_link_clicked: 0,
+        note_helpful_rated: 0,
+        note_helpful_value: ""
+      };
     }
     return out[id];
   };
@@ -1038,18 +1068,16 @@ note_helpful_value: ""
   for (const [key, val] of Object.entries(row)) {
     let m;
 
-    // boolean fields
-   m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated)$/.exec(key);
-if (m) {
-  const obj = ensure(m[1]);
-  const metric = m[2];
-  const num = Number(val || 0);
-  if (metric === "reported_misinfo") obj.reported = num;
-  else obj[metric] = num;
-  continue;
-}
+    m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated)$/.exec(key);
+    if (m) {
+      const obj = ensure(m[1]);
+      const metric = m[2];
+      const num = Number(val || 0);
+      if (metric === "reported_misinfo") obj.reported = num;
+      else obj[metric] = num;
+      continue;
+    }
 
-    // IG share target
     m = /^(.+?)_share_target$/.exec(key);
     if (m) {
       const obj = ensure(m[1]);
@@ -1059,21 +1087,18 @@ if (m) {
       continue;
     }
 
-    // IG share text
     m = /^(.+?)_share_text$/.exec(key);
     if (m) {
       ensure(m[1]).share_text = String(val || "").trim();
       continue;
     }
 
-    // IG CTA
     m = /^(.+?)_cta_clicked$/.exec(key);
     if (m) {
       ensure(m[1]).cta_clicked = Number(val || 0);
       continue;
     }
 
-    // reaction type
     m = /^(.+?)_reaction_type$/.exec(key);
     if (m) {
       const obj = ensure(m[1]);
@@ -1086,12 +1111,11 @@ if (m) {
     }
 
     m = /^(.+?)_note_helpful_value$/.exec(key);
-if (m) {
-  ensure(m[1]).note_helpful_value = String(val || "").trim();
-  continue;
-}
+    if (m) {
+      ensure(m[1]).note_helpful_value = String(val || "").trim();
+      continue;
+    }
 
-    // comment text
     m = /^(.+?)_comment_texts$/.exec(key);
     if (m) {
       const obj = ensure(m[1]);
@@ -1104,7 +1128,6 @@ if (m) {
       continue;
     }
 
-    // dwell
     m = /^(.+?)_dwell_s$/.exec(key);
     if (m) {
       ensure(m[1]).dwell_s = Number(val || 0);
@@ -1141,14 +1164,14 @@ export function summarizeRoster(rows) {
   const lastInteractionTimes = completedRows.map(r => toNum(r.ms_enter_to_last_interaction)).filter(Number.isFinite);
 
   const postKeys = new Set();
-rows.forEach(r => {
-  Object.keys(r).forEach(k => {
-    if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$|_note_helpful_rated$|_note_helpful_value$/.test(k)) {
-  const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated|note_helpful_value)$/, "");
-      postKeys.add(base);
-    }
+  rows.forEach(r => {
+    Object.keys(r).forEach(k => {
+      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$|_note_helpful_rated$|_note_helpful_value$/.test(k)) {
+        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated|note_helpful_value)$/, "");
+        postKeys.add(base);
+      }
+    });
   });
-});
 
   const perPost = {};
   for (const base of postKeys) {
@@ -1160,8 +1183,8 @@ rows.forEach(r => {
     const shared     = rows.reduce((acc, r) => acc + (Number(r[`${base}_shared`]) || 0), 0);
     const reported   = rows.reduce((acc, r) => acc + (Number(r[`${base}_reported_misinfo`]) || 0), 0);
     const noteOpened = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_opened`]) || 0), 0);
-const noteViewDetails = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_view_details`]) || 0), 0);
-const noteLinkClicked = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_link_clicked`]) || 0), 0);
+    const noteViewDetails = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_view_details`]) || 0), 0);
+    const noteLinkClicked = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_link_clicked`]) || 0), 0);
     const expandRate = expandable > 0 ? expanded / expandable : null;
     const dwellSArr = rows
       .map(r => {
@@ -1174,19 +1197,19 @@ const noteLinkClicked = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_li
     const avgDwellS = dwellSArr.length ? dwellSArr.reduce((a,b)=>a+b,0) / dwellSArr.length : null;
 
     perPost[base] = {
-  reacted,
-  expandable,
-  expanded,
-  expandRate,
-  commented,
-  saved,
-  shared,
-  reported,
-  noteOpened,
-  noteViewDetails,
-  noteLinkClicked,
-  avgDwellS
-};
+      reacted,
+      expandable,
+      expanded,
+      expandRate,
+      commented,
+      saved,
+      shared,
+      reported,
+      noteOpened,
+      noteViewDetails,
+      noteLinkClicked,
+      avgDwellS
+    };
   }
 
   return {
@@ -1208,7 +1231,7 @@ export const AVATAR_POOLS_ENDPOINTS = {
   company:`${CF_BASE.replace(/\/+$/,'')}/avatars/company/index.json`,
 };
 
-const __avatarPoolCache = new Map(); // kind -> Promise<string[]>
+const __avatarPoolCache = new Map();
 
 export async function getAvatarPool(kind = "female") {
   const k = String(kind);
@@ -1255,8 +1278,6 @@ export function pickUniqueDeterministic(array, index, seedParts = []) {
   if (!arr.length) return null;
 
   const shuffled = deterministicShuffle(arr, seedParts);
-
-  // reuse only if the number of posts exceeds the pool size
   const safeIndex = ((Number(index) || 0) % shuffled.length + shuffled.length) % shuffled.length;
   return shuffled[safeIndex];
 }
@@ -1280,7 +1301,6 @@ export function buildDeterministicAssignmentMap(items = [], pool = [], seedParts
   return out;
 }
 
-
 export function getStablePostOrderIndex(posts = [], postId) {
   const ids = (Array.isArray(posts) ? posts : [])
     .map((p) => String(p?.id ?? ""))
@@ -1291,7 +1311,6 @@ export function getStablePostOrderIndex(posts = [], postId) {
 }
 
 /* ------- Image pools by topic (from S3 manifests) ------- */
-// Legacy: lowercase, trim, spaces→_, strip parens, keep [-_a-z0-9.]
 export function topicToFolder(topic = "") {
   return String(topic || "")
     .trim()
@@ -1301,7 +1320,6 @@ export function topicToFolder(topic = "") {
     .replace(/[^a-z0-9._-]/g, "");
 }
 
-// Case-preserving, spaces→_ variant (legacy fallback)
 function sanitizeFolderCasePreserving(topic = "") {
   return String(topic || "")
     .trim()
@@ -1310,7 +1328,6 @@ function sanitizeFolderCasePreserving(topic = "") {
     .replace(/[^a-zA-Z0-9._-]/g, "");
 }
 
-// New: keep spaces & case; strip parens; allow spaces and [-_.A-Za-z0-9]
 function sanitizeKeepSpacesCaseful(topic = "") {
   return String(topic || "")
     .trim()
@@ -1318,7 +1335,6 @@ function sanitizeKeepSpacesCaseful(topic = "") {
     .replace(/[^A-Za-z0-9._\-\s]/g, "");
 }
 
-// New: Title Case with spaces (preferred)
 function titleCaseKeepSpaces(topic = "") {
   const cleaned = sanitizeKeepSpacesCaseful(topic);
   return cleaned
@@ -1327,13 +1343,11 @@ function titleCaseKeepSpaces(topic = "") {
     .join(" ");
 }
 
-// Build the index.json URL for a given topic folder
 export function imagePoolIndexUrl(folder) {
   const base = CF_BASE.replace(/\/+$/, "");
   return `${base}/images/${encodeURIComponent(folder)}/index.json`;
 }
 
-// Normalize index entries (strings or {url}) to absolute URLs
 function normalizeImageIndex(list, folder) {
   const base = CF_BASE.replace(/\/+$/, "");
   const prefix = `${base}/images/${encodeURIComponent(folder)}/`;
@@ -1348,23 +1362,14 @@ function normalizeImageIndex(list, folder) {
     .filter(Boolean);
 }
 
-const __imagePoolCache = new Map(); // key: folder -> Promise<string[]>
+const __imagePoolCache = new Map();
 
-/**
- * getImagePool(topic)
- * Order of attempts:
- *   1) Title Case with spaces (preferred):  "animals" → "Animals", "social media" → "Social Media"
- *   2) As-typed, spaces kept, case preserved
- *   3) Case-preserving with underscores      "Social Media" → "Social_Media"
- *   4) Lowercase with underscores (legacy)   "social_media"
- */
 export async function getImagePool(topic = "") {
   const preferred = titleCaseKeepSpaces(topic);
   const asTyped  = sanitizeKeepSpacesCaseful(topic);
   const caseUnd  = sanitizeFolderCasePreserving(topic);
   const lowerUnd = topicToFolder(topic);
 
-  // De-dup while preserving order
   const candidates = Array.from(new Set([preferred, asTyped, caseUnd, lowerUnd].filter(Boolean)));
 
   for (const folder of candidates) {
@@ -1386,7 +1391,7 @@ export async function getImagePool(topic = "") {
       );
     }
     const list = await __imagePoolCache.get(key).catch(() => []);
-    if (Array.isArray(list) && list.length) return list; // stop at first hit
+    if (Array.isArray(list) && list.length) return list;
   }
 
   return [];
@@ -1400,7 +1405,6 @@ export function randomizeBioStats(bio, { randomize, seedParts }) {
   const pick = (arr) => arr[Math.floor(r() * arr.length)];
   const rand = (min, max) => Math.floor(min + r() * (max - min));
 
-  // Weighted distribution: mostly nano/micro
   const tier = pick(["nano", "nano", "micro", "micro", "micro", "macro", "mega"]);
 
   let followers, posts, following;

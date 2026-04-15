@@ -11,6 +11,7 @@ import {
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   readPostNames,
+  getSurveyIdFromUrl,
 } from "../utils";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -1010,6 +1011,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
 /* --------------------------- participants panel --------------------------- */
 export function ParticipantsPanel({
   feedId,
+  surveyId: surveyIdProp,
   projectId: projectIdProp,
   posts = [],
   compact = false,
@@ -1018,7 +1020,10 @@ export function ParticipantsPanel({
   postNamesMap,
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
+  const surveyId = surveyIdProp ?? getSurveyIdFromUrl?.() ?? "";
   const IG = isIGApp();
+  const sourceKey = feedId || surveyId || "noid";
+  const sourceLabel = feedId ? `feed ${feedId}` : (surveyId ? `survey ${surveyId}` : "no source");
 
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -1055,17 +1060,17 @@ export function ParticipantsPanel({
   }, [projectId]);
 
   const mkCacheKey = (id, pid = projectId) =>
-    `participants_cache_v13::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
+    `participants_cache_v14::${APP || "app"}::${pid || "no-project"}::${id || "noid"}`;
 
   const saveCache = (data, pid = projectId) => {
     try {
-      localStorage.setItem(mkCacheKey(feedId, pid), JSON.stringify({ t: Date.now(), rows: data }));
+      localStorage.setItem(mkCacheKey(sourceKey, pid), JSON.stringify({ t: Date.now(), rows: data }));
     } catch {}
   };
 
   const readCache = (pid = projectId) => {
     try {
-      const raw = localStorage.getItem(mkCacheKey(feedId, pid));
+      const raw = localStorage.getItem(mkCacheKey(sourceKey, pid));
       const parsed = JSON.parse(raw || "{}");
       return Array.isArray(parsed?.rows) ? parsed : null;
     } catch {
@@ -1092,7 +1097,19 @@ export function ParticipantsPanel({
 
     try {
       const pid = pidOverride ?? projectId;
-      const data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
+      let data = [];
+
+      if (feedId) {
+        data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
+      } else if (surveyId) {
+        const merged = await loadMergedParticipantSurveyRoster({
+          signal: ctrl.signal,
+          projectId: pid,
+          surveyId,
+        });
+        data = Array.isArray(merged?.rows) ? merged.rows : [];
+      }
+
       if (!ctrl.signal.aborted && Array.isArray(data)) {
         setRows(data);
         if (!usingSimulated) computeSummaryIdle(data);
@@ -1115,7 +1132,7 @@ export function ParticipantsPanel({
     }
     refresh(!!cached?.rows?.length);
     return () => abortRef.current?.abort?.();
-  }, [feedId, projectId]);
+  }, [feedId, surveyId, projectId]);
 
   const effectiveRows = useMemo(
     () => (usingSimulated ? (simRows || []) : (rows || [])),
@@ -1351,7 +1368,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
   
 
   const downloadCsv = async () => {
-    if (!feedId) return;
+    if (!feedId && !surveyId) return;
 
     if (usingSimulated) {
       if (!effectiveRows?.length) return;
@@ -1373,6 +1390,7 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
         `${APP}_participants` +
         `${projectId ? `_${projectId}` : ""}` +
         `${feedId ? `_${feedId}` : ""}` +
+        `${!feedId && surveyId ? `_${surveyId}` : ""}` +
         `_SIMULATED.csv`;
 
       document.body.appendChild(a);
@@ -1387,7 +1405,8 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       setLoading(true);
 
       const merged = await loadMergedParticipantSurveyRoster({
-        feedId,
+        feedId: feedId || "",
+        surveyId: surveyId || "",
         projectId,
       });
 
@@ -1421,6 +1440,7 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
         `${APP}_participants` +
         `${projectId ? `_${projectId}` : ""}` +
         `${feedId ? `_${feedId}` : ""}` +
+        `${!feedId && surveyId ? `_${surveyId}` : ""}` +
         `${merged?.hasMergedSurveyColumns ? "_with_survey" : ""}` +
         `${surveyHeaderMode === "name" ? "_varnames" : "_questiontext"}.csv`;
 
@@ -1440,7 +1460,9 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
     <div className="card" style={{ padding: wrapperPad }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
-          Participants{feedId ? <span className="subtle"> · {feedId}</span> : null}
+          Participants
+          {feedId ? <span className="subtle"> · feed {feedId}</span> : null}
+          {!feedId && surveyId ? <span className="subtle"> · survey {surveyId}</span> : null}
           <span className="subtle"> · {APP} · {projectId || "global"}</span>
           {usingSimulated ? <span className="subtle"> · SIMULATED</span> : null}
         </h4>
