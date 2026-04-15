@@ -1063,10 +1063,11 @@ export default function App() {
         try {
           const result = cachedPosts
             ? cachedPosts
-            : await loadPostsFromBackend(activeFeedId, {
-                force: true,
-                signal: ctrl.signal,
-              }).catch(() => []);
+           : await loadPostsFromBackend(activeFeedId, {
+    force: true,
+    signal: ctrl.signal,
+    projectId,
+  });
           tp.end({ count: Array.isArray(result) ? result.length : 0 });
           return result;
         } catch (e) {
@@ -1115,9 +1116,9 @@ export default function App() {
       setFlags(nextFlags);
       setFlagsReady(true);
 
-      if (!cachedPosts) {
-        writePostsCache(projectId, activeFeedId, arr);
-      }
+      if (!cachedPosts && Array.isArray(arr) && arr.length > 0) {
+  writePostsCache(projectId, activeFeedId, arr);
+}
 
       if (!surveyBoot?.has_survey) {
         setLinkedSurvey(null);
@@ -2177,7 +2178,10 @@ export default function App() {
                     try {
                       const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
-                        const fresh = await loadPostsFromBackend(ctx?.feedId);
+                        const fresh = await loadPostsFromBackend(ctx?.feedId, {
+  projectId: ctx?.projectId || projectId,
+  force: true,
+});
                         setPosts(fresh || []);
                         showToast("Feed saved to backend");
                       } else {
