@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -10,6 +11,7 @@ import {
   isQuestionVisible,
   getRenderedQuestion,
   getProjectId,
+  loadPostByIdFromBackend,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -578,7 +580,7 @@ function PostReminderCard({
     requestKey,
   ]);
 
-  const post = getQuestionReminderPost(question, posts, lazyPost);
+  const post = inlinePost || lazyPost;
   const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   if (!post) {
