@@ -2062,6 +2062,19 @@ export default function App() {
     requiresFeedStage,
   ]);
 
+  const activeLoadingOverlay =
+    loadingStudyOverlay ? { title: "Loading study…", subtitle: "Checking the study setup" } :
+    showSurveyOnlyLoadingOverlay ? { title: "Loading questions…", subtitle: "Preparing the survey" } :
+    preparingFeedOverlay ? {
+      title: "Preparing your feed…",
+      subtitle:
+        flags.randomize_avatars || flags.randomize_images
+          ? "Almost ready..."
+          : "Loading the feed.",
+    } :
+    loadingNextStageOverlay ? { title: "Loading questions…", subtitle: "Preparing the next stage" } :
+    null;
+
   return (
     <Router>
       <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
@@ -2134,11 +2147,6 @@ export default function App() {
                     />
                   )}
                 </div>
-              ) : showSurveyOnlyLoadingOverlay ? (
-                <LoadingOverlay
-                  title="Loading questions…"
-                  subtitle="Preparing the survey"
-                />
               ) : requiresFeedStage ? (
                 <PageWithRails>
                   <div
@@ -2370,10 +2378,10 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {loadingStudyOverlay && (
+      {activeLoadingOverlay && (
         <LoadingOverlay
-          title="Loading study…"
-          subtitle="Checking the study setup"
+          title={activeLoadingOverlay.title}
+          subtitle={activeLoadingOverlay.subtitle}
         />
       )}
 
@@ -2499,23 +2507,6 @@ export default function App() {
         />
       )}
 
-      {preparingFeedOverlay && (
-        <LoadingOverlay
-          title="Preparing your feed…"
-          subtitle={
-            flags.randomize_avatars || flags.randomize_images
-              ? "Almost ready..."
-              : "Loading the feed."
-          }
-        />
-      )}
-
-      {loadingNextStageOverlay && (
-        <LoadingOverlay
-          title="Loading questions…"
-          subtitle="Preparing the next stage"
-        />
-      )}
 
       {!onAdmin &&
         requiresFeedStage &&
