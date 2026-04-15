@@ -1274,16 +1274,16 @@ export default function App() {
     const prev = el.style.overflow;
 
     const shouldLock =
-      !onAdmin &&
-      (bootPhase === "loading" ||
-        !hasEntered ||
-        (requiresFeedStage && contentPhase === "loading") ||
-        (requiresFeedStage && feedPhase !== "ready") ||
-        surveyPhase === "loading" ||
-        submitted ||
-        (requiresFeedStage && !flagsReady) ||
-        (requiresFeedStage && !assetsReady) ||
-        (requiresFeedStage && !minDelayDone));
+  !onAdmin &&
+  (bootPhase === "loading" ||
+    !hasEntered ||
+    (requiresFeedStage && contentPhase === "loading") ||
+    (requiresFeedStage && feedPhase !== "ready") ||
+    (surveyPhase === "loading" && !isSurveyOnlySurveyLoading) ||
+    submitted ||
+    (requiresFeedStage && !flagsReady) ||
+    (requiresFeedStage && !assetsReady) ||
+    (requiresFeedStage && !minDelayDone));
 
     el.style.overflow = shouldLock ? "hidden" : "";
 
@@ -1876,11 +1876,11 @@ export default function App() {
   const showBootError =
     !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
 
-  const showSurveyOnlyLoadingOverlay =
-  !onAdmin &&
-  hasEntered &&
+  const isSurveyOnlySurveyLoading =
   isSurveyOnlyMode &&
+  hasEntered &&
   !submitted &&
+  surveyPhase === "loading" &&
   !linkedSurvey &&
   !shouldShowSurvey &&
   !shouldShowPreface;
@@ -1889,21 +1889,21 @@ export default function App() {
     <Router>
       <div
         className={`app-shell ${
-          !onAdmin &&
-          !shouldShowSurvey &&
-          !shouldShowPreface &&
-          (bootPhase === "loading" ||
-            !hasEntered ||
-            (requiresFeedStage && contentPhase === "loading") ||
-            (requiresFeedStage && feedPhase !== "ready") ||
-            surveyPhase === "loading" ||
-            submitted ||
-            (requiresFeedStage && !flagsReady) ||
-            (requiresFeedStage && !assetsReady) ||
-            (requiresFeedStage && !minDelayDone))
-            ? "blurred"
-            : ""
-        }`}
+  !onAdmin &&
+  !shouldShowSurvey &&
+  !shouldShowPreface &&
+  (bootPhase === "loading" ||
+    !hasEntered ||
+    (requiresFeedStage && contentPhase === "loading") ||
+    (requiresFeedStage && feedPhase !== "ready") ||
+    (surveyPhase === "loading" && !isSurveyOnlySurveyLoading) ||
+    submitted ||
+    (requiresFeedStage && !flagsReady) ||
+    (requiresFeedStage && !assetsReady) ||
+    (requiresFeedStage && !minDelayDone))
+    ? "blurred"
+    : ""
+}`}
       >
         <RouteAwareTopbar />
 
@@ -1976,7 +1976,7 @@ export default function App() {
         />
       )}
     </div>
-  ) : showSurveyOnlyLoadingOverlay ? (
+  ) : isSurveyOnlySurveyLoading ? (
     <LoadingOverlay
       title="Loading questions…"
       subtitle="Preparing the survey"
