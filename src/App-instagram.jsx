@@ -803,15 +803,27 @@ export default function App() {
 
   const resolveChosenFeed = useCallback(
     async (signal) => {
+      const urlFeedId = getFeedIdFromUrl();
       const t = timerStart("resolveChosenFeed", {
         projectId,
-        urlFeedId: getFeedIdFromUrl(),
+        urlFeedId,
       });
 
       try {
+        if (urlFeedId) {
+          const chosen = { feed_id: urlFeedId };
+          t.end({
+            source: "url",
+            feedsCount: null,
+            backendDefault: null,
+            chosenFeedId: chosen.feed_id,
+          });
+          return chosen;
+        }
+
         const [feedsList, backendDefault] = await Promise.all([
-          listFeedsFromBackend({ signal }),
-          getDefaultFeedFromBackend({ signal }),
+          listFeedsFromBackend({ projectId: projectId || undefined, signal }),
+          getDefaultFeedFromBackend({ projectId: projectId || undefined, signal }),
         ]);
 
         if (signal?.aborted) {
@@ -819,9 +831,7 @@ export default function App() {
           return null;
         }
 
-        const urlFeedId = getFeedIdFromUrl();
         const chosen =
-          (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
           (feedsList || []).find(
             (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
           ) ||
@@ -829,6 +839,7 @@ export default function App() {
           null;
 
         t.end({
+          source: backendDefault ? "default_or_list" : "list",
           feedsCount: (feedsList || []).length,
           backendDefault,
           chosenFeedId: chosen?.feed_id || null,
