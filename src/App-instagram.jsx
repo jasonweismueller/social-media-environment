@@ -2418,6 +2418,27 @@ export default function App() {
             });
 
             const ts = now();
+
+            if (isSurveyOnlyMode) {
+              setSurveyPhase((prev) =>
+                prev === "ready" || prev === "submitting" || prev === "error"
+                  ? prev
+                  : "loading"
+              );
+              setSurveyOnlyPrereqPhase((prev) =>
+                prev === "ready" || prev === "error" ? prev : "loading"
+              );
+              setContentPhase((prev) =>
+                prev === "ready" || prev === "error" ? prev : "loading"
+              );
+            } else {
+              setContentPhase("loading");
+              setFeedPhase("loading");
+              setFeedError("");
+              setFlagsReady(false);
+              setAssetsReady(false);
+            }
+
             setParticipantId(id);
             setHasEntered(true);
             enterTsRef.current = ts;
