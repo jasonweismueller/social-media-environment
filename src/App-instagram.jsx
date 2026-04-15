@@ -14,7 +14,7 @@ import {
   fmtTime,
   clamp,
   loadPostsFromBackend,
-  savePostsFromBackend,
+  savePostsToBackend,
   sendToSheet,
   buildMinimalHeader,
   buildParticipantRow,
@@ -1383,6 +1383,8 @@ export default function App() {
     !hasEntered &&
     !shouldShowPreface;
 
+
+
   const surveyOnlyReady =
     isSurveyOnlyMode &&
     !!linkedSurvey &&
@@ -1423,76 +1425,74 @@ export default function App() {
   }, [shouldShowSurvey, shouldShowPreface, scrollSurveyViewToTop]);
 
   const blockingOverlay = useMemo(() => {
-    if (onAdmin) return null;
+  if (onAdmin) return null;
 
-    if (bootPhase === "loading") return "boot";
-    if (bootPhase === "error" && !hasEntered && !shouldShowPreface) {
-      return "boot_error";
-    }
+  if (suppressBlockingOverlays) return null;
 
-    if (shouldShowPreface) return null;
-    if (shouldShowParticipantOverlay) return null;
-    if (shouldShowSurvey) return null;
+  if (bootPhase === "loading") return "boot";
+  if (bootPhase === "error" && !hasEntered && !shouldShowPreface) {
+    return "boot_error";
+  }
 
-    if (
-      isSurveyOnlyMode &&
-      hasEntered &&
-      !submitted &&
-      (!linkedSurvey ||
-        surveyPhase === "loading" ||
-        surveyOnlyPrereqPhase === "loading" ||
-        surveyOnlyPrereqPhase !== "ready")
-    ) {
-      return "survey_only_loading";
-    }
+  if (
+    isSurveyOnlyMode &&
+    hasEntered &&
+    !submitted &&
+    (!linkedSurvey ||
+      surveyPhase === "loading" ||
+      surveyOnlyPrereqPhase === "loading" ||
+      surveyOnlyPrereqPhase !== "ready")
+  ) {
+    return "survey_only_loading";
+  }
 
-    if (
-      requiresFeedStage &&
-      hasEntered &&
-      !feedSubmitted &&
-      (contentPhase === "loading" ||
-        feedPhase === "loading" ||
-        !flagsReady ||
-        !assetsReady ||
-        !minDelayDone)
-    ) {
-      return "feed_loading";
-    }
+  if (
+    requiresFeedStage &&
+    hasEntered &&
+    !feedSubmitted &&
+    (contentPhase === "loading" ||
+      feedPhase === "loading" ||
+      !flagsReady ||
+      !assetsReady ||
+      !minDelayDone)
+  ) {
+    return "feed_loading";
+  }
 
-    if (
-      requiresFeedStage &&
-      hasEntered &&
-      !submitted &&
-      !!surveyBoot?.has_survey &&
-      feedSubmitted &&
-      surveyPhase === "loading" &&
-      !shouldShowSurvey
-    ) {
-      return "next_stage_loading";
-    }
+  if (
+    requiresFeedStage &&
+    hasEntered &&
+    !submitted &&
+    !!surveyBoot?.has_survey &&
+    feedSubmitted &&
+    surveyPhase === "loading" &&
+    !shouldShowSurvey
+  ) {
+    return "next_stage_loading";
+  }
 
-    return null;
-  }, [
-    onAdmin,
-    bootPhase,
-    hasEntered,
-    shouldShowPreface,
-    shouldShowParticipantOverlay,
-    shouldShowSurvey,
-    isSurveyOnlyMode,
-    submitted,
-    linkedSurvey,
-    surveyPhase,
-    surveyOnlyPrereqPhase,
-    requiresFeedStage,
-    feedSubmitted,
-    contentPhase,
-    feedPhase,
-    flagsReady,
-    assetsReady,
-    minDelayDone,
-    surveyBoot,
-  ]);
+  return null;
+}, [
+  onAdmin,
+  suppressBlockingOverlays,
+  bootPhase,
+  hasEntered,
+  shouldShowPreface,
+  isSurveyOnlyMode,
+  submitted,
+  linkedSurvey,
+  surveyPhase,
+  surveyOnlyPrereqPhase,
+  requiresFeedStage,
+  feedSubmitted,
+  contentPhase,
+  feedPhase,
+  flagsReady,
+  assetsReady,
+  minDelayDone,
+  surveyBoot,
+  shouldShowSurvey,
+]);
 
   useEffect(() => {
     const el = document.documentElement;
@@ -2064,6 +2064,9 @@ export default function App() {
     dbg("route branch", { routeBranch });
   }, [shouldShowSurvey, shouldShowPreface, blockingOverlay, requiresFeedStage]);
 
+  const suppressBlockingOverlays =
+  shouldShowParticipantOverlay || shouldShowPreface || shouldShowSurvey;
+
   return (
     <Router>
       <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
@@ -2334,7 +2337,7 @@ export default function App() {
                   }}
                   onPublishPosts={async (nextPosts, ctx = {}) => {
                     try {
-                      const ok = await savePostsFromBackend(nextPosts, ctx);
+                      const ok = await savePostsToBackend(nextPosts, ctx);
                       if (ok) {
                         const fresh = await loadPostsFromBackend(ctx?.feedId, {
                           projectId: ctx?.projectId || projectId,
@@ -2367,14 +2370,14 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {blockingOverlay === "boot" && (
+      {!suppressBlockingOverlays && blockingOverlay === "boot" && (
         <LoadingOverlay
           title="Loading study…"
           subtitle="Checking the study setup"
         />
       )}
 
-      {blockingOverlay === "boot_error" && (
+      {!suppressBlockingOverlays && blockingOverlay === "boot_error" && (
         <div
           className="modal-backdrop modal-backdrop-dim"
           role="dialog"
@@ -2476,14 +2479,14 @@ export default function App() {
         />
       )}
 
-      {blockingOverlay === "survey_only_loading" && (
+      {!suppressBlockingOverlays && blockingOverlay === "survey_only_loading" && (
         <LoadingOverlay
           title="Loading questions…"
           subtitle="Preparing the survey"
         />
       )}
 
-      {blockingOverlay === "feed_loading" && (
+      {!suppressBlockingOverlays && blockingOverlay === "feed_loading" && (
         <LoadingOverlay
           title="Preparing your feed…"
           subtitle={
@@ -2494,7 +2497,7 @@ export default function App() {
         />
       )}
 
-      {blockingOverlay === "next_stage_loading" && (
+      {!suppressBlockingOverlays && blockingOverlay === "next_stage_loading" && (
         <LoadingOverlay
           title="Loading questions…"
           subtitle="Preparing the next stage"
