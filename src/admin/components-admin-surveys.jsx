@@ -100,7 +100,16 @@ function buildFeedLaunchUrl({ projectId, feedId, app }) {
 
 function buildSurveyLaunchUrl({ projectId, surveyId, app }) {
   const params = new URLSearchParams();
-  if (surveyId) params.set("survey", String(surveyId));
+  if (surveyId) params.set("survey_id", String(surveyId));
+  if (projectId) params.set("project", String(projectId));
+  if (app) params.set("app", String(app));
+  return `${getStudyBaseUrl()}?${params.toString()}`;
+}
+
+function buildFeedSurveyLaunchUrl({ projectId, surveyId, feedId, app }) {
+  const params = new URLSearchParams();
+  if (feedId) params.set("feed", String(feedId));
+  if (surveyId) params.set("survey_id", String(surveyId));
   if (projectId) params.set("project", String(projectId));
   if (app) params.set("app", String(app));
   return `${getStudyBaseUrl()}?${params.toString()}`;
@@ -661,6 +670,15 @@ export function AdminSurveysPanel({
     setSurvey(copiedSurvey);
     setSelectedSurveyId(null);
     setLinkedFeedPostsMap({});
+  }
+
+  async function handleCopyLaunchLink(url, label = "link") {
+    const ok = await copyTextToClipboard(url);
+    if (!ok) {
+      alert(`Failed to copy ${label}.`);
+      return;
+    }
+    alert(`${label.charAt(0).toUpperCase() + label.slice(1)} copied.`);
   }
 
   function handleExportSurvey() {
@@ -1261,6 +1279,75 @@ export function AdminSurveysPanel({
                     Survey only (skip feed)
                   </option>
                 </SelectInput>
+              </FieldBlock>
+            </SectionCard>
+
+            <SectionCard
+              title="Launch links"
+              subtitle="Use the survey-only link to launch directly into the survey, or the feed + survey link to launch a linked feed first."
+            >
+              <FieldBlock label="Survey ID">
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #e5e7eb",
+                    background: "#f9fafb",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    fontSize: 13,
+                    color: survey?.survey_id ? "#111827" : "#9ca3af",
+                  }}
+                >
+                  {survey?.survey_id || "Save the survey to generate its survey ID."}
+                </div>
+              </FieldBlock>
+
+              <FieldBlock
+                label="Survey-only launch link"
+                hint="This link opens the preface and survey directly, without showing the feed first."
+              >
+                <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
+                  <TextInput value={surveyOnlyLaunchUrl} readOnly placeholder="Save the survey to generate the launch link" />
+                  <button
+                    type="button"
+                    disabled={!surveyOnlyLaunchUrl}
+                    onClick={() => handleCopyLaunchLink(surveyOnlyLaunchUrl, "survey-only link")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: surveyOnlyLaunchUrl ? "#fff" : "#f3f4f6",
+                      cursor: surveyOnlyLaunchUrl ? "pointer" : "not-allowed",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </FieldBlock>
+
+              <FieldBlock
+                label="Feed + survey launch link"
+                hint="This launch uses the first linked feed and then continues into the survey."
+              >
+                <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
+                  <TextInput value={linkedFeedLaunchUrl} readOnly placeholder="Link at least one feed and save the survey to generate this link" />
+                  <button
+                    type="button"
+                    disabled={!linkedFeedLaunchUrl}
+                    onClick={() => handleCopyLaunchLink(linkedFeedLaunchUrl, "feed + survey link")}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: linkedFeedLaunchUrl ? "#fff" : "#f3f4f6",
+                      cursor: linkedFeedLaunchUrl ? "pointer" : "not-allowed",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
               </FieldBlock>
             </SectionCard>
 

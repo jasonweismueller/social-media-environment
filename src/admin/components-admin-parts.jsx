@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import {
   loadParticipantsRoster,
   loadMergedParticipantSurveyRoster,
+  loadSurveyOnlyRoster,
   summarizeRoster,
   nfCompact,
   extractPerPostFromRosterRow,
@@ -1052,7 +1053,7 @@ export function ParticipantsPanel({
   }));
 
   const abortRef = useRef(null);
-  const nameStore = postNamesMap || readPostNames(projectId, feedId) || {};
+  const nameStore = postNamesMap || readPostNames(projectId, feedId || surveyId || "survey_only") || {};
   const caps = useMemo(() => capabilitySummary(posts, IG), [posts, IG]);
 
   useEffect(() => {
@@ -1544,7 +1545,7 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
           <button
             className="btn"
             onClick={downloadCsv}
-            disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
+            disabled={(!feedId && !surveyId) || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Download CSV
