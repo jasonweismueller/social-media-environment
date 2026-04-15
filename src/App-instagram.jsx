@@ -1372,11 +1372,10 @@ export default function App() {
     !prefaceCompleted;
 
   const shouldShowParticipantOverlay =
-  !onAdmin &&
-  bootPhase === "ready" &&
-  !hasEntered &&
-  !prefaceCompleted &&
-  !shouldShowPreface;
+    !onAdmin &&
+    bootPhase === "ready" &&
+    !hasEntered &&
+    !shouldShowPreface;
 
   const surveyOnlyReady =
     isSurveyOnlyMode &&
@@ -2004,17 +2003,11 @@ export default function App() {
       !linkedSurvey ||
       surveyOnlyPrereqPhase !== "ready");
 
-  const anyBlockingLoadingOverlay =
-    loadingStudyOverlay ||
-    preparingFeedOverlay ||
-    loadingNextStageOverlay ||
-    showSurveyOnlyLoadingOverlay;
-
   const shouldBlurShell =
     !onAdmin &&
     !shouldShowSurvey &&
     !shouldShowPreface &&
-    !anyBlockingLoadingOverlay &&
+    !showSurveyOnlyLoadingOverlay &&
     (bootPhase === "loading" ||
       !hasEntered ||
       (requiresFeedStage && contentPhase === "loading") ||
@@ -2024,31 +2017,6 @@ export default function App() {
       (requiresFeedStage && !flagsReady) ||
       (requiresFeedStage && !assetsReady) ||
       (requiresFeedStage && !minDelayDone));
-
-  const activeLoadingOverlay = loadingStudyOverlay
-    ? {
-        title: "Loading study…",
-        subtitle: "Checking the study setup",
-      }
-    : showSurveyOnlyLoadingOverlay
-      ? {
-          title: "Loading questions…",
-          subtitle: "Preparing the survey",
-        }
-      : preparingFeedOverlay
-        ? {
-            title: "Preparing your feed…",
-            subtitle:
-              flags.randomize_avatars || flags.randomize_images
-                ? "Almost ready..."
-                : "Loading the feed.",
-          }
-        : loadingNextStageOverlay
-          ? {
-              title: "Loading questions…",
-              subtitle: "Preparing the next stage",
-            }
-          : null;
 
   useEffect(() => {
     dbgGroup("overlay selectors", {
@@ -2147,7 +2115,7 @@ export default function App() {
                     <SurveyPrefaceFlow
                       survey={surveyBoot}
                       participantDisplayId={participantDisplayId}
-                      onComplete={async () => {
+                      onComplete={() => {
                         dbg("preface onComplete fired", {
                           isSurveyOnlyMode,
                           surveyPhaseBefore: surveyPhase,
@@ -2156,33 +2124,7 @@ export default function App() {
                         });
 
                         setPrefaceCompleted(true);
-setHasEntered(true);
-
-                        if (isSurveyOnlyMode) {
-                          const [loadedSurvey, preloadOk] = await Promise.all([
-                            ensureSurveyLoaded(),
-                            preloadSurveyOnlyAssets(),
-                          ]);
-
-                          dbg("preface onComplete resolved", {
-                            loadedSurvey: !!loadedSurvey,
-                            preloadOk,
-                          });
-
-                          if (!loadedSurvey) {
-                            setSurveyPhase("error");
-                            setSurveyErrorMsg("Failed to load the survey.");
-                          } else if (!preloadOk) {
-                            setSurveyPhase("error");
-                            setSurveyErrorMsg(
-                              "Failed to prepare the survey content."
-                            );
-                          } else {
-                            scrollSurveyViewToTop();
-                          }
-                        } else {
-                          scrollSurveyViewToTop();
-                        }
+                        scrollSurveyViewToTop();
                       }}
                     />
                   ) : (
@@ -2192,6 +2134,11 @@ setHasEntered(true);
                     />
                   )}
                 </div>
+              ) : showSurveyOnlyLoadingOverlay ? (
+                <LoadingOverlay
+                  title="Loading questions…"
+                  subtitle="Preparing the survey"
+                />
               ) : requiresFeedStage ? (
                 <PageWithRails>
                   <div
@@ -2423,10 +2370,10 @@ setHasEntered(true);
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {activeLoadingOverlay && (
+      {loadingStudyOverlay && (
         <LoadingOverlay
-          title={activeLoadingOverlay.title}
-          subtitle={activeLoadingOverlay.subtitle}
+          title="Loading study…"
+          subtitle="Checking the study setup"
         />
       )}
 
@@ -2528,6 +2475,24 @@ setHasEntered(true);
 
             t.end();
           }}
+        />
+      )}
+
+      {preparingFeedOverlay && (
+        <LoadingOverlay
+          title="Preparing your feed…"
+          subtitle={
+            flags.randomize_avatars || flags.randomize_images
+              ? "Almost ready..."
+              : "Loading the feed."
+          }
+        />
+      )}
+
+      {loadingNextStageOverlay && (
+        <LoadingOverlay
+          title="Loading questions…"
+          subtitle="Preparing the next stage"
         />
       )}
 
