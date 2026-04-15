@@ -1372,10 +1372,11 @@ export default function App() {
     !prefaceCompleted;
 
   const shouldShowParticipantOverlay =
-    !onAdmin &&
-    bootPhase === "ready" &&
-    !hasEntered &&
-    !shouldShowPreface;
+  !onAdmin &&
+  bootPhase === "ready" &&
+  !hasEntered &&
+  !prefaceCompleted &&
+  !shouldShowPreface;
 
   const surveyOnlyReady =
     isSurveyOnlyMode &&
@@ -2124,6 +2125,7 @@ export default function App() {
                         });
 
                         setPrefaceCompleted(true);
+setHasEntered(true);
 
                         if (isSurveyOnlyMode) {
                           const [loadedSurvey, preloadOk] = await Promise.all([
