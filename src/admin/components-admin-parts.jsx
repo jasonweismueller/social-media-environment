@@ -1103,10 +1103,11 @@ export function ParticipantsPanel({
       if (feedId) {
         data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
       } else if (surveyId) {
-        const merged = await loadMergedParticipantSurveyRoster({
+        const merged = await loadSurveyOnlyRoster({
           signal: ctrl.signal,
           projectId: pid,
           surveyId,
+          labelMode: surveyHeaderMode === "name" ? "variable" : "text",
         });
         data = Array.isArray(merged?.rows) ? merged.rows : [];
       }
@@ -1405,11 +1406,17 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       setError("");
       setLoading(true);
 
-      const merged = await loadMergedParticipantSurveyRoster({
-        feedId: feedId || "",
-        surveyId: surveyId || "",
-        projectId,
-      });
+      const merged = feedId
+        ? await loadMergedParticipantSurveyRoster({
+            feedId: feedId || "",
+            projectId,
+            labelMode: surveyHeaderMode === "name" ? "variable" : "text",
+          })
+        : await loadSurveyOnlyRoster({
+            surveyId: surveyId || "",
+            projectId,
+            labelMode: surveyHeaderMode === "name" ? "variable" : "text",
+          });
 
       const mergedRows = Array.isArray(merged?.rows) ? merged.rows : [];
       if (!mergedRows.length) return;
