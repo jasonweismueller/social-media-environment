@@ -149,7 +149,14 @@ function normalizeFlags(raw) {
 function getSurveyIdFromUrl() {
   try {
     const q = new URLSearchParams(window.location.search);
-    return String(q.get("survey") || "").trim();
+    const hashQ = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    return String(
+      q.get("survey_id") ||
+        q.get("survey") ||
+        hashQ.get("survey_id") ||
+        hashQ.get("survey") ||
+        ""
+    ).trim();
   } catch {
     return "";
   }
@@ -307,8 +314,22 @@ function getQueryParamEverywhere(key) {
   return String(q.get(key) || hashQ.get(key) || "").trim();
 }
 
+/* ------------------------- cache helpers ------------------------- */
+
+const LOCAL_CACHE_VERSION = "2026-04-19-v2";
+const POSTS_CACHE_TTL_MS = 2 * 60 * 1000;
+const SURVEY_BOOT_CACHE_TTL_MS = 2 * 60 * 1000;
+
+function isFreshCacheEnvelope(envelope, ttlMs) {
+  if (!envelope || typeof envelope !== "object") return false;
+  if (envelope.v !== LOCAL_CACHE_VERSION) return false;
+  const t = Number(envelope.t || 0);
+  if (!Number.isFinite(t) || t <= 0) return false;
+  return Date.now() - t <= ttlMs;
+}
+
 function getSurveyBootCacheKey(projectId, feedId) {
-  return `survey_boot::${projectId || ""}::${feedId || ""}`;
+  return `survey_boot::${LOCAL_CACHE_VERSION}::${projectId || ""}::${feedId || ""}`;
 }
 
 function readSurveyBootCache(projectId, feedId) {
@@ -316,7 +337,8 @@ function readSurveyBootCache(projectId, feedId) {
     const raw = localStorage.getItem(getSurveyBootCacheKey(projectId, feedId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : null;
+    if (!isFreshCacheEnvelope(parsed, SURVEY_BOOT_CACHE_TTL_MS)) return null;
+    return parsed.data && typeof parsed.data === "object" ? parsed.data : null;
   } catch {
     return null;
   }
@@ -327,15 +349,16 @@ function writeSurveyBootCache(projectId, feedId, value) {
     localStorage.setItem(
       getSurveyBootCacheKey(projectId, feedId),
       JSON.stringify({
-        ...(value || {}),
-        _cached_at: Date.now(),
+        v: LOCAL_CACHE_VERSION,
+        t: Date.now(),
+        data: value || null,
       })
     );
   } catch {}
 }
 
 function getPostsCacheKey(projectId, feedId) {
-  return `posts::${projectId || ""}::${feedId || ""}`;
+  return `posts::${LOCAL_CACHE_VERSION}::${projectId || ""}::${feedId || ""}`;
 }
 
 function readPostsCache(projectId, feedId) {
@@ -343,7 +366,9 @@ function readPostsCache(projectId, feedId) {
     const raw = localStorage.getItem(getPostsCacheKey(projectId, feedId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
+
+    if (!isFreshCacheEnvelope(parsed, POSTS_CACHE_TTL_MS)) return null;
+    return Array.isArray(parsed.data) ? parsed.data : null;
   } catch {
     return null;
   }
@@ -353,11 +378,11 @@ function writePostsCache(projectId, feedId, posts) {
   try {
     localStorage.setItem(
       getPostsCacheKey(projectId, feedId),
-      JSON.stringify(posts)
-    );
-    localStorage.setItem(
-      `${getPostsCacheKey(projectId, feedId)}::meta`,
-      JSON.stringify({ t: Date.now() })
+      JSON.stringify({
+        v: LOCAL_CACHE_VERSION,
+        t: Date.now(),
+        data: Array.isArray(posts) ? posts : [],
+      })
     );
   } catch {}
 }
@@ -1007,15 +1032,7 @@ export default function App() {
         setFeedIdInUrl(chosenFeedId, { replace: true });
       } catch {}
 
-      const cachedBoot = readSurveyBootCache(projectId, chosenFeedId);
-
-      dbg("boot cache", {
-        projectId,
-        feedId: chosenFeedId,
-        cachedBoot,
-      });
-
-      let nextBoot = cachedBoot || {
+      let nextBoot = {
         has_survey: false,
         survey_id: "",
         has_preface: false,
@@ -1098,7 +1115,11 @@ export default function App() {
           writeSurveyBootCache(projectId, chosenFeedId, nextBoot);
         }
       } catch (e) {
-        dbgWarn("survey boot fetch failed, using cached/default boot", e);
+        dbgWarn("survey boot fetch failed, trying boot cache", e);
+        const cachedBoot = readSurveyBootCache(projectId, chosenFeedId);
+        if (cachedBoot) {
+          nextBoot = cachedBoot;
+        }
       }
 
       setSurveyBoot(nextBoot);
@@ -1229,8 +1250,6 @@ export default function App() {
       setSurveyOnlyPrereqPhase("loading");
       setContentPhase("loading");
 
-      // Survey-only mode should not hidden-load the full feed.
-      // Post reminders can be lazy-loaded later via post_by_id.
       setFlagsReady(true);
       setAssetsReady(true);
       setMinDelayDone(true);
@@ -1283,20 +1302,26 @@ export default function App() {
 
       const postsPromise = (async () => {
         const tp = timerStart("content.posts", {
-          cached: !!cachedPosts,
+          hasCacheFallback: !!cachedPosts,
           activeFeedId,
         });
         try {
-          const result = cachedPosts
-            ? cachedPosts
-            : await loadPostsFromBackend(activeFeedId, {
-                force: true,
-                signal: ctrl.signal,
-                projectId,
-              });
-          tp.end({ count: Array.isArray(result) ? result.length : 0 });
-          return result;
+          const fresh = await loadPostsFromBackend(activeFeedId, {
+            force: true,
+            signal: ctrl.signal,
+            projectId,
+          });
+          if (Array.isArray(fresh)) {
+            writePostsCache(projectId, activeFeedId, fresh);
+          }
+          tp.end({ source: "backend", count: Array.isArray(fresh) ? fresh.length : 0 });
+          return fresh;
         } catch (e) {
+          if (Array.isArray(cachedPosts)) {
+            dbgWarn("backend posts failed, using cached posts fallback", e);
+            tp.end({ source: "cache_fallback", count: cachedPosts.length });
+            return cachedPosts;
+          }
           tp.fail(e);
           throw e;
         }
@@ -1341,10 +1366,6 @@ export default function App() {
       setPosts(arr);
       setFlags(nextFlags);
       setFlagsReady(true);
-
-      if (!cachedPosts && Array.isArray(arr) && arr.length > 0) {
-        writePostsCache(projectId, activeFeedId, arr);
-      }
 
       if (!surveyBoot?.has_survey) {
         setLinkedSurvey(null);
@@ -2587,7 +2608,6 @@ export default function App() {
           }}
         />
       )}
-
 
       {!onAdmin &&
         requiresFeedStage &&
