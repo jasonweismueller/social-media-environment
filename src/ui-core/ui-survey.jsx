@@ -1169,7 +1169,7 @@ function PostReminderCard({
   const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   if (!post) {
-      return (
+       return (
     <div className="survey-post-reminder-block">
       {question?.text ? (
         <div
@@ -1179,28 +1179,43 @@ function PostReminderCard({
       ) : null}
 
       <div
-        className="survey-post-reminder-card"
         style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 16,
-          background: "#fff",
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          maxWidth: 420,
-          margin: "0 auto",
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
         }}
       >
-        <PostCard
-          post={post}
-          onAction={() => {}}
-          disabled={true}
-          registerViewRef={() => undefined}
-          app={app}
-          projectId={resolvedProjectId}
-          feedId={reminderFeedId || ""}
-          runSeed={participantSeed || "survey-reminder-preview"}
-          flags={flags || {}}
-        />
+        <div
+          style={{
+            width: "min(420px, 100%)",
+            transform: "scale(0.5)",
+            transformOrigin: "top center",
+            marginBottom: "-50%",
+          }}
+        >
+          <div
+            className="survey-post-reminder-card"
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              background: "#fff",
+              overflow: "hidden",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            }}
+          >
+            <PostCard
+              post={post}
+              onAction={() => {}}
+              disabled={true}
+              registerViewRef={() => undefined}
+              app={app}
+              projectId={resolvedProjectId}
+              feedId={reminderFeedId || ""}
+              runSeed={participantSeed || "survey-reminder-preview"}
+              flags={flags || {}}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
