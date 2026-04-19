@@ -982,49 +982,51 @@ export function AdminSurveysPanel({
   }
 
   async function handleDownloadSurveyOnlyCsv() {
-    if (!survey?.survey_id) {
-      alert("Save the survey first.");
+  if (!survey?.survey_id) {
+    alert("Save the survey first.");
+    return;
+  }
+
+  try {
+    const roster = await loadSurveyOnlyRoster({
+      surveyId: survey.survey_id,
+      projectId,
+    });
+
+    const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+    if (!safeRows.length) {
+      alert("No survey responses found yet.");
       return;
     }
 
-    try {
-      const rows = await loadSurveyOnlyRoster({
-        surveyId: survey.survey_id,
-        projectId,
-        app: studyApp,
+    const header = Array.from(
+      safeRows.reduce((set, row) => {
+        Object.keys(row || {}).forEach((key) => set.add(key));
+        return set;
+      }, new Set())
+    );
+
+    const normalizedRows = safeRows.map((row) => {
+      const next = {};
+      header.forEach((key) => {
+        next[key] = normalizeCsvValue(row?.[key]);
       });
+      return next;
+    });
 
-      const safeRows = Array.isArray(rows) ? rows : [];
-      if (!safeRows.length) {
-        alert("No survey responses found yet.");
-        return;
-      }
-
-      const header = Array.from(
-        safeRows.reduce((set, row) => {
-          Object.keys(row || {}).forEach((key) => set.add(key));
-          return set;
-        }, new Set())
-      );
-
-      const normalizedRows = safeRows.map((row) => {
-        const next = {};
-        header.forEach((key) => {
-          next[key] = normalizeCsvValue(row?.[key]);
-        });
-        return next;
-      });
-
-      const csv = buildCsv(normalizedRows, header, header);
-      const filename = `${slugifySurveyName(survey.name || survey.survey_id || "survey")
+    const csv = buildCsv(normalizedRows, header, header);
+    const filename = `${
+      slugifySurveyName(survey.name || survey.survey_id || "survey")
         .replace(/[^\w\s-]/g, "")
-        .replace(/\s+/g, "_") || "survey"}_responses.csv`;
-      triggerCsvDownload(filename, csv);
-    } catch (e) {
-      console.warn("Failed to download survey-only CSV:", e);
-      alert("Failed to download survey-only CSV.");
-    }
+        .replace(/\s+/g, "_") || "survey"
+    }_responses.csv`;
+
+    triggerCsvDownload(filename, csv);
+  } catch (e) {
+    console.warn("Failed to download survey-only CSV:", e);
+    alert("Failed to download survey-only CSV.");
   }
+}
 
   const linkedFeedCount = useMemo(
     () => normalizeLinkedFeedIds(survey?.linked_feed_ids).length,
