@@ -1441,7 +1441,7 @@ export default function App() {
     !shouldSkipParticipantOverlay;
 
   useEffect(() => {
-    if (!shouldSkipParticipantOverlay || hasEntered) return;
+    if (!shouldSkipParticipantOverlay || hasEntered || shouldShowPreface) return;
 
     const id = prefilledParticipantId || "";
     const ts = now();
@@ -1475,7 +1475,7 @@ export default function App() {
       id,
       feed_id: activeFeedId || null,
       project_id: projectId || null,
-      reason: "survey_present",
+      reason: "survey_present_no_overlay",
     });
 
     const vp = document.querySelector('meta[name="viewport"]');
@@ -1522,6 +1522,7 @@ export default function App() {
   }, [
     shouldSkipParticipantOverlay,
     hasEntered,
+    shouldShowPreface,
     prefilledParticipantId,
     isSurveyOnlyMode,
     activeFeedId,
