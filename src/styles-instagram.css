@@ -2441,3 +2441,41 @@ body.survey-mode .rail-right {
   max-width: 260px;
   margin: 0 auto;
 }
+
+/* =========================
+   Survey Reminder Post FIX
+   ========================= */
+
+.survey-reminder-wrap {
+  max-width: 260px !important;
+  margin: 8px auto !important;
+}
+
+.survey-reminder-wrap .card {
+  width: 100% !important;
+  max-width: 260px !important;
+  margin: 0 auto !important;
+  transform: scale(0.92);
+  transform-origin: top center;
+}
+
+/* Kill feed/page expansion inside reminder */
+.survey-reminder-wrap .page,
+.survey-reminder-wrap .container,
+.survey-reminder-wrap .feed {
+  all: unset;
+  display: block;
+  width: 100%;
+}
+
+/* Prevent giant inner spacing */
+.survey-reminder-wrap .card-body,
+.survey-reminder-wrap .card-head,
+.survey-reminder-wrap .footer {
+  padding: 6px 8px !important;
+}
+
+/* Optional: slightly dim it like a preview */
+.survey-reminder-wrap {
+  opacity: 0.95;
+}
