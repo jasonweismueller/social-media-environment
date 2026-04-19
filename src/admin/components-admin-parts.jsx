@@ -1406,17 +1406,11 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       setError("");
       setLoading(true);
 
-      const merged = feedId
-        ? await loadMergedParticipantSurveyRoster({
-            feedId: feedId || "",
-            projectId,
-            labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-          })
-        : await loadSurveyOnlyRoster({
-            surveyId: surveyId || "",
-            projectId,
-            labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-          });
+      const merged = await loadMergedParticipantSurveyRoster({
+        feedId: feedId || "",
+        projectId,
+        labelMode: surveyHeaderMode === "name" ? "variable" : "text",
+      });
 
       const mergedRows = Array.isArray(merged?.rows) ? merged.rows : [];
       if (!mergedRows.length) return;
@@ -1552,7 +1546,7 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
           <button
             className="btn"
             onClick={downloadCsv}
-            disabled={(!feedId && !surveyId) || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
+            disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Download CSV

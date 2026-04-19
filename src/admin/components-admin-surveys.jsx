@@ -19,6 +19,7 @@ import {
   linkSurveyToFeedsOnBackend,
   getLinkedFeedIdsForSurveyFromBackend,
   loadPostsFromBackend,
+  loadSurveyOnlyRoster,
   SURVEY_QUESTION_TYPES,
 } from "../utils";
 
@@ -140,6 +141,50 @@ async function copyTextToClipboard(text) {
   } catch (_) {
     return false;
   }
+}
+
+
+function csvEscape(value) {
+  if (value == null) return "";
+  const s = typeof value === "string" ? value : JSON.stringify(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function buildCsv(rows = [], header = [], labels = []) {
+  const lines = [];
+  if (header.length) {
+    const firstRow = Array.isArray(labels) && labels.length === header.length ? labels : header;
+    lines.push(firstRow.map(csvEscape).join(","));
+  }
+  for (const row of rows) {
+    lines.push(header.map((key) => csvEscape(row?.[key])).join(","));
+  }
+  return lines.join("\n");
+}
+
+function triggerCsvDownload(filename, csv) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeCsvValue(value) {
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.map(normalizeCsvValue).filter(Boolean).join(" | ");
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return String(value);
 }
 
 function firstLinkedFeedIdForLaunch(linkedFeedIds = []) {
@@ -308,7 +353,7 @@ function surveyListButtonStyle(isActive) {
   };
 }
 
-function SectionCard({ title, children, right = null }) {
+function SectionCard({ title, children, right = null, subtitle = "" }) {
   return (
     <div
       style={{
@@ -332,6 +377,11 @@ function SectionCard({ title, children, right = null }) {
         <h4 style={{ margin: 0, fontSize: 16 }}>{title}</h4>
         {right}
       </div>
+      {subtitle ? (
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+          {subtitle}
+        </div>
+      ) : null}
       {children}
     </div>
   );
@@ -353,12 +403,13 @@ function FieldBlock({ label, children, hint = "" }) {
   );
 }
 
-function TextInput({ value, onChange, placeholder, style }) {
+function TextInput({ value, onChange, placeholder, style, readOnly = false }) {
   return (
     <input
       value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange?.(e.target.value)}
       placeholder={placeholder}
+      readOnly={readOnly}
       style={{
         width: "100%",
         height: 42,
@@ -376,8 +427,9 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
   return (
     <textarea
       value={value ?? ""}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange?.(e.target.value)}
       placeholder={placeholder}
+      readOnly={readOnly}
       rows={rows}
       style={{
         width: "100%",
@@ -678,7 +730,7 @@ export function AdminSurveysPanel({
       alert(`Failed to copy ${label}.`);
       return;
     }
-    alert(`${label.charAt(0).toUpperCase() + label.slice(1)} copied.`);
+    setCopiedLinkState(label);
   }
 
   function handleExportSurvey() {
@@ -918,6 +970,51 @@ export function AdminSurveysPanel({
       alert("Failed to link feeds");
     } finally {
       setSavingLinks(false);
+    }
+  }
+
+  async function handleDownloadSurveyOnlyCsv() {
+    if (!survey?.survey_id) {
+      alert("Save the survey first.");
+      return;
+    }
+
+    try {
+      const rows = await loadSurveyOnlyRoster({
+        surveyId: survey.survey_id,
+        projectId,
+        app: studyApp,
+      });
+
+      const safeRows = Array.isArray(rows) ? rows : [];
+      if (!safeRows.length) {
+        alert("No survey responses found yet.");
+        return;
+      }
+
+      const header = Array.from(
+        safeRows.reduce((set, row) => {
+          Object.keys(row || {}).forEach((key) => set.add(key));
+          return set;
+        }, new Set())
+      );
+
+      const normalizedRows = safeRows.map((row) => {
+        const next = {};
+        header.forEach((key) => {
+          next[key] = normalizeCsvValue(row?.[key]);
+        });
+        return next;
+      });
+
+      const csv = buildCsv(normalizedRows, header, header);
+      const filename = `${slugifySurveyName(survey.name || survey.survey_id || "survey")
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s+/g, "_") || "survey"}_responses.csv`;
+      triggerCsvDownload(filename, csv);
+    } catch (e) {
+      console.warn("Failed to download survey-only CSV:", e);
+      alert("Failed to download survey-only CSV.");
     }
   }
 
@@ -1298,8 +1395,27 @@ export function AdminSurveysPanel({
             </SectionCard>
 
             <SectionCard
-              title="Launch links"
-              subtitle="Use the survey-only link to launch directly into the survey, or the feed + survey link to launch a linked feed first."
+              title="Launch links and IDs"
+              subtitle="Copy the survey ID and launch URLs here. Survey-only studies also have their own dedicated CSV download."
+              right={
+                deliveryMode === DELIVERY_MODE_SURVEY_ONLY && survey?.survey_id ? (
+                  <button
+                    type="button"
+                    onClick={handleDownloadSurveyOnlyCsv}
+                    disabled={savingSurvey}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      cursor: savingSurvey ? "not-allowed" : "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {savingSurvey ? "Preparing CSV..." : "Download survey CSV"}
+                  </button>
+                ) : null
+              }
             >
               <FieldBlock label="Survey ID">
                 <div
@@ -1336,34 +1452,36 @@ export function AdminSurveysPanel({
                       fontWeight: 600,
                     }}
                   >
-                    Copy
+                    {copiedLinkState === "survey-only link" ? "Copied" : "Copy"}
                   </button>
                 </div>
               </FieldBlock>
 
-              <FieldBlock
-                label="Feed + survey launch link"
-                hint="This launch uses the first linked feed and then continues into the survey."
-              >
-                <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
-                  <TextInput value={linkedFeedLaunchUrl} readOnly placeholder="Link at least one feed and save the survey to generate this link" />
-                  <button
-                    type="button"
-                    disabled={!linkedFeedLaunchUrl}
-                    onClick={() => handleCopyLaunchLink(linkedFeedLaunchUrl, "feed + survey link")}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #d1d5db",
-                      background: linkedFeedLaunchUrl ? "#fff" : "#f3f4f6",
-                      cursor: linkedFeedLaunchUrl ? "pointer" : "not-allowed",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Copy
-                  </button>
-                </div>
-              </FieldBlock>
+              {deliveryMode !== DELIVERY_MODE_SURVEY_ONLY && (
+                <FieldBlock
+                  label="Feed + survey launch link"
+                  hint="This launch uses the first linked feed and then continues into the survey."
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
+                    <TextInput value={linkedFeedLaunchUrl} readOnly placeholder="Link at least one feed and save the survey to generate this link" />
+                    <button
+                      type="button"
+                      disabled={!linkedFeedLaunchUrl}
+                      onClick={() => handleCopyLaunchLink(linkedFeedLaunchUrl, "feed + survey link")}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #d1d5db",
+                        background: linkedFeedLaunchUrl ? "#fff" : "#f3f4f6",
+                        cursor: linkedFeedLaunchUrl ? "pointer" : "not-allowed",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {copiedLinkState === "feed + survey link" ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                </FieldBlock>
+              )}
             </SectionCard>
 
             <SectionCard title="Pre-feed pages">
@@ -1604,107 +1722,6 @@ export function AdminSurveysPanel({
                 </>
               )}
             </SectionCard>
-
-            {!!survey?.survey_id && (
-              <SectionCard title="Launch links and IDs">
-                <FieldBlock
-                  label="Survey ID"
-                  hint="Use this for direct survey launches and survey-level exports."
-                >
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <TextInput
-                      value={survey.survey_id || ""}
-                      onChange={() => {}}
-                      placeholder=""
-                      style={{ background: "#f9fafb" }}
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const ok = await copyTextToClipboard(survey.survey_id || "");
-                        setCopiedLinkState(ok ? "survey_id" : "");
-                      }}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {copiedLinkState === "survey_id" ? "Copied" : "Copy ID"}
-                    </button>
-                  </div>
-                </FieldBlock>
-
-                <FieldBlock
-                  label="Survey-only launch URL"
-                  hint="Use this when participants should go directly from the preface and participant step to the survey."
-                >
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <TextInput
-                      value={surveyLaunchUrl}
-                      onChange={() => {}}
-                      placeholder=""
-                      style={{ background: "#f9fafb" }}
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const ok = await copyTextToClipboard(surveyLaunchUrl);
-                        setCopiedLinkState(ok ? "survey_url" : "");
-                      }}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {copiedLinkState === "survey_url" ? "Copied" : "Copy link"}
-                    </button>
-                  </div>
-                </FieldBlock>
-
-                <FieldBlock
-                  label="Primary feed launch URL"
-                  hint="Useful for feed-only or feed-then-survey studies. Uses the first linked feed, or the current feed if available."
-                >
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <TextInput
-                      value={selectedFeedLaunchUrl}
-                      onChange={() => {}}
-                      placeholder=""
-                      style={{ background: "#f9fafb" }}
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const ok = await copyTextToClipboard(selectedFeedLaunchUrl);
-                        setCopiedLinkState(ok ? "feed_url" : "");
-                      }}
-                      disabled={!selectedFeedLaunchUrl}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: selectedFeedLaunchUrl ? "pointer" : "not-allowed",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {copiedLinkState === "feed_url" ? "Copied" : "Copy link"}
-                    </button>
-                  </div>
-                </FieldBlock>
-              </SectionCard>
-            )}
 
             <SectionCard
               title="Link to feeds"
