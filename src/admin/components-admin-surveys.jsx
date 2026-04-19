@@ -407,7 +407,7 @@ function TextInput({ value, onChange, placeholder, style, readOnly = false }) {
   return (
     <input
       value={value ?? ""}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={(e) => !readOnly && onChange?.(e.target.value)}
       placeholder={placeholder}
       readOnly={readOnly}
       style={{
@@ -417,13 +417,21 @@ function TextInput({ value, onChange, placeholder, style, readOnly = false }) {
         borderRadius: 8,
         border: "1px solid #d1d5db",
         boxSizing: "border-box",
+        background: readOnly ? "#f9fafb" : "#fff",
         ...style,
       }}
     />
   );
 }
 
-function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
+function TextAreaInput({
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+  style,
+  readOnly = false,
+}) {
   return (
     <textarea
       value={value ?? ""}
@@ -438,12 +446,12 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
         border: "1px solid #d1d5db",
         resize: "vertical",
         boxSizing: "border-box",
+        background: readOnly ? "#f9fafb" : "#fff",
         ...style,
       }}
     />
   );
 }
-
 function SelectInput({ value, onChange, children, style }) {
   return (
     <select
