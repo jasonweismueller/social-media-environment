@@ -2436,3 +2436,8 @@ body.survey-mode .rail-right {
     padding: .68rem 1rem;
   }
 }
+
+.survey-post-reminder-card {
+  max-width: 260px;
+  margin: 0 auto;
+}
