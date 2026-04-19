@@ -1187,10 +1187,7 @@ function PostReminderCard({
       >
         <div
           style={{
-            width: "min(420px, 100%)",
-            transform: "scale(0.5)",
-            transformOrigin: "top center",
-            marginBottom: "-50%",
+            width: "min(260px, 90%)",
           }}
         >
           <div
