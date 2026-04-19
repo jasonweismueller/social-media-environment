@@ -146,89 +146,6 @@ function normalizeFlags(raw) {
   };
 }
 
-function getSurveyIdFromUrl() {
-  try {
-    const q = new URLSearchParams(window.location.search);
-    const hashQ = new URLSearchParams(window.location.hash.split("?")[1] || "");
-    return String(
-      q.get("survey_id") ||
-        q.get("survey") ||
-        hashQ.get("survey_id") ||
-        hashQ.get("survey") ||
-        ""
-    ).trim();
-  } catch {
-    return "";
-  }
-}
-
-function buildBackendQueryUrl(base, params = {}) {
-  const url = new URL(base, window.location.origin);
-  Object.entries(params).forEach(([k, v]) => {
-    if (v == null || v === "") return;
-    url.searchParams.set(k, String(v));
-  });
-  return url.toString();
-}
-
-async function fetchJsonWithTimeout(url, { signal, timeoutMs = 8000 } = {}) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      mode: "cors",
-      cache: "no-store",
-      signal: signal || ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function getSurveyBootFromBackendBySurveyId(
-  surveyId,
-  { projectId = "", signal } = {}
-) {
-  if (!surveyId) return null;
-  const url = buildBackendQueryUrl(`${GS_ENDPOINT}?path=survey_boot&app=${APP}`, {
-    survey_id: surveyId,
-    project_id: projectId || undefined,
-    _ts: Date.now(),
-  });
-  try {
-    const data = await fetchJsonWithTimeout(url, { signal, timeoutMs: 8000 });
-    return data && typeof data === "object" ? data : null;
-  } catch (e) {
-    console.warn("getSurveyBootFromBackendBySurveyId failed:", e);
-    return null;
-  }
-}
-
-async function loadPublicSurveyDefinitionBySurveyId(
-  surveyId,
-  { projectId = "", signal } = {}
-) {
-  if (!surveyId) return null;
-  const url = buildBackendQueryUrl(
-    `${GS_ENDPOINT}?path=survey_definition&app=${APP}`,
-    {
-      survey_id: surveyId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    }
-  );
-  try {
-    const data = await fetchJsonWithTimeout(url, { signal, timeoutMs: 8000 });
-    return data && typeof data === "object" ? data : null;
-  } catch (e) {
-    console.warn("loadPublicSurveyDefinitionBySurveyId failed:", e);
-    return null;
-  }
-}
-
 function useIOSInputZoomFix(
   selector = ".participant-overlay input, .participant-overlay .input, .participant-overlay select, .participant-overlay textarea"
 ) {
@@ -314,45 +231,60 @@ function getQueryParamEverywhere(key) {
   return String(q.get(key) || hashQ.get(key) || "").trim();
 }
 
-function clearLegacyAppCaches() {
-  if (typeof window === "undefined" || !window.localStorage) return;
-
-  try {
-    const keysToDelete = [];
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i);
-      if (!key) continue;
-      if (key.startsWith("posts::") || key.startsWith("survey_boot::")) {
-        keysToDelete.push(key);
-      }
-    }
-    keysToDelete.forEach((key) => {
-      try {
-        window.localStorage.removeItem(key);
-      } catch {}
-    });
-  } catch {}
-}
-
 function getSurveyBootCacheKey(projectId, feedId) {
   return `survey_boot::${projectId || ""}::${feedId || ""}`;
 }
 
-function readSurveyBootCache() {
-  return null;
+function readSurveyBootCache(projectId, feedId) {
+  try {
+    const raw = localStorage.getItem(getSurveyBootCacheKey(projectId, feedId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
-function writeSurveyBootCache() {}
+function writeSurveyBootCache(projectId, feedId, value) {
+  try {
+    localStorage.setItem(
+      getSurveyBootCacheKey(projectId, feedId),
+      JSON.stringify({
+        ...(value || {}),
+        _cached_at: Date.now(),
+      })
+    );
+  } catch {}
+}
 
 function getPostsCacheKey(projectId, feedId) {
   return `posts::${projectId || ""}::${feedId || ""}`;
 }
 
-function readPostsCache() {
-  return null;
+function readPostsCache(projectId, feedId) {
+  try {
+    const raw = localStorage.getItem(getPostsCacheKey(projectId, feedId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
-function writePostsCache() {}
+function writePostsCache(projectId, feedId, posts) {
+  try {
+    localStorage.setItem(
+      getPostsCacheKey(projectId, feedId),
+      JSON.stringify(posts)
+    );
+    localStorage.setItem(
+      `${getPostsCacheKey(projectId, feedId)}::meta`,
+      JSON.stringify({ t: Date.now() })
+    );
+  } catch {}
+}
 
 function firstNonEmptyString(...values) {
   for (const value of values) {
@@ -360,6 +292,86 @@ function firstNonEmptyString(...values) {
     if (s) return s;
   }
   return "";
+}
+
+function getReminderTargetsFromSurvey(survey, fallbackFeedId = "") {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const out = [];
+  const seen = new Set();
+
+  pages.forEach((page) => {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+    questions.forEach((question) => {
+      if (String(question?.type || "").trim().toLowerCase() !== "post_reminder") {
+        return;
+      }
+
+      const postId = String(
+        question?.post_id ?? question?.meta?.post_id ?? ""
+      ).trim();
+      const postFeedId = String(
+        question?.post_feed_id ??
+          question?.meta?.post_feed_id ??
+          fallbackFeedId ??
+          ""
+      ).trim();
+
+      if (!postId || !postFeedId) return;
+
+      const key = `${postFeedId}::${postId}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ postId, postFeedId });
+    });
+  });
+
+  return out;
+}
+
+function mergeUniquePosts(existing = [], incoming = []) {
+  const byId = new Map();
+
+  const add = (post) => {
+    if (!post || typeof post !== "object") return;
+    const id = String(post?.id ?? post?.post_id ?? "").trim();
+    if (!id) return;
+    byId.set(id, post);
+  };
+
+  (Array.isArray(existing) ? existing : []).forEach(add);
+  (Array.isArray(incoming) ? incoming : []).forEach(add);
+
+  return Array.from(byId.values());
+}
+
+async function fetchReminderPostById(postId, { feedId = "", projectId = "", signal } = {}) {
+  if (!postId || !feedId) return null;
+
+  const params = new URLSearchParams({
+    path: "post_by_id",
+    app: APP,
+    post_id: String(postId),
+    feed_id: String(feedId),
+    _ts: String(Date.now()),
+  });
+
+  if (projectId) {
+    params.set("project_id", String(projectId));
+  }
+
+  const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, {
+    method: "GET",
+    mode: "cors",
+    cache: "no-store",
+    signal,
+  });
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data && typeof data === "object" ? data : null;
 }
 
 function getSurveyCompletionConfig(survey) {
@@ -584,10 +596,6 @@ export default function App() {
     !onAdmin ? getFeedIdFromUrl() : null
   );
 
-  const [activeSurveyId, setActiveSurveyId] = useState(
-    !onAdmin ? getSurveyIdFromUrl() : ""
-  );
-
   const [posts, setPosts] = useState([]);
   const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
@@ -611,8 +619,6 @@ export default function App() {
     String(surveyBoot?.delivery_mode || "feed_then_survey") === "survey_only";
 
   const requiresFeedStage = !isSurveyOnlyMode;
-  const isDirectSurveyLaunch = !onAdmin && !!String(activeSurveyId || "").trim();
-  const effectiveSurveyId = String(activeSurveyId || surveyBoot?.survey_id || "").trim();
 
   const completionConfig = useMemo(
     () => getSurveyCompletionConfig(linkedSurvey),
@@ -706,10 +712,6 @@ export default function App() {
   }, [projectId]);
 
   useEffect(() => () => clearTimeout(minDelayTimerRef.current), []);
-
-  useEffect(() => {
-    clearLegacyAppCaches();
-  }, []);
 
   useEffect(() => {
     dbg("state: phases", {
@@ -924,7 +926,7 @@ export default function App() {
   const startBoot = useCallback(async () => {
     if (onAdmin) return;
 
-    const t = timerStart("startBoot", { projectId, activeSurveyId });
+    const t = timerStart("startBoot", { projectId });
 
     bootAbortRef.current?.abort?.();
     const ctrl = new AbortController();
@@ -958,33 +960,6 @@ export default function App() {
     setMinDelayDone(true);
 
     try {
-      if (isDirectSurveyLaunch) {
-        const boot = await getSurveyBootFromBackendBySurveyId(activeSurveyId, {
-          projectId: projectId || undefined,
-          signal: ctrl.signal,
-        });
-
-        if (ctrl.signal.aborted) {
-          t.end({ aborted: true });
-          return;
-        }
-
-        if (!boot || !boot.has_survey) {
-          throw new Error("Failed to load the survey.");
-        }
-
-        setSurveyBoot({
-          ...boot,
-          has_survey: true,
-          survey_id: String(boot.survey_id || activeSurveyId || ""),
-          trigger: String(boot.trigger || "after_feed_submit"),
-          delivery_mode: String(boot.delivery_mode || "survey_only"),
-        });
-        setBootPhase("ready");
-        t.end({ surveyLaunch: true, survey_id: boot.survey_id || activeSurveyId });
-        return;
-      }
-
       const chosen = await resolveChosenFeed(ctrl.signal);
 
       if (ctrl.signal.aborted) {
@@ -1003,7 +978,15 @@ export default function App() {
         setFeedIdInUrl(chosenFeedId, { replace: true });
       } catch {}
 
-      let nextBoot = {
+      const cachedBoot = readSurveyBootCache(projectId, chosenFeedId);
+
+      dbg("boot cache", {
+        projectId,
+        feedId: chosenFeedId,
+        cachedBoot,
+      });
+
+      let nextBoot = cachedBoot || {
         has_survey: false,
         survey_id: "",
         has_preface: false,
@@ -1086,7 +1069,7 @@ export default function App() {
           writeSurveyBootCache(projectId, chosenFeedId, nextBoot);
         }
       } catch (e) {
-        dbgWarn("survey boot fetch failed, using default boot", e);
+        dbgWarn("survey boot fetch failed, using cached/default boot", e);
       }
 
       setSurveyBoot(nextBoot);
@@ -1109,19 +1092,19 @@ export default function App() {
         bootAbortRef.current = null;
       }
     }
-  }, [onAdmin, projectId, resolveChosenFeed, activeSurveyId, isDirectSurveyLaunch]);
+  }, [onAdmin, projectId, resolveChosenFeed]);
 
   const ensureSurveyLoaded = useCallback(async () => {
     if (onAdmin) {
       dbg("ensureSurveyLoaded skipped", { reason: "onAdmin" });
       return null;
     }
-    if (!surveyBoot?.has_survey && !effectiveSurveyId) {
-      dbg("ensureSurveyLoaded skipped", { reason: "no_survey_context" });
+    if (!activeFeedId) {
+      dbg("ensureSurveyLoaded skipped", { reason: "no_activeFeedId" });
       return null;
     }
-    if (!isDirectSurveyLaunch && !activeFeedId) {
-      dbg("ensureSurveyLoaded skipped", { reason: "no_activeFeedId" });
+    if (!surveyBoot?.has_survey) {
+      dbg("ensureSurveyLoaded skipped", { reason: "surveyBoot_has_no_survey" });
       return null;
     }
     if (linkedSurvey) {
@@ -1132,8 +1115,6 @@ export default function App() {
     const t = timerStart("ensureSurveyLoaded", {
       projectId,
       activeFeedId,
-      effectiveSurveyId,
-      isDirectSurveyLaunch,
       surveyBoot,
     });
 
@@ -1145,16 +1126,11 @@ export default function App() {
     setSurveyErrorMsg("");
 
     try {
-      const surveyDef = isDirectSurveyLaunch
-        ? await loadPublicSurveyDefinitionBySurveyId(effectiveSurveyId, {
-            projectId: projectId || undefined,
-            signal: ctrl.signal,
-          }).catch(() => null)
-        : await getSurveyForFeedFromBackend(activeFeedId, {
-            projectId: projectId || undefined,
-            signal: ctrl.signal,
-            force: true,
-          }).catch(() => null);
+      const surveyDef = await getSurveyForFeedFromBackend(activeFeedId, {
+        projectId: projectId || undefined,
+        signal: ctrl.signal,
+        force: true,
+      }).catch(() => null);
 
       if (ctrl.signal.aborted) {
         t.end({ aborted: true });
@@ -1164,15 +1140,6 @@ export default function App() {
       const normalizedSurvey = surveyDef
         ? normalizeFrontendSurvey(surveyDef)
         : null;
-
-      if (
-        isDirectSurveyLaunch &&
-        !activeFeedId &&
-        Array.isArray(normalizedSurvey?.linked_feed_ids) &&
-        normalizedSurvey.linked_feed_ids.length
-      ) {
-        setActiveFeedId(String(normalizedSurvey.linked_feed_ids[0] || ""));
-      }
 
       setLinkedSurvey(normalizedSurvey);
       setSurveyResponses(
@@ -1196,7 +1163,7 @@ export default function App() {
       }
       dbgWarn("Survey load failed:", e);
       setSurveyPhase("error");
-      setSurveyErrorMsg(e?.message || "Failed to load the survey.");
+      setSurveyErrorMsg("Failed to load the survey.");
       t.fail(e);
       return null;
     } finally {
@@ -1204,41 +1171,94 @@ export default function App() {
         surveyAbortRef.current = null;
       }
     }
-  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId, effectiveSurveyId, isDirectSurveyLaunch]);
+  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId]);
 
-  const preloadSurveyOnlyAssets = useCallback(async () => {
+  const preloadSurveyOnlyAssets = useCallback(async (surveyDef = null) => {
+    if (onAdmin) return true;
+
     const t = timerStart("preloadSurveyOnlyAssets", {
       projectId,
       activeFeedId,
-      isDirectSurveyLaunch,
     });
 
-    try {
-      setSurveyOnlyPrereqPhase("loading");
-      setContentPhase("loading");
+    contentAbortRef.current?.abort?.();
+    const ctrl = new AbortController();
+    contentAbortRef.current = ctrl;
 
-      // Survey-only mode should not hidden-load the full feed.
-      // Post reminders can be lazy-loaded later via post_by_id.
+    setSurveyOnlyPrereqPhase("loading");
+    setContentPhase("loading");
+
+    try {
+      const surveyToUse = surveyDef || linkedSurvey || null;
+      const reminderTargets = getReminderTargetsFromSurvey(
+        surveyToUse,
+        activeFeedId || ""
+      );
+
+      const reminderPosts = (
+        await Promise.all(
+          reminderTargets.map(async ({ postId, postFeedId }) => {
+            try {
+              const post = await fetchReminderPostById(postId, {
+                feedId: postFeedId,
+                projectId,
+                signal: ctrl.signal,
+              });
+              return post
+                ? {
+                    ...post,
+                    _feed_id: postFeedId,
+                  }
+                : null;
+            } catch (err) {
+              dbgWarn("survey-only reminder preload failed", {
+                postId,
+                postFeedId,
+                error: String(err?.message || err),
+              });
+              return null;
+            }
+          })
+        )
+      ).filter(Boolean);
+
+      if (ctrl.signal.aborted) {
+        t.end({ aborted: true });
+        return false;
+      }
+
+      setPosts((prev) => mergeUniquePosts(prev, reminderPosts));
       setFlagsReady(true);
+      setAvatarPools(null);
       setAssetsReady(true);
       setMinDelayDone(true);
+      setFeedPhase("ready");
       setContentPhase("ready");
       setSurveyOnlyPrereqPhase("ready");
 
-      t.end({ skippedHiddenFeedPreload: true });
+      t.end({
+        reminderTargets: reminderTargets.length,
+        reminderPostsLoaded: reminderPosts.length,
+      });
+
       return true;
     } catch (e) {
       if (e?.name === "AbortError") {
         t.end({ aborted: true });
         return false;
       }
-      dbgWarn("Survey-only preparation failed:", e);
+
+      dbgWarn("Survey-only hidden preload failed:", e);
       setSurveyOnlyPrereqPhase("error");
       setContentPhase("error");
       t.fail(e);
       return false;
+    } finally {
+      if (contentAbortRef.current === ctrl) {
+        contentAbortRef.current = null;
+      }
     }
-  }, [projectId, activeFeedId, isDirectSurveyLaunch]);
+  }, [onAdmin, activeFeedId, projectId, linkedSurvey]);
 
   const loadStudyContent = useCallback(async () => {
     if (onAdmin || !activeFeedId) return;
@@ -1262,17 +1282,26 @@ export default function App() {
     setAssetsReady(false);
 
     try {
+      const cachedPosts = readPostsCache(projectId, activeFeedId);
+      dbg("posts cache", {
+        projectId,
+        activeFeedId,
+        cachedPostsCount: cachedPosts?.length || 0,
+      });
+
       const postsPromise = (async () => {
         const tp = timerStart("content.posts", {
+          cached: !!cachedPosts,
           activeFeedId,
-          source: "backend_only",
         });
         try {
-          const result = await loadPostsFromBackend(activeFeedId, {
-            force: true,
-            signal: ctrl.signal,
-            projectId,
-          });
+          const result = cachedPosts
+            ? cachedPosts
+            : await loadPostsFromBackend(activeFeedId, {
+                force: true,
+                signal: ctrl.signal,
+                projectId,
+              });
           tp.end({ count: Array.isArray(result) ? result.length : 0 });
           return result;
         } catch (e) {
@@ -1320,6 +1349,10 @@ export default function App() {
       setPosts(arr);
       setFlags(nextFlags);
       setFlagsReady(true);
+
+      if (!cachedPosts && Array.isArray(arr) && arr.length > 0) {
+        writePostsCache(projectId, activeFeedId, arr);
+      }
 
       if (!surveyBoot?.has_survey) {
         setLinkedSurvey(null);
@@ -1375,31 +1408,21 @@ export default function App() {
   useEffect(() => {
     const onUrlChange = () => {
       const fid = getFeedIdFromUrl();
-      const sid = getSurveyIdFromUrl();
       const pid = getProjectIdUtil();
 
       dbg("URL changed", {
         fid,
-        sid,
         pid,
         activeFeedId,
-        activeSurveyId,
       });
 
       if (pid) {
         setProjectIdUtil(pid, { persist: true, updateUrl: false });
       }
 
-      const feedChanged = String(fid || "") !== String(activeFeedId || "");
-      const surveyChanged = String(sid || "") !== String(activeSurveyId || "");
-
-      if (feedChanged) {
-        setActiveFeedId(fid || null);
-      }
-      if (surveyChanged) {
-        setActiveSurveyId(sid || "");
-      }
-      if (feedChanged || surveyChanged) {
+      if (fid && fid !== activeFeedId) {
+        setFeedIdInUrl(fid, { replace: true });
+        setActiveFeedId(fid);
         startBoot();
       }
     };
@@ -1412,7 +1435,7 @@ export default function App() {
       window.removeEventListener("hashchange", onUrlChange);
       window.removeEventListener("popstate", onUrlChange);
     };
-  }, [activeFeedId, activeSurveyId, startBoot]);
+  }, [activeFeedId, startBoot]);
 
   useEffect(() => {
     if (onAdmin && hasAdminSession()) setAdminAuthed(true);
@@ -1427,112 +1450,12 @@ export default function App() {
     !!surveyBoot?.has_preface &&
     !prefaceCompleted;
 
-  const shouldSkipParticipantOverlay =
-    !onAdmin &&
-    bootPhase === "ready" &&
-    !!surveyBoot?.has_survey;
-
   const shouldShowParticipantOverlay =
-    !onAdmin &&
-    bootPhase === "ready" &&
-    !hasEntered &&
-    !prefaceCompleted &&
-    !shouldShowPreface &&
-    !shouldSkipParticipantOverlay;
-
-  useEffect(() => {
-    if (!shouldSkipParticipantOverlay || hasEntered || shouldShowPreface) return;
-
-    const id = prefilledParticipantId || "";
-    const ts = now();
-
-    if (isSurveyOnlyMode) {
-      setSurveyPhase((prev) =>
-        prev === "ready" || prev === "submitting" || prev === "error"
-          ? prev
-          : "loading"
-      );
-      setSurveyOnlyPrereqPhase((prev) =>
-        prev === "ready" || prev === "error" ? prev : "loading"
-      );
-      setContentPhase((prev) =>
-        prev === "ready" || prev === "error" ? prev : "loading"
-      );
-    } else {
-      setContentPhase("loading");
-      setFeedPhase("loading");
-      setFeedError("");
-      setFlagsReady(false);
-      setAssetsReady(false);
-    }
-
-    setParticipantId(id);
-    setHasEntered(true);
-    enterTsRef.current = ts;
-    lastNonScrollTsRef.current = null;
-
-    log("participant_id_auto_entered", {
-      id,
-      feed_id: activeFeedId || null,
-      project_id: projectId || null,
-      reason: "survey_present_no_overlay",
-    });
-
-    const vp = document.querySelector('meta[name="viewport"]');
-    if (vp) {
-      vp.setAttribute(
-        "content",
-        "width=device-width, initial-scale=1, viewport-fit=cover"
-      );
-    }
-
-    requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      window.dispatchEvent(new Event("resize"));
-    });
-
-    let cancelled = false;
-
-    (async () => {
-      if (isSurveyOnlyMode) {
-        const [loadedSurvey, preloadOk] = await Promise.all([
-          ensureSurveyLoaded(),
-          preloadSurveyOnlyAssets(),
-        ]);
-
-        if (cancelled) return;
-
-        if (!loadedSurvey) {
-          setSurveyPhase("error");
-          setSurveyErrorMsg("Failed to load the survey.");
-        } else if (!preloadOk) {
-          setSurveyPhase("error");
-          setSurveyErrorMsg("Failed to prepare the survey content.");
-        } else {
-          scrollSurveyViewToTop();
-        }
-      } else {
-        await loadStudyContent();
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    shouldSkipParticipantOverlay,
-    hasEntered,
-    shouldShowPreface,
-    prefilledParticipantId,
-    isSurveyOnlyMode,
-    activeFeedId,
-    projectId,
-    ensureSurveyLoaded,
-    preloadSurveyOnlyAssets,
-    loadStudyContent,
-    log,
-    scrollSurveyViewToTop,
-  ]);
+  !onAdmin &&
+  bootPhase === "ready" &&
+  !hasEntered &&
+  !prefaceCompleted &&
+  !shouldShowPreface;
 
   const surveyOnlyReady =
     isSurveyOnlyMode &&
@@ -2219,19 +2142,6 @@ export default function App() {
     requiresFeedStage,
   ]);
 
-  const activeLoadingOverlay =
-    loadingStudyOverlay ? { title: "Loading study…", subtitle: "Checking the study setup" } :
-    showSurveyOnlyLoadingOverlay ? { title: "Loading questions…", subtitle: "Preparing the survey" } :
-    preparingFeedOverlay ? {
-      title: "Preparing your feed…",
-      subtitle:
-        flags.randomize_avatars || flags.randomize_images
-          ? "Almost ready..."
-          : "Loading the feed.",
-    } :
-    loadingNextStageOverlay ? { title: "Loading questions…", subtitle: "Preparing the next stage" } :
-    null;
-
   return (
     <Router>
       <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
@@ -2285,7 +2195,7 @@ export default function App() {
                     <SurveyPrefaceFlow
                       survey={surveyBoot}
                       participantDisplayId={participantDisplayId}
-                      onComplete={() => {
+                      onComplete={async () => {
                         dbg("preface onComplete fired", {
                           isSurveyOnlyMode,
                           surveyPhaseBefore: surveyPhase,
@@ -2294,7 +2204,33 @@ export default function App() {
                         });
 
                         setPrefaceCompleted(true);
-                        scrollSurveyViewToTop();
+setHasEntered(true);
+
+                        if (isSurveyOnlyMode) {
+                          const loadedSurvey = await ensureSurveyLoaded();
+                          const preloadOk = loadedSurvey
+                            ? await preloadSurveyOnlyAssets(loadedSurvey)
+                            : false;
+
+                          dbg("preface onComplete resolved", {
+                            loadedSurvey: !!loadedSurvey,
+                            preloadOk,
+                          });
+
+                          if (!loadedSurvey) {
+                            setSurveyPhase("error");
+                            setSurveyErrorMsg("Failed to load the survey.");
+                          } else if (!preloadOk) {
+                            setSurveyPhase("error");
+                            setSurveyErrorMsg(
+                              "Failed to prepare the survey content."
+                            );
+                          } else {
+                            scrollSurveyViewToTop();
+                          }
+                        } else {
+                          scrollSurveyViewToTop();
+                        }
                       }}
                     />
                   ) : (
@@ -2304,6 +2240,11 @@ export default function App() {
                     />
                   )}
                 </div>
+              ) : showSurveyOnlyLoadingOverlay ? (
+                <LoadingOverlay
+                  title="Loading questions…"
+                  subtitle="Preparing the survey"
+                />
               ) : requiresFeedStage ? (
                 <PageWithRails>
                   <div
@@ -2535,10 +2476,10 @@ export default function App() {
         {toast && <div className="toast">{toast}</div>}
       </div>
 
-      {activeLoadingOverlay && (
+      {loadingStudyOverlay && (
         <LoadingOverlay
-          title={activeLoadingOverlay.title}
-          subtitle={activeLoadingOverlay.subtitle}
+          title="Loading study…"
+          subtitle="Checking the study setup"
         />
       )}
 
@@ -2583,27 +2524,6 @@ export default function App() {
             });
 
             const ts = now();
-
-            if (isSurveyOnlyMode) {
-              setSurveyPhase((prev) =>
-                prev === "ready" || prev === "submitting" || prev === "error"
-                  ? prev
-                  : "loading"
-              );
-              setSurveyOnlyPrereqPhase((prev) =>
-                prev === "ready" || prev === "error" ? prev : "loading"
-              );
-              setContentPhase((prev) =>
-                prev === "ready" || prev === "error" ? prev : "loading"
-              );
-            } else {
-              setContentPhase("loading");
-              setFeedPhase("loading");
-              setFeedError("");
-              setFlagsReady(false);
-              setAssetsReady(false);
-            }
-
             setParticipantId(id);
             setHasEntered(true);
             enterTsRef.current = ts;
@@ -2636,10 +2556,10 @@ export default function App() {
             });
 
             if (isSurveyOnlyMode) {
-              const [loadedSurvey, preloadOk] = await Promise.all([
-                ensureSurveyLoaded(),
-                preloadSurveyOnlyAssets(),
-              ]);
+              const loadedSurvey = await ensureSurveyLoaded();
+              const preloadOk = loadedSurvey
+                ? await preloadSurveyOnlyAssets(loadedSurvey)
+                : false;
 
               dbg("participantOverlaySubmit resolved", {
                 loadedSurvey: !!loadedSurvey,
@@ -2664,6 +2584,23 @@ export default function App() {
         />
       )}
 
+      {preparingFeedOverlay && (
+        <LoadingOverlay
+          title="Preparing your feed…"
+          subtitle={
+            flags.randomize_avatars || flags.randomize_images
+              ? "Almost ready..."
+              : "Loading the feed."
+          }
+        />
+      )}
+
+      {loadingNextStageOverlay && (
+        <LoadingOverlay
+          title="Loading questions…"
+          subtitle="Preparing the next stage"
+        />
+      )}
 
       {!onAdmin &&
         requiresFeedStage &&
