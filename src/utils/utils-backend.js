@@ -932,29 +932,32 @@ export async function loadSurveyOnlyRoster({
     };
   }
 
-  const [surveyDefinition, surveyResponses] = await Promise.all([
-    loadPublicSurveyDefinition(effectiveSurveyId, {
-      projectId,
-      signal,
-      force: !!forceSurveyDefinition,
-    }),
-    loadSurveyResponsesBySurveyRoster(effectiveSurveyId, {
-      projectId,
-      signal,
-    }),
-  ]);
+  const [surveyDefinition, allSurveyResponses] = await Promise.all([
+  loadPublicSurveyDefinition(effectiveSurveyId, {
+    projectId,
+    signal,
+    force: !!forceSurveyDefinition,
+  }),
+  loadSurveyResponsesBySurveyRoster(effectiveSurveyId, {
+    projectId,
+    signal,
+  }),
+]);
 
-  const participantRows = (Array.isArray(surveyResponses) ? surveyResponses : []).map((row) => ({
-    session_id: row?.session_id ?? "",
-    participant_id: row?.participant_id ?? "",
-    ip_address: row?.ip_address ?? "",
-    prolific_pid: row?.prolific_pid ?? "",
-    entered_at_iso: row?.entered_at_iso ?? row?.submitted_at_iso ?? "",
-    submitted_at_iso: row?.submitted_at_iso ?? "",
-    feed_id: row?.feed_id ?? "SURVEY_ONLY",
-    survey_id: row?.survey_id ?? effectiveSurveyId,
-    project_id: row?.project_id ?? projectId ?? "",
-  }));
+const surveyResponses = (Array.isArray(allSurveyResponses) ? allSurveyResponses : [])
+  .filter((row) => String(row?.feed_id ?? "SURVEY_ONLY").trim() === "SURVEY_ONLY");
+
+const participantRows = surveyResponses.map((row) => ({
+  session_id: row?.session_id ?? "",
+  participant_id: row?.participant_id ?? "",
+  ip_address: row?.ip_address ?? "",
+  prolific_pid: row?.prolific_pid ?? "",
+  entered_at_iso: row?.entered_at_iso ?? row?.submitted_at_iso ?? "",
+  submitted_at_iso: row?.submitted_at_iso ?? "",
+  feed_id: "SURVEY_ONLY",
+  survey_id: row?.survey_id ?? effectiveSurveyId,
+  project_id: row?.project_id ?? projectId ?? "",
+}));
 
   const merged = mergeParticipantRowsWithSurveyRows({
     participantRows,
