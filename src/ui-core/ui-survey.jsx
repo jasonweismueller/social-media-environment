@@ -584,41 +584,40 @@ function PostReminderCard({
   const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   if (!post) {
-      return (
-    <div className="survey-post-reminder-block">
-      {question?.text ? (
-        <div
-          className="survey-post-reminder-intro"
-          dangerouslySetInnerHTML={{ __html: question.text || "" }}
-        />
-      ) : null}
+    return (
+      <div className="survey-post-reminder-block">
+        {question?.text ? (
+          <div
+            className="survey-post-reminder-intro"
+            dangerouslySetInnerHTML={{ __html: question.text || "" }}
+          />
+        ) : null}
 
-      <div
-        className="survey-post-reminder-card"
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 16,
-          background: "#fff",
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          maxWidth: 420,
-          margin: "0 auto",
-        }}
-      >
-        <PostCard
-          post={post}
-          onAction={() => {}}
-          disabled={true}
-          registerViewRef={() => undefined}
-          app={app}
-          projectId={resolvedProjectId}
-          feedId={reminderFeedId || ""}
-          runSeed={participantSeed || "survey-reminder-preview"}
-          flags={flags || {}}
-        />
+        <div
+          className="survey-post-reminder-card"
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 16,
+            background: "#fff",
+            overflow: "hidden",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            padding: 14,
+            color: "#6b7280",
+            fontSize: 14,
+          }}
+        >
+          {lazyStatus === "loading"
+            ? (fallbackLabel
+                ? `Loading reminder post: ${fallbackLabel}...`
+                : "Loading reminder post...")
+            : lazyError
+              ? lazyError
+              : fallbackLabel
+                ? `Reminder post selected: ${fallbackLabel}`
+                : "No reminder post has been selected for this survey item yet."}
+        </div>
       </div>
-    </div>
-  );
+    );
   }
 
   return (
