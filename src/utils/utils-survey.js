@@ -56,6 +56,12 @@ function sanitizeStructuredValue(value, fallback = "") {
   return cleaned || fallback;
 }
 
+function normalizePageDelaySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n);
+}
+
 function makeSequentialValue(prefix, index) {
   return `${prefix}_${index + 1}`;
 }
@@ -342,6 +348,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     post_id: String(overrides.post_id ?? ""),
     post_label: String(overrides.post_label ?? ""),
     post_feed_id: String(overrides.post_feed_id ?? ""),
+    next_delay_seconds: normalizePageDelaySeconds(overrides.next_delay_seconds),
     meta: asObject(overrides.meta),
   };
 }
@@ -455,6 +462,7 @@ export function normalizeQuestion(raw = {}) {
     post_id: postId,
     post_label: postLabel,
     post_feed_id: postFeedId,
+    next_delay_seconds: normalizePageDelaySeconds(raw.next_delay_seconds),
     meta: {
       ...meta,
       ...(type === SURVEY_QUESTION_TYPES.POST_REMINDER
@@ -594,6 +602,7 @@ export function frontendQuestionToBackend(question = {}) {
       return {
         ...base,
         required: false,
+        next_delay_seconds: normalizePageDelaySeconds(q.next_delay_seconds),
       };
 
     case SURVEY_QUESTION_TYPES.TEXT:
@@ -615,6 +624,7 @@ export function makePage(overrides = {}) {
     id: safeOverrides.id || `page_${uid()}`,
     title: String(safeOverrides.title || ""),
     description: String(safeOverrides.description || ""),
+    next_delay_seconds: normalizePageDelaySeconds(safeOverrides.next_delay_seconds),
     questions: Array.isArray(safeOverrides.questions)
       ? safeOverrides.questions
           .map(normalizeQuestion)
@@ -630,6 +640,7 @@ export function normalizePage(raw = {}) {
     id: safeRaw.id || `page_${uid()}`,
     title: String(safeRaw.title || ""),
     description: String(safeRaw.description || ""),
+    next_delay_seconds: normalizePageDelaySeconds(safeRaw.next_delay_seconds),
     questions: Array.isArray(safeRaw.questions)
       ? safeRaw.questions
           .map(normalizeQuestion)
@@ -649,12 +660,13 @@ function splitQuestionsIntoPages(questions = []) {
   let currentPageDescription = "";
   let pageCounter = 1;
 
-  const pushPage = () => {
+  const pushPage = (nextDelaySeconds = 0) => {
     pages.push(
       makePage({
         id: `page_${pageCounter}`,
         title: currentPageTitle,
         description: currentPageDescription,
+        next_delay_seconds: normalizePageDelaySeconds(nextDelaySeconds),
         questions: currentQuestions,
       })
     );
@@ -666,7 +678,7 @@ function splitQuestionsIntoPages(questions = []) {
 
   normalizedQuestions.forEach((question) => {
     if (isPageBreakQuestion(question)) {
-      pushPage();
+      pushPage(question?.next_delay_seconds);
       currentPageTitle = String(question.text || "");
       currentPageDescription = String(question.description || "");
       return;
@@ -674,7 +686,7 @@ function splitQuestionsIntoPages(questions = []) {
     currentQuestions.push(question);
   });
 
-  pushPage();
+  pushPage(0);
 
   return pages.filter((page, idx) => {
     if ((page.questions || []).length > 0) return true;
@@ -718,6 +730,10 @@ function coerceQuestionsIntoPages(raw = {}) {
               splitIdx === 0
                 ? String(page.description || splitPage.description || "")
                 : String(splitPage.description || ""),
+            next_delay_seconds:
+              splitIdx === 0
+                ? normalizePageDelaySeconds(page.next_delay_seconds)
+                : normalizePageDelaySeconds(splitPage.next_delay_seconds),
             questions: splitPage.questions || [],
           })
         );
@@ -727,7 +743,7 @@ function coerceQuestionsIntoPages(raw = {}) {
 
     return rebuiltPages.length
       ? rebuiltPages
-      : [makePage({ id: "page_1", title: "", description: "", questions: [] })];
+      : [makePage({ id: "page_1", title: "", description: "", next_delay_seconds: 0, questions: [] })];
   }
 
   const legacyQuestions = Array.isArray(safeRaw.questions) ? safeRaw.questions : [];
@@ -742,6 +758,7 @@ export function frontendPagesToBackend(pages = []) {
       id: pg.id || `page_${pIdx + 1}`,
       title: pg.title || "",
       description: pg.description || "",
+      next_delay_seconds: normalizePageDelaySeconds(pg.next_delay_seconds),
       questions: (pg.questions || []).map(frontendQuestionToBackend),
     };
   });
@@ -1039,6 +1056,7 @@ export function makeQuestionByType(type) {
         label: "Next page",
         description: "",
         required: false,
+        next_delay_seconds: 0,
       });
 
     case SURVEY_QUESTION_TYPES.TEXT:
