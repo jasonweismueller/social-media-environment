@@ -46,6 +46,12 @@ function scrollSurveyPageToTop() {
   setTimeout(run, 80);
 }
 
+function normalizePageDelaySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n);
+}
+
 function isRenderableQuestion(question) {
   return question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK;
 }
@@ -1105,6 +1111,7 @@ export function SurveyScreen({
   submitting,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [delayRemaining, setDelayRemaining] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
 
   const visiblePages = useMemo(() => {
@@ -1124,11 +1131,12 @@ export function SurveyScreen({
           );
 
         return {
-          id: page?.id || `page_${pageIdx + 1}`,
-          title: page?.title || "",
-          description: page?.description || "",
-          questions: visibleQuestions,
-        };
+  id: page?.id || `page_${pageIdx + 1}`,
+  title: page?.title || "",
+  description: page?.description || "",
+  next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
+  questions: visibleQuestions,
+};
       })
       .filter((page) => page.questions.length > 0);
   }, [survey, responses, participantSeed, feedId]);
@@ -1147,13 +1155,50 @@ export function SurveyScreen({
     }
   }, [visiblePages, currentPageIndex]);
 
+  const currentPage = visiblePages[currentPageIndex] || null;
+  const isLastPage = currentPageIndex === visiblePages.length - 1;
+  const isFirstPage = currentPageIndex === 0;
+
+  const currentPageDelaySeconds = normalizePageDelaySeconds(
+  currentPage?.next_delay_seconds
+);
+const isNextDelayed =
+  !isLastPage && currentPageDelaySeconds > 0 && delayRemaining > 0;
+
+
   useLayoutEffect(() => {
     scrollSurveyPageToTop();
   }, [currentPageIndex]);
 
-  const currentPage = visiblePages[currentPageIndex] || null;
-  const isLastPage = currentPageIndex === visiblePages.length - 1;
-  const isFirstPage = currentPageIndex === 0;
+  useEffect(() => {
+  if (!currentPage || isLastPage) {
+    setDelayRemaining(0);
+    return;
+  }
+
+  const delaySeconds = normalizePageDelaySeconds(currentPage?.next_delay_seconds);
+
+  if (delaySeconds <= 0) {
+    setDelayRemaining(0);
+    return;
+  }
+
+  setDelayRemaining(delaySeconds);
+
+  const intervalId = window.setInterval(() => {
+    setDelayRemaining((prev) => {
+      if (prev <= 1) {
+        window.clearInterval(intervalId);
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => window.clearInterval(intervalId);
+}, [currentPageIndex, currentPage, isLastPage]);
+
+  
 
   const questionNumberOffset = useMemo(() => {
     let count = 0;
@@ -1200,25 +1245,30 @@ export function SurveyScreen({
     };
   }, [currentPage, responses]);
 
-  const goNext = useCallback(() => {
-    onClearBanner?.();
-    const validation = validateCurrentPage();
+ const goNext = useCallback(() => {
+  if (isNextDelayed) {
+    return;
+  }
 
-    if (!validation.ok) {
-      onPageValidationFail?.(
-        validation.errors,
-        "Please complete the highlighted questions on this page."
-      );
-      return;
-    }
+  onClearBanner?.();
+  const validation = validateCurrentPage();
 
-    setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
-  }, [
-    onClearBanner,
-    validateCurrentPage,
-    onPageValidationFail,
-    visiblePages.length,
-  ]);
+  if (!validation.ok) {
+    onPageValidationFail?.(
+      validation.errors,
+      "Please complete the highlighted questions on this page."
+    );
+    return;
+  }
+
+  setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
+}, [
+  isNextDelayed,
+  onClearBanner,
+  validateCurrentPage,
+  onPageValidationFail,
+  visiblePages.length,
+]);
 
   const goBack = useCallback(() => {
     onClearBanner?.();
@@ -1357,14 +1407,14 @@ export function SurveyScreen({
 
               <div className="survey-nav-right">
                 {!isLastPage ? (
-                  <button
-                    type="button"
-                    className="survey-nav-btn survey-nav-btn-primary"
-                    onClick={goNext}
-                    disabled={submitting}
-                  >
-                    Next
-                  </button>
+                 <button
+  type="button"
+  className="survey-nav-btn survey-nav-btn-primary"
+  onClick={goNext}
+  disabled={submitting || isNextDelayed}
+>
+  {isNextDelayed ? `Next (${delayRemaining})` : "Next"}
+</button>
                 ) : (
                   <button
                     type="button"

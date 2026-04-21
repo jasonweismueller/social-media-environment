@@ -56,6 +56,12 @@ function clampInt(value, min, max, fallback) {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
+function normalizePageDelaySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n);
+}
+
 export function makeSequentialValue(prefix, index) {
   return `${prefix}_${index + 1}`;
 }
@@ -388,6 +394,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       post_id: "",
       post_label: "",
       post_feed_id: "",
+      next_delay_seconds: normalizePageDelaySeconds(q?.next_delay_seconds),
       _showFeedVisibilityEditor: false,
       _showFeedOverridesEditor: false,
       meta: q?.meta || {},
@@ -444,18 +451,19 @@ export function flattenSurveyPagesForEditor(survey) {
       flat.push(normalizeQuestionForEditor(q, flat.length));
     });
 
-    if (pageIndex < pages.length - 1) {
-      flat.push(
-        normalizeQuestionForEditor(
-          {
-            _editorId: `editor_page_break_${pageIndex + 1}`,
-            id: `page_break_${pageIndex + 1}`,
-            type: EDITOR_PAGE_BREAK_TYPE,
-          },
-          flat.length
-        )
-      );
-    }
+ if (pageIndex < pages.length - 1) {
+  flat.push(
+    normalizeQuestionForEditor(
+      {
+        _editorId: `editor_page_break_${pageIndex + 1}`,
+        id: `page_break_${pageIndex + 1}`,
+        type: EDITOR_PAGE_BREAK_TYPE,
+        next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
+      },
+      flat.length
+    )
+  );
+}
   });
 
   return flat;
@@ -468,30 +476,41 @@ export function buildSurveyPagesFromFlatQuestions(survey, items) {
   const flatItems = Array.isArray(items) ? items : [];
   const existingPages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
   const splitPages = [];
-  let currentQuestions = [];
+let currentQuestions = [];
 
-  flatItems.forEach((item) => {
-    if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
-      splitPages.push(currentQuestions);
-      currentQuestions = [];
-    } else {
-      currentQuestions.push(
-        normalizeQuestionForEditor(item, currentQuestions.length)
-      );
-    }
-  });
+flatItems.forEach((item) => {
+  if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
+    splitPages.push({
+      questions: currentQuestions,
+      next_delay_seconds: normalizePageDelaySeconds(item?.next_delay_seconds),
+    });
+    currentQuestions = [];
+  } else {
+    currentQuestions.push(
+      normalizeQuestionForEditor(item, currentQuestions.length)
+    );
+  }
+});
 
-  splitPages.push(currentQuestions);
+splitPages.push({
+  questions: currentQuestions,
+  next_delay_seconds: 0,
+});
 
-  const pages = splitPages.map((questions, pageIndex) => {
-    const existingPage = existingPages[pageIndex] || {};
-    return {
-      id: existingPage.id || `page_${pageIndex + 1}`,
-      title: String(existingPage.title ?? ""),
-      description: String(existingPage.description ?? ""),
-      questions: questions.map((q, i) => normalizeQuestionForEditor(q, i)),
-    };
-  });
+const pages = splitPages.map((pageData, pageIndex) => {
+  const existingPage = existingPages[pageIndex] || {};
+  return {
+    id: existingPage.id || `page_${pageIndex + 1}`,
+    title: String(existingPage.title ?? ""),
+    description: String(existingPage.description ?? ""),
+    next_delay_seconds: normalizePageDelaySeconds(
+      pageData?.next_delay_seconds ?? existingPage?.next_delay_seconds
+    ),
+    questions: (pageData?.questions || []).map((q, i) =>
+      normalizeQuestionForEditor(q, i)
+    ),
+  };
+});
 
   return {
     ...safeSurvey,
@@ -2224,14 +2243,14 @@ function QuestionCard({
           onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
         />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto",
-            gap: 10,
-            alignItems: "start",
-          }}
-        >
+       <div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "1fr 160px auto",
+    gap: 10,
+    alignItems: "start",
+  }}
+>
           <TopField label="Page break">
             <div
               style={{
@@ -2248,6 +2267,19 @@ function QuestionCard({
               Questions after this will appear on the next page.
             </div>
           </TopField>
+
+          <TopField label="Next delay (sec)">
+  <NumberInput
+    value={q?.next_delay_seconds ?? 0}
+    min={0}
+    step={1}
+    onChange={(v) =>
+      updateQuestion(index, {
+        next_delay_seconds: normalizePageDelaySeconds(v),
+      })
+    }
+  />
+</TopField>
 
           <TopField label="Actions">
             <div

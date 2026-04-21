@@ -51,6 +51,8 @@ const COMPLETION_MODE_REDIRECT = "redirect";
 const DELIVERY_MODE_FEED_THEN_SURVEY = "feed_then_survey";
 const DELIVERY_MODE_SURVEY_ONLY = "survey_only";
 
+const DEFAULT_PAGE_NEXT_DELAY_SECONDS = 0;
+
 function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
 }
@@ -143,7 +145,6 @@ async function copyTextToClipboard(text) {
   }
 }
 
-
 function csvEscape(value) {
   if (value == null) return "";
   const s = typeof value === "string" ? value : JSON.stringify(value);
@@ -153,7 +154,8 @@ function csvEscape(value) {
 function buildCsv(rows = [], header = [], labels = []) {
   const lines = [];
   if (header.length) {
-    const firstRow = Array.isArray(labels) && labels.length === header.length ? labels : header;
+    const firstRow =
+      Array.isArray(labels) && labels.length === header.length ? labels : header;
     lines.push(firstRow.map(csvEscape).join(","));
   }
   for (const row of rows) {
@@ -176,7 +178,9 @@ function triggerCsvDownload(filename, csv) {
 
 function normalizeCsvValue(value) {
   if (value == null) return "";
-  if (Array.isArray(value)) return value.map(normalizeCsvValue).filter(Boolean).join(" | ");
+  if (Array.isArray(value)) {
+    return value.map(normalizeCsvValue).filter(Boolean).join(" | ");
+  }
   if (typeof value === "object") {
     try {
       return JSON.stringify(value);
@@ -206,6 +210,36 @@ function normalizeDeliveryMode(value) {
   return value === DELIVERY_MODE_SURVEY_ONLY
     ? DELIVERY_MODE_SURVEY_ONLY
     : DELIVERY_MODE_FEED_THEN_SURVEY;
+}
+
+function normalizePageDelaySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_PAGE_NEXT_DELAY_SECONDS;
+  return n;
+}
+
+function normalizeSurveyPagesWithDelay(pages = []) {
+  return (Array.isArray(pages) ? pages : []).map((page, pageIndex) => ({
+    ...(page || {}),
+    id: page?.id || `page_${pageIndex + 1}`,
+    title: page?.title || "",
+    description: page?.description || "",
+    next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
+    questions: (page?.questions || []).map((q, qIndex) => {
+      const cleanQ = normalizeQuestionForEditor(q, qIndex);
+      return {
+        ...cleanQ,
+        meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
+        visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
+        visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
+          ? [...cleanQ.visible_in_feeds]
+          : [],
+        feed_overrides: cleanQ?.feed_overrides
+          ? deepClone(cleanQ.feed_overrides)
+          : {},
+      };
+    }),
+  }));
 }
 
 function normalizeSurveyMetaFields(source = {}) {
@@ -242,6 +276,7 @@ function applySurveyMetaDefaults(sourceSurvey = {}, projectId = "") {
     status: normalized.status || "draft",
     version: normalized.version || 1,
     ...normalizeSurveyMetaFields(normalized),
+    pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
   };
 }
 
@@ -266,25 +301,7 @@ function resetSurveyIdentityForCopy(
     trigger: normalized.trigger || "after_feed_submit",
     delivery_mode:
       normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
-    pages: (normalized.pages || []).map((page, pageIndex) => ({
-      ...page,
-      id: page?.id || `page_${pageIndex + 1}`,
-      questions: (page.questions || []).map((q, qIndex) => {
-        const cleanQ = normalizeQuestionForEditor(q, qIndex);
-
-        return {
-          ...cleanQ,
-          meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
-          visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
-          visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
-            ? [...cleanQ.visible_in_feeds]
-            : [],
-          feed_overrides: cleanQ?.feed_overrides
-            ? deepClone(cleanQ.feed_overrides)
-            : {},
-        };
-      }),
-    })),
+    pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
   };
 
   return buildSurveyPagesFromFlatQuestions(
@@ -309,25 +326,7 @@ function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
     trigger: normalized.trigger || "after_feed_submit",
     delivery_mode:
       normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
-    pages: (normalized.pages || []).map((page, pageIndex) => ({
-      ...page,
-      id: page?.id || `page_${pageIndex + 1}`,
-      questions: (page.questions || []).map((q, qIndex) => {
-        const cleanQ = normalizeQuestionForEditor(q, qIndex);
-
-        return {
-          ...cleanQ,
-          meta: cleanQ?.meta ? deepClone(cleanQ.meta) : {},
-          visible_if: cleanQ?.visible_if ? deepClone(cleanQ.visible_if) : null,
-          visible_in_feeds: Array.isArray(cleanQ?.visible_in_feeds)
-            ? [...cleanQ.visible_in_feeds]
-            : [],
-          feed_overrides: cleanQ?.feed_overrides
-            ? deepClone(cleanQ.feed_overrides)
-            : {},
-        };
-      }),
-    })),
+    pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
   };
 
   return buildSurveyPagesFromFlatQuestions(
@@ -452,6 +451,7 @@ function TextAreaInput({
     />
   );
 }
+
 function SelectInput({ value, onChange, children, style }) {
   return (
     <select
@@ -619,6 +619,7 @@ export function AdminSurveysPanel({
               delivery_mode:
                 normalizedFull.delivery_mode ||
                 DELIVERY_MODE_FEED_THEN_SURVEY,
+              pages: normalizeSurveyPagesWithDelay(normalizedFull.pages || []),
             };
           } catch {
             return {
@@ -627,6 +628,7 @@ export function AdminSurveysPanel({
               linked_project_id: projectId,
               trigger: "after_feed_submit",
               delivery_mode: DELIVERY_MODE_FEED_THEN_SURVEY,
+              pages: [],
               ...normalizeSurveyMetaFields({}),
             };
           }
@@ -675,6 +677,7 @@ export function AdminSurveysPanel({
           trigger: normalized.trigger || "after_feed_submit",
           delivery_mode:
             normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
+          pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
         },
         flattenSurveyPagesForEditor(normalized)
       );
@@ -704,6 +707,7 @@ export function AdminSurveysPanel({
           id: "page_1",
           title: "",
           description: "",
+          next_delay_seconds: DEFAULT_PAGE_NEXT_DELAY_SECONDS,
           questions: [],
         },
       ],
@@ -748,6 +752,7 @@ export function AdminSurveysPanel({
       ...normalizeSurvey(survey),
       ...normalizeSurveyMetaFields(survey),
       delivery_mode: normalizeDeliveryMode(survey?.delivery_mode),
+      pages: normalizeSurveyPagesWithDelay(survey?.pages || []),
     };
 
     const exportPayload = {
@@ -778,6 +783,7 @@ export function AdminSurveysPanel({
       completion_redirect_url: String(
         normalized.completion_redirect_url || ""
       ),
+      pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
       exported_at: new Date().toISOString(),
       export_format: "survey_v1",
     };
@@ -838,6 +844,7 @@ export function AdminSurveysPanel({
         trigger: survey.trigger || "after_feed_submit",
         delivery_mode: normalizeDeliveryMode(survey.delivery_mode),
         ...normalizeSurveyMetaFields(survey),
+        pages: normalizeSurveyPagesWithDelay(survey.pages || []),
       };
 
       const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
@@ -847,12 +854,22 @@ export function AdminSurveysPanel({
 
       const payload = {
         ...normalized,
-        pages: (rebuiltSurvey.pages || []).map((page) => ({
-          ...(page || { id: "page_1", title: "", description: "" }),
-          questions: (page.questions || []).map((q, i) =>
-            buildSavedQuestion(q, i)
-          ),
-        })),
+        pages: normalizeSurveyPagesWithDelay(rebuiltSurvey.pages || []).map(
+          (page) => ({
+            ...(page || {
+              id: "page_1",
+              title: "",
+              description: "",
+              next_delay_seconds: DEFAULT_PAGE_NEXT_DELAY_SECONDS,
+            }),
+            next_delay_seconds: normalizePageDelaySeconds(
+              page?.next_delay_seconds
+            ),
+            questions: (page.questions || []).map((q, i) =>
+              buildSavedQuestion(q, i)
+            ),
+          })
+        ),
       };
 
       const res = await saveSurveyToBackend(payload, { projectId });
@@ -882,6 +899,7 @@ export function AdminSurveysPanel({
               fresh?.delivery_mode ||
               normalized.delivery_mode ||
               DELIVERY_MODE_FEED_THEN_SURVEY,
+            pages: normalizeSurveyPagesWithDelay(fresh?.pages || []),
           },
           projectId
         );
@@ -982,51 +1000,51 @@ export function AdminSurveysPanel({
   }
 
   async function handleDownloadSurveyOnlyCsv() {
-  if (!survey?.survey_id) {
-    alert("Save the survey first.");
-    return;
-  }
-
-  try {
-    const roster = await loadSurveyOnlyRoster({
-      surveyId: survey.survey_id,
-      projectId,
-    });
-
-    const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
-    if (!safeRows.length) {
-      alert("No survey responses found yet.");
+    if (!survey?.survey_id) {
+      alert("Save the survey first.");
       return;
     }
 
-    const header = Array.from(
-      safeRows.reduce((set, row) => {
-        Object.keys(row || {}).forEach((key) => set.add(key));
-        return set;
-      }, new Set())
-    );
-
-    const normalizedRows = safeRows.map((row) => {
-      const next = {};
-      header.forEach((key) => {
-        next[key] = normalizeCsvValue(row?.[key]);
+    try {
+      const roster = await loadSurveyOnlyRoster({
+        surveyId: survey.survey_id,
+        projectId,
       });
-      return next;
-    });
 
-    const csv = buildCsv(normalizedRows, header, header);
-    const filename = `${
-      slugifySurveyName(survey.name || survey.survey_id || "survey")
-        .replace(/[^\w\s-]/g, "")
-        .replace(/\s+/g, "_") || "survey"
-    }_responses.csv`;
+      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+      if (!safeRows.length) {
+        alert("No survey responses found yet.");
+        return;
+      }
 
-    triggerCsvDownload(filename, csv);
-  } catch (e) {
-    console.warn("Failed to download survey-only CSV:", e);
-    alert("Failed to download survey-only CSV.");
+      const header = Array.from(
+        safeRows.reduce((set, row) => {
+          Object.keys(row || {}).forEach((key) => set.add(key));
+          return set;
+        }, new Set())
+      );
+
+      const normalizedRows = safeRows.map((row) => {
+        const next = {};
+        header.forEach((key) => {
+          next[key] = normalizeCsvValue(row?.[key]);
+        });
+        return next;
+      });
+
+      const csv = buildCsv(normalizedRows, header, header);
+      const filename = `${
+        slugifySurveyName(survey.name || survey.survey_id || "survey")
+          .replace(/[^\w\s-]/g, "")
+          .replace(/\s+/g, "_") || "survey"
+      }_responses.csv`;
+
+      triggerCsvDownload(filename, csv);
+    } catch (e) {
+      console.warn("Failed to download survey-only CSV:", e);
+      alert("Failed to download survey-only CSV.");
+    }
   }
-}
 
   const linkedFeedCount = useMemo(
     () => normalizeLinkedFeedIds(survey?.linked_feed_ids).length,
@@ -1131,7 +1149,9 @@ export function AdminSurveysPanel({
   const deliveryMode =
     normalizeDeliveryMode(survey?.delivery_mode) ||
     DELIVERY_MODE_FEED_THEN_SURVEY;
+
   const studyApp = useMemo(() => getCurrentStudyApp(), []);
+
   const surveyLaunchUrl = useMemo(() => {
     if (!survey?.survey_id) return "";
     return buildSurveyLaunchUrl({
@@ -1318,39 +1338,35 @@ export function AdminSurveysPanel({
                   Import
                 </button>
 
-                {survey && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleCopySurvey}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Copy
-                    </button>
+                <button
+                  type="button"
+                  onClick={handleCopySurvey}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  Copy
+                </button>
 
-                    <button
-                      type="button"
-                      onClick={handleExportSurvey}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Export
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  onClick={handleExportSurvey}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  Export
+                </button>
 
                 {!!survey?.survey_id && (
                   <IconOnlyButton
@@ -1447,12 +1463,28 @@ export function AdminSurveysPanel({
                 label="Survey-only launch link"
                 hint="This link opens the preface and survey directly, without showing the feed first."
               >
-                <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
-                  <TextInput value={surveyOnlyLaunchUrl} readOnly placeholder="Save the survey to generate the launch link" />
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "stretch",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <TextInput
+                    value={surveyOnlyLaunchUrl}
+                    readOnly
+                    placeholder="Save the survey to generate the launch link"
+                  />
                   <button
                     type="button"
                     disabled={!surveyOnlyLaunchUrl}
-                    onClick={() => handleCopyLaunchLink(surveyOnlyLaunchUrl, "survey-only link")}
+                    onClick={() =>
+                      handleCopyLaunchLink(
+                        surveyOnlyLaunchUrl,
+                        "survey-only link"
+                      )
+                    }
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
@@ -1472,12 +1504,28 @@ export function AdminSurveysPanel({
                   label="Feed + survey launch link"
                   hint="This launch uses the first linked feed and then continues into the survey."
                 >
-                  <div style={{ display: "flex", gap: 10, alignItems: "stretch", flexWrap: "wrap" }}>
-                    <TextInput value={linkedFeedLaunchUrl} readOnly placeholder="Link at least one feed and save the survey to generate this link" />
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "stretch",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <TextInput
+                      value={linkedFeedLaunchUrl}
+                      readOnly
+                      placeholder="Link at least one feed and save the survey to generate this link"
+                    />
                     <button
                       type="button"
                       disabled={!linkedFeedLaunchUrl}
-                      onClick={() => handleCopyLaunchLink(linkedFeedLaunchUrl, "feed + survey link")}
+                      onClick={() =>
+                        handleCopyLaunchLink(
+                          linkedFeedLaunchUrl,
+                          "feed + survey link"
+                        )
+                      }
                       style={{
                         padding: "10px 14px",
                         borderRadius: 10,
