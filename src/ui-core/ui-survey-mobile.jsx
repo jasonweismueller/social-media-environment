@@ -45,6 +45,12 @@ function scrollSurveyPageToTop() {
   setTimeout(run, 80);
 }
 
+function normalizePageDelaySeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n);
+}
+
 function getChoiceItems(question) {
   return Array.isArray(question?.choices)
     ? question.choices
@@ -805,6 +811,7 @@ export function SurveyScreenMobile({
   submitting,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [delayRemaining, setDelayRemaining] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
 
   const visiblePages = useMemo(() => {
@@ -827,6 +834,7 @@ export function SurveyScreenMobile({
           id: page?.id || `page_${pageIdx + 1}`,
           title: page?.title || "",
           description: page?.description || "",
+          next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
           questions: visibleQuestions,
         };
       })
@@ -848,14 +856,48 @@ export function SurveyScreenMobile({
     }
   }, [visiblePages, currentPageIndex]);
 
-  useLayoutEffect(() => {
-    scrollSurveyPageToTop();
-  }, [currentPageIndex]);
-
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
   const isFirstPage = currentPageIndex === 0;
   const hasMultiplePages = visiblePages.length > 1;
+
+  const currentPageDelaySeconds = normalizePageDelaySeconds(
+    currentPage?.next_delay_seconds
+  );
+  const isNextDelayed =
+    !isLastPage && currentPageDelaySeconds > 0 && delayRemaining > 0;
+
+  useLayoutEffect(() => {
+    scrollSurveyPageToTop();
+  }, [currentPageIndex]);
+
+  useEffect(() => {
+    if (!currentPage || isLastPage) {
+      setDelayRemaining(0);
+      return;
+    }
+
+    const delaySeconds = normalizePageDelaySeconds(currentPage?.next_delay_seconds);
+
+    if (delaySeconds <= 0) {
+      setDelayRemaining(0);
+      return;
+    }
+
+    setDelayRemaining(delaySeconds);
+
+    const intervalId = window.setInterval(() => {
+      setDelayRemaining((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(intervalId);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [currentPageIndex, currentPage, isLastPage]);
 
   const questionNumberOffset = useMemo(() => {
     let count = 0;
@@ -900,6 +942,10 @@ export function SurveyScreenMobile({
   }, [currentPage, responses]);
 
   const goNext = useCallback(() => {
+    if (isNextDelayed) {
+      return;
+    }
+
     onClearBanner?.();
     const validation = validateCurrentPage();
 
@@ -912,7 +958,13 @@ export function SurveyScreenMobile({
     }
 
     setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
-  }, [onClearBanner, validateCurrentPage, onPageValidationFail, visiblePages.length]);
+  }, [
+    isNextDelayed,
+    onClearBanner,
+    validateCurrentPage,
+    onPageValidationFail,
+    visiblePages.length,
+  ]);
 
   const goBack = useCallback(() => {
     onClearBanner?.();
@@ -1067,9 +1119,9 @@ export function SurveyScreenMobile({
                     type="button"
                     className="survey-nav-btn survey-nav-btn-primary"
                     onClick={goNext}
-                    disabled={submitting}
+                    disabled={submitting || isNextDelayed}
                   >
-                    Next
+                    {isNextDelayed ? `Next (${delayRemaining})` : "Next"}
                   </button>
                 ) : (
                   <button
