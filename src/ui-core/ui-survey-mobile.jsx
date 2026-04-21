@@ -1,8 +1,10 @@
 import React, {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -10,6 +12,7 @@ import {
   isQuestionVisible,
   getRenderedQuestion,
   getProjectId,
+  loadPostByIdFromBackend,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -178,17 +181,6 @@ function getReminderApp() {
     : "fb";
 }
 
-function HtmlBlock({ html, className, style }) {
-  if (!html) return null;
-  return (
-    <div
-      className={className}
-      style={style}
-      dangerouslySetInnerHTML={{ __html: html || "" }}
-    />
-  );
-}
-
 function PlainOrHtmlBlock({ value, className, style }) {
   if (!value) return null;
 
@@ -212,7 +204,33 @@ function PlainOrHtmlBlock({ value, className, style }) {
   );
 }
 
-function PostReminderCardMobile({
+const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
+  post,
+  app,
+  projectId,
+  feedId,
+  flags,
+  participantSeed,
+}) {
+  const noopAction = useCallback(() => {}, []);
+  const noopRegisterViewRef = useCallback(() => undefined, []);
+
+  return (
+    <PostCard
+      post={post}
+      onAction={noopAction}
+      disabled={true}
+      registerViewRef={noopRegisterViewRef}
+      app={app}
+      projectId={projectId}
+      feedId={feedId}
+      runSeed={participantSeed || "survey-reminder-preview"}
+      flags={flags || {}}
+    />
+  );
+});
+
+const PostReminderCardMobile = memo(function PostReminderCardMobile({
   question,
   posts = [],
   projectId,
@@ -220,10 +238,100 @@ function PostReminderCardMobile({
   flags,
   participantSeed,
 }) {
-  const post = getQuestionReminderPost(question, posts);
-  const fallbackLabel = getReminderPostLabel(question, post || {});
   const reminderFeedId = getReminderPostFeedId(question, feedId);
+  const targetPostId = String(question?.post_id || "").trim();
+  const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
+
+  const inlinePost = useMemo(
+    () => getQuestionReminderPost(question, posts),
+    [question, posts]
+  );
+
+  const [lazyPost, setLazyPost] = useState(null);
+  const [lazyStatus, setLazyStatus] = useState("idle");
+  const [lazyError, setLazyError] = useState("");
+  const requestKeyRef = useRef("");
+  const requestKey = `${resolvedProjectId}::${reminderFeedId || ""}::${targetPostId}`;
+
+  useEffect(() => {
+    const nextInlinePost = getQuestionReminderPost(question, posts);
+
+    if (nextInlinePost) {
+      setLazyPost(null);
+      setLazyStatus("ready");
+      setLazyError("");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (!targetPostId) {
+      setLazyPost(null);
+      setLazyStatus("idle");
+      setLazyError("");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
+    if (!reminderFeedId) {
+      setLazyPost(null);
+      setLazyStatus("error");
+      setLazyError("This reminder post does not have a source feed yet.");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    setLazyPost(null);
+    setLazyStatus("loading");
+    setLazyError("");
+    requestKeyRef.current = requestKey;
+
+    (async () => {
+      try {
+        const fetched = await loadPostByIdFromBackend({
+          projectId: resolvedProjectId,
+          feedId: reminderFeedId,
+          postId: targetPostId,
+          signal: controller.signal,
+        });
+
+        if (cancelled || requestKeyRef.current !== requestKey) return;
+
+        if (fetched) {
+          setLazyPost(fetched);
+          setLazyStatus("ready");
+          setLazyError("");
+        } else {
+          setLazyPost(null);
+          setLazyStatus("error");
+          setLazyError("The reminder post could not be loaded.");
+        }
+      } catch {
+        if (cancelled || requestKeyRef.current !== requestKey) return;
+        setLazyPost(null);
+        setLazyStatus("error");
+        setLazyError("The reminder post could not be loaded.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    question,
+    posts,
+    resolvedProjectId,
+    reminderFeedId,
+    targetPostId,
+    requestKey,
+  ]);
+
+  const post = inlinePost || lazyPost;
+  const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   return (
     <div className="survey-post-reminder-block">
@@ -234,45 +342,36 @@ function PostReminderCardMobile({
         />
       ) : null}
 
-      <div
-        className="survey-post-reminder-card"
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 16,
-          background: "#fff",
-          overflow: "hidden",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        }}
-      >
-        {post ? (
-          <PostCard
-            post={post}
-            onAction={() => {}}
-            disabled={true}
-            registerViewRef={() => undefined}
-            app={app}
-            projectId={projectId || getProjectId() || ""}
-            feedId={reminderFeedId || ""}
-            runSeed={participantSeed || "survey-reminder-preview"}
-            flags={flags || {}}
-          />
-        ) : (
-          <div
-            style={{
-              padding: 14,
-              color: "#6b7280",
-              fontSize: 14,
-            }}
-          >
-            {fallbackLabel
-              ? `Reminder post selected: ${fallbackLabel}`
-              : "No reminder post has been selected for this survey item yet."}
+      {!post ? (
+        <div className="survey-post-reminder-outer">
+          <div className="survey-post-reminder-status">
+            {lazyStatus === "loading"
+              ? `Loading post${fallbackLabel ? `: ${fallbackLabel}` : ""}...`
+              : lazyError ||
+                (fallbackLabel
+                  ? `Reminder post selected: ${fallbackLabel}`
+                  : "No reminder post has been selected for this survey item yet.")}
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="survey-post-reminder-outer">
+          <div className="survey-post-reminder-frame">
+            <div className="survey-post-reminder-card">
+              <ReminderPostInnerMobile
+                post={post}
+                app={app}
+                projectId={resolvedProjectId}
+                feedId={reminderFeedId || ""}
+                flags={flags}
+                participantSeed={participantSeed}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+});
 
 function MobileQuestionWrapper({ question, index, error, children }) {
   const isInfo = question?.type === SURVEY_QUESTION_TYPES.INFO;
@@ -580,8 +679,9 @@ function MobileMatrixMulti({ question, value, onChange }) {
   );
 }
 
-export function SurveyQuestionRendererMobile({
+export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRendererMobile({
   question,
+  questionId,
   index,
   value,
   error,
@@ -593,6 +693,11 @@ export function SurveyQuestionRendererMobile({
   participantSeed,
 }) {
   const qType = question?.type;
+
+  const emitChange = useCallback(
+    (nextValue) => onChange(questionId, nextValue),
+    [onChange, questionId]
+  );
 
   return (
     <MobileQuestionWrapper question={question} index={index} error={error}>
@@ -611,7 +716,7 @@ export function SurveyQuestionRendererMobile({
         <input
           className="survey-input"
           value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => emitChange(e.target.value)}
         />
       )}
 
@@ -620,7 +725,7 @@ export function SurveyQuestionRendererMobile({
           className="survey-textarea"
           rows={4}
           value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => emitChange(e.target.value)}
         />
       )}
 
@@ -629,7 +734,7 @@ export function SurveyQuestionRendererMobile({
         <MobileSingleChoice
           question={question}
           value={value}
-          onChange={onChange}
+          onChange={emitChange}
         />
       )}
 
@@ -637,12 +742,12 @@ export function SurveyQuestionRendererMobile({
         <MobileMultiChoice
           question={question}
           value={value}
-          onChange={onChange}
+          onChange={emitChange}
         />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.BIPOLAR && (
-        <MobileBipolar question={question} value={value} onChange={onChange} />
+        <MobileBipolar question={question} value={value} onChange={emitChange} />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.SLIDER && (
@@ -657,7 +762,7 @@ export function SurveyQuestionRendererMobile({
             max={question.max ?? 100}
             step={1}
             value={value === "" || value == null ? question.min ?? 0 : value}
-            onChange={(e) => onChange(String(e.target.value))}
+            onChange={(e) => emitChange(String(e.target.value))}
             className="survey-range"
           />
           <div className="survey-range-value">{value || question.min || 0}</div>
@@ -668,7 +773,7 @@ export function SurveyQuestionRendererMobile({
         <MobileMatrixSingle
           question={question}
           value={value}
-          onChange={onChange}
+          onChange={emitChange}
         />
       )}
 
@@ -676,12 +781,12 @@ export function SurveyQuestionRendererMobile({
         <MobileMatrixMulti
           question={question}
           value={value}
-          onChange={onChange}
+          onChange={emitChange}
         />
       )}
     </MobileQuestionWrapper>
   );
-}
+});
 
 export function SurveyScreenMobile({
   survey,
@@ -701,9 +806,6 @@ export function SurveyScreenMobile({
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
-
-  const surveyTitle = String(survey?.title || survey?.name || "").trim();
-  const surveyDescription = survey?.description || "";
 
   const visiblePages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
@@ -797,7 +899,7 @@ export function SurveyScreenMobile({
     };
   }, [currentPage, responses]);
 
-  const goNext = () => {
+  const goNext = useCallback(() => {
     onClearBanner?.();
     const validation = validateCurrentPage();
 
@@ -810,26 +912,24 @@ export function SurveyScreenMobile({
     }
 
     setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
-  };
+  }, [onClearBanner, validateCurrentPage, onPageValidationFail, visiblePages.length]);
 
-  const goBack = () => {
+  const goBack = useCallback(() => {
     onClearBanner?.();
     setCurrentPageIndex((prev) => Math.max(prev - 1, 0));
-  };
+  }, [onClearBanner]);
+
+  const handleQuestionChange = useCallback(
+    (questionId, nextValue) => {
+      onChange(questionId, nextValue);
+    },
+    [onChange]
+  );
 
   if (!currentPage) {
     return (
       <div className="survey-shell">
         <div className="survey-card">
-          <div className="survey-head">
-            {surveyTitle ? <h1 className="survey-title">{surveyTitle}</h1> : null}
-            {surveyDescription ? (
-              <HtmlBlock
-                html={surveyDescription}
-                className="survey-description"
-              />
-            ) : null}
-          </div>
           <div className="survey-body survey-body-standalone">
             <div className="survey-error-banner">
               No survey questions are available.
@@ -843,18 +943,6 @@ export function SurveyScreenMobile({
   return (
     <div className="survey-shell">
       <div className="survey-card">
-        {(surveyTitle || surveyDescription) && (
-          <div className="survey-head">
-            {surveyTitle ? <h1 className="survey-title">{surveyTitle}</h1> : null}
-            {surveyDescription ? (
-              <HtmlBlock
-                html={surveyDescription}
-                className="survey-description"
-              />
-            ) : null}
-          </div>
-        )}
-
         <div className="survey-body survey-body-standalone">
           {hasMultiplePages ? (
             <>
@@ -940,10 +1028,11 @@ export function SurveyScreenMobile({
               <SurveyQuestionRendererMobile
                 key={q.id}
                 question={q}
+                questionId={q.id}
                 index={displayIndex}
                 value={value}
                 error={error}
-                onChange={(nextValue) => onChange(q.id, nextValue)}
+                onChange={handleQuestionChange}
                 posts={posts}
                 projectId={projectId}
                 feedId={feedId}
