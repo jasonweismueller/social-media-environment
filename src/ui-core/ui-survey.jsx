@@ -651,24 +651,25 @@ const PostReminderCard = memo(function PostReminderCard({
   const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   return (
-    <div className="survey-post-reminder-block">
-      {question?.text ? (
-        <div
-          className="survey-post-reminder-intro"
-          dangerouslySetInnerHTML={{ __html: question.text || "" }}
-        />
-      ) : null}
+  <div className="survey-post-reminder-block">
+    {question?.text ? (
+      <div
+        className="survey-post-reminder-intro"
+        dangerouslySetInnerHTML={{ __html: question.text || "" }}
+      />
+    ) : null}
 
-      {!post ? (
-        <div className="survey-post-reminder-outer">
-          <div className="survey-post-reminder-status">
-            {lazyStatus === "loading"
-              ? `Loading post${fallbackLabel ? `: ${fallbackLabel}` : ""}...`
-              : lazyError || "The reminder post could not be displayed."}
-          </div>
+    {!post ? (
+      <div className="survey-post-reminder-outer">
+        <div className="survey-post-reminder-status">
+          {lazyStatus === "loading"
+            ? `Loading post${fallbackLabel ? `: ${fallbackLabel}` : ""}...`
+            : lazyError || "The reminder post could not be displayed."}
         </div>
-      ) : (
-        <div className="survey-post-reminder-outer">
+      </div>
+    ) : (
+      <div className="survey-post-reminder-outer">
+        <div className="survey-post-reminder-frame">
           <div className="survey-post-reminder-card">
             <ReminderPostInner
               post={post}
@@ -680,9 +681,10 @@ const PostReminderCard = memo(function PostReminderCard({
             />
           </div>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+  </div>
+);
 }, (prev, next) => {
   return (
     prev.question === next.question &&

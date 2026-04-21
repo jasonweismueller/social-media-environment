@@ -1800,11 +1800,12 @@ body.admin-mode .nav {
 }
 
 /* =========================
-   Reminder post sizing fix
+   Reminder post sizing
+   Keep PostCard styling intact
    ========================= */
 
 .survey-question-post-reminder{
-  overflow: hidden;
+  overflow: visible;
 }
 
 .survey-post-reminder-block{
@@ -1823,21 +1824,34 @@ body.admin-mode .nav {
   margin-top: 8px;
 }
 
-.survey-post-reminder-card{
+.survey-post-reminder-frame{
   width: 100%;
-  max-width: 280px;
+  max-width: 470px;   /* matches feed card width */
   min-width: 0;
-  margin: 0 auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  background: #fff;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
+.survey-post-reminder-card{
+  width: 100%;
+  min-width: 0;
+}
+
+/* only normalize obvious outer layout wrappers if they appear */
+.survey-post-reminder-card > .page,
+.survey-post-reminder-card > .container,
+.survey-post-reminder-card > .feed,
+.survey-post-reminder-card > .feed-wrap,
+.survey-post-reminder-card > .insta-feed,
+.survey-post-reminder-card > .ig-feed{
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* loading/error box */
 .survey-post-reminder-status{
   width: 100%;
-  max-width: 280px;
+  max-width: 470px;
   margin: 0 auto;
   padding: 12px 14px;
   border: 1px solid #e5e7eb;
@@ -1849,76 +1863,11 @@ body.admin-mode .nav {
   text-align: center;
 }
 
-/* prevent the embedded post from bringing full feed/page layout with it */
-.survey-post-reminder-card .page,
-.survey-post-reminder-card .container,
-.survey-post-reminder-card .feed,
-.survey-post-reminder-card .feed-wrap,
-.survey-post-reminder-card .insta-feed,
-.survey-post-reminder-card .ig-feed,
-.survey-post-reminder-card .survey-shell{
-  display: block !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  grid-template-columns: 1fr !important;
-}
-
-.survey-post-reminder-card .rail,
-.survey-post-reminder-card .rail-left,
-.survey-post-reminder-card .rail-right,
-.survey-post-reminder-card .top-rail-placeholder,
-.survey-post-reminder-card .ig-topbar,
-.survey-post-reminder-card .nav,
-.survey-post-reminder-card .submit-wrap,
-.survey-post-reminder-card .feed-submit,
-.survey-post-reminder-card .feed-end,
-.survey-post-reminder-card .end{
-  display: none !important;
-}
-
-.survey-post-reminder-card .card,
-.survey-post-reminder-card .ig-card,
-.survey-post-reminder-card .insta-card{
-  width: 100% !important;
-  max-width: 100% !important;
-  margin: 0 !important;
-  border-radius: 16px !important;
-  box-shadow: none !important;
-}
-
-.survey-post-reminder-card .card-head,
-.survey-post-reminder-card .card-body,
-.survey-post-reminder-card .footer,
-.survey-post-reminder-card .bar-stats,
-.survey-post-reminder-card .note-bar,
-.survey-post-reminder-card .info-bar{
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
-.survey-post-reminder-card img,
-.survey-post-reminder-card video,
-.survey-post-reminder-card iframe,
-.survey-post-reminder-card .video-wrap,
-.survey-post-reminder-card .igcar-wrap,
-.survey-post-reminder-card .ghost-media{
-  width: 100% !important;
-  max-width: 100% !important;
-  height: auto !important;
-}
-
-.survey-post-reminder-card .video-wrap,
-.survey-post-reminder-card .igcar-wrap{
-  max-height: 420px !important;
-}
-
-.survey-post-reminder-card .text,
-.survey-post-reminder-card .survey-question-title,
-.survey-post-reminder-card .survey-question-description{
-  word-break: break-word;
+@media (max-width: 700px){
+  .survey-post-reminder-frame,
+  .survey-post-reminder-status{
+    max-width: 100%;
+  }
 }
 
 /* mobile */
