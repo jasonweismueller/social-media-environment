@@ -1325,7 +1325,6 @@ body.admin-mode .nav {
   margin-top: 4px;
 }
 
-
 /* ======================================================
    Survey UI (frontend post-feed survey)
    ====================================================== */
@@ -1650,7 +1649,6 @@ body.admin-mode .nav {
   border-right: 1px solid #f1f1f1;
 }
 
-/* make bipolar right-label header cell match layout */
 .survey-bipolar-matrix .survey-matrix-table thead th:last-child{
   text-align: left;
   min-width: 180px;
@@ -1676,7 +1674,6 @@ body.admin-mode .nav {
   border-right: 1px solid #f3f4f6;
 }
 
-/* bipolar right label should look exactly like left label */
 .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
   text-align: left;
   font-weight: 400;
@@ -1687,13 +1684,11 @@ body.admin-mode .nav {
   word-break: break-word;
 }
 
-/* keep bipolar end labels readable */
 .survey-bipolar-matrix .survey-matrix-table tbody td:first-child,
 .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
   min-width: 180px;
 }
 
-/* central bipolar scale cells stay centered and narrower */
 .survey-bipolar-matrix .survey-matrix-table tbody td:not(:first-child):not(:last-child),
 .survey-bipolar-matrix .survey-matrix-table thead th:not(:first-child):not(:last-child){
   min-width: 52px;
@@ -1804,6 +1799,128 @@ body.admin-mode .nav {
   100% { transform: translateX(0); }
 }
 
+/* =========================
+   Reminder post sizing fix
+   ========================= */
+
+.survey-question-post-reminder{
+  overflow: hidden;
+}
+
+.survey-post-reminder-block{
+  width: 100%;
+}
+
+.survey-post-reminder-intro{
+  margin-bottom: 10px;
+}
+
+.survey-post-reminder-outer{
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.survey-post-reminder-card{
+  width: 100%;
+  max-width: 280px;
+  min-width: 0;
+  margin: 0 auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.survey-post-reminder-status{
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ig-muted);
+  font-size: .92rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* prevent the embedded post from bringing full feed/page layout with it */
+.survey-post-reminder-card .page,
+.survey-post-reminder-card .container,
+.survey-post-reminder-card .feed,
+.survey-post-reminder-card .feed-wrap,
+.survey-post-reminder-card .insta-feed,
+.survey-post-reminder-card .ig-feed,
+.survey-post-reminder-card .survey-shell{
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  grid-template-columns: 1fr !important;
+}
+
+.survey-post-reminder-card .rail,
+.survey-post-reminder-card .rail-left,
+.survey-post-reminder-card .rail-right,
+.survey-post-reminder-card .top-rail-placeholder,
+.survey-post-reminder-card .ig-topbar,
+.survey-post-reminder-card .nav,
+.survey-post-reminder-card .submit-wrap,
+.survey-post-reminder-card .feed-submit,
+.survey-post-reminder-card .feed-end,
+.survey-post-reminder-card .end{
+  display: none !important;
+}
+
+.survey-post-reminder-card .card,
+.survey-post-reminder-card .ig-card,
+.survey-post-reminder-card .insta-card{
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
+}
+
+.survey-post-reminder-card .card-head,
+.survey-post-reminder-card .card-body,
+.survey-post-reminder-card .footer,
+.survey-post-reminder-card .bar-stats,
+.survey-post-reminder-card .note-bar,
+.survey-post-reminder-card .info-bar{
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.survey-post-reminder-card img,
+.survey-post-reminder-card video,
+.survey-post-reminder-card iframe,
+.survey-post-reminder-card .video-wrap,
+.survey-post-reminder-card .igcar-wrap,
+.survey-post-reminder-card .ghost-media{
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.survey-post-reminder-card .video-wrap,
+.survey-post-reminder-card .igcar-wrap{
+  max-height: 420px !important;
+}
+
+.survey-post-reminder-card .text,
+.survey-post-reminder-card .survey-question-title,
+.survey-post-reminder-card .survey-question-description{
+  word-break: break-word;
+}
+
 /* mobile */
 @media (max-width: 700px){
   .survey-shell{
@@ -1861,7 +1978,6 @@ body.admin-mode .nav {
     padding: 10px 8px;
   }
 
-  /* bipolar mobile: preserve readable left/right labels */
   .survey-bipolar-matrix .survey-matrix-table{
     min-width: 640px;
   }
@@ -1886,6 +2002,11 @@ body.admin-mode .nav {
   .survey-submit-btn{
     width: 100%;
     min-width: 0;
+  }
+
+  .survey-post-reminder-card,
+  .survey-post-reminder-status{
+    max-width: 100%;
   }
 }
 
@@ -2156,7 +2277,6 @@ body.survey-mode .rail-right {
   box-shadow: 0 10px 26px rgba(237,73,86,.24);
 }
 
-
 /* mobile */
 @media (max-width: 700px){
   .survey-shell{
@@ -2299,7 +2419,6 @@ body.survey-mode .rail-right {
     padding: 8px 6px;
   }
 
-  /* make matrix/bipolar item labels stand out more on mobile */
   .survey-matrix-table tbody td:first-child,
   .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
     font-size: .87rem;
@@ -2322,7 +2441,6 @@ body.survey-mode .rail-right {
     transform: scale(1);
   }
 
-  /* bipolar mobile: compact but still readable */
   .survey-bipolar-matrix .survey-matrix-table{
     min-width: 580px;
   }
@@ -2360,6 +2478,11 @@ body.survey-mode .rail-right {
     min-width: 0;
     font-size: .92rem !important;
     padding: .7rem 1rem !important;
+  }
+
+  .survey-post-reminder-card,
+  .survey-post-reminder-status{
+    max-width: 100%;
   }
 }
 
@@ -2435,47 +2558,4 @@ body.survey-mode .rail-right {
     font-size: .9rem;
     padding: .68rem 1rem;
   }
-}
-
-.survey-post-reminder-card {
-  max-width: 260px;
-  margin: 0 auto;
-}
-
-/* =========================
-   Survey Reminder Post FIX
-   ========================= */
-
-.survey-reminder-wrap {
-  max-width: 260px !important;
-  margin: 8px auto !important;
-}
-
-.survey-reminder-wrap .card {
-  width: 100% !important;
-  max-width: 260px !important;
-  margin: 0 auto !important;
-  transform: scale(0.92);
-  transform-origin: top center;
-}
-
-/* Kill feed/page expansion inside reminder */
-.survey-reminder-wrap .page,
-.survey-reminder-wrap .container,
-.survey-reminder-wrap .feed {
-  all: unset;
-  display: block;
-  width: 100%;
-}
-
-/* Prevent giant inner spacing */
-.survey-reminder-wrap .card-body,
-.survey-reminder-wrap .card-head,
-.survey-reminder-wrap .footer {
-  padding: 6px 8px !important;
-}
-
-/* Optional: slightly dim it like a preview */
-.survey-reminder-wrap {
-  opacity: 0.95;
 }
