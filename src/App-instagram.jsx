@@ -561,6 +561,7 @@ export default function App() {
   const enterTsRef = useRef(null);
   const submitTsRef = useRef(null);
   const lastNonScrollTsRef = useRef(null);
+  const surveyStartTsRef = useRef(null);
 
   const bootAbortRef = useRef(null);
   const surveyAbortRef = useRef(null);
@@ -1137,6 +1138,8 @@ export default function App() {
       surveyBoot,
     });
 
+    
+
     surveyAbortRef.current?.abort?.();
     const ctrl = new AbortController();
     surveyAbortRef.current = ctrl;
@@ -1557,6 +1560,10 @@ export default function App() {
       surveyPhase === "error");
 
   useEffect(() => {
+  surveyStartTsRef.current = null;
+}, [linkedSurvey?.survey_id, activeFeedId, hasEntered]);
+
+  useEffect(() => {
     if (typeof document === "undefined") return;
 
     if (shouldShowSurvey || shouldShowPreface) {
@@ -1609,6 +1616,13 @@ export default function App() {
     minDelayDone,
     requiresFeedStage,
   ]);
+
+  useEffect(() => {
+  if (shouldShowSurvey && !surveyStartTsRef.current) {
+    surveyStartTsRef.current = Date.now();
+  }
+}, [shouldShowSurvey]);
+
 
   const overlayActive = !onAdmin && (!hasEntered || shouldShowPreface);
 
@@ -1895,15 +1909,23 @@ export default function App() {
     setSurveyErrorMsg("");
 
     try {
-      const ok = await sendSurveyResponseToBackend({
-        survey_id: linkedSurvey.survey_id,
-        feed_id: activeFeedId || "",
-        project_id: projectId || "",
-        session_id: sessionIdRef.current,
-        participant_id: participantId || "",
-        responses: surveyResponses,
-        submitted_at_iso: new Date().toISOString(),
-      });
+      const submittedAtIso = new Date().toISOString();
+const submittedAtMs = Date.now();
+const durationMs =
+  surveyStartTsRef.current && submittedAtMs >= surveyStartTsRef.current
+    ? submittedAtMs - surveyStartTsRef.current
+    : 0;
+
+const ok = await sendSurveyResponseToBackend({
+  survey_id: linkedSurvey.survey_id,
+  feed_id: activeFeedId || "",
+  project_id: projectId || "",
+  session_id: sessionIdRef.current,
+  participant_id: participantId || "",
+  responses: surveyResponses,
+  submitted_at_iso: submittedAtIso,
+  duration_ms: durationMs,
+});
 
       if (!ok) {
         setSurveyPhase("error");
