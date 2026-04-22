@@ -1,7 +1,7 @@
 import React, { useRef } from "react";
 import { createPortal } from "react-dom";
 import { neutralAvatarDataUrl } from "../ui-core";
-import { useSwipeToClose } from "./ui-post-mobile-instagram"; // <-- same hook you're already using
+import { useSwipeToClose } from "./ui-post-mobile-instagram";
 
 /* ---------------- Number formatting ---------------- */
 function formatNumber(n) {
@@ -43,11 +43,6 @@ function linkifyText(text = "") {
   );
 }
 
-/* ---------------- Logging ---------------- */
-function logBioUrlClick(postId, url) {
-  try { window.__smeLogEvent?.("bio_url_click", { postId, url }); } catch {}
-}
-
 export function MobileBioSheet({ open, onClose, post, onAction }) {
   if (!open) return null;
 
@@ -61,13 +56,29 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
   const hasBioText = !!bio.bio_text?.trim();
   const hasBioUrl = !!bio.bio_url?.trim();
 
-  // 🟦 Track open as soon as rendered
   React.useEffect(() => {
     if (open && postId) {
       onAction?.("bio_open", { post_id: postId, surface: "mobile" });
-      try { window.__smeLogEvent?.("bio_open", { post_id: postId }); } catch {}
+      try {
+        window.__smeLogEvent?.("bio_open", { post_id: postId });
+      } catch {}
     }
-  }, [open, postId]);
+  }, [open, postId, onAction]);
+
+  const handleBioUrlClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    onAction?.("bio_url_click", {
+      post_id: postId,
+      url: bio.bio_url,
+      surface: "mobile",
+    });
+
+    alert(
+      "We have noted your interest in exploring the promoted brand/product. We will provide you with further information in the study debrief."
+    );
+  };
 
   return createPortal(
     <div
@@ -105,7 +116,6 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
           fontSize: 14,
         }}
       >
-        {/* drag handle */}
         <div
           style={{
             width: 40,
@@ -116,7 +126,6 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
           }}
         />
 
-        {/* Avatar + name */}
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
           <img
             src={bio.avatarUrl || neutralAvatarDataUrl(60)}
@@ -131,7 +140,6 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
               {bio.badge && VerifiedBadge}
             </div>
 
-            {/* Text + URL (same logic as desktop) */}
             {hasBioText && (
               <div
                 style={{ fontSize: 13, color: "#4b5563", marginTop: 6, lineHeight: 1.4 }}
@@ -155,15 +163,7 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
                   href={bio.bio_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                onClick={(e) => {
-  e.preventDefault();
-  onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url, surface: "mobile" });
-  try { window.__smeLogEvent?.("bio_url_click", { post_id: postId, url: bio.bio_url }); } catch {}
-
-  alert(
-    "For the purpose of this study, we have noted your interest in following this bio link.\nWe will provide you with further information in the study debrief."
-  );
-}}
+                  onClick={handleBioUrlClick}
                   style={{
                     color: "#2563eb",
                     textDecoration: "none",
@@ -177,7 +177,6 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
           </div>
         </div>
 
-        {/* Stats */}
         <div
           style={{
             display: "flex",
@@ -203,7 +202,6 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
         </div>
       </div>
 
-      {/* Animation keyframes */}
       <style>{`
         @keyframes igSheetSlideUp {
           from { transform: translateY(100%); opacity: 0; }
