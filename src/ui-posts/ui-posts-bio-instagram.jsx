@@ -34,11 +34,10 @@ export const VerifiedBadge = (
 );
 
 /* ---------------- Logging ---------------- */
-function logBioUrlClick(postId, url) {
-  try { window.__smeLogEvent?.("bio_url_click", { postId, url }); } catch {}
-}
 function logBioHoverOpen(postId) {
-  try { window.__smeLogEvent?.("bio_hover_open", { postId }); } catch {}
+  try {
+    window.__smeLogEvent?.("bio_hover_open", { postId });
+  } catch {}
 }
 
 /* ---------------- Utilities ---------------- */
@@ -60,17 +59,15 @@ export function BioHoverCard({
   anchorEl,
   hideHover,
   hideDelayRef,
-  onAction
+  onAction,
 }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
-  // Log hover open
   useEffect(() => {
     if (anchorEl && bio?.id) logBioHoverOpen(bio.id);
   }, [anchorEl, bio?.id]);
 
-  // Position popup
   useEffect(() => {
     if (!anchorEl) return;
     const rect = anchorEl.getBoundingClientRect();
@@ -85,6 +82,20 @@ export function BioHoverCard({
   const hasBioText = !!bio.bio_text?.trim();
   const hasBioUrl = !!bio.bio_url?.trim();
   const postId = bio.id ?? bio.post_id ?? null;
+
+  const handleBioUrlClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    onAction?.("bio_url_click", {
+      post_id: postId,
+      url: bio.bio_url,
+    });
+
+    alert(
+      "We have noted your interest in exploring the promoted brand/product. We will provide you with further information in the study debrief."
+    );
+  };
 
   return ReactDOM.createPortal(
     <div
@@ -109,8 +120,6 @@ export function BioHoverCard({
         animation: "fadeIn .15s ease",
       }}
     >
-
-      {/* ------------ Avatar + name ------------ */}
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
         <img
           src={avatarUrl || neutralAvatarDataUrl(60)}
@@ -125,7 +134,6 @@ export function BioHoverCard({
             {verified && VerifiedBadge}
           </div>
 
-          {/* ------------ Text & URL Logic ------------ */}
           {hasBioText ? (
             <>
               <div
@@ -144,32 +152,24 @@ export function BioHoverCard({
                     lineHeight: "1.35",
                   }}
                 >
-                 <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
-<a
-  href={bio.bio_url}
-  target="_blank"
-  rel="noopener noreferrer"
-  onClick={(e) => {
-  e.preventDefault();
-  onAction?.("bio_url_click", { post_id: postId, url: bio.bio_url });
-
-  alert(
-    "We have noted your interest in following this bio link. We will provide you with further information in the study debrief."
-  );
-}}
-  style={{
-    color: "#2563eb",
-    textDecoration: "none",
-    fontWeight: 500,
-  }}
->
-  {prettyUrl(bio.bio_url)}
-</a>
+                  <LinkIcon size={14} style={{ color: "#2563eb", marginTop: 1 }} />
+                  <a
+                    href={bio.bio_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={handleBioUrlClick}
+                    style={{
+                      color: "#2563eb",
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {prettyUrl(bio.bio_url)}
+                  </a>
                 </div>
               )}
             </>
           ) : hasBioUrl ? (
-            // URL only, no bio text
             <div
               style={{
                 display: "flex",
@@ -185,7 +185,7 @@ export function BioHoverCard({
                 href={bio.bio_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => logBioUrlClick(postId, bio.bio_url)}
+                onClick={handleBioUrlClick}
                 style={{
                   color: "#2563eb",
                   textDecoration: "none",
@@ -199,7 +199,6 @@ export function BioHoverCard({
         </div>
       </div>
 
-      {/* ------------ Stats ------------ */}
       <div
         style={{
           display: "flex",
