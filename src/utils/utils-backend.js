@@ -11,6 +11,12 @@ import {
 } from "./utils-core";
 
 /* --------------------- App + endpoints ----------------------- */
+function msToSeconds(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return "";
+  return Math.round((n / 1000) * 100) / 100;
+}
+
 export const getApp = () => {
   const q = new URLSearchParams(window.location.search);
   const fromUrl = (q.get("app") || "").toLowerCase();
@@ -766,6 +772,12 @@ function mergeParticipantRowsWithSurveyRows({
       surveyPayload[key] = value === "" || value == null ? fillValue : value;
     });
 
+    const durationMs =
+  match?.raw?.duration_ms ??
+  participant?.ms_enter_to_submit ??
+  participant?.duration_ms ??
+  "";
+
     const remainingParticipantFields = { ...participant };
 
     delete remainingParticipantFields.session_id;
@@ -786,14 +798,18 @@ function mergeParticipantRowsWithSurveyRows({
     delete remainingParticipantFields.feed_checksum;
 
     const orderedParticipant = {
-      session_id: participant?.session_id ?? "",
-      participant_id: participant?.participant_id ?? "",
-      ip_address: participant?.ip_address ?? "",
-      prolific_pid: participant?.prolific_pid ?? "",
-      entered_at_iso: participant?.entered_at_iso ?? "",
-      submitted_at_iso: participant?.submitted_at_iso ?? "",
-      feed_id: participant?.feed_id ?? "",
-    };
+  session_id: participant?.session_id ?? "",
+  participant_id: participant?.participant_id ?? "",
+  ip_address: participant?.ip_address ?? "",
+  prolific_pid: participant?.prolific_pid ?? "",
+  entered_at_iso: participant?.entered_at_iso ?? "",
+  submitted_at_iso:
+    match?.raw?.submitted_at_iso ??
+    participant?.submitted_at_iso ??
+    "",
+  duration_s: msToSeconds(durationMs),
+  feed_id: participant?.feed_id ?? "",
+};
 
     return {
       ...orderedParticipant,
@@ -954,6 +970,7 @@ const participantRows = surveyResponses.map((row) => ({
   prolific_pid: row?.prolific_pid ?? "",
   entered_at_iso: row?.entered_at_iso ?? row?.submitted_at_iso ?? "",
   submitted_at_iso: row?.submitted_at_iso ?? "",
+  duration_ms: row?.duration_ms ?? "",
   feed_id: "SURVEY_ONLY",
   survey_id: row?.survey_id ?? effectiveSurveyId,
   project_id: row?.project_id ?? projectId ?? "",
@@ -1436,6 +1453,10 @@ export async function sendSurveyResponseToBackend(args = {}) {
     project_id: args.project_id || legacyRow.project_id || getProjectId() || undefined,
     session_id: args.session_id || legacyRow.session_id || "",
     participant_id: args.participant_id || legacyRow.participant_id || "",
+    entered_at_iso:
+  args.entered_at_iso ||
+  legacyRow.entered_at_iso ||
+  "",
     submitted_at_iso: args.submitted_at_iso || legacyRow.submitted_at_iso || new Date().toISOString(),
     duration_ms: Number(args.duration_ms ?? legacyRow.duration_ms ?? 0) || 0,
     responses: directResponses || rowResponses || {},

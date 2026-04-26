@@ -1444,6 +1444,12 @@ export default function App() {
     !shouldSkipParticipantOverlay;
 
   useEffect(() => {
+    if (shouldShowPreface && !enterTsRef.current) {
+      enterTsRef.current = now();
+    }
+  }, [shouldShowPreface]);
+
+  useEffect(() => {
     if (!shouldSkipParticipantOverlay || hasEntered || shouldShowPreface) return;
 
     const id = prefilledParticipantId || "";
@@ -1910,22 +1916,24 @@ export default function App() {
 
     try {
       const submittedAtIso = new Date().toISOString();
-const submittedAtMs = Date.now();
-const durationMs =
-  surveyStartTsRef.current && submittedAtMs >= surveyStartTsRef.current
-    ? submittedAtMs - surveyStartTsRef.current
-    : 0;
+      const submittedAtMs = Date.now();
+      const enteredAtMs = enterTsRef.current || surveyStartTsRef.current || null;
+      const durationMs =
+        enteredAtMs && submittedAtMs >= enteredAtMs
+          ? submittedAtMs - enteredAtMs
+          : 0;
 
-const ok = await sendSurveyResponseToBackend({
-  survey_id: linkedSurvey.survey_id,
-  feed_id: activeFeedId || "",
-  project_id: projectId || "",
-  session_id: sessionIdRef.current,
-  participant_id: participantId || "",
-  responses: surveyResponses,
-  submitted_at_iso: submittedAtIso,
-  duration_ms: durationMs,
-});
+      const ok = await sendSurveyResponseToBackend({
+        survey_id: linkedSurvey.survey_id,
+        feed_id: activeFeedId || "",
+        project_id: projectId || "",
+        session_id: sessionIdRef.current,
+        participant_id: participantId || "",
+        responses: surveyResponses,
+        entered_at_iso: enteredAtMs ? fmtTime(enteredAtMs) : "",
+        submitted_at_iso: submittedAtIso,
+        duration_ms: durationMs,
+      });
 
       if (!ok) {
         setSurveyPhase("error");
@@ -2315,6 +2323,9 @@ const ok = await sendSurveyResponseToBackend({
                           hasLinkedSurveyBefore: !!linkedSurvey,
                         });
 
+                        if (!enterTsRef.current) {
+                          enterTsRef.current = now();
+                        }
                         setPrefaceCompleted(true);
                         scrollSurveyViewToTop();
                       }}
