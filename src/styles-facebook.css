@@ -2066,3 +2066,177 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .admin-section-subtitle {
   margin-top: 4px;
 }
+
+
+/* ==========================================================================
+   FACEBOOK SURVEY THEME
+   Added to support survey-only and feed+survey flows
+   ========================================================================== */
+
+:root{
+  --survey-primary: #1877f2;
+  --survey-primary-dark: #0b5cc4;
+  --survey-bg: #f0f2f5;
+  --survey-card: #ffffff;
+  --survey-border: #dfe3e8;
+  --survey-text: #111827;
+  --survey-muted: #6b7280;
+  --survey-shadow: 0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(0,0,0,.08);
+}
+
+/* Survey shell */
+.survey-shell,
+.survey-container,
+.survey-page{
+  background: var(--survey-bg);
+  color: var(--survey-text);
+}
+
+/* Survey card */
+.survey-card,
+.survey-panel,
+.survey-box{
+  background: var(--survey-card);
+  border: 1px solid var(--survey-border);
+  border-radius: 14px;
+  box-shadow: var(--survey-shadow);
+}
+
+/* Titles */
+.survey-title,
+.survey-heading{
+  color: #050505;
+  font-weight: 700;
+}
+
+.survey-subtitle,
+.survey-description{
+  color: var(--survey-muted);
+}
+
+/* Inputs */
+.survey-input,
+.survey-select,
+.survey-textarea,
+.survey-card input,
+.survey-card textarea,
+.survey-card select{
+  border: 1px solid #ccd0d5;
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.survey-input:focus,
+.survey-select:focus,
+.survey-textarea:focus,
+.survey-card input:focus,
+.survey-card textarea:focus,
+.survey-card select:focus{
+  border-color: var(--survey-primary);
+  box-shadow: 0 0 0 3px rgba(24,119,242,.15);
+  outline: none;
+}
+
+/* Survey buttons */
+.survey-btn,
+.survey-next,
+.survey-submit,
+.survey-start-btn{
+  background: var(--survey-primary);
+  color: #fff;
+  border: 1px solid var(--survey-primary);
+  border-radius: 10px;
+  font-weight: 600;
+  transition: background .15s ease, transform .08s ease;
+}
+
+.survey-btn:hover,
+.survey-next:hover,
+.survey-submit:hover,
+.survey-start-btn:hover{
+  background: var(--survey-primary-dark);
+}
+
+.survey-btn:active,
+.survey-next:active,
+.survey-submit:active{
+  transform: scale(.98);
+}
+
+/* Secondary buttons */
+.survey-btn.secondary,
+.survey-back{
+  background: #e4e6eb;
+  color: #050505;
+  border-color: #d8dadf;
+}
+
+.survey-btn.secondary:hover,
+.survey-back:hover{
+  background: #d8dadf;
+}
+
+/* Scale/radio questions */
+.survey-scale-option,
+.survey-radio-option,
+.survey-checkbox-option{
+  border: 1px solid var(--survey-border);
+  border-radius: 10px;
+  background: #fff;
+  transition: all .12s ease;
+}
+
+.survey-scale-option:hover,
+.survey-radio-option:hover,
+.survey-checkbox-option:hover{
+  border-color: var(--survey-primary);
+  background: #f0f6ff;
+}
+
+/* Selected states */
+.survey-scale-option.selected,
+.survey-radio-option.selected,
+.survey-checkbox-option.selected{
+  border-color: var(--survey-primary);
+  background: #e7f3ff;
+}
+
+/* Progress bars */
+.survey-progress{
+  background: #dfe3e8;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.survey-progress-fill{
+  background: linear-gradient(90deg,#1877f2,#3b82f6);
+}
+
+/* Overlay / preface */
+.survey-preface,
+.survey-overlay{
+  background: rgba(240,242,245,.92);
+  backdrop-filter: blur(6px);
+}
+
+.survey-preface-card{
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid var(--survey-border);
+  box-shadow: 0 14px 40px rgba(0,0,0,.12);
+}
+
+/* Completion screen */
+.survey-complete{
+  text-align: center;
+}
+
+.survey-complete .survey-title{
+  color: var(--survey-primary);
+}
+
+/* Survey-only mode spacing */
+body.survey-only-mode{
+  background: var(--survey-bg);
+}

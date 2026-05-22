@@ -1,7 +1,79 @@
 // components-ui-core.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { fakeNamesFor as utilsFakeNamesFor,uid } from "../utils";
+
+/* ------------------------------- Tiny helpers ------------------------------ */
+function useIsMobile(breakpointPx = 700) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined"
+      ? window.matchMedia(`(max-width:${breakpointPx}px)`).matches
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width:${breakpointPx}px)`);
+    const onChange = (e) => setIsMobile(e.matches);
+    mq.addEventListener?.("change", onChange);
+    mq.addListener && mq.addListener(onChange);
+    return () => {
+      mq.removeEventListener?.("change", onChange);
+      mq.removeListener && mq.removeListener(onChange);
+    };
+  }, [breakpointPx]);
+
+  return isMobile;
+}
+
+function tryEnterFullscreenLocal(el) {
+  if (!el || typeof document === "undefined") return;
+  if (document.fullscreenElement) return;
+  try {
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (fn) fn.call(el);
+  } catch (_) {}
+}
+
+function htmlMarkup(value) {
+  return { __html: String(value || "") };
+}
+
+function getQuestionId(q, index) {
+  return q?.id || q?.question_id || q?.name || `q_${index + 1}`;
+}
+
+function getQuestionText(q) {
+  return q?.text || q?.question || q?.label || q?.title || "Question";
+}
+
+function getQuestionType(q) {
+  return String(q?.type || q?.question_type || q?.input_type || "text").toLowerCase();
+}
+
+function getOptions(q) {
+  const raw = q?.options || q?.choices || q?.scale_points || q?.answers || [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    return raw.split(/\r?\n|,/).map((x) => x.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function optionValue(opt) {
+  return typeof opt === "object" ? (opt.value ?? opt.id ?? opt.label ?? opt.text ?? "") : opt;
+}
+
+function optionLabel(opt) {
+  return typeof opt === "object" ? (opt.label ?? opt.text ?? opt.value ?? opt.id ?? "") : opt;
+}
+
+function flattenSurveyPages(survey) {
+  if (Array.isArray(survey?.pages) && survey.pages.length) return survey.pages;
+  if (Array.isArray(survey?.questions)) return [{ id: "page_1", questions: survey.questions }];
+  return [{ id: "page_1", questions: [] }];
+}
+
 
 /* ------------------------------- Icons ------------------------------------- */
 export const IconLike = (p) => (
@@ -199,7 +271,7 @@ export function SkeletonFeed() {
   );
 }
 
-export function PostText({ text, expanded, onExpand, onClamp }) {
+export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, postId }) {
   const pRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
   const sentClampRef = React.useRef(false);
@@ -214,6 +286,7 @@ export function PostText({ text, expanded, onExpand, onClamp }) {
       if (clamped && !sentClampRef.current) {
         sentClampRef.current = true;
         onClamp?.();
+        onAction?.(prefix ? `${prefix}_text_clamped` : "text_clamped", { post_id: postId });
       }
     };
 
@@ -344,16 +417,46 @@ export function neutralAvatarDataUrl(size = 28) {
 }
 
 /* ----------------- Overlays ------------- */
-export function ParticipantOverlay({ onSubmit }) {
-  const [tempId, setTempId] = useState("");
-  const handleSubmit = (e) => { e.preventDefault(); if (tempId.trim()) onSubmit(tempId.trim()); };
+export function ParticipantOverlay({ initialValue = "", onSubmit }) {
+  const [tempId, setTempId] = useState(initialValue || "");
+
+  useEffect(() => {
+    if (initialValue && !tempId) setTempId(initialValue);
+  }, [initialValue, tempId]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const cleanId = tempId.trim();
+    if (!cleanId) return;
+
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 700px)").matches;
+
+    if (isMobile) {
+      tryEnterFullscreenLocal(document.documentElement);
+      setTimeout(() => {
+        tryEnterFullscreenLocal(document.querySelector(".app") || document.body);
+        window.scrollTo(0, 1);
+      }, 120);
+    }
+
+    onSubmit(cleanId);
+  };
+
   return (
     <div className="modal-backdrop" style={{ background: "rgba(0,0,0,0.6)", zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 400, width: "100%" }}>
         <div className="modal-head"><h3 style={{ margin: 0 }}>Enter Participant ID</h3></div>
         <div className="modal-body">
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
-            <input className="input" value={tempId} onChange={(e) => setTempId(e.target.value)} placeholder="Your ID" required />
+            <input
+              className="input"
+              value={tempId}
+              onChange={(e) => setTempId(e.target.value)}
+              placeholder={initialValue ? "" : "Your ID"}
+              required
+            />
             <button type="submit" className="btn primary">Continue</button>
           </form>
         </div>
@@ -363,12 +466,12 @@ export function ParticipantOverlay({ onSubmit }) {
 }
 
 export function LoadingOverlay({
-  status = "loading",                          // "loading" | "error"
+  status = "loading",
   title = "Loading your feed…",
   subtitle = "This will only take a moment.",
   errorTitle = "Couldn’t load your feed",
   errorSubtitle = "We hit a network error. Please try again.",
-  onRetry,                                     // only shown when status="error"
+  onRetry,
 }) {
   const isError = status === "error";
 
@@ -384,9 +487,7 @@ export function LoadingOverlay({
         ) : (
           <>
             <h3 style={{ margin: "0 0 6px" }}>{errorTitle}</h3>
-            <div style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 12 }}>
-              {errorSubtitle}
-            </div>
+            <div style={{ color: "var(--muted)", fontSize: ".95rem", marginBottom: 12 }}>{errorSubtitle}</div>
             <div className="modal-footer" style={{ justifyContent: "center" }}>
               <button className="btn primary" onClick={onRetry}>Retry</button>
             </div>
@@ -397,31 +498,16 @@ export function LoadingOverlay({
   );
 }
 
-
-export function ThankYouOverlay() {
-  const [sessionId, setSessionId] = React.useState("");
-
-  React.useEffect(() => {
-    // Retrieve the UID stored earlier via localStorage or internal logic
-    setSessionId(uid());
-  }, []);
-
+export function ThankYouOverlay({ sessionId }) {
+  const fallbackId = useMemo(() => sessionId || uid(), [sessionId]);
   return (
     <div className="modal-backdrop" style={{ zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>
         <div className="modal-body">
           <h2 style={{ marginTop: 0 }}>Thank you for your response</h2>
           <p>Please go back to the survey and enter the following code:</p>
-          <p
-            style={{
-              fontSize: "1.25rem",
-              fontWeight: "bold",
-              marginTop: "0.5rem",
-              fontFamily: "monospace",
-              letterSpacing: "0.5px",
-            }}
-          >
-            {sessionId}
+          <p style={{ fontSize: "1.25rem", fontWeight: "bold", marginTop: "0.5rem", fontFamily: "monospace", letterSpacing: "0.5px" }}>
+            {fallbackId}
           </p>
         </div>
       </div>
@@ -429,10 +515,205 @@ export function ThankYouOverlay() {
   );
 }
 
+/* ------------------------- Survey preface and screens ---------------------- */
+export function SurveyPrefaceFlow({ survey, participantDisplayId, onComplete }) {
+  const preface = survey?.preface || survey || {};
+  const steps = [
+    {
+      key: "participant_information",
+      title: preface.participant_information_title || preface.participantInfoTitle || "Participant Information",
+      html: preface.participant_information_html || preface.participant_information || preface.participantInfoHtml,
+    },
+    {
+      key: "consent",
+      title: preface.consent_title || "Consent",
+      html: preface.consent_text_html || preface.consent_html || preface.consent || preface.consentTextHtml,
+    },
+    {
+      key: "instructions",
+      title: preface.instructions_title || "Instructions",
+      html: preface.instructions_html || preface.instructions || preface.instructionsHtml,
+    },
+  ].filter((step) => step.html || step.key === "instructions");
+
+  const [index, setIndex] = useState(0);
+  const [consented, setConsented] = useState(false);
+  const step = steps[index] || steps[0];
+  const isConsent = step?.key === "consent";
+  const isLast = index >= steps.length - 1;
+  const html = String(step?.html || "Please read the information carefully before continuing.")
+    .replaceAll("${e://Field/PROLIFIC_PID}", participantDisplayId || "")
+    .replaceAll("{{PARTICIPANT_ID}}", participantDisplayId || "")
+    .replaceAll("[[PARTICIPANT_ID]]", participantDisplayId || "");
+
+  const nextLabel = isLast
+    ? (preface.pre_feed_button_label || preface.start_button_label || "Continue")
+    : "Next";
+
+  const handleNext = () => {
+    if (isConsent && !consented) return;
+    if (isLast) onComplete?.();
+    else setIndex((i) => Math.min(i + 1, steps.length - 1));
+  };
+
+  return (
+    <div className="survey-shell survey-preface-shell">
+      <div className="survey-card">
+        <div className="survey-card-head">
+          <h2>{step?.title}</h2>
+          {participantDisplayId && <div className="survey-muted">Participant ID: {participantDisplayId}</div>}
+        </div>
+        <div className="survey-card-body survey-rich-text" dangerouslySetInnerHTML={htmlMarkup(html)} />
+        {isConsent && (
+          <label className="survey-consent-row">
+            <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} />
+            <span>I have read the information above and consent to participate.</span>
+          </label>
+        )}
+        <div className="survey-actions">
+          <button className="btn" type="button" disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>Back</button>
+          <button className="btn primary" type="button" disabled={isConsent && !consented} onClick={handleNext}>{nextLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SurveyQuestion({ question, index, value, error, onChange }) {
+  const qid = getQuestionId(question, index);
+  const type = getQuestionType(question);
+  const text = getQuestionText(question);
+  const options = getOptions(question);
+  const required = !!(question?.required || question?.is_required);
+
+  const setValue = (v) => onChange?.(qid, v, question);
+
+  const renderInput = () => {
+    if (["textarea", "long_text", "open_text", "paragraph"].includes(type)) {
+      return <textarea className="input survey-textarea" value={value || ""} onChange={(e) => setValue(e.target.value)} />;
+    }
+    if (["radio", "single", "single_choice", "multiple_choice", "likert", "scale"].includes(type) && options.length) {
+      return (
+        <div className="survey-options">
+          {options.map((opt, i) => {
+            const val = optionValue(opt);
+            return (
+              <label key={`${qid}_${i}`} className="survey-option">
+                <input type="radio" name={qid} checked={String(value ?? "") === String(val)} onChange={() => setValue(val)} />
+                <span>{optionLabel(opt)}</span>
+              </label>
+            );
+          })}
+        </div>
+      );
+    }
+    if (["checkbox", "multi", "multi_choice", "multiple"].includes(type) && options.length) {
+      const current = Array.isArray(value) ? value : [];
+      return (
+        <div className="survey-options">
+          {options.map((opt, i) => {
+            const val = optionValue(opt);
+            const checked = current.map(String).includes(String(val));
+            return (
+              <label key={`${qid}_${i}`} className="survey-option">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const next = e.target.checked ? [...current, val] : current.filter((x) => String(x) !== String(val));
+                    setValue(next);
+                  }}
+                />
+                <span>{optionLabel(opt)}</span>
+              </label>
+            );
+          })}
+        </div>
+      );
+    }
+    if (["number", "numeric"].includes(type)) {
+      return <input className="input" type="number" value={value || ""} onChange={(e) => setValue(e.target.value)} />;
+    }
+    if (["post_reminder", "reminder"].includes(type)) {
+      const body = question?.post_snapshot?.text || question?.post_text || question?.description || "Please refer to the post shown earlier.";
+      return <div className="survey-post-reminder"><div className="survey-muted">Post reminder</div><p>{body}</p></div>;
+    }
+    if (question?.html || type === "html" || type === "display") {
+      return <div className="survey-rich-text" dangerouslySetInnerHTML={htmlMarkup(question.html || question.description || question.text)} />;
+    }
+    return <input className="input" value={value || ""} onChange={(e) => setValue(e.target.value)} />;
+  };
+
+  return (
+    <div className={`survey-question ${error ? "has-error" : ""}`}>
+      <div className="survey-question-title">
+        <span>{text}</span>{required && <span aria-label="required"> *</span>}
+      </div>
+      {question?.description && <div className="survey-muted">{question.description}</div>}
+      {renderInput()}
+      {error && <div className="survey-error">{error === true ? "Please answer this question." : error}</div>}
+    </div>
+  );
+}
+
+export function SurveyScreen({
+  survey,
+  responses = {},
+  errors = {},
+  errorMsg,
+  onChange,
+  onSubmit,
+  onClearBanner,
+  submitting = false,
+}) {
+  const pages = flattenSurveyPages(survey);
+  const [pageIndex, setPageIndex] = useState(0);
+  const page = pages[pageIndex] || pages[0] || { questions: [] };
+  const questions = page.questions || [];
+  const isLast = pageIndex >= pages.length - 1;
+  const formRef = useRef(null);
+
+  useEffect(() => {
+    formRef.current?.scrollIntoView?.({ block: "start" });
+  }, [pageIndex]);
+
+  const handleNext = () => {
+    onClearBanner?.();
+    if (isLast) onSubmit?.();
+    else setPageIndex((i) => Math.min(i + 1, pages.length - 1));
+  };
+
+  return (
+    <div className="survey-shell" ref={formRef}>
+      <div className="survey-card">
+        <div className="survey-card-head">
+          <h2>{page.title || survey?.title || survey?.name || "Survey"}</h2>
+          {pages.length > 1 && <div className="survey-muted">Page {pageIndex + 1} of {pages.length}</div>}
+        </div>
+        {errorMsg && <div className="survey-banner-error">{errorMsg}</div>}
+        <div className="survey-card-body">
+          {questions.map((q, i) => {
+            const qid = getQuestionId(q, i);
+            return <SurveyQuestion key={qid} question={q} index={i} value={responses[qid]} error={errors[qid]} onChange={onChange} />;
+          })}
+        </div>
+        <div className="survey-actions">
+          <button className="btn" type="button" disabled={pageIndex === 0 || submitting} onClick={() => setPageIndex((i) => Math.max(0, i - 1))}>Back</button>
+          <button className="btn primary" type="button" disabled={submitting} onClick={handleNext}>{submitting ? "Submitting…" : isLast ? "Submit" : "Next"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function SurveyScreenMobile(props) {
+  return <SurveyScreen {...props} />;
+}
+
 /* ------------------------- Route-aware top bar ----------------------------- */
 export function TopRailPlaceholder() {
   return (
-    <div className="top-rail-placeholder">
+    <div className="top-rail-placeholder" aria-hidden="true">
       <div className="trp-inner">
         <div className="trp-left">
           <div className="trp-logo"></div>
@@ -457,15 +738,23 @@ export function TopRailPlaceholder() {
 
 export function RouteAwareTopbar() {
   const location = useLocation();
+  const isMobile = useIsMobile(700);
+
   let onAdmin = location.pathname === "/admin";
   if (!onAdmin && typeof window !== "undefined") {
     onAdmin = window.location.hash.startsWith("#/admin");
   }
 
+  const onSurvey =
+    typeof document !== "undefined" &&
+    document.body.classList.contains("survey-mode");
+
   useEffect(() => {
     if (onAdmin) document.body.classList.add("admin-mode");
     else document.body.classList.remove("admin-mode");
   }, [onAdmin]);
+
+  if (onSurvey || isMobile) return null;
 
   return (
     <>
@@ -478,5 +767,57 @@ export function RouteAwareTopbar() {
         )}
       </div>
     </>
+  );
+}
+
+/* ------------------------- Page scaffold (rails + center) ------------------ */
+function LeftRailPlaceholder() {
+  return (
+    <aside className="rail rail-left" aria-hidden="true">
+      <div className="ghost-card ghost-profile">
+        <div className="ghost-avatar xl" />
+        <div className="ghost-lines">
+          <div className="ghost-line w-60" />
+          <div className="ghost-line w-35" />
+        </div>
+      </div>
+      <div className="ghost-list">
+        {["Home","AI","Friends","Events","Memories","Saved","Groups","Marketplace","Feeds","Video"].map((t,i)=>(
+          <div key={i} className="ghost-item icon">
+            <div className="ghost-icon" />
+            <div className="ghost-line w-70" />
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function RightRailPlaceholder() {
+  return (
+    <aside className="rail rail-right" aria-hidden="true">
+      <div className="ghost-card banner" />
+      <div className="ghost-card banner" />
+      <div className="ghost-card box">
+        <div className="ghost-line w-35" style={{marginBottom:8}} />
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="ghost-row">
+            <div className="ghost-avatar sm online" />
+            <div className="ghost-line w-60" />
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+export function PageScaffold({ children }) {
+  const isMobile = useIsMobile(700);
+  return (
+    <div className="page">
+      {!isMobile && <LeftRailPlaceholder />}
+      <div className="container feed">{children}</div>
+      {!isMobile && <RightRailPlaceholder />}
+    </div>
   );
 }
