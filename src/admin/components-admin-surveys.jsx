@@ -59,6 +59,19 @@ function normalizeLinkedFeedIds(input) {
   return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
 }
 
+function orderedLinkedFeedIdsFromSurvey(source = {}, fallbackLinkedIds = []) {
+  const sequence = normalizeLinkedFeedIds(source?.feed_sequence_ids);
+  const linked = normalizeLinkedFeedIds(
+    sequence.length ? sequence : (source?.linked_feed_ids || fallbackLinkedIds)
+  );
+  const seen = new Set();
+  return linked.filter((fid) => {
+    if (!fid || seen.has(fid)) return false;
+    seen.add(fid);
+    return true;
+  });
+}
+
 function slugifySurveyName(name = "") {
   return String(name || "")
     .trim()
@@ -613,15 +626,23 @@ export function AdminSurveysPanel({
 
             const normalizedFull = applySurveyMetaDefaults(full || {}, projectId);
 
+            const orderedFeedIds = orderedLinkedFeedIdsFromSurvey(
+              normalizedFull,
+              linkedFeedIds
+            );
+
             return {
               ...s,
               ...normalizedFull,
-              linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+              linked_feed_ids: orderedFeedIds,
+              feed_sequence_ids: orderedFeedIds,
               linked_project_id: projectId,
               trigger: normalizedFull.trigger || "after_feed_submit",
               delivery_mode:
                 normalizedFull.delivery_mode ||
-                DELIVERY_MODE_FEED_THEN_SURVEY,
+                (orderedFeedIds.length > 1
+                  ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+                  : DELIVERY_MODE_FEED_THEN_SURVEY),
               pages: normalizeSurveyPagesWithDelay(normalizedFull.pages || []),
             };
           } catch {
@@ -671,15 +692,20 @@ export function AdminSurveysPanel({
       ]);
 
       const normalized = applySurveyMetaDefaults(s || {}, projectId);
+      const orderedFeedIds = orderedLinkedFeedIdsFromSurvey(normalized, linkedFeedIds);
 
       const editorSurvey = buildSurveyPagesFromFlatQuestions(
         {
           ...normalized,
-          linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+          linked_feed_ids: orderedFeedIds,
+          feed_sequence_ids: orderedFeedIds,
           linked_project_id: projectId,
           trigger: normalized.trigger || "after_feed_submit",
           delivery_mode:
-            normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
+            normalized.delivery_mode ||
+            (orderedFeedIds.length > 1
+              ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+              : DELIVERY_MODE_FEED_THEN_SURVEY),
           pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
         },
         flattenSurveyPagesForEditor(normalized)
@@ -840,12 +866,20 @@ export function AdminSurveysPanel({
 
     setSavingSurvey(true);
     try {
+      const orderedFeedIds = orderedLinkedFeedIdsFromSurvey(survey);
+      const normalizedDeliveryMode = normalizeDeliveryMode(survey.delivery_mode);
+
       const normalized = {
         ...survey,
         linked_project_id: projectId,
-        linked_feed_ids: normalizeLinkedFeedIds(survey.linked_feed_ids),
+        linked_feed_ids: normalizedDeliveryMode === DELIVERY_MODE_SURVEY_ONLY
+          ? orderedFeedIds
+          : orderedFeedIds,
+        feed_sequence_ids: normalizedDeliveryMode === DELIVERY_MODE_SURVEY_ONLY
+          ? []
+          : orderedFeedIds,
         trigger: survey.trigger || "after_feed_submit",
-        delivery_mode: normalizeDeliveryMode(survey.delivery_mode),
+        delivery_mode: normalizedDeliveryMode,
         ...normalizeSurveyMetaFields(survey),
         pages: normalizeSurveyPagesWithDelay(survey.pages || []),
       };
@@ -892,16 +926,25 @@ export function AdminSurveysPanel({
           }),
         ]);
 
+        const freshBase = applySurveyMetaDefaults(fresh || {}, projectId);
+        const freshOrderedFeedIds = orderedLinkedFeedIdsFromSurvey(
+          freshBase,
+          linkedFeedIds
+        );
+
         const normalizedFresh = applySurveyMetaDefaults(
           {
             ...(fresh || {}),
-            linked_feed_ids: normalizeLinkedFeedIds(linkedFeedIds),
+            linked_feed_ids: freshOrderedFeedIds,
+            feed_sequence_ids: freshOrderedFeedIds,
             linked_project_id: projectId,
             trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
             delivery_mode:
               fresh?.delivery_mode ||
               normalized.delivery_mode ||
-              DELIVERY_MODE_FEED_THEN_SURVEY,
+              (freshOrderedFeedIds.length > 1
+                ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+                : DELIVERY_MODE_FEED_THEN_SURVEY),
             pages: normalizeSurveyPagesWithDelay(fresh?.pages || []),
           },
           projectId
@@ -950,19 +993,28 @@ export function AdminSurveysPanel({
 
   function toggleFeed(nextFeedId) {
     setSurvey((prev) => {
-      const set = new Set(normalizeLinkedFeedIds(prev?.linked_feed_ids));
-      if (set.has(nextFeedId)) set.delete(nextFeedId);
-      else set.add(nextFeedId);
+      const current = orderedLinkedFeedIdsFromSurvey(prev);
+      const exists = current.includes(nextFeedId);
+      const next = exists
+        ? current.filter((fid) => fid !== nextFeedId)
+        : [...current, nextFeedId];
 
       return {
         ...prev,
-        linked_feed_ids: Array.from(set),
+        linked_feed_ids: next,
+        feed_sequence_ids: next,
+        delivery_mode:
+          prev?.delivery_mode === DELIVERY_MODE_SURVEY_ONLY
+            ? prev.delivery_mode
+            : (next.length > 1
+                ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+                : normalizeDeliveryMode(prev?.delivery_mode)),
       };
     });
   }
   function moveLinkedFeed(feedIdToMove, direction) {
     setSurvey((prev) => {
-      const ids = normalizeLinkedFeedIds(prev?.linked_feed_ids);
+      const ids = orderedLinkedFeedIdsFromSurvey(prev);
       const idx = ids.indexOf(feedIdToMove);
       const nextIdx = idx + direction;
       if (idx < 0 || nextIdx < 0 || nextIdx >= ids.length) return prev;
@@ -972,6 +1024,10 @@ export function AdminSurveysPanel({
         ...prev,
         linked_feed_ids: next,
         feed_sequence_ids: next,
+        delivery_mode:
+          next.length > 1
+            ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+            : normalizeDeliveryMode(prev?.delivery_mode),
       };
     });
   }
@@ -987,7 +1043,7 @@ export function AdminSurveysPanel({
     try {
       const res = await linkSurveyToFeedsOnBackend({
         surveyId: survey.survey_id,
-        feedIds: normalizeLinkedFeedIds(survey.linked_feed_ids),
+        feedIds: orderedLinkedFeedIdsFromSurvey(survey),
         projectId,
         allFeeds: feeds,
         trigger: survey.trigger || "after_feed_submit",
@@ -1000,7 +1056,7 @@ export function AdminSurveysPanel({
           allFeeds: feeds,
         });
 
-        const localOrder = normalizeLinkedFeedIds(survey.linked_feed_ids);
+        const localOrder = orderedLinkedFeedIdsFromSurvey(survey);
         const confirmed = new Set(normalizeLinkedFeedIds(linkedIds));
         const orderedConfirmed = localOrder.filter((fid) => confirmed.has(fid));
 
@@ -1082,7 +1138,7 @@ export function AdminSurveysPanel({
       return;
     }
 
-    const feedIds = normalizeLinkedFeedIds(survey.linked_feed_ids);
+    const feedIds = orderedLinkedFeedIdsFromSurvey(survey);
     if (!feedIds.length) {
       alert("Link at least one feed first.");
       return;
@@ -1133,10 +1189,14 @@ export function AdminSurveysPanel({
   }
 
   const linkedFeedsForEditor = useMemo(() => {
-    const linkedIds = new Set(normalizeLinkedFeedIds(survey?.linked_feed_ids));
-    return (Array.isArray(feeds) ? feeds : []).filter((f) =>
-      linkedIds.has(String(f?.feed_id || ""))
+    const orderedIds = orderedLinkedFeedIdsFromSurvey(survey);
+    const byId = new Map(
+      (Array.isArray(feeds) ? feeds : []).map((f) => [
+        String(f?.feed_id || ""),
+        f,
+      ])
     );
+    return orderedIds.map((fid) => byId.get(fid)).filter(Boolean);
   }, [feeds, survey]);
 
   const needsReminderPosts = useMemo(() => {
@@ -1231,6 +1291,9 @@ export function AdminSurveysPanel({
     normalizeDeliveryMode(survey?.delivery_mode) ||
     DELIVERY_MODE_FEED_THEN_SURVEY;
 
+  const selectedFeedIds = orderedLinkedFeedIdsFromSurvey(survey);
+  const isMultiFeedMode = deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY;
+
   const studyApp = useMemo(() => getCurrentStudyApp(), []);
 
   const surveyLaunchUrl = useMemo(() => {
@@ -1244,7 +1307,7 @@ export function AdminSurveysPanel({
 
   const selectedFeedLaunchUrl = useMemo(() => {
     const preferredFeedId =
-      firstLinkedFeedIdForLaunch(survey?.linked_feed_ids) || feedId || "";
+      firstLinkedFeedIdForLaunch(orderedLinkedFeedIdsFromSurvey(survey)) || feedId || "";
     if (!preferredFeedId) return "";
     return buildFeedLaunchUrl({
       projectId,
@@ -1258,7 +1321,7 @@ export function AdminSurveysPanel({
   const linkedFeedLaunchUrl = useMemo(() => {
     if (!survey?.survey_id) return "";
     const preferredFeedId =
-      firstLinkedFeedIdForLaunch(survey?.linked_feed_ids) || feedId || "";
+      firstLinkedFeedIdForLaunch(orderedLinkedFeedIdsFromSurvey(survey)) || feedId || "";
     if (!preferredFeedId) return "";
     return buildFeedSurveyLaunchUrl({
       projectId,
@@ -1484,12 +1547,22 @@ export function AdminSurveysPanel({
               >
                 <SelectInput
                   value={deliveryMode}
-                  onChange={(v) =>
+                  onChange={(v) => {
+                    const nextMode = normalizeDeliveryMode(v);
+                    const ids = orderedLinkedFeedIdsFromSurvey(survey);
                     setSurvey({
                       ...survey,
-                      delivery_mode: normalizeDeliveryMode(v),
-                    })
-                  }
+                      delivery_mode: nextMode,
+                      linked_feed_ids: ids,
+                      feed_sequence_ids: nextMode === DELIVERY_MODE_SURVEY_ONLY ? [] : ids,
+                      pre_feed_button_label:
+                        nextMode === DELIVERY_MODE_SURVEY_ONLY &&
+                        (!survey.pre_feed_button_label ||
+                          survey.pre_feed_button_label === DEFAULT_PRE_FEED_BUTTON_LABEL)
+                          ? "Start survey"
+                          : survey.pre_feed_button_label,
+                    });
+                  }}
                 >
                   <option value={DELIVERY_MODE_FEED_THEN_SURVEY}>
                     One feed, then survey
@@ -1887,22 +1960,36 @@ export function AdminSurveysPanel({
             </SectionCard>
 
             <SectionCard
-              title="Link to feeds"
+              title={
+                deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+                  ? "Multi-feed sequence"
+                  : "Link to feed"
+              }
+              subtitle={
+                deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+                  ? "Select two or more feeds and arrange the order participants should see them before the survey."
+                  : deliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                    ? "Survey-only mode does not require a feed, but linked feeds can still be used as context for post reminder questions."
+                    : "Select the feed participants should see before the survey."
+              }
               right={
                 <button
                   type="button"
                   onClick={handleSaveFeedLinks}
-                  disabled={savingLinks}
+                  disabled={savingLinks || deliveryMode === DELIVERY_MODE_SURVEY_ONLY}
                   style={{
                     padding: "10px 14px",
                     borderRadius: 10,
                     border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: savingLinks ? "not-allowed" : "pointer",
+                    background: deliveryMode === DELIVERY_MODE_SURVEY_ONLY ? "#f3f4f6" : "#fff",
+                    cursor:
+                      savingLinks || deliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                        ? "not-allowed"
+                        : "pointer",
                     fontWeight: 600,
                   }}
                 >
-                  {savingLinks ? "Saving..." : "Save Linked Feeds"}
+                  {savingLinks ? "Saving..." : "Save Feed Setup"}
                 </button>
               }
             >
@@ -1922,6 +2009,31 @@ export function AdminSurveysPanel({
                   : "This survey can run as a direct survey-only study without linked feed context."}
               </div>
 
+              {deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY && (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: selectedFeedIds.length > 1 ? "#1e40af" : "#92400e",
+                    background: selectedFeedIds.length > 1 ? "#eff6ff" : "#fffbeb",
+                    border: `1px solid ${selectedFeedIds.length > 1 ? "#bfdbfe" : "#f59e0b"}`,
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    marginBottom: 10,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <strong>Participants will see:</strong>{" "}
+                  {selectedFeedIds.length
+                    ? `${selectedFeedIds
+                        .map((fid, index) => {
+                          const feed = feeds.find((f) => String(f.feed_id) === String(fid));
+                          return `${index + 1}. ${feed?.name || fid}`;
+                        })
+                        .join(" → ")} → Survey`
+                    : "Select at least two feeds below."}
+                </div>
+              )}
+
               <div
                 style={{
                   border: "1px solid #d1d5db",
@@ -1936,7 +2048,7 @@ export function AdminSurveysPanel({
                 )}
 
                 {feeds.map((f) => {
-                  const selectedIds = normalizeLinkedFeedIds(survey.linked_feed_ids);
+                  const selectedIds = selectedFeedIds;
                   const isChecked = selectedIds.includes(f.feed_id);
                   const orderIndex = selectedIds.indexOf(f.feed_id);
 
@@ -2028,6 +2140,7 @@ export function AdminSurveysPanel({
               onSurveyChange={setSurvey}
               linkedFeeds={linkedFeedsForEditor}
               linkedFeedPostsMap={linkedFeedPostsMap}
+              feedSequenceIds={selectedFeedIds}
             />
 
             <div style={{ display: "flex", gap: 10 }}>
