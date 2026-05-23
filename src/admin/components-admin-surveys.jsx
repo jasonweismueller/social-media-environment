@@ -1177,10 +1177,9 @@ export function AdminSurveysPanel({
         .replace(/[^\\w-]+/g, "_")
         .replace(/_+/g, "_") || survey.survey_id;
 
-      downloadTextFile(
-        csv,
+      triggerCsvDownload(
         `${safeName}_multi_feed_survey_responses.csv`,
-        "text/csv;charset=utf-8"
+        csv
       );
     } catch (e) {
       console.warn("Failed to build multi-feed CSV:", e);
