@@ -6,6 +6,19 @@ import { uid } from "./utils-core";
    Survey schema
    ========================== */
 
+export const SURVEY_DELIVERY_MODES = {
+  FEED_THEN_SURVEY: "feed_then_survey",
+  MULTI_FEED_THEN_SURVEY: "multi_feed_then_survey",
+  SURVEY_ONLY: "survey_only",
+};
+
+export function normalizeSurveyDeliveryMode(value) {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === SURVEY_DELIVERY_MODES.SURVEY_ONLY) return SURVEY_DELIVERY_MODES.SURVEY_ONLY;
+  if (v === SURVEY_DELIVERY_MODES.MULTI_FEED_THEN_SURVEY) return SURVEY_DELIVERY_MODES.MULTI_FEED_THEN_SURVEY;
+  return SURVEY_DELIVERY_MODES.FEED_THEN_SURVEY;
+}
+
 export const SURVEY_QUESTION_TYPES = {
   TEXT: "text",
   TEXTAREA: "textarea",
@@ -783,8 +796,13 @@ export function makeEmptySurvey(overrides = {}) {
     updated_at: safeOverrides.updated_at || null,
 
     linked_feed_ids: Array.isArray(safeOverrides.linked_feed_ids)
-      ? safeOverrides.linked_feed_ids.map(String)
+      ? safeOverrides.linked_feed_ids.map(String).filter(Boolean)
       : [],
+    feed_sequence_ids: Array.isArray(safeOverrides.feed_sequence_ids)
+      ? safeOverrides.feed_sequence_ids.map(String).filter(Boolean)
+      : Array.isArray(safeOverrides.linked_feed_ids)
+        ? safeOverrides.linked_feed_ids.map(String).filter(Boolean)
+        : [],
     linked_project_id: safeOverrides.linked_project_id || "",
     trigger: safeOverrides.trigger || "after_feed_submit",
 
@@ -837,10 +855,7 @@ export function makeEmptySurvey(overrides = {}) {
       safeOverrides.completion_redirect_url,
       ""
     ),
-    delivery_mode:
-      String(safeOverrides.delivery_mode || "").trim().toLowerCase() === "survey_only"
-        ? "survey_only"
-        : "feed_then_survey",
+    delivery_mode: normalizeSurveyDeliveryMode(safeOverrides.delivery_mode),
   };
 }
 
@@ -859,8 +874,13 @@ export function normalizeSurvey(raw = {}) {
     updated_at: safeRaw.updated_at || null,
 
     linked_feed_ids: Array.isArray(safeRaw.linked_feed_ids)
-      ? safeRaw.linked_feed_ids.map(String)
+      ? safeRaw.linked_feed_ids.map(String).filter(Boolean)
       : [],
+    feed_sequence_ids: Array.isArray(safeRaw.feed_sequence_ids)
+      ? safeRaw.feed_sequence_ids.map(String).filter(Boolean)
+      : Array.isArray(safeRaw.linked_feed_ids)
+        ? safeRaw.linked_feed_ids.map(String).filter(Boolean)
+        : [],
     linked_project_id: safeRaw.linked_project_id || "",
     trigger: safeRaw.trigger || "after_feed_submit",
 
@@ -913,10 +933,7 @@ export function normalizeSurvey(raw = {}) {
       safeRaw.completion_redirect_url,
       ""
     ),
-    delivery_mode:
-      String(safeRaw.delivery_mode || "").trim().toLowerCase() === "survey_only"
-        ? "survey_only"
-        : "feed_then_survey",
+    delivery_mode: normalizeSurveyDeliveryMode(safeRaw.delivery_mode),
   };
 }
 
@@ -945,6 +962,8 @@ export function frontendSurveyToBackend(survey = {}) {
     completion_mode: s.completion_mode,
     completion_redirect_url: s.completion_redirect_url,
     delivery_mode: s.delivery_mode,
+    linked_feed_ids: s.linked_feed_ids,
+    feed_sequence_ids: Array.isArray(s.feed_sequence_ids) && s.feed_sequence_ids.length ? s.feed_sequence_ids : s.linked_feed_ids,
   };
 }
 

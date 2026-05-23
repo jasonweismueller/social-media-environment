@@ -152,6 +152,26 @@ function normalizeFlags(raw) {
   };
 }
 
+
+function normalizeFeedSequenceIds(value, fallback = []) {
+  const source = Array.isArray(value) && value.length ? value : fallback;
+  return Array.from(
+    new Set(
+      (Array.isArray(source) ? source : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function isSurveyOnlyDeliveryMode(value) {
+  return String(value || "").trim().toLowerCase() === "survey_only";
+}
+
+function isMultiFeedDeliveryMode(value) {
+  return String(value || "").trim().toLowerCase() === "multi_feed_then_survey";
+}
+
 function getSurveyIdFromUrl() {
   try {
     const q = new URLSearchParams(window.location.search);
@@ -591,6 +611,10 @@ export default function App() {
     !onAdmin ? getFeedIdFromUrl() : null
   );
 
+  const [feedSequenceIds, setFeedSequenceIds] = useState(() =>
+    !onAdmin && getFeedIdFromUrl() ? [getFeedIdFromUrl()] : []
+  );
+
   const [activeSurveyId, setActiveSurveyId] = useState(
     !onAdmin ? getSurveyIdFromUrl() : ""
   );
@@ -614,12 +638,42 @@ export default function App() {
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
   const isSurveyOnlyMode =
-    !!surveyBoot?.has_survey &&
-    String(surveyBoot?.delivery_mode || "feed_then_survey") === "survey_only";
+    !!surveyBoot?.has_survey && isSurveyOnlyDeliveryMode(surveyBoot?.delivery_mode);
 
   const requiresFeedStage = !isSurveyOnlyMode;
   const isDirectSurveyLaunch = !onAdmin && !!String(activeSurveyId || "").trim();
   const effectiveSurveyId = String(activeSurveyId || surveyBoot?.survey_id || "").trim();
+
+  const effectiveFeedSequenceIds = useMemo(() => {
+    const fromSurvey = normalizeFeedSequenceIds(
+      linkedSurvey?.feed_sequence_ids,
+      linkedSurvey?.linked_feed_ids
+    );
+    const fromBoot = normalizeFeedSequenceIds(
+      surveyBoot?.feed_sequence_ids,
+      surveyBoot?.linked_feed_ids
+    );
+    const fromState = normalizeFeedSequenceIds(feedSequenceIds);
+    const source = fromSurvey.length ? fromSurvey : fromBoot.length ? fromBoot : fromState;
+    if (source.length) return source;
+    return activeFeedId ? [String(activeFeedId)] : [];
+  }, [linkedSurvey, surveyBoot, feedSequenceIds, activeFeedId]);
+
+  const activeFeedIndex = useMemo(() => {
+    const idx = effectiveFeedSequenceIds.findIndex(
+      (fid) => String(fid) === String(activeFeedId || "")
+    );
+    return idx < 0 ? 0 : idx;
+  }, [effectiveFeedSequenceIds, activeFeedId]);
+
+  const hasNextFeedStage =
+    requiresFeedStage &&
+    effectiveFeedSequenceIds.length > 1 &&
+    activeFeedIndex < effectiveFeedSequenceIds.length - 1;
+
+  const nextFeedIdInSequence = hasNextFeedStage
+    ? effectiveFeedSequenceIds[activeFeedIndex + 1]
+    : "";
 
   const completionConfig = useMemo(
     () => getSurveyCompletionConfig(linkedSurvey),
@@ -750,6 +804,7 @@ export default function App() {
     feedSubmitted,
     submitted,
     activeFeedId,
+    effectiveFeedSequenceIds,
     projectId,
     surveyBoot,
     linkedSurvey,
@@ -941,6 +996,7 @@ export default function App() {
     setBootError("");
 
     setSurveyBoot(null);
+    setFeedSequenceIds([]);
     setLinkedSurvey(null);
     setSurveyPhase("idle");
     setSurveyResponses({});
@@ -980,12 +1036,32 @@ export default function App() {
           throw new Error("Failed to load the survey.");
         }
 
+        const sequence = normalizeFeedSequenceIds(
+          boot.feed_sequence_ids,
+          boot.linked_feed_ids
+        );
+        const deliveryMode = String(boot.delivery_mode || "survey_only");
+        const firstFeedId = !isSurveyOnlyDeliveryMode(deliveryMode)
+          ? (sequence[0] || boot.preferred_feed_id || "")
+          : "";
+
+        setFeedSequenceIds(sequence);
+        if (firstFeedId) {
+          setActiveFeedId(firstFeedId);
+          try {
+            setFeedIdInUrl(firstFeedId, { replace: true });
+          } catch {}
+        }
+
         setSurveyBoot({
           ...boot,
           has_survey: true,
           survey_id: String(boot.survey_id || activeSurveyId || ""),
           trigger: String(boot.trigger || "after_feed_submit"),
-          delivery_mode: String(boot.delivery_mode || "survey_only"),
+          delivery_mode: deliveryMode,
+          linked_feed_ids: sequence,
+          feed_sequence_ids: sequence,
+          preferred_feed_id: firstFeedId || String(boot.preferred_feed_id || ""),
         });
         setBootPhase("ready");
         t.end({ surveyLaunch: true, survey_id: boot.survey_id || activeSurveyId });
@@ -1005,6 +1081,7 @@ export default function App() {
 
       const chosenFeedId = chosen.feed_id;
       setActiveFeedId(chosenFeedId);
+      setFeedSequenceIds([chosenFeedId]);
 
       try {
         setFeedIdInUrl(chosenFeedId, { replace: true });
@@ -1089,7 +1166,17 @@ export default function App() {
             delivery_mode: String(
               freshBoot.delivery_mode || "feed_then_survey"
             ),
+            linked_feed_ids: normalizeFeedSequenceIds(
+              freshBoot.linked_feed_ids,
+              [chosenFeedId]
+            ),
+            feed_sequence_ids: normalizeFeedSequenceIds(
+              freshBoot.feed_sequence_ids,
+              freshBoot.linked_feed_ids || [chosenFeedId]
+            ),
+            preferred_feed_id: String(freshBoot.preferred_feed_id || chosenFeedId),
           };
+          setFeedSequenceIds(nextBoot.feed_sequence_ids || nextBoot.linked_feed_ids || [chosenFeedId]);
           writeSurveyBootCache(projectId, chosenFeedId, nextBoot);
         }
       } catch (e) {
@@ -1174,13 +1261,16 @@ export default function App() {
         ? normalizeFrontendSurvey(surveyDef)
         : null;
 
-      if (
-        isDirectSurveyLaunch &&
-        !activeFeedId &&
-        Array.isArray(normalizedSurvey?.linked_feed_ids) &&
-        normalizedSurvey.linked_feed_ids.length
-      ) {
-        setActiveFeedId(String(normalizedSurvey.linked_feed_ids[0] || ""));
+      const normalizedSequence = normalizeFeedSequenceIds(
+        normalizedSurvey?.feed_sequence_ids,
+        normalizedSurvey?.linked_feed_ids
+      );
+      if (normalizedSequence.length) {
+        setFeedSequenceIds(normalizedSequence);
+      }
+
+      if (isDirectSurveyLaunch && !activeFeedId && normalizedSequence.length) {
+        setActiveFeedId(String(normalizedSequence[0] || ""));
       }
 
       setLinkedSurvey(normalizedSurvey);
@@ -1249,13 +1339,14 @@ export default function App() {
     }
   }, [projectId, activeFeedId, isDirectSurveyLaunch]);
 
-  const loadStudyContent = useCallback(async () => {
-    if (onAdmin || !activeFeedId) return;
+  const loadStudyContent = useCallback(async (feedIdOverride = null) => {
+    const targetFeedId = String(feedIdOverride || activeFeedId || "").trim();
+    if (onAdmin || !targetFeedId) return;
     if (contentPhase === "loading") return;
 
     const t = timerStart("loadStudyContent", {
       projectId,
-      activeFeedId,
+      activeFeedId: targetFeedId,
       hasSurvey: !!surveyBoot?.has_survey,
       hasLinkedSurveyAlready: !!linkedSurvey,
     });
@@ -1273,11 +1364,11 @@ export default function App() {
     try {
       const postsPromise = (async () => {
         const tp = timerStart("content.posts", {
-          activeFeedId,
+          activeFeedId: targetFeedId,
           source: "backend_only",
         });
         try {
-          const result = await loadPostsFromBackend(activeFeedId, {
+          const result = await loadPostsFromBackend(targetFeedId, {
             force: true,
             signal: ctrl.signal,
             projectId,
@@ -1292,16 +1383,16 @@ export default function App() {
 
       const flagsPromise = (async () => {
         const tf = timerStart("content.flags", {
-          activeFeedId,
+          activeFeedId: targetFeedId,
           projectId,
         });
         try {
           const result = await fetchFeedFlags({
             app: APP,
             projectId: projectId || undefined,
-            feedId: activeFeedId || undefined,
+            feedId: targetFeedId || undefined,
             project_id: projectId || undefined,
-            feed_id: activeFeedId || undefined,
+            feed_id: targetFeedId || undefined,
             endpoint: GS_ENDPOINT,
             signal: ctrl.signal,
           }).catch(() => ({}));
@@ -1931,7 +2022,7 @@ export default function App() {
 
       const ok = await sendSurveyResponseToBackend({
         survey_id: linkedSurvey.survey_id,
-        feed_id: activeFeedId || "",
+        feed_id: (effectiveFeedSequenceIds[effectiveFeedSequenceIds.length - 1] || activeFeedId || ""),
         project_id: projectId || "",
         session_id: sessionIdRef.current,
         participant_id: participantId || "",
@@ -1965,6 +2056,39 @@ export default function App() {
     participantId,
     finalizeStudyCompletion,
   ]);
+
+
+  const advanceToNextFeed = useCallback(async (nextFeedId) => {
+    const fid = String(nextFeedId || "").trim();
+    if (!fid) return false;
+
+    setEvents([]);
+    setPosts([]);
+    setFeedPhase("loading");
+    setContentPhase("loading");
+    setFeedError("");
+    setFlagsReady(false);
+    setAssetsReady(false);
+    setMinDelayDone(true);
+    minDelayStartedRef.current = false;
+    clearTimeout(minDelayTimerRef.current);
+
+    setActiveFeedId(fid);
+    try {
+      setFeedIdInUrl(fid, { replace: true });
+    } catch {}
+
+    submitTsRef.current = null;
+    lastNonScrollTsRef.current = null;
+    viewRefs.current?.clear?.();
+
+    await loadStudyContent(fid);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      window.dispatchEvent(new Event("resize"));
+    });
+    return true;
+  }, [loadStudyContent]);
 
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
@@ -2375,9 +2499,11 @@ export default function App() {
                           app={APP}
                           projectId={projectId}
                           submitButtonLabel={
-                            surveyBoot?.has_survey
-                              ? "Submit Feed & Continue to Questions"
-                              : "Submit Feed"
+                            hasNextFeedStage
+                              ? `Submit Feed ${activeFeedIndex + 1} & Continue to Feed ${activeFeedIndex + 2}`
+                              : surveyBoot?.has_survey
+                                ? "Submit Feed & Continue to Questions"
+                                : "Submit Feed"
                           }
                           feedId={activeFeedId}
                           avatarPools={avatarPools}
@@ -2471,7 +2597,10 @@ export default function App() {
                             );
 
                             if (ok) {
-                              if (surveyBoot?.has_survey) {
+                              if (hasNextFeedStage && nextFeedIdInSequence) {
+                                showToast("Feed submitted ✔︎ Loading next feed…");
+                                await advanceToNextFeed(nextFeedIdInSequence);
+                              } else if (surveyBoot?.has_survey) {
                                 setFeedSubmitted(true);
                                 const loadedSurvey = await ensureSurveyLoaded();
 

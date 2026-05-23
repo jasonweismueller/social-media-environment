@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import {
   loadParticipantsRoster,
   loadMergedParticipantSurveyRoster,
+  loadMultiFeedParticipantSurveyRoster,
   loadSurveyOnlyRoster,
   summarizeRoster,
   nfCompact,
@@ -43,6 +44,17 @@ function selectAllOnFocus(e) {
 }
 
 const isIGApp = () => String(APP || "").toLowerCase() === "ig";
+
+
+function normalizeFeedSequenceIds(value = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(value) ? value : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
 
 function labelForKey(key, nameMap) {
   if (String(key).startsWith("survey_")) return key;
@@ -1019,12 +1031,19 @@ export function ParticipantsPanel({
   limit,
   onCountChange,
   postNamesMap,
+  feedSequenceIds = [],
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
   const surveyId = surveyIdProp ?? getSurveyIdFromUrl?.() ?? "";
   const IG = isIGApp();
-  const sourceKey = feedId || surveyId || "noid";
-  const sourceLabel = feedId ? `feed ${feedId}` : (surveyId ? `survey ${surveyId}` : "no source");
+  const normalizedFeedSequenceIds = normalizeFeedSequenceIds(feedSequenceIds);
+  const hasMultiFeedSequence = !!surveyId && normalizedFeedSequenceIds.length > 1;
+  const sourceKey = hasMultiFeedSequence
+    ? `${surveyId}::${normalizedFeedSequenceIds.join("__")}`
+    : (feedId || surveyId || "noid");
+  const sourceLabel = hasMultiFeedSequence
+    ? `sequence ${normalizedFeedSequenceIds.join(" → ")} → survey ${surveyId}`
+    : (feedId ? `feed ${feedId}` : (surveyId ? `survey ${surveyId}` : "no source"));
 
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -1053,7 +1072,7 @@ export function ParticipantsPanel({
   }));
 
   const abortRef = useRef(null);
-  const nameStore = postNamesMap || readPostNames(projectId, feedId || surveyId || "survey_only") || {};
+  const nameStore = postNamesMap || readPostNames(projectId, feedId || (hasMultiFeedSequence ? normalizedFeedSequenceIds[0] : surveyId) || "survey_only") || {};
   const caps = useMemo(() => capabilitySummary(posts, IG), [posts, IG]);
 
   useEffect(() => {
@@ -1100,7 +1119,16 @@ export function ParticipantsPanel({
       const pid = pidOverride ?? projectId;
       let data = [];
 
-      if (feedId) {
+      if (hasMultiFeedSequence) {
+        const merged = await loadMultiFeedParticipantSurveyRoster({
+          signal: ctrl.signal,
+          projectId: pid,
+          surveyId,
+          feedIds: normalizedFeedSequenceIds,
+          labelMode: surveyHeaderMode === "name" ? "variable" : "text",
+        });
+        data = Array.isArray(merged?.rows) ? merged.rows : [];
+      } else if (feedId) {
         data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
       } else if (surveyId) {
         const merged = await loadSurveyOnlyRoster({
@@ -1134,7 +1162,7 @@ export function ParticipantsPanel({
     }
     refresh(!!cached?.rows?.length);
     return () => abortRef.current?.abort?.();
-  }, [feedId, surveyId, projectId]);
+  }, [feedId, surveyId, projectId, hasMultiFeedSequence, normalizedFeedSequenceIds.join("|")]);
 
   const effectiveRows = useMemo(
     () => (usingSimulated ? (simRows || []) : (rows || [])),
@@ -1391,7 +1419,7 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       a.download =
         `${APP}_participants` +
         `${projectId ? `_${projectId}` : ""}` +
-        `${feedId ? `_${feedId}` : ""}` +
+        `${hasMultiFeedSequence ? `_${normalizedFeedSequenceIds.join("_then_")}` : (feedId ? `_${feedId}` : "")}` +
         `${!feedId && surveyId ? `_${surveyId}` : ""}` +
         `_SIMULATED.csv`;
 
@@ -1406,11 +1434,18 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       setError("");
       setLoading(true);
 
-      const merged = await loadMergedParticipantSurveyRoster({
-        feedId: feedId || "",
-        projectId,
-        labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-      });
+      const merged = hasMultiFeedSequence
+        ? await loadMultiFeedParticipantSurveyRoster({
+            surveyId,
+            feedIds: normalizedFeedSequenceIds,
+            projectId,
+            labelMode: surveyHeaderMode === "name" ? "variable" : "text",
+          })
+        : await loadMergedParticipantSurveyRoster({
+            feedId: feedId || "",
+            projectId,
+            labelMode: surveyHeaderMode === "name" ? "variable" : "text",
+          });
 
       const mergedRows = Array.isArray(merged?.rows) ? merged.rows : [];
       if (!mergedRows.length) return;
@@ -1441,7 +1476,7 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
       a.download =
         `${APP}_participants` +
         `${projectId ? `_${projectId}` : ""}` +
-        `${feedId ? `_${feedId}` : ""}` +
+        `${hasMultiFeedSequence ? `_${normalizedFeedSequenceIds.join("_then_")}` : (feedId ? `_${feedId}` : "")}` +
         `${!feedId && surveyId ? `_${surveyId}` : ""}` +
         `${merged?.hasMergedSurveyColumns ? "_with_survey" : ""}` +
         `${surveyHeaderMode === "name" ? "_varnames" : "_questiontext"}.csv`;
@@ -1463,8 +1498,14 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
           Participants
-          {feedId ? <span className="subtle"> · feed {feedId}</span> : null}
-          {!feedId && surveyId ? <span className="subtle"> · survey {surveyId}</span> : null}
+          {hasMultiFeedSequence ? (
+            <span className="subtle"> · {normalizedFeedSequenceIds.join(" → ")} → survey {surveyId}</span>
+          ) : (
+            <>
+              {feedId ? <span className="subtle"> · feed {feedId}</span> : null}
+              {!feedId && surveyId ? <span className="subtle"> · survey {surveyId}</span> : null}
+            </>
+          )}
           <span className="subtle"> · {APP} · {projectId || "global"}</span>
           {usingSimulated ? <span className="subtle"> · SIMULATED</span> : null}
         </h4>

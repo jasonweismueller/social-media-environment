@@ -62,6 +62,8 @@ async function loadPublicSurveyDefinitionForFeed(
       ...data,
       survey_id: data.survey_id || surveyId,
       linked_project_id: projectId || "",
+      linked_feed_ids: normalizeFeedSequenceIds(data.linked_feed_ids),
+      feed_sequence_ids: normalizeFeedSequenceIds(data.feed_sequence_ids, data.linked_feed_ids),
       delivery_mode: normalizeSurveyDeliveryMode(data.delivery_mode),
     };
 
@@ -104,6 +106,8 @@ async function loadPublicSurveyDefinition(
       ...data,
       survey_id: data.survey_id || surveyId,
       linked_project_id: projectId || "",
+      linked_feed_ids: normalizeFeedSequenceIds(data.linked_feed_ids),
+      feed_sequence_ids: normalizeFeedSequenceIds(data.feed_sequence_ids, data.linked_feed_ids),
       delivery_mode: normalizeSurveyDeliveryMode(data.delivery_mode),
     };
 
@@ -271,9 +275,17 @@ function uniqueStrings(arr = []) {
 }
 
 function normalizeSurveyDeliveryMode(value) {
-  return String(value || "").trim().toLowerCase() === "survey_only"
-    ? "survey_only"
-    : "feed_then_survey";
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "survey_only") return "survey_only";
+  if (v === "multi_feed_then_survey") return "multi_feed_then_survey";
+  return "feed_then_survey";
+}
+
+function normalizeFeedSequenceIds(value, fallback = []) {
+  const source = Array.isArray(value) && value.length ? value : fallback;
+  return Array.from(new Set((Array.isArray(source) ? source : [])
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)));
 }
 
 function asArray(value) {
@@ -304,6 +316,7 @@ function makeEmptySurveyShell(surveyId = "") {
 
     pages: [],
     linked_feed_ids: [],
+    feed_sequence_ids: [],
     linked_project_id: normalizeProjectId(),
     trigger: "after_feed_submit",
 
@@ -656,6 +669,9 @@ export async function getSurveyBootForFeedFromBackend(
       survey_id: String(data.survey_id || ""),
       trigger: String(data.trigger || "after_feed_submit"),
       delivery_mode: deliveryMode,
+      linked_feed_ids: normalizeFeedSequenceIds(data.linked_feed_ids),
+      feed_sequence_ids: normalizeFeedSequenceIds(data.feed_sequence_ids, data.linked_feed_ids),
+      preferred_feed_id: String(data.preferred_feed_id || ""),
       has_preface: !!data.has_preface,
       preface: {
         participant_information: !!data?.preface?.participant_information,
@@ -716,6 +732,9 @@ export async function getSurveyBootFromBackend(
       survey_id: String(data.survey_id || surveyId || ""),
       trigger: String(data.trigger || "after_feed_submit"),
       delivery_mode: deliveryMode,
+      linked_feed_ids: normalizeFeedSequenceIds(data.linked_feed_ids),
+      feed_sequence_ids: normalizeFeedSequenceIds(data.feed_sequence_ids, data.linked_feed_ids),
+      preferred_feed_id: String(data.preferred_feed_id || ""),
       has_preface: !!data.has_preface,
       preface: {
         participant_information: !!data?.preface?.participant_information,
@@ -922,6 +941,141 @@ export async function loadMergedParticipantSurveyRoster({
     surveyColumnLabels: merged.surveyColumnLabels,
     hasSurvey: true,
     hasMergedSurveyColumns: !!merged.hasSurveyColumns,
+  };
+}
+
+
+export async function loadMultiFeedParticipantSurveyRoster({
+  surveyId,
+  feedIds = [],
+  projectId = getProjectId(),
+  signal,
+  fillValue = "NA",
+  forceSurveyDefinition = false,
+  labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE,
+} = {}) {
+  const effectiveSurveyId = String(surveyId || "").trim();
+  const sequence = normalizeFeedSequenceIds(feedIds);
+
+  if (!effectiveSurveyId || !sequence.length) {
+    return {
+      rows: [],
+      participants: [],
+      surveyResponses: [],
+      survey: null,
+      surveyColumns: [],
+      surveyColumnKeys: [],
+      surveyColumnLabels: [],
+      hasSurvey: !!effectiveSurveyId,
+      hasMergedSurveyColumns: false,
+      feedIds: sequence,
+    };
+  }
+
+  const [surveyDefinition, allSurveyResponses, participantGroups] = await Promise.all([
+    loadPublicSurveyDefinition(effectiveSurveyId, {
+      projectId,
+      signal,
+      force: !!forceSurveyDefinition,
+    }),
+    loadSurveyResponsesBySurveyRoster(effectiveSurveyId, {
+      projectId,
+      signal,
+    }),
+    Promise.all(
+      sequence.map(async (fid) => ({
+        feedId: fid,
+        rows: await loadParticipantsRoster(fid, { projectId, signal }),
+      }))
+    ),
+  ]);
+
+  const surveyResponses = (Array.isArray(allSurveyResponses) ? allSurveyResponses : [])
+    .filter((row) => String(row?.feed_id || "").trim() === sequence[sequence.length - 1]);
+
+  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyResponses, { labelMode });
+  const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
+  const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
+  const surveyLookup = makeSurveyResponseLookup(surveyResponses, surveyColumns);
+
+  const byParticipant = new Map();
+
+  participantGroups.forEach((group, index) => {
+    const fid = group.feedId;
+    const prefix = `feed${index + 1}`;
+    const rows = Array.isArray(group.rows) ? group.rows : [];
+
+    rows.forEach((row) => {
+      const sessionId = String(row?.session_id || "").trim();
+      const participantId = String(row?.participant_id || "").trim();
+      const key = sessionId || participantId;
+      if (!key) return;
+
+      if (!byParticipant.has(key)) {
+        byParticipant.set(key, {
+          session_id: sessionId,
+          participant_id: participantId,
+          ip_address: row?.ip_address ?? "",
+          prolific_pid: row?.prolific_pid ?? "",
+          entered_at_iso: row?.entered_at_iso ?? "",
+          submitted_at_iso: "",
+          duration_s: "",
+        });
+      }
+
+      const out = byParticipant.get(key);
+      out[`${prefix}_feed_id`] = fid;
+      out[`${prefix}_entered_at_iso`] = row?.entered_at_iso ?? "";
+      out[`${prefix}_submitted_at_iso`] = row?.submitted_at_iso ?? "";
+      out[`${prefix}_duration_s`] = msToSeconds(row?.ms_enter_to_submit ?? row?.duration_ms ?? "");
+
+      Object.entries(row || {}).forEach(([k, v]) => {
+        if ([
+          "session_id", "participant_id", "ip_address", "prolific_pid",
+          "entered_at_iso", "submitted_at_iso", "feed_id",
+          "session_id_ext", "study_id", "prolific_session_id", "prolific_study_id",
+          "ms_enter_to_submit", "ms_enter_to_last_interaction", "feed_checksum"
+        ].includes(k)) return;
+        out[`${prefix}_${k}`] = v;
+      });
+    });
+  });
+
+  const rows = Array.from(byParticipant.values()).map((participant) => {
+    const sessionId = String(participant.session_id || "").trim();
+    const participantId = String(participant.participant_id || "").trim();
+    const match =
+      (sessionId && surveyLookup.bySessionId.get(sessionId)) ||
+      (participantId && surveyLookup.byParticipantId.get(participantId)) ||
+      null;
+
+    const surveyPayload = {};
+    surveyColumnKeys.forEach((key) => {
+      const value = match?.flat?.[key];
+      surveyPayload[key] = value === "" || value == null ? fillValue : value;
+    });
+
+    return {
+      ...participant,
+      submitted_at_iso: match?.raw?.submitted_at_iso ?? participant.submitted_at_iso ?? "",
+      duration_s: msToSeconds(match?.raw?.duration_ms ?? ""),
+      feed_sequence_ids: sequence.join(" | "),
+      final_survey_feed_id: sequence[sequence.length - 1],
+      ...surveyPayload,
+    };
+  });
+
+  return {
+    rows,
+    participants: participantGroups.flatMap((g) => g.rows || []),
+    surveyResponses,
+    survey: surveyDefinition || null,
+    surveyColumns,
+    surveyColumnKeys,
+    surveyColumnLabels,
+    hasSurvey: true,
+    hasMergedSurveyColumns: !!surveyColumnKeys.length,
+    feedIds: sequence,
   };
 }
 
@@ -1966,7 +2120,8 @@ export async function getSurveyForFeedFromBackend(
           ...def,
           survey_id: def.survey_id || link.survey_id,
           linked_feed_id: feedId,
-          linked_feed_ids: [feedId],
+          linked_feed_ids: normalizeFeedSequenceIds(def.linked_feed_ids, [feedId]),
+          feed_sequence_ids: normalizeFeedSequenceIds(def.feed_sequence_ids, def.linked_feed_ids || [feedId]),
           linked_project_id: projectId || "",
           trigger: link.trigger || "after_feed_submit",
           delivery_mode: normalizeSurveyDeliveryMode(def.delivery_mode),
@@ -2021,6 +2176,8 @@ export async function saveSurveyToBackend(survey, { projectId = getProjectId() }
             definition: {
         ...survey,
         delivery_mode: normalizeSurveyDeliveryMode(survey?.delivery_mode),
+        linked_feed_ids: normalizeFeedSequenceIds(survey?.linked_feed_ids),
+        feed_sequence_ids: normalizeFeedSequenceIds(survey?.feed_sequence_ids, survey?.linked_feed_ids),
       },
     };
     if (surveyId) payload.survey_id = surveyId;

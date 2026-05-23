@@ -103,6 +103,27 @@ function uniqueStringList(values = []) {
   );
 }
 
+
+function orderFeedsBySequence(feeds = [], sequenceIds = []) {
+  const safeFeeds = Array.isArray(feeds) ? feeds : [];
+  const sequence = uniqueStringList(sequenceIds);
+  if (!sequence.length) return safeFeeds;
+
+  const byId = new Map(
+    safeFeeds
+      .map((feed) => [String(feed?.feed_id || "").trim(), feed])
+      .filter(([feedId]) => !!feedId)
+  );
+
+  const ordered = sequence.map((feedId) => byId.get(feedId)).filter(Boolean);
+  const used = new Set(ordered.map((feed) => String(feed?.feed_id || "").trim()));
+  const leftovers = safeFeeds.filter(
+    (feed) => !used.has(String(feed?.feed_id || "").trim())
+  );
+
+  return [...ordered, ...leftovers];
+}
+
 export function normalizeVisibleInFeeds(values = []) {
   return uniqueStringList(values);
 }
@@ -2714,11 +2735,17 @@ export function SurveyEditor({
   onSurveyChange,
   linkedFeeds = [],
   linkedFeedPostsMap = {},
+  feedSequenceIds = [],
 }) {
   const [draggingQuestionId, setDraggingQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
 
   const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);
+
+  const orderedLinkedFeeds = useMemo(
+    () => orderFeedsBySequence(linkedFeeds, feedSequenceIds || survey?.feed_sequence_ids || []),
+    [linkedFeeds, feedSequenceIds, survey?.feed_sequence_ids]
+  );
 
   const questionDisplayNumbers = useMemo(() => {
     let count = 0;
@@ -2890,7 +2917,7 @@ export function SurveyEditor({
           index={i}
           displayNumber={questionDisplayNumbers[i]}
           totalQuestions={currentQuestions.length}
-          linkedFeeds={linkedFeeds}
+          linkedFeeds={orderedLinkedFeeds}
           linkedFeedPostsMap={linkedFeedPostsMap}
           updateQuestion={updateQuestion}
           removeQuestion={removeQuestion}

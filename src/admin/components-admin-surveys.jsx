@@ -20,6 +20,7 @@ import {
   getLinkedFeedIdsForSurveyFromBackend,
   loadPostsFromBackend,
   loadSurveyOnlyRoster,
+  loadMultiFeedParticipantSurveyRoster,
   SURVEY_QUESTION_TYPES,
 } from "../utils";
 
@@ -49,6 +50,7 @@ const COMPLETION_MODE_MESSAGE = "message";
 const COMPLETION_MODE_REDIRECT = "redirect";
 
 const DELIVERY_MODE_FEED_THEN_SURVEY = "feed_then_survey";
+const DELIVERY_MODE_MULTI_FEED_THEN_SURVEY = "multi_feed_then_survey";
 const DELIVERY_MODE_SURVEY_ONLY = "survey_only";
 
 const DEFAULT_PAGE_NEXT_DELAY_SECONDS = 0;
@@ -207,9 +209,10 @@ function normalizeCompletionMode(value) {
 }
 
 function normalizeDeliveryMode(value) {
-  return value === DELIVERY_MODE_SURVEY_ONLY
-    ? DELIVERY_MODE_SURVEY_ONLY
-    : DELIVERY_MODE_FEED_THEN_SURVEY;
+  const v = String(value || "").trim().toLowerCase();
+  if (v === DELIVERY_MODE_SURVEY_ONLY) return DELIVERY_MODE_SURVEY_ONLY;
+  if (v === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY) return DELIVERY_MODE_MULTI_FEED_THEN_SURVEY;
+  return DELIVERY_MODE_FEED_THEN_SURVEY;
 }
 
 function normalizePageDelaySeconds(value) {
@@ -957,6 +960,22 @@ export function AdminSurveysPanel({
       };
     });
   }
+  function moveLinkedFeed(feedIdToMove, direction) {
+    setSurvey((prev) => {
+      const ids = normalizeLinkedFeedIds(prev?.linked_feed_ids);
+      const idx = ids.indexOf(feedIdToMove);
+      const nextIdx = idx + direction;
+      if (idx < 0 || nextIdx < 0 || nextIdx >= ids.length) return prev;
+      const next = ids.slice();
+      [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
+      return {
+        ...prev,
+        linked_feed_ids: next,
+        feed_sequence_ids: next,
+      };
+    });
+  }
+
 
   async function handleSaveFeedLinks() {
     if (!survey?.survey_id) {
@@ -981,9 +1000,14 @@ export function AdminSurveysPanel({
           allFeeds: feeds,
         });
 
+        const localOrder = normalizeLinkedFeedIds(survey.linked_feed_ids);
+        const confirmed = new Set(normalizeLinkedFeedIds(linkedIds));
+        const orderedConfirmed = localOrder.filter((fid) => confirmed.has(fid));
+
         setSurvey((prev) => ({
           ...prev,
-          linked_feed_ids: normalizeLinkedFeedIds(linkedIds),
+          linked_feed_ids: orderedConfirmed,
+          feed_sequence_ids: orderedConfirmed,
         }));
 
         await loadAll();
@@ -1050,6 +1074,63 @@ export function AdminSurveysPanel({
     () => normalizeLinkedFeedIds(survey?.linked_feed_ids).length,
     [survey]
   );
+
+
+  async function handleDownloadMultiFeedCsv() {
+    if (!survey?.survey_id) {
+      alert("Save the survey first.");
+      return;
+    }
+
+    const feedIds = normalizeLinkedFeedIds(survey.linked_feed_ids);
+    if (!feedIds.length) {
+      alert("Link at least one feed first.");
+      return;
+    }
+
+    try {
+      const roster = await loadMultiFeedParticipantSurveyRoster({
+        surveyId: survey.survey_id,
+        feedIds,
+        projectId,
+      });
+
+      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+      if (!safeRows.length) {
+        alert("No multi-feed participant data found yet.");
+        return;
+      }
+
+      const header = Array.from(
+        safeRows.reduce((set, row) => {
+          Object.keys(row || {}).forEach((key) => set.add(key));
+          return set;
+        }, new Set())
+      );
+
+      const normalizedRows = safeRows.map((row) => {
+        const next = {};
+        header.forEach((key) => {
+          next[key] = normalizeCsvValue(row?.[key]);
+        });
+        return next;
+      });
+
+      const csv = buildCsv(normalizedRows, header, header);
+      const safeName = slugifySurveyName(survey.name || survey.survey_id)
+        .replace(/[^\\w-]+/g, "_")
+        .replace(/_+/g, "_") || survey.survey_id;
+
+      downloadTextFile(
+        csv,
+        `${safeName}_multi_feed_survey_responses.csv`,
+        "text/csv;charset=utf-8"
+      );
+    } catch (e) {
+      console.warn("Failed to build multi-feed CSV:", e);
+      alert("Failed to build multi-feed CSV.");
+    }
+  }
 
   const linkedFeedsForEditor = useMemo(() => {
     const linkedIds = new Set(normalizeLinkedFeedIds(survey?.linked_feed_ids));
@@ -1201,7 +1282,7 @@ export function AdminSurveysPanel({
     );
 
     return (
-      deliveryMode === DELIVERY_MODE_FEED_THEN_SURVEY ||
+      (deliveryMode === DELIVERY_MODE_FEED_THEN_SURVEY || deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY) ||
       hasFeedSpecificVisibility ||
       hasReminderWithoutFeed
     );
@@ -1399,7 +1480,7 @@ export function AdminSurveysPanel({
 
               <FieldBlock
                 label="Study flow"
-                hint="Choose whether participants see the linked feed before the survey, or skip the feed and go directly to the survey."
+                hint="Choose whether participants see one linked feed, multiple linked feeds in sequence, or skip the feed and go directly to the survey."
               >
                 <SelectInput
                   value={deliveryMode}
@@ -1411,7 +1492,10 @@ export function AdminSurveysPanel({
                   }
                 >
                   <option value={DELIVERY_MODE_FEED_THEN_SURVEY}>
-                    Feed, then survey
+                    One feed, then survey
+                  </option>
+                  <option value={DELIVERY_MODE_MULTI_FEED_THEN_SURVEY}>
+                    Multiple feeds, then survey
                   </option>
                   <option value={DELIVERY_MODE_SURVEY_ONLY}>
                     Survey only (skip feed)
@@ -1424,22 +1508,43 @@ export function AdminSurveysPanel({
               title="Launch links and IDs"
               subtitle="Copy the survey ID and launch URLs here. Survey-only studies also have their own dedicated CSV download."
               right={
-                deliveryMode === DELIVERY_MODE_SURVEY_ONLY && survey?.survey_id ? (
-                  <button
-                    type="button"
-                    onClick={handleDownloadSurveyOnlyCsv}
-                    disabled={savingSurvey}
-                    style={{
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #d1d5db",
-                      background: "#fff",
-                      cursor: savingSurvey ? "not-allowed" : "pointer",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {savingSurvey ? "Preparing CSV..." : "Download survey CSV"}
-                  </button>
+                survey?.survey_id ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {deliveryMode === DELIVERY_MODE_SURVEY_ONLY && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadSurveyOnlyCsv}
+                        disabled={savingSurvey}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          cursor: savingSurvey ? "not-allowed" : "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {savingSurvey ? "Preparing CSV..." : "Download survey CSV"}
+                      </button>
+                    )}
+                    {deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY && (
+                      <button
+                        type="button"
+                        onClick={handleDownloadMultiFeedCsv}
+                        disabled={savingSurvey}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          cursor: savingSurvey ? "not-allowed" : "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {savingSurvey ? "Preparing CSV..." : "Download multi-feed CSV"}
+                      </button>
+                    )}
+                  </div>
                 ) : null
               }
             >
@@ -1502,7 +1607,7 @@ export function AdminSurveysPanel({
               {deliveryMode !== DELIVERY_MODE_SURVEY_ONLY && (
                 <FieldBlock
                   label="Feed + survey launch link"
-                  hint="This launch uses the first linked feed and then continues into the survey."
+                  hint="This launch starts with the first linked feed. If multiple-feed mode is selected, participants continue through the remaining linked feeds before the survey."
                 >
                   <div
                     style={{
@@ -1830,32 +1935,85 @@ export function AdminSurveysPanel({
                   <div style={{ color: "#6b7280" }}>No feeds found.</div>
                 )}
 
-                {feeds.map((f) => (
-                  <div key={f.feed_id} style={{ marginBottom: 8 }}>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={normalizeLinkedFeedIds(
-                          survey.linked_feed_ids
-                        ).includes(f.feed_id)}
-                        onChange={() => toggleFeed(f.feed_id)}
-                      />
-                      <span>{f.name || f.feed_id}</span>
-                      {feedId && f.feed_id === feedId && (
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          (current)
-                        </span>
-                      )}
-                    </label>
-                  </div>
-                ))}
+                {feeds.map((f) => {
+                  const selectedIds = normalizeLinkedFeedIds(survey.linked_feed_ids);
+                  const isChecked = selectedIds.includes(f.feed_id);
+                  const orderIndex = selectedIds.indexOf(f.feed_id);
+
+                  return (
+                    <div key={f.feed_id} style={{ marginBottom: 8 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            cursor: "pointer",
+                            minWidth: 0,
+                            flex: 1,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleFeed(f.feed_id)}
+                          />
+                          {isChecked && deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY && (
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "#1d4ed8",
+                                background: "#eff6ff",
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 999,
+                                padding: "2px 7px",
+                              }}
+                            >
+                              Feed {orderIndex + 1}
+                            </span>
+                          )}
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {f.name || f.feed_id}
+                          </span>
+                          {feedId && f.feed_id === feedId && (
+                            <span style={{ fontSize: 12, color: "#6b7280" }}>
+                              (current)
+                            </span>
+                          )}
+                        </label>
+
+                        {isChecked && deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY && (
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button
+                              type="button"
+                              onClick={() => moveLinkedFeed(f.feed_id, -1)}
+                              disabled={orderIndex <= 0}
+                              style={{ padding: "4px 7px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveLinkedFeed(f.feed_id, 1)}
+                              disabled={orderIndex < 0 || orderIndex >= selectedIds.length - 1}
+                              style={{ padding: "4px 7px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </SectionCard>
 
