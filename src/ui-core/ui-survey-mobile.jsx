@@ -12,9 +12,7 @@ import {
   isQuestionVisible,
   getRenderedQuestion,
   getProjectId,
-  loadPostByIdFromBackend,
-  getDisplayedPostSnapshot,
-  isDisplayedPostSnapshot,
+  loadPostByIdFromBackend
 } from "../utils";
 import { PostCard } from "../ui-posts";
 

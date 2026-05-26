@@ -428,7 +428,7 @@ function getSurveyCompletionConfig(survey) {
   };
 }
 
-/* ---------- IG rails skeleton ---------- */
+/* ---------- IG rails skeleton ----------- */
 
 function RailBox({ largeAvatar = false }) {
   return (
