@@ -78,7 +78,7 @@ if (typeof document !== "undefined") {
   document.body.classList.toggle("fb-mode", MODE === "fb");
 }
 
-/* ------------------------- debug helpers ------------------------- */
+/* ------------------------- debug helpers -------------------------- */
 
 const DEBUG_APP_LOAD = true;
 

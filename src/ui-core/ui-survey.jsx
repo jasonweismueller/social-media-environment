@@ -17,6 +17,85 @@ import {
 
 import { PostCard } from "../ui-posts";
 
+const DISPLAYED_POST_SNAPSHOT_PREFIX = "studyfeed:displayed_post_snapshot";
+const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot_latest";
+
+function snapshotKeyPart_(value) {
+  return encodeURIComponent(String(value == null ? "" : value));
+}
+
+function displayedPostSnapshotKey({ projectId = "", feedId = "", postId = "", participantSeed = "" } = {}) {
+  return [
+    DISPLAYED_POST_SNAPSHOT_PREFIX,
+    snapshotKeyPart_(projectId),
+    snapshotKeyPart_(participantSeed),
+    snapshotKeyPart_(feedId),
+    snapshotKeyPart_(postId),
+  ].join("::");
+}
+
+function displayedPostSnapshotLatestKey({ projectId = "", feedId = "", postId = "" } = {}) {
+  return [
+    DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX,
+    snapshotKeyPart_(projectId),
+    snapshotKeyPart_(feedId),
+    snapshotKeyPart_(postId),
+  ].join("::");
+}
+
+function safeLocalStorageGet_(key) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function isDisplayedPostSnapshot(post) {
+  return !!(post && post.__studyfeed_displayed_snapshot);
+}
+
+function getDisplayedPostSnapshot({
+  projectId = "",
+  feedId = "",
+  postId = "",
+  participantSeed = "",
+} = {}) {
+  const cleanPostId = String(postId || "").trim();
+  const cleanFeedId = String(feedId || "").trim();
+  if (!cleanPostId || !cleanFeedId) return null;
+
+  const keys = [];
+  if (participantSeed) {
+    keys.push(displayedPostSnapshotKey({
+      projectId,
+      feedId: cleanFeedId,
+      postId: cleanPostId,
+      participantSeed,
+    }));
+  }
+  keys.push(displayedPostSnapshotLatestKey({
+    projectId,
+    feedId: cleanFeedId,
+    postId: cleanPostId,
+  }));
+
+  for (const key of keys) {
+    const raw = safeLocalStorageGet_(key);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && String(parsed.id || parsed.__snapshot_post_id || "") === cleanPostId) {
+        return parsed;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+
 function makeBipolarScalePoints(min, max) {
   const safeMin = Number.isFinite(Number(min)) ? Number(min) : 1;
   const safeMax = Number.isFinite(Number(max)) ? Number(max) : 7;

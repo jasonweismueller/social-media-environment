@@ -13,11 +13,12 @@ import {
   pickDeterministic,
   getImagePool,
   buildDeterministicAssignmentMap,
-  saveDisplayedPostSnapshot,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
 import { InterventionBlock } from "./components-ui-interventions";
+
+
 
 import {
   FacebookCommentModalDesktop,
@@ -43,6 +44,72 @@ import {
   IconVolume,
   IconVolumeMute,
 } from "../ui-core";
+
+const DISPLAYED_POST_SNAPSHOT_PREFIX = "studyfeed:displayed_post_snapshot";
+const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot_latest";
+
+function snapshotKeyPart_(value) {
+  return encodeURIComponent(String(value == null ? "" : value));
+}
+
+function displayedPostSnapshotKey({ projectId = "", feedId = "", postId = "", participantSeed = "" } = {}) {
+  return [
+    DISPLAYED_POST_SNAPSHOT_PREFIX,
+    snapshotKeyPart_(projectId),
+    snapshotKeyPart_(participantSeed),
+    snapshotKeyPart_(feedId),
+    snapshotKeyPart_(postId),
+  ].join("::");
+}
+
+function displayedPostSnapshotLatestKey({ projectId = "", feedId = "", postId = "" } = {}) {
+  return [
+    DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX,
+    snapshotKeyPart_(projectId),
+    snapshotKeyPart_(feedId),
+    snapshotKeyPart_(postId),
+  ].join("::");
+}
+
+function safeLocalStorageSet_(key, value) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function saveDisplayedPostSnapshot(snapshot, {
+  projectId = "",
+  feedId = "",
+  postId = "",
+  participantSeed = "",
+} = {}) {
+  const cleanPostId = String(postId || snapshot?.id || snapshot?.__snapshot_post_id || "").trim();
+  const cleanFeedId = String(feedId || snapshot?.__snapshot_feed_id || "").trim();
+  if (!snapshot || !cleanPostId || !cleanFeedId) return false;
+
+  const payload = JSON.stringify(snapshot);
+  const scopedKey = displayedPostSnapshotKey({
+    projectId,
+    feedId: cleanFeedId,
+    postId: cleanPostId,
+    participantSeed,
+  });
+  const latestKey = displayedPostSnapshotLatestKey({
+    projectId,
+    feedId: cleanFeedId,
+    postId: cleanPostId,
+  });
+
+  const okScoped = participantSeed ? safeLocalStorageSet_(scopedKey, payload) : true;
+  const okLatest = safeLocalStorageSet_(latestKey, payload);
+  return !!(okScoped && okLatest);
+}
+
+
 
 /* --- In-view autoplay hook --- */
 function useInViewAutoplay(threshold = 0.6) {
