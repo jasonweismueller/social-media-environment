@@ -336,6 +336,25 @@ function derivePostOptionLabel(post = {}, index = 0, feedName = "") {
   return feedName ? `${feedName} · ${base}` : base;
 }
 
+function makePostReminderOptionValue(feedId, postId) {
+  const safeFeedId = String(feedId || "").trim();
+  const safePostId = String(postId || "").trim();
+  return safeFeedId && safePostId ? `${safeFeedId}::${safePostId}` : "";
+}
+
+function parsePostReminderOptionValue(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { feedId: "", postId: "" };
+
+  const marker = raw.indexOf("::");
+  if (marker === -1) return { feedId: "", postId: raw };
+
+  return {
+    feedId: raw.slice(0, marker),
+    postId: raw.slice(marker + 2),
+  };
+}
+
 function getRelevantFeedIdsForQuestion(q, linkedFeeds = []) {
   const linkedFeedIds = (Array.isArray(linkedFeeds) ? linkedFeeds : [])
     .map((feed) => String(feed?.feed_id || "").trim())
@@ -1961,9 +1980,15 @@ function PostReminderEditor({
   value,
   label,
   selectedFeedIds = [],
+  selectedPostFeedId = "",
   onChange,
 }) {
   const safePosts = Array.isArray(availablePosts) ? availablePosts : [];
+  const safeValue = String(value || "").trim();
+  const safeSelectedPostFeedId = String(selectedPostFeedId || "").trim();
+  const selectedCompositeValue = safeValue
+    ? makePostReminderOptionValue(safeSelectedPostFeedId, safeValue) || safeValue
+    : "";
   const hasRelevantFeeds = Array.isArray(selectedFeedIds) && selectedFeedIds.length > 0;
 
   if (!hasRelevantFeeds) {
@@ -2012,18 +2037,24 @@ function PostReminderEditor({
       }}
     >
       <SelectInput
-        value={value || ""}
-        onChange={(nextPostId) => {
-          const selectedPost = safePosts.find(
-            (post) => String(post?.id || "") === String(nextPostId)
-          );
+        value={selectedCompositeValue}
+        onChange={(nextCompositeValue) => {
+          const parsed = parsePostReminderOptionValue(nextCompositeValue);
+          const nextPostId = parsed.postId;
+          const nextFeedId = parsed.feedId;
+
+          const selectedPost = safePosts.find((post) => {
+            const postId = String(post?.id || "").trim();
+            const feedId = String(post?._feed_id || "").trim();
+            return postId === String(nextPostId || "") && feedId === String(nextFeedId || "");
+          });
 
           onChange({
             post_id: String(nextPostId || ""),
             post_label: nextPostId ? String(selectedPost?._option_label || "") : "",
-            post_feed_id: nextPostId ? String(selectedPost?._feed_id || "") : "",
+            post_feed_id: nextPostId ? String(selectedPost?._feed_id || nextFeedId || "") : "",
             meta: {
-              post_feed_id: nextPostId ? String(selectedPost?._feed_id || "") : "",
+              post_feed_id: nextPostId ? String(selectedPost?._feed_id || nextFeedId || "") : "",
             },
           });
         }}
@@ -2031,10 +2062,13 @@ function PostReminderEditor({
         <option value="">Select a post</option>
         {safePosts.map((post, postIndex) => {
           const postId = String(post?.id || "").trim();
-          if (!postId) return null;
+          const optionFeedId = String(post?._feed_id || "").trim();
+          if (!postId || !optionFeedId) return null;
+
+          const optionValue = makePostReminderOptionValue(optionFeedId, postId);
 
           return (
-            <option key={`${post._feed_id || "feed"}::${postId}`} value={postId}>
+            <option key={optionValue} value={optionValue}>
               {post._option_label || derivePostOptionLabel(post, postIndex, post?._feed_name || "")}
             </option>
           );
@@ -2044,6 +2078,7 @@ function PostReminderEditor({
       {value ? (
         <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
           Selected: {label || value}
+          {selectedPostFeedId ? ` · source feed: ${selectedPostFeedId}` : ""}
         </div>
       ) : null}
     </div>
@@ -2479,6 +2514,7 @@ function QuestionCard({
             selectedFeedIds={reminderFeedIds}
             value={q.post_id}
             label={q.post_label}
+            selectedPostFeedId={q.post_feed_id || q?.meta?.post_feed_id || ""}
             onChange={(patch) => updateQuestion(index, patch)}
           />
         </FieldBlock>
