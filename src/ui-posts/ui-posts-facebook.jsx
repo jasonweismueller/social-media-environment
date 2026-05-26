@@ -769,7 +769,10 @@ export function PostCard({
         alt: displayImage.alt || snapshot.image?.alt || snapshot.text || "Post image",
       };
       snapshot.images = null;
-      snapshot.imageMode = snapshot.imageMode && snapshot.imageMode !== "none" ? snapshot.imageMode : "single";
+      // Store the fully resolved, rendered single image. This is important when
+      // the feed uses topic-based image randomization, because the base post may
+      // only contain a placeholder/random image mode.
+      snapshot.imageMode = "single";
     }
 
     snapshot.__studyfeed_displayed_snapshot = true;
@@ -811,6 +814,53 @@ export function PostCard({
     projectId,
     feedId,
     participantSeed,
+    onDisplayedPostSnapshot,
+  ]);
+
+  const handleDisplayedImageLoad = React.useCallback((event) => {
+    if (!displayedSnapshot || !post?.id || !feedId) return;
+
+    const imgEl = event?.currentTarget;
+    const finalUrl = String(imgEl?.currentSrc || imgEl?.src || displayImage?.url || "").trim();
+    if (!finalUrl) return;
+
+    const finalSnapshot = {
+      ...displayedSnapshot,
+      image: {
+        ...(displayedSnapshot.image && typeof displayedSnapshot.image === "object"
+          ? displayedSnapshot.image
+          : {}),
+        ...(displayImage && typeof displayImage === "object" ? displayImage : {}),
+        url: finalUrl,
+        alt:
+          displayImage?.alt ||
+          displayedSnapshot.image?.alt ||
+          displayedSnapshot.text ||
+          "Post image",
+      },
+      images: null,
+      imageMode: "single",
+      __snapshot_image_finalized: true,
+      __snapshot_image_finalized_at_iso: new Date().toISOString(),
+    };
+
+    saveDisplayedPostSnapshot(finalSnapshot, {
+      projectId,
+      feedId,
+      postId: post.id,
+      participantSeed,
+    });
+
+    if (typeof onDisplayedPostSnapshot === "function") {
+      onDisplayedPostSnapshot(finalSnapshot);
+    }
+  }, [
+    displayedSnapshot,
+    post?.id,
+    projectId,
+    feedId,
+    participantSeed,
+    displayImage,
     onDisplayedPostSnapshot,
   ]);
 
@@ -1533,6 +1583,7 @@ export function PostCard({
             <img
               src={displayImage.url}
               alt={displayImage.alt || ""}
+              onLoad={handleDisplayedImageLoad}
               style={{
                 display: "block",
                 width: "100%",
