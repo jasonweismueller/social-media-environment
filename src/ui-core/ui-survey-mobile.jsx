@@ -169,9 +169,14 @@ function getReminderPostLabel(question = {}, post = {}) {
 }
 
 function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
+  const visibleFeedFallback = Array.isArray(question?.visible_in_feeds)
+    ? question.visible_in_feeds.find((feedId) => String(feedId || "").trim())
+    : "";
+
   return firstNonEmpty(
     question?.post_feed_id,
     question?.meta?.post_feed_id,
+    visibleFeedFallback,
     fallbackFeedId
   );
 }

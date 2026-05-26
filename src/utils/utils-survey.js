@@ -1096,11 +1096,30 @@ export function isQuestionVisible(question, responses = {}, { feedId = "" } = {}
   const normalizedQuestion = normalizeQuestion(question);
   const activeFeedId = String(feedId ?? "").trim();
   const visibleInFeeds = Array.isArray(normalizedQuestion.visible_in_feeds)
-    ? normalizedQuestion.visible_in_feeds
+    ? normalizedQuestion.visible_in_feeds.map((x) => String(x ?? "").trim()).filter(Boolean)
     : [];
 
-  if (activeFeedId && visibleInFeeds.length > 0 && !visibleInFeeds.includes(activeFeedId)) {
-    return false;
+  // In a multi-feed flow, the survey is usually rendered after the final feed
+  // in the sequence. For post reminders, however, "feed visibility" should
+  // also match the reminder's source feed, otherwise a reminder from Feed 1
+  // is hidden when the active survey context is Feed 3.
+  const reminderSourceFeedId =
+    normalizedQuestion.type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? String(
+          normalizedQuestion.post_feed_id ??
+            normalizedQuestion.meta?.post_feed_id ??
+            ""
+        ).trim()
+      : "";
+
+  if (visibleInFeeds.length > 0) {
+    const matchesActiveFeed = activeFeedId && visibleInFeeds.includes(activeFeedId);
+    const matchesReminderSourceFeed =
+      reminderSourceFeedId && visibleInFeeds.includes(reminderSourceFeedId);
+
+    if (!matchesActiveFeed && !matchesReminderSourceFeed) {
+      return false;
+    }
   }
 
   const rule = normalizedQuestion?.visible_if;
@@ -1279,9 +1298,14 @@ export function getRenderedQuestion(
 ) {
   const q = normalizeQuestion(question);
   const activeFeedId = String(feedId ?? "").trim();
+  const reminderSourceFeedId =
+    q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? String(q.post_feed_id ?? q.meta?.post_feed_id ?? "").trim()
+      : "";
+  const overrideFeedId = reminderSourceFeedId || activeFeedId;
   const activeOverride =
-    activeFeedId && q.feed_overrides && typeof q.feed_overrides === "object"
-      ? q.feed_overrides[activeFeedId]
+    overrideFeedId && q.feed_overrides && typeof q.feed_overrides === "object"
+      ? q.feed_overrides[overrideFeedId]
       : null;
 
   if (activeOverride && String(activeOverride.text ?? "").trim()) {
