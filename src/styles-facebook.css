@@ -2900,3 +2900,95 @@ body.survey-mode .rail-right{
     line-height:1.25;
   }
 }
+
+
+/* ======================================================
+   Survey post reminder: Facebook width/proportion fix
+   Added for shared FB/IG survey component.
+   Keeps default/IG reminder cards narrow, but lets FB reminder posts
+   render like Facebook feed cards inside the survey.
+   ====================================================== */
+
+.survey-post-reminder-block.fb-reminder-post,
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-outer{
+  width:100% !important;
+  max-width:100% !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card{
+  width:100% !important;
+  max-width:min(760px, 100%) !important;
+  min-width:0 !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+
+/* Remove feed-page/rail constraints when a Facebook post is embedded as a survey reminder. */
+.survey-post-reminder-block.fb-reminder-post .page,
+.survey-post-reminder-block.fb-reminder-post .container,
+.survey-post-reminder-block.fb-reminder-post .container.feed,
+.survey-post-reminder-block.fb-reminder-post .feed{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  grid-template-columns:1fr !important;
+}
+
+/* Hide desktop feed rails/top rail if the PostCard wrapper accidentally brings them into the reminder. */
+.survey-post-reminder-block.fb-reminder-post .rail,
+.survey-post-reminder-block.fb-reminder-post .rail-left,
+.survey-post-reminder-block.fb-reminder-post .rail-right,
+.survey-post-reminder-block.fb-reminder-post .top-rail-placeholder{
+  display:none !important;
+}
+
+/* Make the embedded Facebook card fill the survey reminder frame. */
+.survey-post-reminder-block.fb-reminder-post .card,
+.survey-post-reminder-block.fb-reminder-post .post-card,
+.survey-post-reminder-block.fb-reminder-post .card.post-card,
+.survey-post-reminder-block.fb-reminder-post article{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+}
+
+/* Keep Facebook media landscape/wide rather than Instagram-like portrait. */
+.survey-post-reminder-block.fb-reminder-post .image-btn,
+.survey-post-reminder-block.fb-reminder-post .image-btn img,
+.survey-post-reminder-block.fb-reminder-post .video-wrap,
+.survey-post-reminder-block.fb-reminder-post .video-el,
+.survey-post-reminder-block.fb-reminder-post .drive-embed,
+.survey-post-reminder-block.fb-reminder-post .video-wrap iframe{
+  width:100% !important;
+  max-width:100% !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post .image-btn img,
+.survey-post-reminder-block.fb-reminder-post img{
+  height:auto !important;
+  max-height:min(420px, 58vh) !important;
+  object-fit:cover !important;
+}
+
+/* In the survey context, avoid the mobile full-bleed FB override making the reminder look like a phone feed card. */
+@media (max-width:700px){
+  .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
+  .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card{
+    max-width:100% !important;
+  }
+
+  .survey-post-reminder-block.fb-reminder-post .card,
+  .survey-post-reminder-block.fb-reminder-post .post-card,
+  .survey-post-reminder-block.fb-reminder-post .card.post-card{
+    border:1px solid var(--line) !important;
+    border-radius:12px !important;
+    box-shadow:none !important;
+    overflow:hidden !important;
+  }
+}
+

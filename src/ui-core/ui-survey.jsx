@@ -602,6 +602,119 @@ export function SurveyPrefaceFlow({
   );
 }
 
+
+const SURVEY_REMINDER_POST_STYLE = `
+.survey-post-reminder-block {
+  width: 100%;
+}
+
+.survey-post-reminder-outer {
+  width: 100%;
+}
+
+.survey-post-reminder-frame {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.survey-post-reminder-card {
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Facebook reminder posts should read like Facebook feed cards:
+   wide, landscape-oriented media, and not IG-portrait constrained. */
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card {
+  width: 100% !important;
+  max-width: min(760px, 100%) !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post .post-card,
+.survey-post-reminder-block.fb-reminder-post [class*="post-card"],
+.survey-post-reminder-block.fb-reminder-post [class*="PostCard"],
+.survey-post-reminder-block.fb-reminder-post article {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Common media wrappers/classes used across the FB/IG post components. */
+.survey-post-reminder-block.fb-reminder-post img,
+.survey-post-reminder-block.fb-reminder-post video {
+  max-width: 100% !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post [class*="image"],
+.survey-post-reminder-block.fb-reminder-post [class*="Image"],
+.survey-post-reminder-block.fb-reminder-post [class*="media"],
+.survey-post-reminder-block.fb-reminder-post [class*="Media"],
+.survey-post-reminder-block.fb-reminder-post [class*="video"],
+.survey-post-reminder-block.fb-reminder-post [class*="Video"] {
+  max-width: 100% !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post .image-btn,
+.survey-post-reminder-block.fb-reminder-post .video-wrap,
+.survey-post-reminder-block.fb-reminder-post .video-el,
+.survey-post-reminder-block.fb-reminder-post [class*="imageWrap"],
+.survey-post-reminder-block.fb-reminder-post [class*="image-wrap"],
+.survey-post-reminder-block.fb-reminder-post [class*="mediaWrap"],
+.survey-post-reminder-block.fb-reminder-post [class*="media-wrap"],
+.survey-post-reminder-block.fb-reminder-post [class*="videoWrap"],
+.survey-post-reminder-block.fb-reminder-post [class*="video-wrap"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  aspect-ratio: 16 / 9 !important;
+  max-height: 420px !important;
+  overflow: hidden;
+}
+
+.survey-post-reminder-block.fb-reminder-post .image-btn img,
+.survey-post-reminder-block.fb-reminder-post .video-wrap video,
+.survey-post-reminder-block.fb-reminder-post .video-el,
+.survey-post-reminder-block.fb-reminder-post [class*="imageWrap"] img,
+.survey-post-reminder-block.fb-reminder-post [class*="image-wrap"] img,
+.survey-post-reminder-block.fb-reminder-post [class*="mediaWrap"] img,
+.survey-post-reminder-block.fb-reminder-post [class*="media-wrap"] img,
+.survey-post-reminder-block.fb-reminder-post [class*="videoWrap"] video,
+.survey-post-reminder-block.fb-reminder-post [class*="video-wrap"] video {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 420px !important;
+  object-fit: cover !important;
+}
+
+/* Keep Instagram/mobile reminders narrower and closer to portrait-feed sizing. */
+.survey-post-reminder-block.ig-reminder-post .survey-post-reminder-frame,
+.survey-post-reminder-block.ig-reminder-post .survey-post-reminder-card {
+  max-width: min(520px, 100%) !important;
+}
+
+@media (max-width: 640px) {
+  .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
+  .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card {
+    max-width: 100% !important;
+  }
+
+  .survey-post-reminder-block.fb-reminder-post .image-btn,
+  .survey-post-reminder-block.fb-reminder-post .video-wrap,
+  .survey-post-reminder-block.fb-reminder-post .video-el,
+  .survey-post-reminder-block.fb-reminder-post [class*="imageWrap"],
+  .survey-post-reminder-block.fb-reminder-post [class*="image-wrap"],
+  .survey-post-reminder-block.fb-reminder-post [class*="mediaWrap"],
+  .survey-post-reminder-block.fb-reminder-post [class*="media-wrap"],
+  .survey-post-reminder-block.fb-reminder-post [class*="videoWrap"],
+  .survey-post-reminder-block.fb-reminder-post [class*="video-wrap"] {
+    aspect-ratio: 16 / 10 !important;
+    max-height: 360px !important;
+  }
+}
+`;
+
+function SurveyReminderPostStyle() {
+  return <style>{SURVEY_REMINDER_POST_STYLE}</style>;
+}
+
 const ReminderPostInner = memo(function ReminderPostInner({
   post,
   app,
@@ -770,7 +883,8 @@ const PostReminderCard = memo(function PostReminderCard({
   const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   return (
-  <div className="survey-post-reminder-block">
+  <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
+    <SurveyReminderPostStyle />
     {question?.text ? (
       <div
         className="survey-post-reminder-intro"
@@ -788,8 +902,8 @@ const PostReminderCard = memo(function PostReminderCard({
       </div>
     ) : (
       <div className="survey-post-reminder-outer">
-        <div className="survey-post-reminder-frame">
-          <div className="survey-post-reminder-card">
+        <div className={`survey-post-reminder-frame ${app === "ig" ? "ig-reminder-frame" : "fb-reminder-frame"}`}>
+          <div className={`survey-post-reminder-card ${app === "ig" ? "ig-reminder-card" : "fb-reminder-card"}`}>
             <ReminderPostInner
               post={post}
               app={app}
