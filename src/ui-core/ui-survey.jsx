@@ -540,6 +540,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
         ...(flags || {}),
         randomize_times: false,
         randomize_avatars: false,
+        randomize_names: false,
         randomize_images: false,
         randomize_bios: false,
       }

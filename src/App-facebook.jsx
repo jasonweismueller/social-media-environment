@@ -41,7 +41,6 @@ import {
   validateSurveyResponses,
   getTrackingIdsFromUrl,
   getSurveyBootForFeedFromBackend,
-  persistDisplayedPostSnapshotsForFeed,
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
@@ -593,6 +592,13 @@ export default function App() {
   const bootAbortRef = useRef(null);
   const surveyAbortRef = useRef(null);
   const contentAbortRef = useRef(null);
+  const displayedPostSnapshotsRef = useRef(new Map());
+
+  const handleDisplayedPostSnapshot = useCallback((snapshot) => {
+    if (!snapshot || !snapshot.id) return;
+    const key = `${snapshot.__snapshot_feed_id || ""}::${snapshot.id}`;
+    displayedPostSnapshotsRef.current.set(key, snapshot);
+  }, []);
 
   const trackingIds = useMemo(() => getTrackingIdsFromUrl(), []);
   const prefilledParticipantId = trackingIds.prolific_pid || "";
@@ -2508,6 +2514,8 @@ export default function App() {
                           }
                           feedId={activeFeedId}
                           avatarPools={avatarPools}
+                          participantSeed={participantId || sessionIdRef.current}
+                          onDisplayedPostSnapshot={handleDisplayedPostSnapshot}
                           onSubmit={async () => {
                             if (feedSubmitted || submitted || disabled) return;
 
@@ -2577,22 +2585,12 @@ export default function App() {
                               feed_checksum,
                             });
 
-                            let displayedPostSnapshots = [];
-                            try {
-                              displayedPostSnapshots = await persistDisplayedPostSnapshotsForFeed({
-                                posts: orderedPosts,
-                                projectId,
-                                feedId: feed_id,
-                                participantSeed: participantId || sessionIdRef.current,
-                                runSeed,
-                                flags,
-                                avatarPools,
-                              });
-                              row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
-                            } catch (snapshotErr) {
-                              console.warn("Failed to persist displayed post snapshots", snapshotErr);
-                              row.displayed_posts_json = "";
-                            }
+                            const displayedPostSnapshots = orderedPosts
+                              .map((post) =>
+                                displayedPostSnapshotsRef.current.get(`${feed_id || ""}::${post.id}`)
+                              )
+                              .filter(Boolean);
+                            row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
 
                             const header = buildMinimalHeader(posts);
                             if (!header.includes("displayed_posts_json")) {

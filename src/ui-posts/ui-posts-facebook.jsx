@@ -13,6 +13,7 @@ import {
   pickDeterministic,
   getImagePool,
   buildDeterministicAssignmentMap,
+  saveDisplayedPostSnapshot,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
@@ -160,6 +161,8 @@ export function PostCard({
   runSeed,
   assignedAuthor,
   assignedAvatarUrl,
+  participantSeed,
+  onDisplayedPostSnapshot,
 }) {
   const [reportAck, setReportAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -667,6 +670,82 @@ export function PostCard({
     }
     return post.image || null;
   }, [post?.image, post?.imageMode, randImagesOn, randImageUrl]);
+
+
+  const displayedSnapshot = React.useMemo(() => {
+    if (!post?.id) return null;
+
+    let snapshot;
+    try {
+      snapshot = JSON.parse(JSON.stringify(post));
+    } catch {
+      snapshot = { ...post };
+    }
+
+    snapshot.author = displayAuthor || snapshot.author || "";
+
+    if (displayAvatar) {
+      snapshot.avatarUrl = displayAvatar;
+      snapshot.avatarMode = "url";
+    }
+
+    if (shouldShowTime && timeLabel) {
+      snapshot.time = timeLabel;
+      snapshot.showTime = true;
+    }
+
+    if (displayImage && displayImage.url) {
+      snapshot.image = {
+        ...(snapshot.image && typeof snapshot.image === "object" ? snapshot.image : {}),
+        ...displayImage,
+        url: displayImage.url,
+        alt: displayImage.alt || snapshot.image?.alt || snapshot.text || "Post image",
+      };
+      snapshot.images = null;
+      snapshot.imageMode = snapshot.imageMode && snapshot.imageMode !== "none" ? snapshot.imageMode : "single";
+    }
+
+    snapshot.__studyfeed_displayed_snapshot = true;
+    snapshot.__snapshot_saved_at_iso = new Date().toISOString();
+    snapshot.__snapshot_project_id = String(projectId || "");
+    snapshot.__snapshot_feed_id = String(feedId || "");
+    snapshot.__snapshot_post_id = String(post.id || "");
+    snapshot.__snapshot_participant_seed = String(participantSeed || "");
+
+    return snapshot;
+  }, [
+    post,
+    displayAuthor,
+    displayAvatar,
+    displayImage,
+    shouldShowTime,
+    timeLabel,
+    projectId,
+    feedId,
+    participantSeed,
+  ]);
+
+  React.useEffect(() => {
+    if (!displayedSnapshot || !post?.id || !feedId) return;
+
+    saveDisplayedPostSnapshot(displayedSnapshot, {
+      projectId,
+      feedId,
+      postId: post.id,
+      participantSeed,
+    });
+
+    if (typeof onDisplayedPostSnapshot === "function") {
+      onDisplayedPostSnapshot(displayedSnapshot);
+    }
+  }, [
+    displayedSnapshot,
+    post?.id,
+    projectId,
+    feedId,
+    participantSeed,
+    onDisplayedPostSnapshot,
+  ]);
 
   const fmtTime = (s) => {
     if (!Number.isFinite(s)) return "0:00";
@@ -1728,6 +1807,8 @@ export function Feed({
   projectId,
   feedId,
   runSeed,
+  participantSeed,
+  onDisplayedPostSnapshot,
 }) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
@@ -1916,6 +1997,8 @@ export function Feed({
               feedId={feedId}
               assignedAuthor={assignedAuthor || null}
               assignedAvatarUrl={assignedAvatarUrl || null}
+              participantSeed={participantSeed}
+              onDisplayedPostSnapshot={onDisplayedPostSnapshot}
             />
           );
         })}
