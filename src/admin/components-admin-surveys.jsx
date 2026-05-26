@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -476,21 +477,34 @@ function RichTextInput({
   minHeight = 180,
 }) {
   const editorRef = useRef(null);
+  const isFocusedRef = useRef(false);
+  const lastHtmlRef = useRef(String(value ?? ""));
   const [showHtml, setShowHtml] = useState(false);
-  const [lastHtml, setLastHtml] = useState(value ?? "");
+  const [lastHtml, setLastHtml] = useState(String(value ?? ""));
 
-  useEffect(() => {
-    const next = value ?? "";
-    if (next === lastHtml) return;
-    setLastHtml(next);
-    if (editorRef.current && editorRef.current.innerHTML !== next) {
-      editorRef.current.innerHTML = next;
+  // Important: do not render the editable content through React on every keystroke.
+  // Re-applying innerHTML while the user types resets the caret to the beginning.
+  // Instead, initialise/sync the DOM only when the editor is not focused or when
+  // switching back from HTML view.
+  useLayoutEffect(() => {
+    if (showHtml) return;
+    const next = String(value ?? "");
+    const el = editorRef.current;
+    if (!el) return;
+
+    const shouldSyncDom = !isFocusedRef.current || el.innerHTML !== lastHtmlRef.current;
+    if (shouldSyncDom && el.innerHTML !== next) {
+      el.innerHTML = next;
     }
-  }, [value, lastHtml]);
+
+    lastHtmlRef.current = next;
+    setLastHtml(next);
+  }, [value, showHtml]);
 
   const commitHtml = useCallback(
     (nextHtml) => {
       const html = String(nextHtml ?? "");
+      lastHtmlRef.current = html;
       setLastHtml(html);
       onChange?.(html);
     },
@@ -653,7 +667,7 @@ function RichTextInput({
       </div>
 
       <div style={{ position: "relative" }}>
-        {!String(value ?? "").trim() ? (
+        {!String(lastHtml ?? "").trim() ? (
           <div
             style={{
               position: "absolute",
@@ -673,7 +687,13 @@ function RichTextInput({
           contentEditable
           suppressContentEditableWarning
           onInput={readEditorHtml}
-          onBlur={readEditorHtml}
+          onFocus={() => {
+            isFocusedRef.current = true;
+          }}
+          onBlur={() => {
+            isFocusedRef.current = false;
+            readEditorHtml();
+          }}
           onPaste={(e) => {
             // Keep pasted formatted text/images from Word/Qualtrics manageable by letting the browser
             // paste HTML, then immediately save the generated HTML into the existing field.
@@ -689,7 +709,6 @@ function RichTextInput({
             overflowY: "auto",
             maxHeight: Math.max(minHeight + 220, 360),
           }}
-          dangerouslySetInnerHTML={{ __html: value ?? "" }}
         />
       </div>
     </div>
