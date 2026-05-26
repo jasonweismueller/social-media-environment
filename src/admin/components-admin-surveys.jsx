@@ -468,6 +468,234 @@ function TextAreaInput({
   );
 }
 
+
+function RichTextInput({
+  value,
+  onChange,
+  placeholder = "Start typing...",
+  minHeight = 180,
+}) {
+  const editorRef = useRef(null);
+  const [showHtml, setShowHtml] = useState(false);
+  const [lastHtml, setLastHtml] = useState(value ?? "");
+
+  useEffect(() => {
+    const next = value ?? "";
+    if (next === lastHtml) return;
+    setLastHtml(next);
+    if (editorRef.current && editorRef.current.innerHTML !== next) {
+      editorRef.current.innerHTML = next;
+    }
+  }, [value, lastHtml]);
+
+  const commitHtml = useCallback(
+    (nextHtml) => {
+      const html = String(nextHtml ?? "");
+      setLastHtml(html);
+      onChange?.(html);
+    },
+    [onChange]
+  );
+
+  const readEditorHtml = useCallback(() => {
+    const html = editorRef.current?.innerHTML ?? "";
+    commitHtml(html);
+  }, [commitHtml]);
+
+  const focusEditor = useCallback(() => {
+    editorRef.current?.focus?.();
+  }, []);
+
+  const runCommand = useCallback(
+    (command, arg = null) => {
+      if (typeof document === "undefined") return;
+      focusEditor();
+      try {
+        document.execCommand(command, false, arg);
+      } catch (_) {}
+      readEditorHtml();
+    },
+    [focusEditor, readEditorHtml]
+  );
+
+  const buttonStyle = {
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    borderRadius: 8,
+    padding: "6px 9px",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 600,
+  };
+
+  const selectStyle = {
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    borderRadius: 8,
+    padding: "6px 8px",
+    fontSize: 12,
+  };
+
+  if (showHtml) {
+    return (
+      <div>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <button
+            type="button"
+            style={buttonStyle}
+            onClick={() => setShowHtml(false)}
+          >
+            Rich text editor
+          </button>
+          <span style={{ fontSize: 12, color: "#6b7280" }}>
+            Advanced HTML view. Changes here still save to the same backend field.
+          </span>
+        </div>
+        <TextAreaInput
+          value={value ?? ""}
+          onChange={commitHtml}
+          rows={Math.max(6, Math.round(minHeight / 24))}
+          placeholder={placeholder}
+          style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: 10,
+        overflow: "hidden",
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          alignItems: "center",
+          padding: 8,
+          borderBottom: "1px solid #e5e7eb",
+          background: "#f9fafb",
+        }}
+      >
+        <select
+          aria-label="Text style"
+          defaultValue="P"
+          onChange={(e) => {
+            runCommand("formatBlock", e.target.value);
+            e.target.value = "P";
+          }}
+          style={selectStyle}
+        >
+          <option value="P">Paragraph</option>
+          <option value="H3">Heading</option>
+          <option value="H4">Subheading</option>
+        </select>
+        <button type="button" style={buttonStyle} onClick={() => runCommand("bold")}>
+          Bold
+        </button>
+        <button type="button" style={buttonStyle} onClick={() => runCommand("italic")}>
+          Italic
+        </button>
+        <button type="button" style={buttonStyle} onClick={() => runCommand("underline")}>
+          Underline
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() => runCommand("insertUnorderedList")}
+        >
+          Bullets
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() => runCommand("insertOrderedList")}
+        >
+          Numbers
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() => {
+            const url = window.prompt("Enter link URL");
+            if (url) runCommand("createLink", url);
+          }}
+        >
+          Link
+        </button>
+        <button
+          type="button"
+          style={buttonStyle}
+          onClick={() => runCommand("removeFormat")}
+        >
+          Clear format
+        </button>
+        <button
+          type="button"
+          style={{ ...buttonStyle, marginLeft: "auto" }}
+          onClick={() => setShowHtml(true)}
+        >
+          HTML view
+        </button>
+      </div>
+
+      <div style={{ position: "relative" }}>
+        {!String(value ?? "").trim() ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 12,
+              left: 12,
+              right: 12,
+              color: "#9ca3af",
+              fontSize: 14,
+              pointerEvents: "none",
+            }}
+          >
+            {placeholder}
+          </div>
+        ) : null}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={readEditorHtml}
+          onBlur={readEditorHtml}
+          onPaste={(e) => {
+            // Keep pasted formatted text/images from Word/Qualtrics manageable by letting the browser
+            // paste HTML, then immediately save the generated HTML into the existing field.
+            setTimeout(readEditorHtml, 0);
+          }}
+          style={{
+            minHeight,
+            padding: 12,
+            outline: "none",
+            lineHeight: 1.55,
+            fontSize: 14,
+            color: "#111827",
+            overflowY: "auto",
+            maxHeight: Math.max(minHeight + 220, 360),
+          }}
+          dangerouslySetInnerHTML={{ __html: value ?? "" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function SelectInput({ value, onChange, children, style }) {
   return (
     <select
@@ -1737,10 +1965,10 @@ export function AdminSurveysPanel({
               </FieldBlock>
 
               <FieldBlock
-                label="Participant information HTML"
-                hint="Supports HTML formatting. This page is shown before consent."
+                label="Participant information"
+                hint="Use the rich text editor to design this page. It is still saved as HTML for the backend and frontend."
               >
-                <TextAreaInput
+                <RichTextInput
                   value={survey.participant_information_html}
                   onChange={(v) =>
                     setSurvey({
@@ -1749,7 +1977,7 @@ export function AdminSurveysPanel({
                     })
                   }
                   placeholder="Enter the participant information sheet content..."
-                  rows={10}
+                  minHeight={260}
                 />
               </FieldBlock>
 
@@ -1770,10 +1998,10 @@ export function AdminSurveysPanel({
               </FieldBlock>
 
               <FieldBlock
-                label="Consent HTML"
-                hint="Displayed above the Yes / No consent choice."
+                label="Consent text"
+                hint="Use the rich text editor to design the consent text shown above the Yes / No choice."
               >
-                <TextAreaInput
+                <RichTextInput
                   value={survey.consent_text_html}
                   onChange={(v) =>
                     setSurvey({
@@ -1782,15 +2010,15 @@ export function AdminSurveysPanel({
                     })
                   }
                   placeholder="Enter the participant consent text..."
-                  rows={7}
+                  minHeight={180}
                 />
               </FieldBlock>
 
               <FieldBlock
-                label="Decline message HTML"
+                label="Decline message"
                 hint="Shown in the blocking overlay/message if the participant selects No."
               >
-                <TextAreaInput
+                <RichTextInput
                   value={survey.consent_decline_message_html}
                   onChange={(v) =>
                     setSurvey({
@@ -1799,7 +2027,7 @@ export function AdminSurveysPanel({
                     })
                   }
                   placeholder="Enter the decline message..."
-                  rows={4}
+                  minHeight={120}
                 />
               </FieldBlock>
 
@@ -1820,10 +2048,10 @@ export function AdminSurveysPanel({
               </FieldBlock>
 
               <FieldBlock
-                label="Instructions HTML"
-                hint="Supports HTML formatting and placeholders such as ${e://Field/PROLIFIC_PID} if you inject them later in your runtime."
+                label="Instructions"
+                hint="Use the rich text editor to design the instructions. Placeholders such as ${e://Field/PROLIFIC_PID} can still be typed as plain text."
               >
-                <TextAreaInput
+                <RichTextInput
                   value={survey.instructions_html}
                   onChange={(v) =>
                     setSurvey({
@@ -1832,7 +2060,7 @@ export function AdminSurveysPanel({
                     })
                   }
                   placeholder="Enter the instructions shown before the feed or survey..."
-                  rows={10}
+                  minHeight={240}
                 />
               </FieldBlock>
 
