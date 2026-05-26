@@ -13,6 +13,8 @@ import {
   getRenderedQuestion,
   getProjectId,
   loadPostByIdFromBackend,
+  getDisplayedPostSnapshot,
+  isDisplayedPostSnapshot,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -225,6 +227,15 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
 }) {
   const noopAction = useCallback(() => {}, []);
   const noopRegisterViewRef = useCallback(() => undefined, []);
+  const effectiveFlags = isDisplayedPostSnapshot(post)
+    ? {
+        ...(flags || {}),
+        randomize_times: false,
+        randomize_avatars: false,
+        randomize_images: false,
+        randomize_bios: false,
+      }
+    : (flags || {});
 
   return (
     <PostCard
@@ -236,7 +247,7 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
       projectId={projectId}
       feedId={feedId}
       runSeed={participantSeed || "survey-reminder-preview"}
-      flags={flags || {}}
+      flags={effectiveFlags}
     />
   );
 });
@@ -254,6 +265,16 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
 
+  const storedSnapshot = useMemo(() => {
+    if (!targetPostId || !reminderFeedId) return null;
+    return getDisplayedPostSnapshot({
+      projectId: resolvedProjectId,
+      feedId: reminderFeedId,
+      postId: targetPostId,
+      participantSeed,
+    });
+  }, [resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+
   const inlinePost = useMemo(
     () => getQuestionReminderPost(question, posts),
     [question, posts]
@@ -267,6 +288,14 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
 
   useEffect(() => {
     const nextInlinePost = getQuestionReminderPost(question, posts);
+
+    if (storedSnapshot) {
+      setLazyPost(null);
+      setLazyStatus("ready");
+      setLazyError("");
+      requestKeyRef.current = requestKey;
+      return;
+    }
 
     if (nextInlinePost) {
       setLazyPost(null);
@@ -338,10 +367,11 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
     resolvedProjectId,
     reminderFeedId,
     targetPostId,
+    storedSnapshot,
     requestKey,
   ]);
 
-  const post = inlinePost || lazyPost;
+  const post = storedSnapshot || inlinePost || lazyPost;
   const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   return (

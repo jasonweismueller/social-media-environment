@@ -1224,6 +1224,247 @@ export function summarizeRoster(rows) {
   };
 }
 
+
+
+/* ---------------- Displayed post snapshots for survey reminders ------------ */
+const DISPLAYED_POST_SNAPSHOT_PREFIX = "studyfeed:displayed_post_snapshot";
+const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot_latest";
+
+function safeLocalStorageGet_(key) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageSet_(key, value) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function snapshotKeyPart_(value) {
+  return encodeURIComponent(String(value == null ? "" : value));
+}
+
+function displayedPostSnapshotKey({ projectId = "", feedId = "", postId = "", participantSeed = "" } = {}) {
+  return [
+    DISPLAYED_POST_SNAPSHOT_PREFIX,
+    snapshotKeyPart_(projectId),
+    snapshotKeyPart_(participantSeed),
+    snapshotKeyPart_(feedId),
+    snapshotKeyPart_(postId),
+  ].join("::");
+}
+
+function displayedPostSnapshotLatestKey({ projectId = "", feedId = "", postId = "" } = {}) {
+  return [
+    DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX,
+    snapshotKeyPart_(projectId),
+    snapshotKeyPart_(feedId),
+    snapshotKeyPart_(postId),
+  ].join("::");
+}
+
+function clonePlainPost_(post) {
+  try {
+    return JSON.parse(JSON.stringify(post || {}));
+  } catch {
+    return { ...(post || {}) };
+  }
+}
+
+export function isDisplayedPostSnapshot(post) {
+  return !!(post && post.__studyfeed_displayed_snapshot);
+}
+
+export async function buildDisplayedPostSnapshot(post, {
+  projectId = getProjectId(),
+  feedId = "",
+  participantSeed = "",
+  runSeed = "",
+  flags = {},
+  avatarPools = null,
+  posts = [],
+  postIndex = 0,
+} = {}) {
+  if (!post || !post.id) return null;
+
+  const snapshot = clonePlainPost_(post);
+  const postId = String(post.id || "");
+  const seedParts = [runSeed || participantSeed || "studyfeed", projectId || "", feedId || "", postId];
+
+  if (flags?.randomize_times) {
+    snapshot.time = displayTimeForPost(post, {
+      randomize: true,
+      seedParts,
+    });
+  }
+
+  if (flags?.randomize_avatars) {
+    const kind =
+      post?.authorType === "male" || post?.authorType === "company"
+        ? post.authorType
+        : "female";
+    const pool = avatarPools && Array.isArray(avatarPools[kind])
+      ? avatarPools[kind]
+      : await getAvatarPool(kind).catch(() => []);
+    const stableIndex = getStablePostOrderIndex(posts, postId);
+    const avatarUrl = pickUniqueDeterministic(
+      pool,
+      Number.isFinite(stableIndex) && stableIndex >= 0 ? stableIndex : postIndex,
+      [...seedParts, "avatar", kind]
+    );
+    if (avatarUrl) {
+      snapshot.avatarUrl = avatarUrl;
+      snapshot.avatarMode = "url";
+    }
+  }
+
+  if (flags?.randomize_images && post?.imageMode !== "none") {
+    const topic = String(post?.imageTopic || post?.topic || "").trim();
+    const pool = topic ? await getImagePool(topic).catch(() => []) : [];
+    const stableIndex = getStablePostOrderIndex(posts, postId);
+    const imageUrl = pickUniqueDeterministic(
+      pool,
+      Number.isFinite(stableIndex) && stableIndex >= 0 ? stableIndex : postIndex,
+      [...seedParts, "image", topic]
+    );
+    if (imageUrl) {
+      const baseImage = snapshot.image && typeof snapshot.image === "object" ? snapshot.image : {};
+      snapshot.image = {
+        ...baseImage,
+        url: imageUrl,
+        alt: baseImage.alt || snapshot.text || "Post image",
+      };
+      snapshot.images = null;
+      snapshot.imageMode = snapshot.imageMode && snapshot.imageMode !== "none" ? snapshot.imageMode : "single";
+    }
+  }
+
+  if (flags?.randomize_bios) {
+    const bio = {
+      bio_posts: snapshot.bio_posts,
+      bio_followers: snapshot.bio_followers,
+      bio_following: snapshot.bio_following,
+    };
+    const randomizedBio = randomizeBioStats(bio, {
+      randomize: true,
+      seedParts,
+    });
+    if (randomizedBio && typeof randomizedBio === "object") {
+      if (typeof randomizedBio.bio_posts !== "undefined") snapshot.bio_posts = randomizedBio.bio_posts;
+      if (typeof randomizedBio.bio_followers !== "undefined") snapshot.bio_followers = randomizedBio.bio_followers;
+      if (typeof randomizedBio.bio_following !== "undefined") snapshot.bio_following = randomizedBio.bio_following;
+      if (typeof randomizedBio.posts !== "undefined") snapshot.bio_posts = randomizedBio.posts;
+      if (typeof randomizedBio.followers !== "undefined") snapshot.bio_followers = randomizedBio.followers;
+      if (typeof randomizedBio.following !== "undefined") snapshot.bio_following = randomizedBio.following;
+    }
+  }
+
+  snapshot.__studyfeed_displayed_snapshot = true;
+  snapshot.__snapshot_saved_at_iso = new Date().toISOString();
+  snapshot.__snapshot_project_id = String(projectId || "");
+  snapshot.__snapshot_feed_id = String(feedId || "");
+  snapshot.__snapshot_post_id = postId;
+  snapshot.__snapshot_participant_seed = String(participantSeed || "");
+
+  return snapshot;
+}
+
+export function saveDisplayedPostSnapshot(snapshot, {
+  projectId = getProjectId(),
+  feedId = "",
+  postId = "",
+  participantSeed = "",
+} = {}) {
+  const cleanPostId = String(postId || snapshot?.id || snapshot?.__snapshot_post_id || "").trim();
+  const cleanFeedId = String(feedId || snapshot?.__snapshot_feed_id || "").trim();
+  if (!snapshot || !cleanPostId || !cleanFeedId) return false;
+
+  const payload = JSON.stringify(snapshot);
+  const scopedKey = displayedPostSnapshotKey({ projectId, feedId: cleanFeedId, postId: cleanPostId, participantSeed });
+  const latestKey = displayedPostSnapshotLatestKey({ projectId, feedId: cleanFeedId, postId: cleanPostId });
+
+  const okScoped = participantSeed ? safeLocalStorageSet_(scopedKey, payload) : true;
+  const okLatest = safeLocalStorageSet_(latestKey, payload);
+  return !!(okScoped && okLatest);
+}
+
+export function getDisplayedPostSnapshot({
+  projectId = getProjectId(),
+  feedId = "",
+  postId = "",
+  participantSeed = "",
+} = {}) {
+  const cleanPostId = String(postId || "").trim();
+  const cleanFeedId = String(feedId || "").trim();
+  if (!cleanPostId || !cleanFeedId) return null;
+
+  const keys = [];
+  if (participantSeed) {
+    keys.push(displayedPostSnapshotKey({ projectId, feedId: cleanFeedId, postId: cleanPostId, participantSeed }));
+  }
+  keys.push(displayedPostSnapshotLatestKey({ projectId, feedId: cleanFeedId, postId: cleanPostId }));
+
+  for (const key of keys) {
+    const raw = safeLocalStorageGet_(key);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && String(parsed.id || parsed.__snapshot_post_id || "") === cleanPostId) {
+        return parsed;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+export async function persistDisplayedPostSnapshotsForFeed({
+  posts = [],
+  projectId = getProjectId(),
+  feedId = "",
+  participantSeed = "",
+  runSeed = "",
+  flags = {},
+  avatarPools = null,
+} = {}) {
+  const sourcePosts = Array.isArray(posts) ? posts : [];
+  const cleanFeedId = String(feedId || "").trim();
+  if (!sourcePosts.length || !cleanFeedId) return [];
+
+  const snapshots = [];
+  for (let i = 0; i < sourcePosts.length; i += 1) {
+    const snapshot = await buildDisplayedPostSnapshot(sourcePosts[i], {
+      projectId,
+      feedId: cleanFeedId,
+      participantSeed,
+      runSeed,
+      flags,
+      avatarPools,
+      posts: sourcePosts,
+      postIndex: i,
+    });
+    if (!snapshot) continue;
+    saveDisplayedPostSnapshot(snapshot, {
+      projectId,
+      feedId: cleanFeedId,
+      postId: snapshot.id,
+      participantSeed,
+    });
+    snapshots.push(snapshot);
+  }
+
+  return snapshots;
+}
+
 /* ------- Avatar pools (from S3 manifests) ------- */
 export const AVATAR_POOLS_ENDPOINTS = {
   female: `${CF_BASE.replace(/\/+$/,'')}/avatars/female/index.json`,

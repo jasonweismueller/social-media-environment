@@ -41,6 +41,7 @@ import {
   validateSurveyResponses,
   getTrackingIdsFromUrl,
   getSurveyBootForFeedFromBackend,
+  persistDisplayedPostSnapshotsForFeed,
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
@@ -2576,7 +2577,27 @@ export default function App() {
                               feed_checksum,
                             });
 
+                            let displayedPostSnapshots = [];
+                            try {
+                              displayedPostSnapshots = await persistDisplayedPostSnapshotsForFeed({
+                                posts: orderedPosts,
+                                projectId,
+                                feedId: feed_id,
+                                participantSeed: participantId || sessionIdRef.current,
+                                runSeed,
+                                flags,
+                                avatarPools,
+                              });
+                              row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
+                            } catch (snapshotErr) {
+                              console.warn("Failed to persist displayed post snapshots", snapshotErr);
+                              row.displayed_posts_json = "";
+                            }
+
                             const header = buildMinimalHeader(posts);
+                            if (!header.includes("displayed_posts_json")) {
+                              header.push("displayed_posts_json");
+                            }
 
                             const sendTimer = timerStart("sendToSheet", {
                               feed_id,
