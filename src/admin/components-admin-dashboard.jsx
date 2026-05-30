@@ -101,6 +101,331 @@ async function snapshotToS3({ posts, projectId, feedId, app = "fb" }) {
   }
 }
 
+
+/* ------------------------ Feed PDF / Word export helpers ------------------- */
+function escapeHtml(value = "") {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function stripHtml(value = "") {
+  const div = document.createElement("div");
+  div.innerHTML = String(value || "");
+  return div.textContent || div.innerText || "";
+}
+
+function getPostDisplayName(post, postNames = {}) {
+  const friendly = String(post?.name || postNames?.[post?.id] || "").trim();
+  return friendly || String(post?.author || "Post");
+}
+
+function getPostImageUrl(post) {
+  if (!post || post.videoMode !== "none") return "";
+  if (post.image && typeof post.image === "object" && post.image.url) return String(post.image.url);
+  if (Array.isArray(post.images) && post.images.length && post.images[0]?.url) return String(post.images[0].url);
+  return "";
+}
+
+function getPostAvatarUrl(post) {
+  if (!post) return "";
+  if (post.avatarUrl) return String(post.avatarUrl);
+  if (post.avatarMode === "neutral") return genNeutralAvatarDataUrl(64);
+  if (post.avatarMode === "random") {
+    return randomAvatarByKind(
+      post.avatarRandomKind || "any",
+      post.id || post.author || "seed",
+      post.author || "",
+      randomAvatarUrl
+    );
+  }
+  return "";
+}
+
+function normalizeFeedExportPosts(posts = [], postNames = {}) {
+  return (Array.isArray(posts) ? posts : []).map((post, idx) => {
+    const resolved = { ...(post || {}) };
+    resolved.__displayName = getPostDisplayName(resolved, postNames);
+    resolved.__avatarUrl = getPostAvatarUrl(resolved);
+    resolved.__imageUrl = getPostImageUrl(resolved);
+    resolved.__number = idx + 1;
+    return resolved;
+  });
+}
+
+function buildRenderedFeedExportHtml({
+  posts = [],
+  appName = "fb",
+  projectId = "",
+  feedId = "",
+  feedName = "",
+  postNames = {},
+}) {
+  const normalized = normalizeFeedExportPosts(posts, postNames);
+  const isIG = String(appName || "fb").toLowerCase() === "ig";
+  const title = `${isIG ? "Instagram" : "Facebook"} feed export`;
+  const exportedAt = new Date().toLocaleString();
+
+  const postCards = normalized
+    .map((post) => {
+      const text = escapeHtml(post.text || "").replace(/\n/g, "<br/>");
+      const avatar = post.__avatarUrl
+        ? `<img class="avatar" src="${escapeHtml(post.__avatarUrl)}" alt=""/>`
+        : `<div class="avatar avatar-placeholder"></div>`;
+      const media = post.__imageUrl
+        ? `<img class="post-image" src="${escapeHtml(post.__imageUrl)}" alt="${escapeHtml(post.image?.alt || "")}"/>`
+        : post.videoMode !== "none"
+          ? `<div class="video-placeholder">Video post: ${escapeHtml(post.video?.url || post.videoPosterUrl || "")}</div>`
+          : "";
+
+      const adBlock =
+        post.adType && post.adType !== "none"
+          ? `<div class="ad-block">
+              <div class="ad-sub">${escapeHtml(post.adSubheadline || post.adDomain || "")}</div>
+              <div class="ad-head">${escapeHtml(post.adHeadline || "")}</div>
+              ${post.adButtonText ? `<div class="ad-btn">${escapeHtml(post.adButtonText)}</div>` : ""}
+            </div>`
+          : "";
+
+      const note =
+        post.interventionType && post.interventionType !== "none" && post.noteText
+          ? `<div class="note"><strong>Context note</strong><br/>${escapeHtml(post.noteText).replace(/\n/g, "<br/>")}</div>`
+          : "";
+
+      return `
+        <article class="post-card">
+          <div class="post-export-label">Post ${post.__number}: ${escapeHtml(post.__displayName)}</div>
+          <header class="post-head">
+            ${avatar}
+            <div class="post-meta">
+              <div class="author">${escapeHtml(post.author || "Author")}${post.badge ? " ✓" : ""}</div>
+              <div class="time">${escapeHtml(post.time || "")}${post.topic ? ` · ${escapeHtml(post.topic)}` : ""}</div>
+            </div>
+          </header>
+          ${text ? `<div class="post-text">${text}</div>` : ""}
+          ${media}
+          ${adBlock}
+          ${note}
+          <footer class="post-footer">
+            ${isIG ? "Like · Comment · Share · Save" : "Like · Comment · Share"}
+          </footer>
+        </article>`;
+    })
+    .join("\n");
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>${escapeHtml(title)} - ${escapeHtml(feedId || "feed")}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px;
+    background: #f3f4f6;
+    color: #111827;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .export-shell {
+    max-width: ${isIG ? "760px" : "1040px"};
+    margin: 0 auto;
+  }
+  .doc-head {
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+  }
+  .doc-head h1 {
+    margin: 0 0 8px;
+    font-size: 22px;
+  }
+  .doc-meta {
+    color: #4b5563;
+    font-size: 13px;
+  }
+  .post-card {
+    width: 100%;
+    max-width: ${isIG ? "470px" : "760px"};
+    margin: 0 auto 18px;
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: ${isIG ? "14px" : "10px"};
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    box-shadow: 0 1px 2px rgba(0,0,0,.05);
+  }
+  .post-export-label {
+    padding: 8px 14px;
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    color: #374151;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .post-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px 8px;
+  }
+  .avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    object-fit: cover;
+    flex: 0 0 auto;
+    background: #e5e7eb;
+  }
+  .avatar-placeholder { border: 1px solid #d1d5db; }
+  .author { font-weight: 700; }
+  .time { color: #6b7280; font-size: 12px; }
+  .post-text {
+    padding: 4px 14px 12px;
+    white-space: normal;
+  }
+  .post-image {
+    display: block;
+    width: 100%;
+    max-height: ${isIG ? "620px" : "430px"};
+    object-fit: cover;
+    background: #e5e7eb;
+  }
+  .video-placeholder {
+    padding: 48px 16px;
+    text-align: center;
+    background: #111827;
+    color: #fff;
+    word-break: break-all;
+  }
+  .ad-block {
+    margin: 0;
+    padding: 12px 14px;
+    background: #f3f4f6;
+    border-top: 1px solid #e5e7eb;
+  }
+  .ad-sub { color: #6b7280; font-size: 12px; }
+  .ad-head { font-weight: 700; margin-top: 2px; }
+  .ad-btn {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: #e5e7eb;
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .note {
+    margin: 12px 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #f9fafb;
+    border: 1px solid #d1d5db;
+  }
+  .post-footer {
+    padding: 10px 14px;
+    border-top: 1px solid #e5e7eb;
+    color: #4b5563;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .export-shell { max-width: none; }
+    .doc-head, .post-card { box-shadow: none; }
+    .post-card { max-width: ${isIG ? "470px" : "720px"}; }
+  }
+</style>
+</head>
+<body>
+  <main class="export-shell">
+    <section class="doc-head">
+      <h1>${escapeHtml(title)}</h1>
+      <div class="doc-meta">
+        <div><strong>Project:</strong> ${escapeHtml(projectId || "global")}</div>
+        <div><strong>Feed:</strong> ${escapeHtml(feedName || feedId || "selected feed")}</div>
+        <div><strong>App:</strong> ${escapeHtml(String(appName || "").toUpperCase())}</div>
+        <div><strong>Exported:</strong> ${escapeHtml(exportedAt)}</div>
+        <div><strong>Posts:</strong> ${normalized.length}</div>
+      </div>
+    </section>
+    ${postCards || "<p>No posts available for this feed.</p>"}
+  </main>
+</body>
+</html>`;
+}
+
+function downloadFeedAsWord(args) {
+  const html = buildRenderedFeedExportHtml(args);
+  const blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  a.href = url;
+  a.download = `${args.projectId || "global"}-${args.feedId || "feed"}-${stamp}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportFeedAsPdf(args) {
+  const html = buildRenderedFeedExportHtml(args);
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.setAttribute("aria-hidden", "true");
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    setTimeout(() => {
+      try { iframe.remove(); } catch {}
+    }, 1500);
+  };
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    cleanup();
+    alert("Could not create the printable feed document.");
+    return;
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (err) {
+      console.error("Feed PDF export failed:", err);
+      alert("Could not open the print dialog. Please try again.");
+    } finally {
+      cleanup();
+    }
+  };
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch {}
+  }, 700);
+}
+
 /* ------------------------ Tiny admin stats fetcher --------------------------- */
 async function fetchParticipantsStats(projectId, feedId) {
   try {
@@ -1767,6 +2092,44 @@ export function AdminDashboard({
                       }}
                     >
                       Export JSON
+                    </button>
+
+                    <button
+                      className="btn ghost"
+                      title="Export this feed as a printable PDF using the rendered post layout"
+                      disabled={!feedId || !posts?.length}
+                      onClick={() => {
+                        const row = feeds.find((f) => f.feed_id === feedId);
+                        exportFeedAsPdf({
+                          posts,
+                          appName: APP,
+                          projectId: projectId || "global",
+                          feedId,
+                          feedName: row?.name || feedId,
+                          postNames,
+                        });
+                      }}
+                    >
+                      Export Feed PDF
+                    </button>
+
+                    <button
+                      className="btn ghost"
+                      title="Export this feed as a Word-compatible document using the rendered post layout"
+                      disabled={!feedId || !posts?.length}
+                      onClick={() => {
+                        const row = feeds.find((f) => f.feed_id === feedId);
+                        downloadFeedAsWord({
+                          posts,
+                          appName: APP,
+                          projectId: projectId || "global",
+                          feedId,
+                          feedName: row?.name || feedId,
+                          postNames,
+                        });
+                      }}
+                    >
+                      Export Feed Word
                     </button>
 
                     <label
