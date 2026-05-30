@@ -22,6 +22,7 @@ import {
   loadPostsFromBackend,
   loadSurveyOnlyRoster,
   loadMultiFeedParticipantSurveyRoster,
+  readPostNames,
   SURVEY_QUESTION_TYPES,
 } from "../utils";
 
@@ -159,6 +160,87 @@ async function copyTextToClipboard(text) {
   } catch (_) {
     return false;
   }
+}
+
+
+const POST_METRIC_SUFFIXES_FOR_LABELS = [
+  "_reacted",
+  "_reaction_type",
+  "_expandable",
+  "_expanded",
+  "_commented",
+  "_comment_texts",
+  "_reported_misinfo",
+  "_dwell_s",
+  "_dwell_ms",
+  "_saved",
+  "_shared",
+  "_share_target",
+  "_share_text",
+  "_cta_clicked",
+  "_bio_opened",
+  "_bio_url_clicked",
+  "_mention_clicked",
+  "_note_opened",
+  "_note_view_details",
+  "_note_link_clicked",
+  "_note_helpful_rated",
+  "_note_helpful_value",
+];
+
+function postDisplayNameFromMaps(postId, feedId, postsByFeed = {}, projectId = "") {
+  const id = String(postId || "").trim();
+  const fid = String(feedId || "").trim();
+  if (!id) return id;
+
+  const posts = Array.isArray(postsByFeed?.[fid]) ? postsByFeed[fid] : [];
+  const post = posts.find((p) => String(p?.id || "") === id);
+  const fromPost = String(post?.name || post?.postName || "").trim();
+  if (fromPost) return fromPost;
+
+  try {
+    const nameMap = readPostNames(projectId || getProjectId(), fid) || {};
+    const fromMap = String(nameMap?.[id] || "").trim();
+    if (fromMap) return fromMap;
+  } catch (_) {}
+
+  return id;
+}
+
+function splitPostMetricKeyForLabel(metricKey = "") {
+  const key = String(metricKey || "");
+  for (const suffix of POST_METRIC_SUFFIXES_FOR_LABELS) {
+    if (key.endsWith(suffix)) {
+      return {
+        postId: key.slice(0, -suffix.length),
+        suffix,
+      };
+    }
+  }
+  return null;
+}
+
+function labelMultiFeedCsvHeaderKey(key, { feedIds = [], postsByFeed = {}, projectId = "" } = {}) {
+  const rawKey = String(key || "");
+  const feedMatch = /^feed(\d+)_(.+)$/.exec(rawKey);
+  if (!feedMatch) return rawKey;
+
+  const feedIndex = Math.max(0, Number(feedMatch[1]) - 1);
+  const feedPrefix = `feed${feedIndex + 1}`;
+  const feedId = String(feedIds?.[feedIndex] || "").trim();
+  const remainder = feedMatch[2] || "";
+
+  const parsed = splitPostMetricKeyForLabel(remainder);
+  if (!parsed) return rawKey;
+
+  const displayName = postDisplayNameFromMaps(parsed.postId, feedId, postsByFeed, projectId);
+  return `${feedPrefix}_${displayName}${parsed.suffix}`;
+}
+
+function buildMultiFeedCsvHeaderLabels(header = [], { feedIds = [], postsByFeed = {}, projectId = "" } = {}) {
+  return (Array.isArray(header) ? header : []).map((key) =>
+    labelMultiFeedCsvHeaderKey(key, { feedIds, postsByFeed, projectId })
+  );
 }
 
 function csvEscape(value) {
@@ -1731,12 +1813,25 @@ export function AdminSurveysPanel({
     }
 
     try {
-      const roster = await loadMultiFeedParticipantSurveyRoster({
-        surveyId: survey.survey_id,
-        feedIds,
-        projectId,
-      });
+      const [roster, loadedFeedPostsPairs] = await Promise.all([
+        loadMultiFeedParticipantSurveyRoster({
+          surveyId: survey.survey_id,
+          feedIds,
+          projectId,
+        }),
+        Promise.all(
+          feedIds.map(async (fid) => {
+            try {
+              const loaded = await effectiveLoadFeedPosts(fid);
+              return [fid, Array.isArray(loaded) ? loaded : []];
+            } catch (_) {
+              return [fid, []];
+            }
+          })
+        ),
+      ]);
 
+      const postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
       const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
       if (!safeRows.length) {
         alert("No multi-feed participant data found yet.");
@@ -1758,7 +1853,12 @@ export function AdminSurveysPanel({
         return next;
       });
 
-      const csv = buildCsv(normalizedRows, header, header);
+      const labels = buildMultiFeedCsvHeaderLabels(header, {
+        feedIds,
+        postsByFeed,
+        projectId,
+      });
+      const csv = buildCsv(normalizedRows, header, labels);
       const safeName = slugifySurveyName(survey.name || survey.survey_id)
         .replace(/[^\\w-]+/g, "_")
         .replace(/_+/g, "_") || survey.survey_id;
