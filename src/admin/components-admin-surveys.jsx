@@ -442,19 +442,78 @@ function triggerWordCompatibleDownload(filename, html) {
   URL.revokeObjectURL(url);
 }
 
-function openPrintableSurveyDocument(html) {
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) {
-    alert("Please allow pop-ups to open the printable survey document.");
-    return;
+function triggerHtmlDownload(filename, html) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function openPrintableSurveyDocument(html, filename = "survey_ethics_protocol.html") {
+  // Avoid window.open(): Safari/Chrome often treat it as a blocked popup,
+  // especially when called after React state updates. Printing from a hidden
+  // iframe keeps the action in the same tab and prevents blank popup tabs.
+  if (typeof document === "undefined") return;
+
+  const existing = document.getElementById("survey-ethics-print-frame");
+  if (existing) existing.remove();
+
+  const frame = document.createElement("iframe");
+  frame.id = "survey-ethics-print-frame";
+  frame.title = "Printable survey ethics protocol";
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "1px";
+  frame.style.height = "1px";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  frame.setAttribute("aria-hidden", "true");
+
+  document.body.appendChild(frame);
+
+  const cleanup = () => {
+    setTimeout(() => {
+      try { frame.remove(); } catch (_) {}
+    }, 1500);
+  };
+
+  try {
+    const doc = frame.contentWindow?.document || frame.contentDocument;
+    if (!doc) throw new Error("Printable iframe document unavailable");
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    const printNow = () => {
+      try {
+        frame.contentWindow?.focus?.();
+        frame.contentWindow?.print?.();
+        cleanup();
+      } catch (err) {
+        cleanup();
+        triggerHtmlDownload(filename, html);
+        alert(
+          "The browser blocked automatic printing, so I downloaded a printable HTML file instead. Open it and choose Print → Save as PDF."
+        );
+      }
+    };
+
+    // Give the iframe a moment to finish layout before invoking print.
+    setTimeout(printNow, 250);
+  } catch (err) {
+    cleanup();
+    triggerHtmlDownload(filename, html);
+    alert(
+      "The browser blocked the printable view, so I downloaded a printable HTML file instead. Open it and choose Print → Save as PDF."
+    );
   }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.focus?.();
-  setTimeout(() => {
-    try { win.print(); } catch (_) {}
-  }, 250);
 }
 
 function normalizeCsvValue(value) {
@@ -1357,8 +1416,9 @@ export function AdminSurveysPanel({
 
   function handleExportSurveyEthicsPdf() {
     if (!survey) return;
+    const normalizedName = safeFileStem(survey.name || survey.survey_id || "survey");
     const html = buildSurveyEthicsHtmlDocument({ survey, feeds, projectId });
-    openPrintableSurveyDocument(html);
+    openPrintableSurveyDocument(html, `${normalizedName}_ethics_protocol.html`);
   }
 
   async function handleImportSurveyFile(event) {
