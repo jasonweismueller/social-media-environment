@@ -192,6 +192,271 @@ function triggerCsvDownload(filename, csv) {
   URL.revokeObjectURL(url);
 }
 
+
+function safeFileStem(value = "survey") {
+  return (
+    slugifySurveyName(value || "survey")
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_") || "survey"
+  );
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function richHtmlOrEmpty(value) {
+  return String(value || "").trim();
+}
+
+function textToHtml(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return escapeHtml(text).replace(/\n/g, "<br />");
+}
+
+function feedNameForId(feedId, feeds = []) {
+  const fid = String(feedId || "").trim();
+  if (!fid) return "";
+  const feed = (Array.isArray(feeds) ? feeds : []).find(
+    (f) => String(f?.feed_id || "") === fid
+  );
+  return feed?.name ? `${feed.name} (${fid})` : fid;
+}
+
+function summarizeChoicesHtml(question = {}) {
+  const type = String(question?.type || "");
+  const choices = Array.isArray(question?.choices) ? question.choices : [];
+  const options = Array.isArray(question?.options) ? question.options : [];
+  const rows = Array.isArray(question?.rows) ? question.rows : [];
+  const columns = Array.isArray(question?.columns) ? question.columns : [];
+
+  const itemList = (items) => {
+    const safeItems = (Array.isArray(items) ? items : [])
+      .map((item) => {
+        if (typeof item === "string") return item;
+        return item?.label ?? item?.value ?? "";
+      })
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+    if (!safeItems.length) return "";
+    return `<ul>${safeItems.map((v) => `<li>${escapeHtml(v)}</li>`).join("")}</ul>`;
+  };
+
+  if (["single_choice", "multi_choice", "dropdown"].includes(type)) {
+    return itemList(choices.length ? choices : options);
+  }
+
+  if (["matrix_single", "matrix_multi"].includes(type)) {
+    return `
+      <div><strong>Rows:</strong>${itemList(rows)}</div>
+      <div><strong>Columns:</strong>${itemList(columns)}</div>
+    `;
+  }
+
+  if (type === "bipolar") {
+    const rowHtml = rows.length
+      ? `<ul>${rows
+          .map((row) => {
+            const left = String(row?.left_label || row?.label || "").trim();
+            const right = String(row?.right_label || "").trim();
+            return `<li>${escapeHtml(left)}${right ? ` &ndash; ${escapeHtml(right)}` : ""}</li>`;
+          })
+          .join("")}</ul>`
+      : "";
+    return `
+      <div><strong>Scale:</strong> ${escapeHtml(question?.min ?? 1)} to ${escapeHtml(question?.max ?? 7)}</div>
+      ${rowHtml}
+    `;
+  }
+
+  if (type === "slider") {
+    return `<div><strong>Scale:</strong> ${escapeHtml(question?.min ?? 0)} to ${escapeHtml(question?.max ?? 100)}</div>`;
+  }
+
+  if (type === POST_REMINDER_TYPE) {
+    return `<div><strong>Post reminder source:</strong> ${escapeHtml(question?.post_label || question?.post_id || "Selected post")} ${question?.post_feed_id ? `from ${escapeHtml(question.post_feed_id)}` : ""}</div>`;
+  }
+
+  return "";
+}
+
+function questionTypeLabel(type = "") {
+  const labels = {
+    text: "Short text",
+    textarea: "Long text",
+    single_choice: "Single choice",
+    multi_choice: "Multiple choice",
+    dropdown: "Dropdown",
+    matrix_single: "Matrix: single choice",
+    matrix_multi: "Matrix: multiple choice",
+    bipolar: "Bipolar scale",
+    slider: "Slider",
+    info: "Information text",
+    post_reminder: "Post reminder",
+    page_break: "Page break",
+  };
+  return labels[type] || type || "Question";
+}
+
+function buildSurveyEthicsHtmlDocument({ survey, feeds = [], projectId = "" } = {}) {
+  const normalized = {
+    ...normalizeSurvey(survey || {}),
+    ...normalizeSurveyMetaFields(survey || {}),
+    delivery_mode: normalizeDeliveryMode(survey?.delivery_mode),
+    pages: normalizeSurveyPagesWithDelay(survey?.pages || []),
+  };
+
+  const linkedFeedIds = orderedLinkedFeedIdsFromSurvey(normalized);
+  const flowLabel =
+    normalized.delivery_mode === DELIVERY_MODE_SURVEY_ONLY
+      ? "Survey only"
+      : normalized.delivery_mode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+        ? "Multiple feeds, then survey"
+        : "One feed, then survey";
+
+  const prefaceSections = [
+    {
+      title: normalized.participant_information_title || DEFAULT_PARTICIPANT_INFORMATION_TITLE,
+      html: richHtmlOrEmpty(normalized.participant_information_html),
+    },
+    {
+      title: normalized.consent_title || DEFAULT_CONSENT_TITLE,
+      html: richHtmlOrEmpty(normalized.consent_text_html),
+    },
+    {
+      title: normalized.instructions_title || DEFAULT_INSTRUCTIONS_TITLE,
+      html: richHtmlOrEmpty(normalized.instructions_html),
+    },
+  ].filter((section) => section.html);
+
+  const pageSections = (normalized.pages || []).map((page, pageIndex) => {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+    const questionHtml = questions.length
+      ? questions
+          .map((question, qIndex) => {
+            const visibility = Array.isArray(question?.visible_in_feeds) && question.visible_in_feeds.length
+              ? question.visible_in_feeds.map((fid) => feedNameForId(fid, feeds)).join(", ")
+              : "All linked feeds / not feed-specific";
+            const description = textToHtml(question?.description);
+            const choices = summarizeChoicesHtml(question);
+            return `
+              <div class="question-block">
+                <div class="question-heading">Question ${qIndex + 1}: ${escapeHtml(questionTypeLabel(question?.type))}${question?.required ? " <span class=\"required\">Required</span>" : ""}</div>
+                <div class="question-text">${textToHtml(question?.text || question?.label || "Untitled question")}</div>
+                ${description ? `<div class="question-description">${description}</div>` : ""}
+                ${choices ? `<div class="response-options">${choices}</div>` : ""}
+                <div class="question-meta"><strong>Question ID:</strong> ${escapeHtml(question?.id || "")}</div>
+                <div class="question-meta"><strong>Feed visibility:</strong> ${escapeHtml(visibility)}</div>
+              </div>
+            `;
+          })
+          .join("")
+      : `<p class="muted">No questions on this page.</p>`;
+
+    return `
+      <section class="page-section">
+        <h2>Survey page ${pageIndex + 1}${page?.title ? `: ${escapeHtml(page.title)}` : ""}</h2>
+        ${page?.description ? `<div class="page-description">${textToHtml(page.description)}</div>` : ""}
+        ${Number(page?.next_delay_seconds || 0) > 0 ? `<p class="muted">Next button delay: ${escapeHtml(page.next_delay_seconds)} seconds</p>` : ""}
+        ${questionHtml}
+      </section>
+    `;
+  });
+
+  const feedSequenceHtml = linkedFeedIds.length
+    ? `<ol>${linkedFeedIds.map((fid) => `<li>${escapeHtml(feedNameForId(fid, feeds))}</li>`).join("")}</ol>`
+    : `<p class="muted">No feeds linked.</p>`;
+
+  const thankYouHtml = richHtmlOrEmpty(normalized.thank_you_message_html || DEFAULT_THANK_YOU_MESSAGE_HTML);
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(normalized.name || "Survey ethics export")}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #111827; line-height: 1.45; margin: 32px; }
+    h1 { font-size: 26px; margin: 0 0 8px; }
+    h2 { font-size: 20px; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+    h3 { font-size: 16px; margin: 18px 0 8px; }
+    .muted { color: #6b7280; }
+    .summary { border: 1px solid #e5e7eb; background: #f9fafb; border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
+    .summary-row { margin: 4px 0; }
+    .preface-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin: 12px 0 18px; }
+    .page-section { break-inside: avoid; page-break-inside: avoid; }
+    .question-block { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
+    .question-heading { font-weight: 700; margin-bottom: 6px; }
+    .question-text { margin-bottom: 6px; }
+    .question-description { color: #374151; margin: 6px 0; }
+    .response-options { background: #f9fafb; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+    .question-meta { font-size: 12px; color: #4b5563; margin-top: 4px; }
+    .required { color: #b91c1c; font-size: 12px; font-weight: 700; margin-left: 6px; }
+    ul, ol { margin-top: 6px; }
+    @media print { body { margin: 18mm; } .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(normalized.name || "Untitled Survey")}</h1>
+  ${normalized.description ? `<p>${textToHtml(normalized.description)}</p>` : ""}
+  <div class="summary">
+    <div class="summary-row"><strong>Export type:</strong> Participant-facing survey protocol for ethics applications</div>
+    <div class="summary-row"><strong>Project ID:</strong> ${escapeHtml(projectId || normalized.linked_project_id || "")}</div>
+    <div class="summary-row"><strong>Survey ID:</strong> ${escapeHtml(normalized.survey_id || "Unsaved survey")}</div>
+    <div class="summary-row"><strong>Study flow:</strong> ${escapeHtml(flowLabel)}</div>
+    <div class="summary-row"><strong>Generated:</strong> ${escapeHtml(new Date().toLocaleString())}</div>
+  </div>
+
+  <h2>Feed sequence</h2>
+  ${feedSequenceHtml}
+
+  ${prefaceSections.length ? `<h2>Pre-feed pages</h2>${prefaceSections
+    .map((section) => `<div class="preface-box"><h3>${escapeHtml(section.title)}</h3>${section.html}</div>`)
+    .join("")}` : ""}
+
+  <h2>Survey questions</h2>
+  ${pageSections.join("")}
+
+  <h2>Completion page</h2>
+  <div class="preface-box">${thankYouHtml}</div>
+</body>
+</html>`;
+}
+
+function triggerWordCompatibleDownload(filename, html) {
+  const wordHtml = `\ufeff${html}`;
+  const blob = new Blob([wordHtml], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function openPrintableSurveyDocument(html) {
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) {
+    alert("Please allow pop-ups to open the printable survey document.");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.focus?.();
+  setTimeout(() => {
+    try { win.print(); } catch (_) {}
+  }, 250);
+}
+
 function normalizeCsvValue(value) {
   if (value == null) return "";
   if (Array.isArray(value)) {
@@ -1082,6 +1347,20 @@ export function AdminSurveysPanel({
     URL.revokeObjectURL(url);
   }
 
+
+  function handleExportSurveyEthicsWord() {
+    if (!survey) return;
+    const normalizedName = safeFileStem(survey.name || survey.survey_id || "survey");
+    const html = buildSurveyEthicsHtmlDocument({ survey, feeds, projectId });
+    triggerWordCompatibleDownload(`${normalizedName}_ethics_protocol.doc`, html);
+  }
+
+  function handleExportSurveyEthicsPdf() {
+    if (!survey) return;
+    const html = buildSurveyEthicsHtmlDocument({ survey, feeds, projectId });
+    openPrintableSurveyDocument(html);
+  }
+
   async function handleImportSurveyFile(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1755,7 +2034,39 @@ export function AdminSurveysPanel({
                     fontWeight: 600,
                   }}
                 >
-                  Export
+                  Export JSON
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportSurveyEthicsWord}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                  title="Download a Word-compatible ethics/protocol document showing the participant-facing survey content."
+                >
+                  Ethics Word
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportSurveyEthicsPdf}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                  title="Open a printable version that can be saved as PDF from the print dialog."
+                >
+                  Ethics PDF
                 </button>
 
                 {!!survey?.survey_id && (
