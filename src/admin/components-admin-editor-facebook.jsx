@@ -94,6 +94,12 @@ export function makeRandomPost() {
     badge: chance(0.15),
     authorType: "female",
     topic: "",
+    showBio: false,
+    bio_text: "",
+    bio_url: "",
+    bio_posts: 0,
+    bio_followers: 0,
+    bio_following: 0,
     avatarMode: "random",
     avatarRandomKind,
     avatarUrl: randomAvatarByKind(avatarRandomKind, author, author, randomAvatarUrl),
@@ -316,6 +322,106 @@ export function AdminPostEditor({
                 }}
               />
             </label>
+          )}
+        </fieldset>
+
+        <h4 className="section-title">Facebook Profile / Bio</h4>
+        <fieldset className="fieldset">
+          <label>Enable profile preview
+            <select
+              className="select"
+              value={String(!!editing.showBio)}
+              onChange={(e) => {
+                const enabled = e.target.value === "true";
+                setEditing((ed) => ({
+                  ...ed,
+                  showBio: enabled,
+                  bio_posts: Number.isFinite(Number(ed.bio_posts)) ? Number(ed.bio_posts) : 0,
+                  bio_followers: Number.isFinite(Number(ed.bio_followers)) ? Number(ed.bio_followers) : 0,
+                  bio_following: Number.isFinite(Number(ed.bio_following)) ? Number(ed.bio_following) : 0,
+                }));
+              }}
+            >
+              <option value="false">Off</option>
+              <option value="true">On</option>
+            </select>
+            <div className="subtle" style={{ marginTop: 6 }}>
+              When enabled, participants can open a Facebook-style profile preview by clicking or hovering over the author name/avatar. The interaction is saved as <code>bio_opened</code> and URL clicks as <code>bio_url_clicked</code>.
+            </div>
+          </label>
+
+          {editing.showBio && (
+            <>
+              <label>Bio / About text
+                <textarea
+                  className="textarea"
+                  rows={4}
+                  placeholder="Short profile description shown in the Facebook-style profile preview"
+                  value={editing.bio_text || ""}
+                  onChange={(e) => setEditing((ed) => ({ ...ed, bio_text: e.target.value }))}
+                />
+              </label>
+
+              <label>Profile / website URL
+                <input
+                  className="input"
+                  placeholder="https://example.com"
+                  value={editing.bio_url || ""}
+                  onChange={(e) => setEditing((ed) => ({ ...ed, bio_url: e.target.value }))}
+                />
+                <div className="subtle" style={{ marginTop: 6 }}>
+                  The feed does not navigate participants away; it records the click and shows the same study message used elsewhere.
+                </div>
+              </label>
+
+              <div className="grid-3">
+                <label>Posts
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={(editing.bio_posts ?? 0) === 0 ? "" : editing.bio_posts}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? 0 : Number(e.target.value);
+                      setEditing((ed) => ({ ...ed, bio_posts: Number.isFinite(v) ? v : 0 }));
+                    }}
+                  />
+                </label>
+                <label>Followers
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={(editing.bio_followers ?? 0) === 0 ? "" : editing.bio_followers}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? 0 : Number(e.target.value);
+                      setEditing((ed) => ({ ...ed, bio_followers: Number.isFinite(v) ? v : 0 }));
+                    }}
+                  />
+                </label>
+                <label>Following
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={(editing.bio_following ?? 0) === 0 ? "" : editing.bio_following}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? 0 : Number(e.target.value);
+                      setEditing((ed) => ({ ...ed, bio_following: Number.isFinite(v) ? v : 0 }));
+                    }}
+                  />
+                </label>
+              </div>
+            </>
           )}
         </fieldset>
 

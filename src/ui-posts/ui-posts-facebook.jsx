@@ -13,10 +13,13 @@ import {
   pickDeterministic,
   getImagePool,
   buildDeterministicAssignmentMap,
+  randomizeBioStats,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
 import { InterventionBlock } from "./components-ui-interventions";
+import { FacebookBioHoverCard } from "./ui-posts-bio-facebook";
+import { FacebookMobileBioSheet } from "./ui-posts-bio-mobile-facebook";
 
 
 
@@ -237,6 +240,13 @@ export function PostCard({
   const [showShare, setShowShare] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentFocusTick, setCommentFocusTick] = useState(0);
+
+  const [bioOpen, setBioOpen] = useState(false);
+  const [bioHoverTargetEl, setBioHoverTargetEl] = useState(null);
+  const bioHideDelayRef = useRef(null);
+  const bioShownRef = useRef(false);
+  const avatarRef = useRef(null);
+  const authorRef = useRef(null);
 
   const randNamesOn = !!flags?.randomize_names;
   const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar);
@@ -738,6 +748,95 @@ export function PostCard({
     return post.image || null;
   }, [post?.image, post?.imageMode, randImagesOn, randImageUrl]);
 
+  const randBiosOn = forcedRand || !!flags?.randomize_bios;
+
+  const displayBio = React.useMemo(() => {
+    const rawBio = {
+      id: post.id,
+      author: displayAuthor,
+      avatarUrl: displayAvatar,
+      badge: post.badge,
+      authorType,
+      adType: post.adType,
+      bio_posts: post.bio_posts,
+      bio_followers: post.bio_followers,
+      bio_following: post.bio_following,
+      bio_text: post.bio_text,
+      bio_url: post.bio_url,
+    };
+
+    return randBiosOn
+      ? randomizeBioStats(rawBio, { randomize: true, seedParts })
+      : rawBio;
+  }, [
+    randBiosOn,
+    post.id,
+    post.badge,
+    post.bio_posts,
+    post.bio_followers,
+    post.bio_following,
+    post.bio_text,
+    post.bio_url,
+    post.authorType,
+    post.adType,
+    displayAuthor,
+    displayAvatar,
+    authorType,
+    runSeed,
+    app,
+    projectId,
+    feedId,
+  ]);
+
+  const hasFacebookBio = !!post?.showBio;
+
+  const showBioHover = React.useCallback((el) => {
+    if (disabled || isMobile || !hasFacebookBio || !el) return;
+    clearTimeout(bioHideDelayRef.current);
+    setBioHoverTargetEl(el);
+
+    if (!bioShownRef.current) {
+      bioShownRef.current = true;
+      onAction?.("bio_open", { post_id: post.id, surface: "desktop" });
+    }
+  }, [disabled, isMobile, hasFacebookBio, onAction, post?.id]);
+
+  const hideBioHover = React.useCallback(() => {
+    clearTimeout(bioHideDelayRef.current);
+    bioHideDelayRef.current = setTimeout(() => {
+      setBioHoverTargetEl(null);
+      bioShownRef.current = false;
+    }, 180);
+  }, []);
+
+  const attachFacebookBio = React.useCallback((ref) => ({
+    ref,
+    onClick: (e) => {
+      if (disabled || !hasFacebookBio) return;
+      if (isMobile) {
+        e.preventDefault();
+        e.stopPropagation();
+        setBioOpen(true);
+        onAction?.("bio_open", { post_id: post.id, surface: "mobile" });
+      }
+    },
+    onMouseEnter: !isMobile
+      ? () => showBioHover(ref.current)
+      : undefined,
+    onMouseLeave: !isMobile ? hideBioHover : undefined,
+    onFocus: !isMobile
+      ? () => showBioHover(ref.current)
+      : undefined,
+    onBlur: !isMobile ? hideBioHover : undefined,
+    tabIndex: hasFacebookBio ? 0 : undefined,
+    role: hasFacebookBio ? "button" : undefined,
+    "aria-label": hasFacebookBio ? `Open profile for ${displayAuthor || post.author || "this profile"}` : undefined,
+  }), [disabled, hasFacebookBio, isMobile, onAction, post?.id, post?.author, displayAuthor, showBioHover, hideBioHover]);
+
+  React.useEffect(() => {
+    return () => clearTimeout(bioHideDelayRef.current);
+  }, []);
+
 
   const displayedSnapshot = React.useMemo(() => {
     if (!post?.id) return null;
@@ -1190,7 +1289,11 @@ export function PostCard({
   const postContent = (
     <>
       <header className="card-head">
-        <div className="avatar">
+        <div
+          className="avatar"
+          {...attachFacebookBio(avatarRef)}
+          style={{ cursor: hasFacebookBio ? "pointer" : "default" }}
+        >
           {displayAvatar ? (
             <img
               src={displayAvatar}
@@ -1206,7 +1309,13 @@ export function PostCard({
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="name-row">
-            <div className="name">{displayAuthor}</div>
+            <div
+              className="name"
+              {...attachFacebookBio(authorRef)}
+              style={{ cursor: hasFacebookBio ? "pointer" : "default" }}
+            >
+              {displayAuthor}
+            </div>
             {post.badge && (
               <span className="badge">
                 <IconBadge />
@@ -1890,6 +1999,31 @@ export function PostCard({
             onShare={onConfirmShare}
           />
         )}
+
+      {bioHoverTargetEl && !isMobile && hasFacebookBio && (
+        <FacebookBioHoverCard
+          anchorEl={bioHoverTargetEl}
+          post={displayBio}
+          author={displayAuthor}
+          avatarUrl={displayAvatar}
+          verified={!!post.badge}
+          hideHover={hideBioHover}
+          hideDelayRef={bioHideDelayRef}
+          onAction={onAction}
+        />
+      )}
+
+      {isMobile && bioOpen && hasFacebookBio && (
+        <FacebookMobileBioSheet
+          open={bioOpen}
+          onClose={() => setBioOpen(false)}
+          post={displayBio}
+          author={displayAuthor}
+          avatarUrl={displayAvatar}
+          verified={!!post.badge}
+          onAction={onAction}
+        />
+      )}
     </article>
   );
 }

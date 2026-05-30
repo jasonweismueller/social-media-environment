@@ -1019,6 +1019,12 @@ export function AdminDashboard({
       links: [],
       badge: false,
       authorType: "female",
+      showBio: false,
+      bio_text: "",
+      bio_url: "",
+      bio_posts: 0,
+      bio_followers: 0,
+      bio_following: 0,
 
       avatarMode: "random",
       avatarRandomKind,
