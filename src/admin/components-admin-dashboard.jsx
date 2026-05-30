@@ -225,61 +225,61 @@ function buildRenderedFeedExportHtml({
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 28px;
+    padding: 14px;
     background: #f3f4f6;
     color: #111827;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1.45;
+    font-size: 10px;
+    line-height: 1.28;
   }
   .export-shell {
-    max-width: ${isIG ? "760px" : "1040px"};
+    max-width: ${isIG ? "620px" : "880px"};
     margin: 0 auto;
   }
   .doc-head {
     background: #fff;
     border: 1px solid #d1d5db;
-    border-radius: 14px;
-    padding: 18px 20px;
-    margin-bottom: 18px;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
   }
   .doc-head h1 {
-    margin: 0 0 8px;
-    font-size: 22px;
+    margin: 0 0 4px;
+    font-size: 17px;
   }
   .doc-meta {
     color: #4b5563;
-    font-size: 13px;
+    font-size: 11px;
   }
   .post-card {
     width: 100%;
-    max-width: ${isIG ? "470px" : "760px"};
-    margin: 0 auto 18px;
+    max-width: ${isIG ? "360px" : "620px"};
+    margin: 0 auto 9px;
     background: #fff;
     border: 1px solid #d1d5db;
-    border-radius: ${isIG ? "14px" : "10px"};
+    border-radius: ${isIG ? "10px" : "8px"};
     overflow: hidden;
     page-break-inside: avoid;
     break-inside: avoid;
     box-shadow: 0 1px 2px rgba(0,0,0,.05);
   }
   .post-export-label {
-    padding: 8px 14px;
+    padding: 5px 9px;
     background: #f9fafb;
     border-bottom: 1px solid #e5e7eb;
     color: #374151;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 10px;
   }
   .post-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px 14px 8px;
+    gap: 7px;
+    padding: 7px 9px 4px;
   }
   .avatar {
-    width: 42px;
-    height: 42px;
+    width: 30px;
+    height: 30px;
     border-radius: 999px;
     object-fit: cover;
     flex: 0 0 auto;
@@ -287,20 +287,20 @@ function buildRenderedFeedExportHtml({
   }
   .avatar-placeholder { border: 1px solid #d1d5db; }
   .author { font-weight: 700; }
-  .time { color: #6b7280; font-size: 12px; }
+  .time { color: #6b7280; font-size: 10px; }
   .post-text {
-    padding: 4px 14px 12px;
+    padding: 2px 9px 7px;
     white-space: normal;
   }
   .post-image {
     display: block;
     width: 100%;
-    max-height: ${isIG ? "620px" : "430px"};
+    max-height: ${isIG ? "360px" : "260px"};
     object-fit: cover;
     background: #e5e7eb;
   }
   .video-placeholder {
-    padding: 48px 16px;
+    padding: 28px 10px;
     text-align: center;
     background: #111827;
     color: #fff;
@@ -308,7 +308,7 @@ function buildRenderedFeedExportHtml({
   }
   .ad-block {
     margin: 0;
-    padding: 12px 14px;
+    padding: 7px 9px;
     background: #f3f4f6;
     border-top: 1px solid #e5e7eb;
   }
@@ -316,32 +316,33 @@ function buildRenderedFeedExportHtml({
   .ad-head { font-weight: 700; margin-top: 2px; }
   .ad-btn {
     display: inline-block;
-    margin-top: 8px;
-    padding: 6px 10px;
+    margin-top: 4px;
+    padding: 4px 7px;
     border-radius: 6px;
     background: #e5e7eb;
     font-weight: 700;
-    font-size: 12px;
+    font-size: 10px;
   }
   .note {
-    margin: 12px 14px;
-    padding: 10px 12px;
+    margin: 7px 9px;
+    padding: 6px 8px;
     border-radius: 10px;
     background: #f9fafb;
     border: 1px solid #d1d5db;
   }
   .post-footer {
-    padding: 10px 14px;
+    padding: 6px 9px;
     border-top: 1px solid #e5e7eb;
     color: #4b5563;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 11px;
   }
   @media print {
-    body { background: #fff; padding: 0; }
+    @page { size: A4; margin: 8mm; }
+    body { background: #fff; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .export-shell { max-width: none; }
     .doc-head, .post-card { box-shadow: none; }
-    .post-card { max-width: ${isIG ? "470px" : "720px"}; }
+    .post-card { max-width: ${isIG ? "350px" : "610px"}; }
   }
 </style>
 </head>
@@ -361,20 +362,6 @@ function buildRenderedFeedExportHtml({
   </main>
 </body>
 </html>`;
-}
-
-function downloadFeedAsWord(args) {
-  const html = buildRenderedFeedExportHtml(args);
-  const blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  a.href = url;
-  a.download = `${args.projectId || "global"}-${args.feedId || "feed"}-${stamp}.doc`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function exportFeedAsPdf(args) {
@@ -2111,25 +2098,6 @@ export function AdminDashboard({
                       }}
                     >
                       Export Feed PDF
-                    </button>
-
-                    <button
-                      className="btn ghost"
-                      title="Export this feed as a Word-compatible document using the rendered post layout"
-                      disabled={!feedId || !posts?.length}
-                      onClick={() => {
-                        const row = feeds.find((f) => f.feed_id === feedId);
-                        downloadFeedAsWord({
-                          posts,
-                          appName: APP,
-                          projectId: projectId || "global",
-                          feedId,
-                          feedName: row?.name || feedId,
-                          postNames,
-                        });
-                      }}
-                    >
-                      Export Feed Word
                     </button>
 
                     <label
