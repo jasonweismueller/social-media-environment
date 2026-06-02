@@ -1600,16 +1600,25 @@ export function AdminSurveysPanel({
           linkedFeedIds
         );
 
+        const freshDeliveryMode = normalizeDeliveryMode(
+          fresh?.delivery_mode || normalized.delivery_mode
+        );
+
         const normalizedFresh = applySurveyMetaDefaults(
           {
             ...(fresh || {}),
             linked_feed_ids: freshOrderedFeedIds,
-            feed_sequence_ids: freshOrderedFeedIds,
+            // In survey-only mode, linked feeds are context only. Keeping them
+            // in feed_sequence_ids makes the admin/export logic treat the
+            // survey as if participants moved through feeds.
+            feed_sequence_ids:
+              freshDeliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                ? []
+                : freshOrderedFeedIds,
             linked_project_id: projectId,
             trigger: fresh?.trigger || normalized.trigger || "after_feed_submit",
             delivery_mode:
-              fresh?.delivery_mode ||
-              normalized.delivery_mode ||
+              freshDeliveryMode ||
               (freshOrderedFeedIds.length > 1
                 ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
                 : DELIVERY_MODE_FEED_THEN_SURVEY),
@@ -1667,16 +1676,21 @@ export function AdminSurveysPanel({
         ? current.filter((fid) => fid !== nextFeedId)
         : [...current, nextFeedId];
 
+      const currentDeliveryMode = normalizeDeliveryMode(prev?.delivery_mode);
+
       return {
         ...prev,
         linked_feed_ids: next,
-        feed_sequence_ids: next,
+        // Survey-only can still keep linked_feed_ids as post-reminder context,
+        // but it must not keep an ordered feed sequence because no feed is shown.
+        feed_sequence_ids:
+          currentDeliveryMode === DELIVERY_MODE_SURVEY_ONLY ? [] : next,
         delivery_mode:
-          prev?.delivery_mode === DELIVERY_MODE_SURVEY_ONLY
-            ? prev.delivery_mode
+          currentDeliveryMode === DELIVERY_MODE_SURVEY_ONLY
+            ? currentDeliveryMode
             : (next.length > 1
                 ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
-                : normalizeDeliveryMode(prev?.delivery_mode)),
+                : currentDeliveryMode),
       };
     });
   }
@@ -1688,14 +1702,19 @@ export function AdminSurveysPanel({
       if (idx < 0 || nextIdx < 0 || nextIdx >= ids.length) return prev;
       const next = ids.slice();
       [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
+      const currentDeliveryMode = normalizeDeliveryMode(prev?.delivery_mode);
+
       return {
         ...prev,
         linked_feed_ids: next,
-        feed_sequence_ids: next,
+        feed_sequence_ids:
+          currentDeliveryMode === DELIVERY_MODE_SURVEY_ONLY ? [] : next,
         delivery_mode:
-          next.length > 1
-            ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
-            : normalizeDeliveryMode(prev?.delivery_mode),
+          currentDeliveryMode === DELIVERY_MODE_SURVEY_ONLY
+            ? currentDeliveryMode
+            : (next.length > 1
+                ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
+                : currentDeliveryMode),
       };
     });
   }
@@ -1728,11 +1747,17 @@ export function AdminSurveysPanel({
         const confirmed = new Set(normalizeLinkedFeedIds(linkedIds));
         const orderedConfirmed = localOrder.filter((fid) => confirmed.has(fid));
 
-        setSurvey((prev) => ({
-          ...prev,
-          linked_feed_ids: orderedConfirmed,
-          feed_sequence_ids: orderedConfirmed,
-        }));
+        setSurvey((prev) => {
+          const currentDeliveryMode = normalizeDeliveryMode(prev?.delivery_mode);
+          return {
+            ...prev,
+            linked_feed_ids: orderedConfirmed,
+            feed_sequence_ids:
+              currentDeliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                ? []
+                : orderedConfirmed,
+          };
+        });
 
         await loadAll();
         alert("Feeds linked");
@@ -2693,16 +2718,13 @@ export function AdminSurveysPanel({
                 <button
                   type="button"
                   onClick={handleSaveFeedLinks}
-                  disabled={savingLinks || deliveryMode === DELIVERY_MODE_SURVEY_ONLY}
+                  disabled={savingLinks}
                   style={{
                     padding: "10px 14px",
                     borderRadius: 10,
                     border: "1px solid #d1d5db",
-                    background: deliveryMode === DELIVERY_MODE_SURVEY_ONLY ? "#f3f4f6" : "#fff",
-                    cursor:
-                      savingLinks || deliveryMode === DELIVERY_MODE_SURVEY_ONLY
-                        ? "not-allowed"
-                        : "pointer",
+                    background: "#fff",
+                    cursor: savingLinks ? "not-allowed" : "pointer",
                     fontWeight: 600,
                   }}
                 >

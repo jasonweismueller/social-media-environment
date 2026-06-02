@@ -1114,8 +1114,19 @@ export async function loadSurveyOnlyRoster({
   }),
 ]);
 
+const surveyDeliveryMode = normalizeSurveyDeliveryMode(
+  surveyDefinition?.delivery_mode
+);
+
+// Older/newly-misrouted survey-only submissions can appear under a concrete
+// feed_id when a survey-only study was launched through a linked feed URL.
+// If the survey definition is survey_only, all responses for that survey are
+// conceptually survey-only responses and should be included in this export.
 const surveyResponses = (Array.isArray(allSurveyResponses) ? allSurveyResponses : [])
-  .filter((row) => String(row?.feed_id ?? "SURVEY_ONLY").trim() === "SURVEY_ONLY");
+  .filter((row) => {
+    if (surveyDeliveryMode === "survey_only") return true;
+    return String(row?.feed_id ?? "SURVEY_ONLY").trim() === "SURVEY_ONLY";
+  });
 
 const participantRows = surveyResponses.map((row) => ({
   session_id: row?.session_id ?? "",
@@ -1125,7 +1136,11 @@ const participantRows = surveyResponses.map((row) => ({
   entered_at_iso: row?.entered_at_iso ?? row?.submitted_at_iso ?? "",
   submitted_at_iso: row?.submitted_at_iso ?? "",
   duration_ms: row?.duration_ms ?? "",
-  feed_id: "SURVEY_ONLY",
+  feed_id:
+    surveyDeliveryMode === "survey_only"
+      ? "SURVEY_ONLY"
+      : (row?.feed_id ?? "SURVEY_ONLY"),
+  original_feed_id: row?.feed_id ?? "",
   survey_id: row?.survey_id ?? effectiveSurveyId,
   project_id: row?.project_id ?? projectId ?? "",
 }));
