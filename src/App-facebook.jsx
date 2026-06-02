@@ -226,11 +226,36 @@ async function getSurveyBootFromBackendBySurveyId(
   });
   try {
     const data = await fetchJsonWithTimeout(url, { signal, timeoutMs: 8000 });
-    return data && typeof data === "object" ? data : null;
+    return data && typeof data === "object"
+      ? normalizeSurveyOnlyRuntimeBoot(data, surveyId)
+      : null;
   } catch (e) {
     console.warn("getSurveyBootFromBackendBySurveyId failed:", e);
     return null;
   }
+}
+
+
+
+function normalizeSurveyOnlyRuntimeBoot(boot, fallbackSurveyId = "") {
+  if (!boot || typeof boot !== "object") return boot;
+
+  const deliveryMode = String(boot.delivery_mode || "").trim().toLowerCase();
+  const isSurveyOnly = deliveryMode === "survey_only";
+
+  if (!isSurveyOnly) return boot;
+
+  return {
+    ...boot,
+    has_survey: !!boot.has_survey,
+    survey_id: String(boot.survey_id || fallbackSurveyId || ""),
+    trigger: "",
+    delivery_mode: "survey_only",
+    linked_feed_ids: [],
+    feed_sequence_ids: [],
+    preferred_feed_id: "",
+    pre_feed_button_label: String(boot.pre_feed_button_label || "Start survey"),
+  };
 }
 
 async function loadPublicSurveyDefinitionBySurveyId(
@@ -1043,11 +1068,12 @@ export default function App() {
           throw new Error("Failed to load the survey.");
         }
 
-        const sequence = normalizeFeedSequenceIds(
+        const deliveryMode = String(boot.delivery_mode || "survey_only");
+        const rawSequence = normalizeFeedSequenceIds(
           boot.feed_sequence_ids,
           boot.linked_feed_ids
         );
-        const deliveryMode = String(boot.delivery_mode || "survey_only");
+        const sequence = isSurveyOnlyDeliveryMode(deliveryMode) ? [] : rawSequence;
         const firstFeedId = !isSurveyOnlyDeliveryMode(deliveryMode)
           ? (sequence[0] || boot.preferred_feed_id || "")
           : "";
@@ -1064,11 +1090,13 @@ export default function App() {
           ...boot,
           has_survey: true,
           survey_id: String(boot.survey_id || activeSurveyId || ""),
-          trigger: String(boot.trigger || "after_feed_submit"),
+          trigger: isSurveyOnlyDeliveryMode(deliveryMode)
+            ? ""
+            : String(boot.trigger || "after_feed_submit"),
           delivery_mode: deliveryMode,
           linked_feed_ids: sequence,
           feed_sequence_ids: sequence,
-          preferred_feed_id: firstFeedId || String(boot.preferred_feed_id || ""),
+          preferred_feed_id: firstFeedId || "",
         });
         setBootPhase("ready");
         t.end({ surveyLaunch: true, survey_id: boot.survey_id || activeSurveyId });
@@ -1264,19 +1292,37 @@ export default function App() {
         return null;
       }
 
-      const normalizedSurvey = surveyDef
+      const normalizedSurveyRaw = surveyDef
         ? normalizeFrontendSurvey(surveyDef)
         : null;
 
-      const normalizedSequence = normalizeFeedSequenceIds(
-        normalizedSurvey?.feed_sequence_ids,
-        normalizedSurvey?.linked_feed_ids
-      );
+      const loadedDeliveryMode = String(
+        normalizedSurveyRaw?.delivery_mode || surveyBoot?.delivery_mode || ""
+      ).trim().toLowerCase();
+      const loadedIsSurveyOnly = isSurveyOnlyDeliveryMode(loadedDeliveryMode);
+
+      const normalizedSurvey = normalizedSurveyRaw && loadedIsSurveyOnly
+        ? {
+            ...normalizedSurveyRaw,
+            delivery_mode: "survey_only",
+            linked_feed_ids: [],
+            feed_sequence_ids: [],
+            preferred_feed_id: "",
+            trigger: "",
+          }
+        : normalizedSurveyRaw;
+
+      const normalizedSequence = loadedIsSurveyOnly
+        ? []
+        : normalizeFeedSequenceIds(
+            normalizedSurvey?.feed_sequence_ids,
+            normalizedSurvey?.linked_feed_ids
+          );
       if (normalizedSequence.length) {
         setFeedSequenceIds(normalizedSequence);
       }
 
-      if (isDirectSurveyLaunch && !activeFeedId && normalizedSequence.length) {
+      if (!loadedIsSurveyOnly && isDirectSurveyLaunch && !activeFeedId && normalizedSequence.length) {
         setActiveFeedId(String(normalizedSequence[0] || ""));
       }
 
