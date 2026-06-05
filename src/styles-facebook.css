@@ -2992,3 +2992,11 @@ body.survey-mode .rail-right{
   }
 }
 
+.fb-news-clickable {
+  cursor: pointer;
+}
+
+.fb-news-clickable img,
+.fb-news-clickable .fb-post-image {
+  cursor: pointer;
+}

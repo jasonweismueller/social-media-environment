@@ -1698,11 +1698,11 @@ export function PostCard({
         })()
       ) : displayImage ? (
         <button
-          className="image-btn"
-          onClick={isNewsPost ? () => onNewsLinkClick("image") : onImageOpen}
-          disabled={disabled}
-          aria-label={isNewsPost ? "Open linked news story" : "Open image"}
-        >
+  className={`image-btn ${isNewsPost ? "fb-news-clickable" : ""}`}
+  onClick={isNewsPost ? () => onNewsLinkClick("image") : onImageOpen}
+  disabled={disabled}
+  aria-label={isNewsPost ? "Open linked news story" : "Open image"}
+>
           {displayImage.svg ? (
             <div
               dangerouslySetInnerHTML={{
