@@ -577,6 +577,7 @@ export function buildMinimalHeader(posts) {
       `${id}_share_target`,
       `${id}_share_text`,
       `${id}_cta_clicked`,
+      `${id}_news_clicked`,
       `${id}_bio_opened`,
       `${id}_bio_url_clicked`,
       `${id}_mention_clicked`,
@@ -690,6 +691,7 @@ export function buildParticipantRow({
         saved: false,
         reported_misinfo: false,
         cta_clicked: false,
+        news_clicked: false,
         bio_opened: false,
         bio_url_clicked: false,
         mention_clicked: false,
@@ -766,6 +768,10 @@ export function buildParticipantRow({
         p.cta_clicked = true;
         break;
 
+      case "news_link_click":
+        p.news_clicked = true;
+        break;
+
       case "bio_open":
         p.bio_opened = true;
         break;
@@ -830,6 +836,7 @@ export function buildParticipantRow({
       saved: false,
       reported_misinfo: false,
       cta_clicked: false,
+      news_clicked: false,
       bio_opened: false,
       bio_url_clicked: false,
       mention_clicked: false,
@@ -861,6 +868,7 @@ export function buildParticipantRow({
     row[`${id}_share_text`] = agg.share_text || "";
 
     row[`${id}_cta_clicked`] = agg.cta_clicked ? 1 : 0;
+    row[`${id}_news_clicked`] = agg.news_clicked ? 1 : 0;
     row[`${id}_bio_opened`] = agg.bio_opened ? 1 : 0;
     row[`${id}_bio_url_clicked`] = agg.bio_url_clicked ? 1 : 0;
     row[`${id}_mention_clicked`] = agg.mention_clicked ? 1 : 0;
@@ -907,6 +915,7 @@ export function extractPerPostFromRosterRow(row) {
             share_target: "",
             share_text: "",
             cta_clicked: 0,
+            news_clicked: 0,
             bio_opened: 0,
             bio_url_clicked: 0,
             mention_clicked: 0,

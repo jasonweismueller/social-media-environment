@@ -235,6 +235,7 @@ export function PostCard({
   onDisplayedPostSnapshot,
 }) {
   const [reportAck, setReportAck] = useState(false);
+  const [linkAck, setLinkAck] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showComment, setShowComment] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -573,6 +574,23 @@ export function PostCard({
   const click = (action, meta = {}) => {
     if (!disabled) onAction(action, { post_id: post.id, ...meta });
   };
+
+  const isNewsPost = String(post?.adType || "none") === "news";
+  const newsDomain = String(post?.newsDomain || post?.adDomain || "").trim();
+  const newsHeadline = String(post?.newsHeadline || post?.adHeadline || "").trim();
+  const newsDescription = String(post?.newsDescription || post?.adSubheadline || "").trim();
+  const newsUrl = String(post?.newsUrl || post?.adUrl || "").trim();
+
+  const onNewsLinkClick = React.useCallback((surface = "preview") => {
+    if (disabled) return;
+    click("news_link_click", {
+      surface,
+      href: newsUrl,
+      domain: newsDomain,
+      headline: newsHeadline,
+    });
+    setLinkAck(true);
+  }, [disabled, newsUrl, newsDomain, newsHeadline]);
 
   const postForCounts = useMemo(
     () => ({
@@ -1105,6 +1123,12 @@ export function PostCard({
     const t = setTimeout(() => setReportAck(false), 2800);
     return () => clearTimeout(t);
   }, [reportAck]);
+
+  useEffect(() => {
+    if (!linkAck) return;
+    const t = setTimeout(() => setLinkAck(false), 2200);
+    return () => clearTimeout(t);
+  }, [linkAck]);
 
   useEffect(() => {
     if (!menuOpen || isMobile) return;
@@ -1675,9 +1699,9 @@ export function PostCard({
       ) : displayImage ? (
         <button
           className="image-btn"
-          onClick={onImageOpen}
+          onClick={isNewsPost ? () => onNewsLinkClick("image") : onImageOpen}
           disabled={disabled}
-          aria-label="Open image"
+          aria-label={isNewsPost ? "Open linked news story" : "Open image"}
         >
           {displayImage.svg ? (
             <div
@@ -1713,6 +1737,77 @@ export function PostCard({
         setIsVideoPlaying={setIsVideoPlaying}
         muted={isMuted}
       />
+
+
+      {isNewsPost && (
+        <button
+          type="button"
+          className="news-preview-block"
+          onClick={() => onNewsLinkClick("preview")}
+          disabled={disabled}
+          aria-label="Open linked news story"
+          style={{
+            width: "100%",
+            textAlign: "left",
+            border: 0,
+            borderTop: "1px solid var(--line)",
+            background: "#f0f2f5",
+            padding: "10px 12px 12px",
+            cursor: disabled ? "default" : "pointer",
+            display: "block",
+          }}
+        >
+          {newsDomain && (
+            <div
+              className="news-preview-domain"
+              style={{
+                color: "#65676b",
+                fontSize: 12,
+                lineHeight: 1.25,
+                textTransform: "uppercase",
+                marginBottom: 4,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {newsDomain}
+            </div>
+          )}
+          <div
+            className="news-preview-headline"
+            style={{
+              color: "#050505",
+              fontSize: 16,
+              fontWeight: 700,
+              lineHeight: 1.25,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {newsHeadline || "News headline"}
+          </div>
+          {newsDescription && (
+            <div
+              className="news-preview-description"
+              style={{
+                color: "#65676b",
+                fontSize: 13,
+                lineHeight: 1.3,
+                marginTop: 4,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {newsDescription}
+            </div>
+          )}
+        </button>
+      )}
 
       {post.adType === "ad" && (
         <div
@@ -1770,7 +1865,7 @@ export function PostCard({
           <button
             className="btn primary"
             style={{ borderRadius: 999, padding: ".5rem 1rem", flexShrink: 0 }}
-            onClick={() => onAction?.("ad_cta_click", { post_id: post.id })}
+            onClick={() => onAction?.("cta_click", { post_id: post.id, surface: "ad_cta", href: post.adUrl || "" })}
             disabled={disabled}
           >
             {post.adButtonText || "Shop now"}
@@ -1799,6 +1894,21 @@ export function PostCard({
               <strong>Thanks</strong>
               <br />
               Your report was recorded for this study.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkAck && (
+        <div className="ack-overlay" role="status" aria-live="polite">
+          <div className="ack-overlay-box">
+            <span className="ack-check" aria-hidden="true">
+              ✓
+            </span>
+            <div className="ack-text">
+              <strong>Action noted</strong>
+              <br />
+              Your click was recorded for this study.
             </div>
           </div>
         </div>

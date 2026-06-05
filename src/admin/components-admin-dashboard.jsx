@@ -182,13 +182,19 @@ function buildRenderedFeedExportHtml({
           : "";
 
       const adBlock =
-        post.adType && post.adType !== "none"
+        post.adType === "news"
           ? `<div class="ad-block">
-              <div class="ad-sub">${escapeHtml(post.adSubheadline || post.adDomain || "")}</div>
-              <div class="ad-head">${escapeHtml(post.adHeadline || "")}</div>
-              ${post.adButtonText ? `<div class="ad-btn">${escapeHtml(post.adButtonText)}</div>` : ""}
+              <div class="ad-sub">${escapeHtml(post.newsDomain || post.adDomain || "")}</div>
+              <div class="ad-head">${escapeHtml(post.newsHeadline || post.adHeadline || "")}</div>
+              ${(post.newsDescription || post.adSubheadline) ? `<div class="ad-sub">${escapeHtml(post.newsDescription || post.adSubheadline || "")}</div>` : ""}
             </div>`
-          : "";
+          : post.adType && post.adType !== "none"
+            ? `<div class="ad-block">
+                <div class="ad-sub">${escapeHtml(post.adSubheadline || post.adDomain || "")}</div>
+                <div class="ad-head">${escapeHtml(post.adHeadline || "")}</div>
+                ${post.adButtonText ? `<div class="ad-btn">${escapeHtml(post.adButtonText)}</div>` : ""}
+              </div>`
+            : "";
 
       const note =
         post.interventionType && post.interventionType !== "none" && post.noteText
@@ -850,7 +856,7 @@ export function AdminDashboard({
           arr.forEach((p) => {
             if ("showTime" in p) delete p.showTime;
             if (!p.authorType) {
-              p.authorType = p.adType === "ad" ? "company" : "female";
+              p.authorType = (p.adType === "ad" || p.adType === "news") ? "company" : "female";
             }
           });
           setPosts(arr);
@@ -897,7 +903,7 @@ export function AdminDashboard({
       arr.forEach((p) => {
         if ("showTime" in p) delete p.showTime;
         if (!p.authorType) {
-          p.authorType = p.adType === "ad" ? "company" : "female";
+          p.authorType = (p.adType === "ad" || p.adType === "news") ? "company" : "female";
         }
       });
 
@@ -957,7 +963,7 @@ export function AdminDashboard({
       arr.forEach((p) => {
         if ("showTime" in p) delete p.showTime;
         if (!p.authorType) {
-          p.authorType = p.adType === "ad" ? "company" : "female";
+          p.authorType = (p.adType === "ad" || p.adType === "news") ? "company" : "female";
         }
       });
       setPosts(arr);
@@ -1052,6 +1058,11 @@ export function AdminDashboard({
       adHeadline: "",
       adSubheadline: "",
       adButtonText: "",
+      adUrl: "",
+      newsDomain: "",
+      newsHeadline: "",
+      newsDescription: "",
+      newsUrl: "",
     });
   };
 
@@ -1060,7 +1071,7 @@ export function AdminDashboard({
     setEditing({
       ...p,
       postName: p.postName ?? p.name ?? "",
-      authorType: p.authorType ?? (p.adType === "ad" ? "company" : "female"),
+      authorType: p.authorType ?? ((p.adType === "ad" || p.adType === "news") ? "company" : "female"),
     });
   };
 
@@ -1091,7 +1102,7 @@ export function AdminDashboard({
       if ("showTime" in clean) delete clean.showTime;
 
       if (!clean.authorType) {
-        clean.authorType = clean.adType === "ad" ? "company" : "female";
+        clean.authorType = (clean.adType === "ad" || clean.adType === "news") ? "company" : "female";
       }
 
       if (clean.postName && !clean.name) clean.name = clean.postName;
@@ -1795,7 +1806,7 @@ export function AdminDashboard({
                                           arr.forEach((p) => {
                                             if ("showTime" in p) delete p.showTime;
                                             if (!p.authorType) {
-                                              p.authorType = p.adType === "ad" ? "company" : "female";
+                                              p.authorType = (p.adType === "ad" || p.adType === "news") ? "company" : "female";
                                             }
                                           });
                                           setPosts(arr);
@@ -2042,7 +2053,7 @@ export function AdminDashboard({
                         arr.forEach((p) => {
                           if ("showTime" in p) delete p.showTime;
                           if (!p.authorType) {
-                            p.authorType = p.adType === "ad" ? "company" : "female";
+                            p.authorType = (p.adType === "ad" || p.adType === "news") ? "company" : "female";
                           }
                         });
                         setPosts(arr);

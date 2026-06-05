@@ -118,6 +118,11 @@ export function makeRandomPost() {
     adHeadline: "",
     adSubheadline: "",
     adButtonText: "",
+    adUrl: "",
+    newsDomain: "",
+    newsHeadline: "",
+    newsDescription: "",
+    newsUrl: "",
   };
 }
 
@@ -436,12 +441,28 @@ export function AdminPostEditor({
           setUploadingPoster={setUploadingPoster}
         />
 
-        <h4 className="section-title">Ad</h4>
+        <h4 className="section-title">Link preview / Ad</h4>
         <fieldset className="fieldset">
-          <label>Ad type
-            <select className="select" value={editing.adType || "none"} onChange={(e) => setEditing({ ...editing, adType: e.target.value })}>
-              <option value="none">None</option>
-              <option value="ad">Sponsored Ad</option>
+          <label>Post type
+            <select
+              className="select"
+              value={editing.adType || "none"}
+              onChange={(e) => {
+                const next = e.target.value;
+                setEditing((ed) => ({
+                  ...ed,
+                  adType: next,
+                  authorType: next === "ad" || next === "news" ? "company" : (ed.authorType || "female"),
+                  newsDomain: ed.newsDomain || ed.adDomain || "",
+                  newsHeadline: ed.newsHeadline || ed.adHeadline || "",
+                  newsDescription: ed.newsDescription || ed.adSubheadline || "",
+                  newsUrl: ed.newsUrl || ed.adUrl || "",
+                }));
+              }}
+            >
+              <option value="none">Regular post</option>
+              <option value="ad">Sponsored ad</option>
+              <option value="news">News link preview</option>
             </select>
           </label>
 
@@ -456,8 +477,31 @@ export function AdminPostEditor({
               <label>Subheadline
                 <input className="input" value={editing.adSubheadline || ""} onChange={(e) => setEditing({ ...editing, adSubheadline: e.target.value })} placeholder="Product sub copy here" />
               </label>
+              <label>Destination URL
+                <input className="input" value={editing.adUrl || ""} onChange={(e) => setEditing({ ...editing, adUrl: e.target.value })} placeholder="https://www.example.com" />
+              </label>
               <label>Button Text
                 <input className="input" value={editing.adButtonText || ""} onChange={(e) => setEditing({ ...editing, adButtonText: e.target.value })} placeholder="Shop now" />
+              </label>
+            </>
+          )}
+
+          {editing.adType === "news" && (
+            <>
+              <div className="subtle" style={{ marginBottom: 8 }}>
+                A news post uses the uploaded/selected image as the preview image. Clicking the image or grey preview banner records <code>news_clicked</code> and shows an “Action noted” message instead of opening the website.
+              </div>
+              <label>News source / domain
+                <input className="input" value={editing.newsDomain || ""} onChange={(e) => setEditing({ ...editing, newsDomain: e.target.value })} placeholder="example.com" />
+              </label>
+              <label>News headline
+                <input className="input" value={editing.newsHeadline || ""} onChange={(e) => setEditing({ ...editing, newsHeadline: e.target.value })} placeholder="Headline shown below the image" />
+              </label>
+              <label>Short preview text
+                <input className="input" value={editing.newsDescription || ""} onChange={(e) => setEditing({ ...editing, newsDescription: e.target.value })} placeholder="Optional short summary" />
+              </label>
+              <label>Destination URL / tracked link
+                <input className="input" value={editing.newsUrl || ""} onChange={(e) => setEditing({ ...editing, newsUrl: e.target.value })} placeholder="https://www.example.com/story" />
               </label>
             </>
           )}
