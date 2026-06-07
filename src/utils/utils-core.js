@@ -172,8 +172,10 @@ export function getAppParam() {
     const fromUrl = (sp.get("app") || "").toLowerCase();
     const fromWin = (window.APP || "").toLowerCase();
 
+    if (fromUrl === "amz" || fromUrl === "amazon" || fromUrl === "reviews" || fromUrl === "amazon_reviews") return "amz";
     if (fromUrl === "ig" || fromUrl === "instagram") return "ig";
     if (fromUrl === "fb" || fromUrl === "facebook") return "fb";
+    if (fromWin === "amz" || fromWin === "amazon" || fromWin === "reviews" || fromWin === "amazon_reviews") return "amz";
     if (fromWin === "ig" || fromWin === "instagram") return "ig";
     if (fromWin === "fb" || fromWin === "facebook") return "fb";
 
@@ -429,9 +431,12 @@ export function primeVideoCache(url) {
 
 /* --------------------------- Feed ID helper -------------------------------- */
 export function computeFeedId(posts = []) {
-  const src = posts.map(p =>
-    `${p.id}|${(p.text || '').length}|${p.imageMode || ''}|${p.interventionType || ''}`
-  ).join('~');
+  const src = posts.map(p => {
+    const body = p?.text || p?.review_text || p?.body || "";
+    const title = p?.title || p?.review_title || p?.headline || "";
+    const rating = p?.rating || p?.stars || p?.star_rating || "";
+    return `${p?.id}|${String(title).length}|${String(body).length}|${rating}|${p?.imageMode || ''}|${p?.interventionType || ''}`;
+  }).join('~');
   let h = 0;
   for (let i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) | 0;
   return 'feed_' + (h >>> 0).toString(36);
@@ -585,7 +590,13 @@ export function buildMinimalHeader(posts) {
       `${id}_note_view_details`,
       `${id}_note_link_clicked`,
       `${id}_note_helpful_rated`,
-      `${id}_note_helpful_value`
+      `${id}_note_helpful_value`,
+      `${id}_review_helpful`,
+      `${id}_review_helpful_removed`,
+      `${id}_review_reported`,
+      `${id}_review_read_more`,
+      `${id}_review_read_more_ms`,
+      `${id}_review_rating`
     );
   });
 
@@ -700,6 +711,12 @@ export function buildParticipantRow({
         note_link_clicked: false,
         note_helpful_rated: false,
         note_helpful_value: "",
+        review_helpful: false,
+        review_helpful_removed: false,
+        review_reported: false,
+        review_read_more: false,
+        review_read_more_ms: "",
+        review_rating: "",
       });
     }
     return per.get(id);
@@ -800,6 +817,31 @@ export function buildParticipantRow({
         p.reported_misinfo = true;
         break;
 
+      case "review_helpful":
+        p.review_helpful = true;
+        p.review_helpful_removed = false;
+        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+        break;
+
+      case "review_helpful_removed":
+        p.review_helpful = false;
+        p.review_helpful_removed = true;
+        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+        break;
+
+      case "review_report":
+        p.review_reported = true;
+        p.reported_misinfo = true;
+        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+        break;
+
+      case "review_read_more":
+        p.review_read_more = true;
+        p.expanded = true;
+        p.review_read_more_ms = e.ms_since_review_render != null ? String(e.ms_since_review_render) : p.review_read_more_ms;
+        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+        break;
+
       default:
         break;
     }
@@ -845,6 +887,12 @@ export function buildParticipantRow({
       note_link_clicked: false,
       note_helpful_rated: false,
       note_helpful_value: "",
+      review_helpful: false,
+      review_helpful_removed: false,
+      review_reported: false,
+      review_read_more: false,
+      review_read_more_ms: "",
+      review_rating: "",
     };
     const reactedFlag = agg.reaction_type ? 1 : 0;
     const shareTargetClean = String(agg.share_target || "").trim();
@@ -877,6 +925,12 @@ export function buildParticipantRow({
     row[`${id}_note_link_clicked`] = agg.note_link_clicked ? 1 : 0;
     row[`${id}_note_helpful_rated`] = agg.note_helpful_rated ? 1 : 0;
     row[`${id}_note_helpful_value`] = agg.note_helpful_value || "";
+    row[`${id}_review_helpful`] = agg.review_helpful ? 1 : 0;
+    row[`${id}_review_helpful_removed`] = agg.review_helpful_removed ? 1 : 0;
+    row[`${id}_review_reported`] = (agg.review_reported || agg.reported_misinfo) ? 1 : 0;
+    row[`${id}_review_read_more`] = (agg.review_read_more || agg.expanded) ? 1 : 0;
+    row[`${id}_review_read_more_ms`] = agg.review_read_more_ms || "";
+    row[`${id}_review_rating`] = agg.review_rating || (p.rating ?? p.stars ?? p.star_rating ?? "");
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`] = aggD ? aggD.dwell_s : 0;
@@ -924,6 +978,12 @@ export function extractPerPostFromRosterRow(row) {
             note_link_clicked: 0,
             note_helpful_rated: 0,
             note_helpful_value: "",
+            review_helpful: 0,
+            review_helpful_removed: 0,
+            review_reported: 0,
+            review_read_more: 0,
+            review_read_more_ms: "",
+            review_rating: "",
           };
         }
         return clean[id];
@@ -976,6 +1036,12 @@ export function extractPerPostFromRosterRow(row) {
         obj.note_link_clicked = Number(agg?.note_link_clicked || 0);
         obj.note_helpful_rated = Number(agg?.note_helpful_rated || 0);
         obj.note_helpful_value = String(agg?.note_helpful_value || "").trim();
+        obj.review_helpful = Number(agg?.review_helpful || agg?.helpful || 0);
+        obj.review_helpful_removed = Number(agg?.review_helpful_removed || 0);
+        obj.review_reported = Number(agg?.review_reported || agg?.reported || 0);
+        obj.review_read_more = Number(agg?.review_read_more || agg?.read_more || 0);
+        obj.review_read_more_ms = String(agg?.review_read_more_ms || "").trim();
+        obj.review_rating = String(agg?.review_rating || agg?.rating || "").trim();
 
         obj.dwell_s = Number.isFinite(agg?.dwell_s)
           ? agg.dwell_s
@@ -1068,7 +1134,13 @@ export function extractPerPostFromRosterRow(row) {
         note_view_details: 0,
         note_link_clicked: 0,
         note_helpful_rated: 0,
-        note_helpful_value: ""
+        note_helpful_value: "",
+        review_helpful: 0,
+        review_helpful_removed: 0,
+        review_reported: 0,
+        review_read_more: 0,
+        review_read_more_ms: "",
+        review_rating: ""
       };
     }
     return out[id];
@@ -1077,7 +1149,7 @@ export function extractPerPostFromRosterRow(row) {
   for (const [key, val] of Object.entries(row)) {
     let m;
 
-    m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated)$/.exec(key);
+    m = /^(.+?)_(reacted|commented|shared|saved|reported_misinfo|expanded|expandable|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated|review_helpful|review_helpful_removed|review_reported|review_read_more)$/.exec(key);
     if (m) {
       const obj = ensure(m[1]);
       const metric = m[2];
@@ -1122,6 +1194,18 @@ export function extractPerPostFromRosterRow(row) {
     m = /^(.+?)_note_helpful_value$/.exec(key);
     if (m) {
       ensure(m[1]).note_helpful_value = String(val || "").trim();
+      continue;
+    }
+
+    m = /^(.+?)_review_read_more_ms$/.exec(key);
+    if (m) {
+      ensure(m[1]).review_read_more_ms = String(val || "").trim();
+      continue;
+    }
+
+    m = /^(.+?)_review_rating$/.exec(key);
+    if (m) {
+      ensure(m[1]).review_rating = String(val || "").trim();
       continue;
     }
 
@@ -1175,8 +1259,8 @@ export function summarizeRoster(rows) {
   const postKeys = new Set();
   rows.forEach(r => {
     Object.keys(r).forEach(k => {
-      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$|_note_helpful_rated$|_note_helpful_value$/.test(k)) {
-        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated|note_helpful_value)$/, "");
+      if (/_reacted$|_expandable$|_expanded$|_commented$|_shared$|_saved$|_reported_misinfo$|_bio_opened$|_bio_url_clicked$|_mention_clicked$|_note_opened$|_note_view_details$|_note_link_clicked$|_note_helpful_rated$|_note_helpful_value$|_review_helpful$|_review_helpful_removed$|_review_reported$|_review_read_more$/.test(k)) {
+        const base = k.replace(/_(reacted|expandable|expanded|commented|shared|saved|reported_misinfo|bio_opened|bio_url_clicked|mention_clicked|note_opened|note_view_details|note_link_clicked|note_helpful_rated|note_helpful_value|review_helpful|review_helpful_removed|review_reported|review_read_more)$/, "");
         postKeys.add(base);
       }
     });
@@ -1194,6 +1278,10 @@ export function summarizeRoster(rows) {
     const noteOpened = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_opened`]) || 0), 0);
     const noteViewDetails = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_view_details`]) || 0), 0);
     const noteLinkClicked = rows.reduce((acc, r) => acc + (Number(r[`${base}_note_link_clicked`]) || 0), 0);
+    const reviewHelpful = rows.reduce((acc, r) => acc + (Number(r[`${base}_review_helpful`]) || 0), 0);
+    const reviewHelpfulRemoved = rows.reduce((acc, r) => acc + (Number(r[`${base}_review_helpful_removed`]) || 0), 0);
+    const reviewReported = rows.reduce((acc, r) => acc + (Number(r[`${base}_review_reported`]) || 0), 0);
+    const reviewReadMore = rows.reduce((acc, r) => acc + (Number(r[`${base}_review_read_more`]) || 0), 0);
     const expandRate = expandable > 0 ? expanded / expandable : null;
     const dwellSArr = rows
       .map(r => {
@@ -1217,6 +1305,10 @@ export function summarizeRoster(rows) {
       noteOpened,
       noteViewDetails,
       noteLinkClicked,
+      reviewHelpful,
+      reviewHelpfulRemoved,
+      reviewReported,
+      reviewReadMore,
       avgDwellS
     };
   }

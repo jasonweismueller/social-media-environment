@@ -47,19 +47,28 @@ import { randomAvatarByKind } from "../avatar-utils";
 
 // Dynamically choose correct editor (FB or IG)
 import {
-  genNeutralAvatarDataUrl,
-  makeRandomPost,
+  genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB,
+  makeRandomPost as makeRandomPostFB,
 } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
+import {
+  genNeutralAvatarDataUrl as genNeutralAvatarDataUrlAMZ,
+  makeRandomPost as makeRandomPostAMZ,
+  AdminPostEditor as AdminPostEditorAMZ,
+} from "./components-admin-editor-amazon";
 
-// Pick based on current app (set in main-facebook.jsx or main-instagram.jsx)
+// Pick based on current app (set in main-*.jsx or ?app=...)
 const app = (
   window.APP ||
   new URLSearchParams(window.location.search).get("app") ||
   "fb"
 ).toLowerCase();
-const AdminPostEditor = app === "ig" ? AdminPostEditorIG : AdminPostEditorFB;
+const AdminPostEditor = app === "ig" ? AdminPostEditorIG : app === "amz" ? AdminPostEditorAMZ : AdminPostEditorFB;
+const makeRandomPost = app === "amz" ? makeRandomPostAMZ : makeRandomPostFB;
+const genNeutralAvatarDataUrl = app === "amz" ? genNeutralAvatarDataUrlAMZ : genNeutralAvatarDataUrlFB;
+const CONTENT_UNIT_LABEL = app === "amz" ? "Review" : "Post";
+const CONTENT_UNIT_LABEL_PLURAL = app === "amz" ? "Reviews" : "Posts";
 
 /* ---------- small access gate ---------------- */
 function RoleGate({ min = "viewer", children, elseRender = null }) {
@@ -120,7 +129,11 @@ function stripHtml(value = "") {
 
 function getPostDisplayName(post, postNames = {}) {
   const friendly = String(post?.name || postNames?.[post?.id] || "").trim();
-  return friendly || String(post?.author || "Post");
+  if (friendly) return friendly;
+  if (app === "amz") {
+    return String(post?.review_title || post?.title || post?.reviewer || post?.reviewer_name || post?.author || "Review");
+  }
+  return String(post?.author || "Post");
 }
 
 function getPostImageUrl(post) {
@@ -361,10 +374,10 @@ function buildRenderedFeedExportHtml({
         <div><strong>Feed:</strong> ${escapeHtml(feedName || feedId || "selected feed")}</div>
         <div><strong>App:</strong> ${escapeHtml(String(appName || "").toUpperCase())}</div>
         <div><strong>Exported:</strong> ${escapeHtml(exportedAt)}</div>
-        <div><strong>Posts:</strong> ${normalized.length}</div>
+        <div><strong>${CONTENT_UNIT_LABEL_PLURAL}:</strong> ${normalized.length}</div>
       </div>
     </section>
-    ${postCards || "<p>No posts available for this feed.</p>"}
+    ${postCards || `<p>No ${CONTENT_UNIT_LABEL_PLURAL.toLowerCase()} available for this feed.</p>`}
   </main>
 </body>
 </html>`;
@@ -2032,10 +2045,10 @@ export function AdminDashboard({
 
           {/* Posts */}
           <Section
-            title={`Posts (${posts.length})`}
+            title={`${CONTENT_UNIT_LABEL_PLURAL} (${posts.length})`}
             subtitle={
               showAllPosts
-                ? "Compact list of all posts."
+                ? `Compact list of all ${CONTENT_UNIT_LABEL_PLURAL.toLowerCase()}.`
                 : `Compact list · showing first ${Math.min(5, posts.length)}`
             }
             right={
@@ -2063,7 +2076,7 @@ export function AdminDashboard({
                       }}
                       title="Reload posts for this feed from backend"
                     >
-                      Refresh Posts
+                      Refresh {CONTENT_UNIT_LABEL_PLURAL}
                     </button>
 
                     <button
@@ -2176,10 +2189,10 @@ export function AdminDashboard({
                         }}
                         title="Generate a synthetic post"
                       >
-                        + Random Post
+                        + Random {CONTENT_UNIT_LABEL}
                       </button>
                       <button className="btn ghost" onClick={openNew}>
-                        + Add Post
+                        + Add {CONTENT_UNIT_LABEL}
                       </button>
                       <button
                         className="btn ghost danger"
@@ -2348,7 +2361,7 @@ export function AdminDashboard({
       {/* Editor modal */}
       {editing && (
         <Modal
-          title={isNew ? "Add Post" : "Edit Post"}
+          title={isNew ? `Add ${CONTENT_UNIT_LABEL}` : `Edit ${CONTENT_UNIT_LABEL}`}
           onClose={() => setEditing(null)}
           wide
           footer={

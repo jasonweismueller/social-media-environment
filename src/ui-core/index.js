@@ -1,14 +1,22 @@
-/// components/ui-core/index.js
+// components/ui-core/index.js
+
 import * as FB from "./ui-core-facebook";
 import * as IG from "./ui-core-instagram";
+import * as AMZ from "./ui-core-amazon";
+
 import { getApp } from "../utils/utils-backend";
 
 export * from "./ui-survey";
 export * from "./ui-survey-mobile";
 
-
-
 const app = (typeof window !== "undefined" ? getApp() : "fb");
+
+const UI =
+  app === "ig"
+    ? IG
+    : app === "amz"
+      ? AMZ
+      : FB;
 
 export const {
   IconLike,
@@ -35,4 +43,6 @@ export const {
   ThankYouOverlay,
   RouteAwareTopbar,
   TopRailPlaceholder,
-} = app === "ig" ? IG : FB;
+} = UI;
+
+export default UI;

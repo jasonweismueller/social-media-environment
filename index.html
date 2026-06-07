@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Social Media Environment</title>
+    <title>Study Environment</title>
 
     <script>
       window.CONFIG = {
@@ -32,8 +32,13 @@
   const entryMap = {
     facebook: () => import("./src/main-facebook.jsx"),
     fb: () => import("./src/main-facebook.jsx"),
+
     instagram: () => import("./src/main-instagram.jsx"),
     ig: () => import("./src/main-instagram.jsx"),
+
+    amazon: () => import("./src/main-amazon.jsx"),
+    amz: () => import("./src/main-amazon.jsx"),
+    reviews: () => import("./src/main-amazon.jsx"),
   };
 
   (entryMap[app] || entryMap.facebook)();

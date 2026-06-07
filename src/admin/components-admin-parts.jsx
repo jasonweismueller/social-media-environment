@@ -43,6 +43,7 @@ function selectAllOnFocus(e) {
 }
 
 const isIGApp = () => String(APP || "").toLowerCase() === "ig";
+const isAmazonApp = () => String(APP || "").toLowerCase() === "amz";
 
 
 function normalizeFeedSequenceIds(value = []) {
@@ -78,7 +79,7 @@ function makeCsvWithPrettyHeaders(rows, keys, labels) {
 
 function normalizeRowsForCsv(rows = []) {
   const BOOL_SUFFIX =
-    /(_reacted|_expandable|_expanded|_commented|_saved|_shared|_reported_misinfo|_cta_clicked|_bio_opened|_bio_url_clicked|_mention_clicked|_note_opened|_note_view_details|_note_link_clicked|_note_helpful_rated)$/;
+    /(_reacted|_expandable|_expanded|_commented|_saved|_shared|_reported_misinfo|_cta_clicked|_bio_opened|_bio_url_clicked|_mention_clicked|_note_opened|_note_view_details|_note_link_clicked|_note_helpful_rated|_review_helpful|_review_helpful_removed|_review_reported|_review_read_more)$/;
 
   return rows.map((raw) => {
     const out = { ...raw };
@@ -143,7 +144,7 @@ function randomInt(rng, min, max) {
 function looksExpandable(post) {
   if (!post) return false;
   if (post.expandable === true) return true;
-  const txt = String(post.text || "");
+  const txt = String(post.text || post.review_text || post.body || "");
   return txt.length > 140;
 }
 
@@ -1035,6 +1036,7 @@ export function ParticipantsPanel({
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
   const surveyId = surveyIdProp ?? getSurveyIdFromUrl?.() ?? "";
   const IG = isIGApp();
+  const AMZ = isAmazonApp();
   const normalizedFeedSequenceIds = normalizeFeedSequenceIds(feedSequenceIds);
   const hasMultiFeedSequence = !!surveyId && normalizedFeedSequenceIds.length > 1;
   const isSurveyOnlyPanel = !feedId && !!surveyId && !hasMultiFeedSequence;
@@ -1239,7 +1241,10 @@ export function ParticipantsPanel({
         commented: agg.commented ?? 0,
         saved: agg.saved ?? 0,
         shared: agg.shared ?? 0,
-        reported: agg.reported ?? 0,
+        reported: agg.reported ?? agg.reviewReported ?? 0,
+        reviewHelpful: agg.reviewHelpful ?? agg.review_helpful ?? 0,
+        reviewReported: agg.reviewReported ?? agg.review_reported ?? 0,
+        reviewReadMore: agg.reviewReadMore ?? agg.review_read_more ?? 0,
         avgDwellS,
       };
     });
@@ -1327,6 +1332,12 @@ function parsePostMetricKey(key = "") {
     "_note_link_clicked",
     "_note_helpful_rated",
     "_note_helpful_value",
+    "_review_helpful",
+    "_review_helpful_removed",
+    "_review_reported",
+    "_review_read_more",
+    "_review_read_more_ms",
+    "_review_rating",
   ];
 
   for (const suffix of suffixes) {
@@ -1343,6 +1354,14 @@ function parsePostMetricKey(key = "") {
 
 function isRelevantPostMetricForExport(post, suffix, isIG) {
   if (!post || !suffix) return true;
+
+  const isAMZ = isAmazonApp();
+
+  // Amazon reviews use review-specific helpful/report/read-more fields.
+  if (isAMZ) {
+    if (["_review_helpful", "_review_helpful_removed", "_review_reported", "_review_read_more", "_review_read_more_ms", "_review_rating", "_dwell_s", "_dwell_ms", "_expanded", "_expandable", "_reported_misinfo"].includes(suffix)) return true;
+    if (["_reacted", "_reaction_type", "_commented", "_comment_texts", "_saved", "_shared", "_share_target", "_share_text", "_cta_clicked", "_bio_opened", "_bio_url_clicked", "_mention_clicked", "_note_opened", "_note_view_details", "_note_link_clicked", "_note_helpful_rated", "_note_helpful_value"].includes(suffix)) return false;
+  }
 
   // ❌ Remove FB-only metrics from IG
   if (isIG && FB_ONLY.includes(suffix)) return false;
@@ -1780,13 +1799,23 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
                 <th style={{ textAlign: "left", padding: padCell }}>Post ID</th>
                 <th style={{ textAlign: "left", padding: padCell }}>Name</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Reacted</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Commented</th>
-                {IG && <th style={{ textAlign: "right", padding: padCell }}>Saved</th>}
-                <th style={{ textAlign: "right", padding: padCell }}>Shared</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
+                {AMZ ? (
+                  <>
+                    <th style={{ textAlign: "right", padding: padCell }}>Helpful</th>
+                    <th style={{ textAlign: "right", padding: padCell }}>Read more</th>
+                    <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
+                  </>
+                ) : (
+                  <>
+                    <th style={{ textAlign: "right", padding: padCell }}>Reacted</th>
+                    <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
+                    <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
+                    <th style={{ textAlign: "right", padding: padCell }}>Commented</th>
+                    {IG && <th style={{ textAlign: "right", padding: padCell }}>Saved</th>}
+                    <th style={{ textAlign: "right", padding: padCell }}>Shared</th>
+                    <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
+                  </>
+                )}
                 <th style={{ textAlign: "right", padding: padCell }}>Avg dwell (s)</th>
               </tr>
             </thead>
@@ -1795,13 +1824,23 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
                 <tr key={p.id} style={{ borderBottom: "1px solid var(--line)" }}>
                   <td style={{ padding: padCell, fontFamily: "monospace" }}>{p.id}</td>
                   <td style={{ padding: padCell }}>{p.name || "—"}</td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reacted)}</td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
-                  {IG && <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.saved)}</td>}
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
+                  {AMZ ? (
+                    <>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reviewHelpful || 0)}</td>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reviewReadMore || 0)}</td>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reviewReported || p.reported || 0)}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reacted)}</td>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
+                      {IG && <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.saved)}</td>}
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
+                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
+                    </>
+                  )}
                   <td style={{ padding: padCell, textAlign: "right" }}>{sShort(p.avgDwellS)}</td>
                 </tr>
               ))}

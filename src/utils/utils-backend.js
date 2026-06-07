@@ -22,6 +22,7 @@ export const getApp = () => {
   const fromUrl = (q.get("app") || "").toLowerCase();
   const fromWin = (window.APP || "").toLowerCase();
 
+  if (["amazon", "amz", "reviews", "amazon_reviews"].includes(fromUrl) || ["amazon", "amz", "reviews", "amazon_reviews"].includes(fromWin)) return "amz";
   if (["instagram", "ig"].includes(fromUrl) || ["instagram", "ig"].includes(fromWin)) return "ig";
   if (["facebook", "fb"].includes(fromUrl) || ["facebook", "fb"].includes(fromWin)) return "fb";
   return "fb";
@@ -1812,7 +1813,7 @@ export async function loadPostsFromBackend(arg1, arg2) {
     const arr = Array.isArray(data) ? data : [];
 
     arr
-      .filter((p) => p?.videoMode !== "none" && p?.video?.url && !DRIVE_RE.test(p.video.url))
+      .filter((p) => p?.videoMode && p?.videoMode !== "none" && p?.video?.url && !DRIVE_RE.test(p.video.url))
       .forEach((p) => {
         injectVideoPreload(p.video.url, p.video?.mime || "video/mp4");
         primeVideoCache(p.video.url);
@@ -2949,10 +2950,16 @@ export function labelForPostId(
 
 export function postDisplayName(p, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
   const id = p?.id || "";
-  const nm = (p?.name || "").trim();
+  const nm = String(p?.name || p?.postName || "").trim();
   if (nm) return nm;
   const saved = readPostNames(projectId, feedId);
-  return (saved && saved[id]) || id;
+  if (saved && saved[id]) return saved[id];
+  if (APP === "amz") {
+    const title = String(p?.review_title || p?.title || p?.headline || "").trim();
+    const reviewer = String(p?.reviewer || p?.reviewer_name || p?.author || "").trim();
+    return title || reviewer || id;
+  }
+  return id;
 }
 
 export function headerLabelsForKeys(keys, posts, { projectId = getProjectId(), feedId = getFeedIdFromUrl() } = {}) {
@@ -2984,7 +2991,7 @@ export function seedNamesFromPosts(posts, { projectId = getProjectId(), feedId =
 
   for (const p of posts) {
     const id = p?.id;
-    const nm = (p?.name || "").trim();
+    const nm = String(p?.name || p?.postName || (APP === "amz" ? (p?.review_title || p?.title || p?.reviewer || p?.author || "") : "")).trim();
     if (id && nm && !map[id]) {
       map[id] = nm;
       changed = true;
