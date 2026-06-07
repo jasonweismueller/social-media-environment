@@ -43,7 +43,7 @@ import {
   getSurveyBootForFeedFromBackend,
 } from "./utils";
 
-import { Feed as FBFeed } from "./ui-posts-amazon";
+import { Feed as FBFeed } from "./ui-posts";
 import {
   ParticipantOverlay,
   ThankYouOverlay,
