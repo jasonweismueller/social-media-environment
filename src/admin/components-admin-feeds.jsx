@@ -3,7 +3,7 @@ import { APP, getProjectId as getProjectIdUtil, setProjectId as setProjectIdUtil
 
 /**
  * AdminFeedsPanel
- * Props:
+ ** Props:
  *  - apiBase: string   e.g. your proxied Apps Script URL (GS_ENDPOINT)
  *  - adminToken: string (required for admin-only endpoints)
  *  - initialProjectId?: string (optional seed; otherwise taken from utils/url)
