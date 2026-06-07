@@ -67,8 +67,17 @@ const app = (
 const AdminPostEditor = app === "ig" ? AdminPostEditorIG : app === "amz" ? AdminPostEditorAMZ : AdminPostEditorFB;
 const makeRandomPost = app === "amz" ? makeRandomPostAMZ : makeRandomPostFB;
 const genNeutralAvatarDataUrl = app === "amz" ? genNeutralAvatarDataUrlAMZ : genNeutralAvatarDataUrlFB;
-const CONTENT_UNIT_LABEL = app === "amz" ? "Review" : "Post";
-const CONTENT_UNIT_LABEL_PLURAL = app === "amz" ? "Reviews" : "Posts";
+const CONTENT_UNIT_LABEL = app === "amz" || app === "amazon" ? "Review" : "Post";
+const CONTENT_UNIT_LABEL_PLURAL = app === "amz" || app === "amazon" ? "Reviews" : "Posts";
+const APP_LABEL =
+  app === "ig" || app === "instagram"
+    ? "Instagram"
+    : app === "amz" || app === "amazon"
+      ? "Amazon"
+      : "Facebook";
+const DASHBOARD_TITLE = `${APP_LABEL} Admin Dashboard`;
+const EXPORT_TITLE = app === "amz" || app === "amazon" ? "Amazon reviews export" : `${APP_LABEL} feed export`;
+
 
 /* ---------- small access gate ---------------- */
 function RoleGate({ min = "viewer", children, elseRender = null }) {
@@ -178,8 +187,10 @@ function buildRenderedFeedExportHtml({
   postNames = {},
 }) {
   const normalized = normalizeFeedExportPosts(posts, postNames);
-  const isIG = String(appName || "fb").toLowerCase() === "ig";
-  const title = `${isIG ? "Instagram" : "Facebook"} feed export`;
+  const appKey = String(appName || app || "fb").toLowerCase();
+  const title = appKey === "amz" || appKey === "amazon"
+    ? "Amazon reviews export"
+    : `${appKey === "ig" || appKey === "instagram" ? "Instagram" : "Facebook"} feed export`;
   const exportedAt = new Date().toLocaleString();
 
   const postCards = normalized
@@ -1100,12 +1111,12 @@ export function AdminDashboard({
   };
 
   const saveEditing = () => {
-    if (!editing.author?.trim()) {
+    if (!editing.author?.trim() && app !== "amz" && app !== "amazon") {
       alert("Author is required.");
       return;
     }
     if (!editing.text?.trim()) {
-      alert("Post text is required.");
+      alert(`${CONTENT_UNIT_LABEL} text is required.`);
       return;
     }
 
@@ -1232,7 +1243,7 @@ export function AdminDashboard({
         }}
       >
         <Section
-          title={app === "ig" ? "Instagram Admin Dashboard" : "Facebook Admin Dashboard"}
+          title={DASHBOARD_TITLE}
           subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
           right={
             <button className="btn ghost" onClick={onLogout} title="Sign out of the admin session">

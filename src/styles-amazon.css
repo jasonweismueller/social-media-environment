@@ -1,15 +1,3019 @@
-/* styles-amazon.css
-   Amazon reviews-only experiment environment.
-   Includes the shared modal/admin/survey classes expected by App-amazon.jsx, plus
-   Amazon-specific review-page styling...
-*/
+:root{
+  --bg:#f0f2f5; --card:#ffffff; --text:#111827; --muted:#6b7280; --line:#e5e7eb;
+  --blue:#1877f2; --blue-ink:#0b5cc4; --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.06);
+
+  /* layout knobs */
+  --feed-min: 640px;
+  --feed-max: 700px;
+  --gap: 16px;
+  --rail-gap: 30px;
+  --feed-gap: 12px;
+
+  /* menu knobs */
+  --menu-font: .85rem;
+  --menu-min-w: 320px;
+  --menu-max-w: 380px;
+  --menu-pad: .28rem;
+  --menu-item-vpad: .45rem;
+  --menu-item-hpad: .65rem;
+  --menu-icon-size: 16px;
+  --menu-item-h: 44px;
+  --menu-max-items: 7;
+}
+
+/* ============= Base ============= */
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+html, body { overflow-x: hidden; }
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Top bar (optional legacy nav) */
+.nav{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.9);backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:960px;margin:0 auto;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem}
+
+/* Inputs / buttons */
+.input,.select{
+  border:1px solid var(--line);border-radius:.5rem;padding:.375rem .5rem;font-size:.9rem;background:#fff
+}
+.select{padding:.35rem .5rem}
+.btn{border:1px solid var(--line);border-radius:.5rem;background:#fff;padding:.375rem .6rem;font-size:.9rem;cursor:pointer}
+.btn:hover{background:#f9fafb}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:var(--blue-ink)}
+
+/* Default container */
+.container{max-width:700px;margin:0 auto;padding:12px}
+
+/* ============= Cards / Feed ============= */
+.card{background:var(--card);border:1px solid var(--line);border-radius:.75rem;box-shadow:var(--shadow);overflow:visible;margin-bottom:1rem}
+.card-head{display:flex;gap:.75rem;align-items:center;padding:1rem 1rem .25rem}
+.card-body{padding:.25rem 1rem .75rem}
+
+.name{font-weight:600}
+.name-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+/* meta text sizing + alignment */
+.meta { font-size: .75rem; }        /* already present; keep */
+.meta .subtle { font-size: inherit; }  /* <- add this so time/Sponsored match */
+.meta .sep { line-height: 1; display: inline-block; transform: translateY(-1px); } /* tidy baseline */
+
+.dots{border:none;background:transparent;padding:.25rem .4rem;border-radius:999px;cursor:pointer;color:#6b7280}
+.dots:hover{background:#f3f4f6}
+
+.avatar{width:40px;height:40px;border-radius:999px;background:#e5e7eb;flex:0 0 auto;overflow:hidden}
+.avatar-img{width:40px;height:40px;border-radius:999px;object-fit:cover;display:block}
+
+.text{margin:.25rem 0;font-size:15px;line-height:1.5;white-space:pre-wrap}
+.image-btn{display:block;width:100%;border:none;background:transparent;padding:0;cursor:default}
+
+/* Footer actions */
+.footer{padding:.5rem;border-top:1px solid var(--line)}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.action{display:flex;align-items:center;justify-content:center;gap:.4rem;padding:.5rem;border:1px solid transparent;border-radius:.75rem;cursor:pointer;color:#374151;background:#fff;min-height:38px}
+.action:hover{background:#f3f4f6}
+.action.active{background:#e7f0ff;color:var(--blue)}
+.action svg { display:block; } /* tighter icon vertical alignment */
+
+/* Submit / misc */
+.submit-wrap{text-align:center;margin:.5rem 0 1.5rem}
+.btn-wide{display:block;width:100%;max-width:300px;margin:1rem auto}
+.end{color:#6b7280;text-align:center;font-size:.9rem;padding:1.5rem}
+.link-row{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:.5rem}
+.link{font-size:.9rem}
+
+/* Gated blur while overlays shown */
+.app-shell{transition:filter .2s ease,opacity .2s ease}
+.app-shell.blurred{
+  pointer-events: none;
+  user-select: none;
+}
+
+/* “See more” clamp */
+.text-wrap{position:relative}
+.text.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fade-more{position:absolute;right:0;bottom:0;height:1.6em;display:inline-flex;align-items:center;gap:.35ch;background:var(--card);padding-left:.25ch;z-index:1}
+.fade-more::before{content:"";position:absolute;right:100%;top:0;width:6ch;height:100%;background:linear-gradient(90deg, rgba(255,255,255,0), var(--card))}
+.dots{font:inherit;line-height:inherit;display:inline}
+
+
+/* Facebook-like "See more" */
+.see-more {
+  background: none;
+  border: none;
+  padding: 0;
+  display: inline;
+  cursor: pointer;
+  font: inherit;             /* inherit same font size/style as text */
+  line-height: inherit;
+  color: #111827;            /* black like text */
+  font-weight: 600;          /* bold */
+  text-decoration: none;     /* no underline normally */
+}
+.see-more:hover {
+  text-decoration: underline; /* underline on hover */
+}
+
+/* Badge */
+.badge{display:inline-flex;align-items:center}
+.badge svg{vertical-align:middle}
+
+/* ============= Dots menu ============= */
+.menu-wrap{position:relative;z-index:1}
+.menu{
+  position:absolute; right:.5rem; top:2.25rem;
+  min-width:var(--menu-min-w); max-width:var(--menu-max-w);
+  max-height: calc(var(--menu-item-h) * var(--menu-max-items)); overflow-y:auto;
+  background:#fff; border:1px solid var(--line); border-radius:.75rem; box-shadow:var(--shadow);
+  z-index:9999; padding:var(--menu-pad); animation:menuIn .08s ease-out;
+  font-size:var(--menu-font); line-height:1.3; scrollbar-width:thin;
+}
+.menu::-webkit-scrollbar{width:6px}
+.menu::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
+.menu::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+.menu-item{
+  display:flex; align-items:flex-start; gap:.55rem;
+  padding:var(--menu-item-vpad) var(--menu-item-hpad);
+  border-radius:.55rem; cursor:pointer; color:#111827; background:transparent; border:none; width:100%; text-align:left;
+}
+.menu-item:hover{background:#f3f4f6}
+.menu-divider{height:1px;background:var(--line);margin:.28rem .1rem}
+.menu-item .mi-icon{
+  width:var(--menu-icon-size);height:var(--menu-icon-size);
+  flex:0 0 var(--menu-icon-size);color:#111827;
+  display:flex;align-items:center;
+  transform: translateY(.5px); /* subtle top-line align */
+}
+.menu-item .mi-text{display:flex;flex-direction:column;min-width:0}
+.menu-item .mi-title{font-weight:600;font-size:.88rem;line-height:1.15}
+.menu-item .mi-sub{font-size:.78rem;color:#6b7280;margin-top:.16rem}
+.menu-item.disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+@keyframes menuIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.card-head .dots{position:relative;z-index:1001}
+
+/* ============= Info / Note bars ============= */
+.info-bar,.note-bar{padding:.5rem 1rem;border-top:1px solid var(--line);font-size:.95rem}
+.info-head,.note-head{display:flex;align-items:center;gap:.4rem}
+.info-icon{color:#6b7280}
+.note-icon{color:#2563eb}
+.info-title,.note-title{font-weight:700}
+.info-sub{margin-top:.25rem;line-height:1.5;color:#6b7280}
+.note-sub{margin-top:.25rem;line-height:1.5}
+.info-row,.note-row{margin-top:.35rem;display:flex;align-items:center;gap:.5rem;color:#6b7280}
+.info-clean{background:transparent}
+
+/* — Ensure divider above reactions when an intervention is present — */
+.info-bar + .bar-stats,
+.note-bar{
+  background:#f3f4f6;
+  border-top:1px solid rgba(17,24,39,.08); /* matches your JSX */
+}
+
+/* ============= Reactions summary ============= */
+.bar-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .5rem 1rem;
+  font-size: .9rem;
+}
+.bar-stats .left{display:flex;align-items:center;gap:.5rem;white-space:nowrap}
+.muted{color:var(--muted)}
+
+.rx-stack{display:inline-flex;align-items:center}
+.rx-stack .rx {
+  width:20px; height:20px; border-radius:999px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px; line-height:1;
+  border:1px solid #fff; background:#fff;
+  margin-right:-4px;
+}
+.rx-stack .rx:last-of-type{margin-right:0}
+.rx-count{margin-left:9px;line-height:18px;display:inline-block}
+
+/* — Tighten gap when reactions follow text directly (no image) — */
+.card-body + .bar-stats {
+  margin-top: -1rem; /* adjust to taste: -1rem if you want tighter */
+}
+
+/* Reaction flyout */
+.like-wrap{position:relative;display:flex;flex:1}
+.like-wrap .action{flex:1;justify-content:center}
+.react-flyout{
+  position:absolute;bottom:100%;left:.5rem;transform:translateY(-6px);
+  background:#fff;border:1px solid var(--line);border-radius:999px;padding:.1rem .1rem;box-shadow:var(--shadow);
+  display:flex;gap:0;z-index:30;white-space:nowrap
+}
+.react-flyout button{
+  width:32px;height:32px;border-radius:999px;border:none;background:transparent;display:grid;place-items:center;font-size:18px;cursor:pointer;transition:transform .06s ease-out
+}
+.react-flyout button:hover{transform:scale(1.15)}
+
+/* ============= Page layout (3-column + skeleton rails) ============= */
+.page{
+  display:grid;
+  grid-template-columns: minmax(0,1fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,1fr);
+  gap: var(--gap);
+  width: 100%;
+  margin: 0;
+  padding-inline: 24px;
+  overflow: visible;
+  justify-content: center;
+}
+.page .container.feed{max-width: var(--feed-max) !important; width: 100% !important; padding: 0 !important; margin: 0 auto !important;}
+.page .feed > .card:first-child{margin-top:var(--feed-gap)}
+
+.rail{
+  position: sticky; align-self: start; top: var(--rail-gap);
+  height: calc(100vh - var(--rail-gap));
+  overflow: hidden; pointer-events: none; user-select: none;
+  filter: grayscale(1) blur(1px); opacity:.55; width:100%;
+}
+.rail > *:first-child{margin-top:0 !important}
+
+/* Skeleton UI */
+.ghost-card{background:#fff;border:1px solid var(--line);border-radius:1rem;box-shadow:var(--shadow);margin-bottom:12px}
+.ghost-card.banner{height:180px}
+.ghost-card.box{padding:.75rem}
+.ghost-profile{display:flex;align-items:center;gap:.6rem;padding:.6rem .75rem}
+.ghost-avatar{width:32px;height:32px;border-radius:999px;background:#e5e7eb;flex:0 0 auto}
+.ghost-avatar.sm{width:28px;height:28px}
+.ghost-avatar.xl{width:44px;height:44px}
+.ghost-avatar.online{position:relative}
+.ghost-avatar.online::after{content:"";position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border:2px solid #fff;border-radius:999px;background:#22c55e}
+.ghost-lines{flex:1}
+.ghost-line{height:8px;border-radius:4px;margin:.22rem 0;background-image:linear-gradient(90deg,#eef2f7 0%,#f7f9fc 50%,#eef2f7 100%);background-size:220px 100%;animation:ghostShimmer 2.8s ease-in-out infinite}
+.ghost-line.w-35{width:35%}.ghost-line.w-40{width:40%}.ghost-line.w-45{width:45%}.ghost-line.w-60{width:60%}.ghost-line.w-70{width:70%}
+.ghost-list{background:#fff;border:1px solid var(--line);border-radius:1rem;box-shadow:var(--shadow);padding:.5rem}
+.ghost-item{display:flex;align-items:center;gap:.6rem;padding:.45rem .5rem;border-radius:.5rem}
+.ghost-item + .ghost-item{margin-top:.1rem}
+.ghost-item.icon .ghost-icon{width:28px;height:28px;border-radius:8px;background:#e5e7eb;flex:0 0 auto}
+.ghost-title{width:120px;height:10px;border-radius:4px;background:#eef2f7;margin:8px 4px}
+.ghost-row{display:flex;align-items:center;gap:.6rem;padding:.35rem 0}
+@keyframes ghostShimmer{0%{background-position:-220px 0}100%{background-position:220px 0}}
+
+@media (max-width: 1200px){
+  .page{ grid-template-columns: 0 minmax(var(--feed-min), 1fr) minmax(0,1fr); }
+  .rail-left{ display:none; }
+}
+@media (max-width: 1024px){
+  .page{ grid-template-columns: minmax(0,1fr); padding-inline: 12px; }
+  .rail-right{ display:none; }
+  .page .feed{ padding: 12px; }
+}
+
+/* ============= Modals / Overlays ============== */
+/* Modal overlay should be above menus, tooltips, FAB, etc. */
+.modal-backdrop{
+  position: fixed;
+  isolation: isolate;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 11000;            /* was 100 */
+  background: rgba(0,0,0,0.45);
+}
+.modal{
+  position: relative;
+  z-index: 11001;
+  background:#fff;            /* ← restore */
+  border-radius:1rem;
+  box-shadow:var(--shadow);
+  width:calc(100vw - 48px);
+  max-width:680px;
+  max-height:90vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.modal.modal-wide{max-width:1120px;width:calc(100vw - 64px)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--line)}
+.modal-body{flex:1 1 auto;padding:1rem;overflow:auto;-webkit-overflow-scrolling:touch}
+.modal-footer{padding:10px 16px;border-top:1px solid var(--line);background:#fff;display:flex;gap:.5rem;justify-content:flex-end}
+.textarea{width:100%;border:1px solid var(--line);border-radius:.75rem;padding:.75rem;font-size:1rem;outline:none}
+.textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,119,242,.15)}
+.modal.modal-compact{max-width:460px;width:calc(100vw - 56px);text-align:center;padding:32px 28px}
+
+.spinner-ring{
+  width:42px;height:42px;margin:0 auto 14px;border-radius:50%;
+  border:3px solid #e5e7eb;border-top-color:#3b82f6; animation:spin .9s linear infinite
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Report acknowledgment overlay */
+.ack-overlay{
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  z-index: 2000; pointer-events: none; animation: ackInOut 2.8s ease forwards;
+}
+.ack-overlay-box{
+  pointer-events: auto; background:#fff; border:1px solid var(--line); border-radius:14px;
+  box-shadow: var(--shadow); padding: 20px 24px; min-width: 360px; max-width: 480px;
+  display:flex; align-items:center; gap:12px; text-align:left;
+}
+.ack-check{
+  width:28px;height:28px;border-radius:999px;display:grid;place-items:center;background:#16a34a;color:#fff;font-weight:700;flex:0 0 auto;
+}
+.ack-text{ color:#111827; font-size:.98rem; line-height:1.35; }
+@keyframes ackInOut{
+  0%{opacity:0;transform:translateY(8px)}
+  12%{opacity:1;transform:translateY(0)}
+  82%{opacity:1;transform:translateY(0)}
+  100%{opacity:0;transform:translateY(-6px)}
+}
+
+/* Toast */
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#000;color:#fff;padding:.5rem .75rem;border-radius:.5rem;font-size:.85rem;box-shadow:var(--shadow)}
+
+/* --- Admin & forms polish --- */
+.subtle { color: #6b7280; font-size: .9rem; }
+.btn.ghost.active { border-color: var(--line); background: rgba(37, 99, 235, .06); }
+.card h3 { font-weight: 700; font-size: 1.15rem; }
+
+.admin-shell{width:100%;max-width:1440px;margin:0 auto;padding:16px}
+@media (min-width:1536px){ .admin-shell{ max-width:1600px } }
+.admin-shell .card{width:100%}
+
+.admin-grid{grid-template-columns:minmax(0,1fr)}
+@media (min-width:1024px){
+  .admin-grid{grid-template-columns:1fr 1fr; align-items:start}
+}
+
+/* Editor panels */
+.editor-grid { display:grid; gap:16px; grid-template-columns: 1fr 480px; }
+@media (max-width: 980px) { .editor-grid { grid-template-columns: 1fr; } }
+.editor-form { display:grid; gap:.75rem; }
+.section-title { margin:.25rem 0; font-size:.95rem; font-weight:700; color:#374151; }
+.fieldset { border:1px solid var(--line); border-radius:.5rem; padding:.75rem; display:grid; gap:.75rem; }
+.grid-2 { display:grid; gap:.5rem; grid-template-columns: 1fr 1fr; }
+.grid-3 { display:grid; gap:.5rem; grid-template-columns: repeat(3, 1fr); }
+@media (max-width:640px){ .grid-2, .grid-3 { grid-template-columns:1fr; } }
+.avatar-preview { display:flex; align-items:center; justify-content:flex-end; }
+
+/* Reaction pills (admin) */
+.rx-pills { display:flex; flex-wrap:wrap; gap:.5rem; }
+.pill { display:inline-flex; align-items:center; gap:.35rem; border:1px solid var(--line); border-radius:.5rem; padding:.25rem .55rem; cursor:pointer; user-select:none; }
+.pill input { display:none; }
+.pill .emoji { font-size:1rem; }
+.pill.active { background:#f3f4f6; border-color:#e5e7eb; }
+
+/* Admin preview */
+.editor-preview { position:sticky; top:16px; align-self:start; overflow:hidden }
+.preview-head { font-size:.85rem; color:#6b7280; margin-bottom:.5rem; padding-left:.25rem; }
+.editor-preview .card { box-shadow:none; border:1px solid var(--line); }
+.preview-zoom { transform: scale(.9); transform-origin: top left; }
+
+/* FAB — ensure always clickable above overlays/top rail */
+/* === Admin FAB (subtle overlay style) === */
+.admin-fab-wrap {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 2000;
+  pointer-events: none;              /* wrapper is inert */
+}
+.admin-fab-wrap .btn.admin-fab {
+  pointer-events: auto;              /* button remains clickable */
+}
+
+.btn.admin-fab {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: #6b7280;                    /* gear icon color */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+
+  /* barely visible by default */
+  opacity: 0.06;
+  transition: opacity .25s ease, transform .25s ease, box-shadow .25s ease;
+}
+
+/* Overlay circle — but behind the icon */
+.btn.admin-fab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255,255,255,.35);
+  box-shadow:
+    0 0 0 1px rgba(17,24,39,.08),
+    inset 0 0 0 1px rgba(255,255,255,.25);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: .18;
+  transition: opacity .25s ease, box-shadow .25s ease;
+  z-index: -1; /* <-- put it behind the gear icon */
+}
+
+/* Hover/focus: show everything clearly */
+.btn.admin-fab:hover,
+.btn.admin-fab:focus-visible {
+  opacity: 1;
+  transform: scale(1.05);
+}
+.btn.admin-fab:hover::before,
+.btn.admin-fab:focus-visible::before {
+  background: #fff;
+  opacity: 1;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 6px 18px rgba(0,0,0,.08);
+}
+/* --- Inputs with inline icon button (eye) --- */
+.input-wrap { position:relative; display:flex; align-items:center; }
+.input-wrap .input { width:100%; padding-right:2.5rem; }
+.input-icon-btn {
+  position:absolute; right:.5rem; top:50%; transform:translateY(-50%);
+  padding:.25rem; background:none; border:none; cursor:pointer; color:#6b7280; transition:color .2s ease;
+}
+.input-icon-btn:hover { color:#111827; }
+
+/* Hoverable metrics (comments / shares) */
+.metric.hoverable { position: relative; }
+.names-tooltip {
+  position: absolute;
+  z-index: 10000;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: 280px;
+  background: #fff;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 10px;
+  padding: .6rem .7rem;
+  box-shadow: 0 6px 24px rgba(0,0,0,.08);
+}
+.names-title { font-weight: 600; font-size: .9rem; margin-bottom: .35rem; color: #111827; }
+.names-list { margin: 0; padding-left: 1rem; line-height: 1.35; color: #374151; }
+.names-list li { margin: 0; }
+.names-more, .names-empty { margin-top: .3rem; color: #6b7280; font-size: .9rem; }
+
+.hoverable-metric{ cursor:pointer; }
+.hoverable-metric[aria-expanded="true"]{ cursor:default; text-decoration:underline; }
+
+/* ===== Placeholder top rail (aligned to page grid) ===== */
+.top-rail-placeholder{
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background:#fff;
+  border-bottom:1px solid var(--line);
+}
+.top-rail-placeholder .trp-inner{
+  width: 100%;
+  display:grid;
+  grid-template-columns: minmax(0,1fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,1fr);
+  align-items:center;
+  height:52px;
+  padding: 0 24px;
+}
+/* left / center / right map to the grid columns */
+.trp-left{ grid-column:1; justify-self:start; display:flex; align-items:center; gap:12px; }
+.trp-center{ grid-column:2; justify-self:center; display:flex; gap:24px; }
+.trp-right{ grid-column:3; justify-self:end; display:flex; align-items:center; gap:10px; }
+/* placeholders */
+.trp-logo{ width:32px; height:32px; border-radius:999px; background:#e5e7eb; }
+.trp-search{ width:160px; height:28px; border-radius:999px; background:#f0f2f5; }
+.trp-tab{ width:40px; height:28px; border-radius:6px; background:#f3f4f6; }
+.trp-btn{ width:32px; height:32px; border-radius:999px; background:#e5e7eb; }
+.trp-avatar{ width:32px; height:32px; border-radius:999px; background:#d1d5db; }
+
+/* Keep feed + rails aligned under the top rail */
+.page { padding-top: var(--feed-gap); }
+.page .feed > .card:first-child { margin-top: 0 !important; }
+
+/* === Top bars: Feed vs Admin (place at END of CSS) === */
+
+/* In ADMIN: hide the feed top rail, show the legacy nav */
+body.admin-mode .top-rail-placeholder { display: none !important; }
+body.admin-mode .nav { display: block !important; }
+
+/* In FEED (not admin): hide the legacy nav, show the feed top rail */
+body:not(.admin-mode) .nav { display: none !important; }
+body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
+
+/* Keep spacing consistent regardless of which bar is showing */
+.page { padding-top: var(--feed-gap); }
+
+/* ================== Admin Login (matches your AdminLogin JSX) ================== */
+
+/* Full-screen center with a soft, neutral gradient (subtle) */
+.admin-login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(1200px 600px at 10% -20%, rgba(37, 99, 235, 0.10), transparent 60%),
+    radial-gradient(1200px 600px at 110% 120%, rgba(16, 185, 129, 0.10), transparent 60%),
+    linear-gradient(#f8fafc, #f3f4f6);
+}
+
+/* Card overrides specifically for the login box */
+.admin-login-wrap .card.admin-login-card {
+  width: min(420px, 92vw);
+  padding: 16px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  /* Stronger, clean shadow for a dialog feel */
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+}
+
+/* Title + subtitle spacing */
+.admin-login-wrap .card.admin-login-card h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.admin-login-wrap .card.admin-login-card .subtle {
+  font-size: .95rem;
+  color: #6b7280;
+}
+
+/* Label spacing */
+.admin-login-wrap .card.admin-login-card label {
+  font-weight: 600;
+  display: grid;
+  gap: .4rem;
+  margin-top: 1rem;
+}
+
+/* Password input with eye toggle */
+.input-with-toggle {
+  position: relative;
+}
+.input-with-toggle .input {
+  width: 100%;
+  padding-right: 2.25rem; /* room for the eye button */
+}
+.eye-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  line-height: 0;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color .2s ease;
+}
+.eye-btn:hover { color: #374151; }
+
+/* Error message look (uses inline crimson color from JSX as fallback) */
+.admin-login-wrap .card.admin-login-card .error,
+.admin-login-wrap .card.admin-login-card [style*="color: crimson"] {
+  background: #fef2f2;
+  color: #991b1b !important;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: .5rem .6rem;
+  font-size: .9rem;
+}
+
+/* Full-width primary button already in JSX; polish hover via existing vars */
+.admin-login-wrap .card.admin-login-card .btn.primary {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+/* Optional: hide feed top rail, show legacy nav while on the login page */
+body:has(.admin-login-wrap) .top-rail-placeholder { display: none !important; }
+body:has(.admin-login-wrap) .nav { display: block !important; }
+
+.video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;   /* the slot shape – shows pillarboxing for portrait */
+  background: #000;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.video-el {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;            /* important: both dimensions set */
+  object-fit: contain;     /* no crop; black bars left/right for vertical video */
+  display: block;
+  background: #000;
+}
+.video-center-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 66px;
+  height: 66px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform .08s ease, background .12s ease;
+}
+.video-center-btn:hover { background: rgba(0,0,0,.7); transform: scale(1.03); }
+.video-center-btn:active { transform: scale(0.98); }
+.video-mute-btn {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.video-mute-btn:hover { background: rgba(0,0,0,.7); }
+
+/* NEW */
+.video-wrap {
+  position: relative;
+  width: 100%;
+  background: #000;
+  overflow: hidden;
+  border-radius: 8px;
+  aspect-ratio: 16 / 9;                  /* fixed box; no layout jumps */
+  max-height: min(60vh, 520px);          /* clamp overall height */
+}
+
+.video-el {
+  position: absolute;                     /* fill the box */
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;                    /* pillarbox for vertical videos */
+  background: #000;
+}
+
+/* Drive embed should also fill the box */
+.video-wrap.drive-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #000;
+}
+
+/* Make sure the center play button really centers inside the box */
+.video-center-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  z-index: 2;                             /* over the video */
+}
+.video-mute-btn { z-index: 2; }
+
+/* kill rounded corners on videos */
+.video-wrap,
+.video-el {
+  border-radius: 0 !important;
+}
+
+/* FB-like video control bar */
+.fb-controls{
+  position:absolute;
+  left:0; right:0; bottom:0;
+  height:40px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:0 8px;
+  /* subtle dark gradient like FB */
+  background: linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0));
+  opacity:0;
+  transition: opacity .15s ease;
+  pointer-events:none;               /* bar is inert unless visible */
+}
+.video-wrap:hover .fb-controls{ opacity:1; pointer-events:auto; }
+
+.fb-btn {
+  background: none;        /* remove dark background */
+  box-shadow: none;        /* remove 3D effect */
+  border: none;            /* no borders */
+  color: white;            /* icons/text show as flat white */
+  padding: 4px;            /* small click/tap area */
+  border-radius: 0;        /* remove pill/circle */
+}
+
+.fb-btn:hover {
+  background: rgba(255,255,255,0.1); /* optional subtle hover highlight */
+}
+
+.fb-spacer{ flex:1; }
+
+/* settings popover */
+.fb-settings{ position:relative; }
+.fb-settings-menu{
+  position:absolute;
+  bottom: 36px;            /* float above the bar */
+  right: 0;
+  background:#111827;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;
+  padding:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.25);
+  min-width:120px;
+  z-index:5;
+}
+.fb-settings-item{
+  width:100%;
+  text-align:left;
+  border:0;
+  background:transparent;
+  color:#fff;
+  padding:6px 8px;
+  border-radius:6px;
+  cursor:pointer;
+  font-size:13px;
+}
+.fb-settings-item:hover{ background: rgba(255,255,255,.08); }
+.fb-settings-item.active{ background: rgba(255,255,255,.16); }
+
+
+
+/* --- Volume popover container (no dark box) --- */
+.fb-vol { position: relative; pointer-events: auto; }
+.fb-vol > button { position: relative; z-index: 10; }
+
+.fb-vol-pop{
+  position:absolute; bottom: calc(100% + 10px); left:50%;
+  transform: translateX(-50%);
+  background: transparent; border:0; padding:0; box-shadow:none;
+  z-index: 9; pointer-events:auto;
+  opacity:1; transition: opacity .12s ease, transform .12s ease;
+}
+.fb-vol-pop.hide{ opacity:0; transform:translateX(-50%) translateY(6px) scale(.98); pointer-events:none; }
+
+/* ---- Volume sizes & colors ---- */
+:root{
+  --vol-len: 100px;
+  --vol-track: 4px;
+  --vol-thumb: 6px;
+  --vol-pad: 6px;
+
+  /* Defaults now match the timeline: grey track + white fill */
+  --vol-base: rgba(255,255,255,.25);  /* unfilled */
+  --vol-fill: #fff;                   /* filled */
+  --vol-val: 100;
+}
+
+/* Holder for visual + input */
+.fb-vol-box{
+  position: relative;
+  width: 28px;
+  height: calc(var(--vol-len) + var(--vol-pad) * 2);
+  display: grid;
+  place-items: center;
+}
+
+/* Perfectly rounded pill behind the input (padded) */
+.fb-vol-visual{
+  position: absolute;
+  top: var(--vol-pad);
+  bottom: var(--vol-pad);
+  left: 50%;
+  /* center without sub-pixel translate */
+  margin-left: calc(var(--vol-track) / -2);
+  width: var(--vol-track);
+
+  /* padding creates an inner gutter so the fill never reaches the outer edge */
+  padding: 2px;
+
+  border-radius: 999px;
+  background: var(--vol-base);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Fill grows bottom-up, inset to stay fully inside the pill */
+.fb-vol-visual::after{
+  content: "";
+  position: absolute;
+  left: 2px;                /* match the padding above */
+  right: 2px;
+  bottom: 2px;
+  height: calc(var(--vol-val) * 1%);
+  background: var(--vol-fill);
+  border-radius: 999px;
+  will-change: height;
+}
+
+/* Native slider on top: transparent track; keep only thumb */
+.fb-vol-slider{
+  position: relative;
+  z-index: 1;
+  -webkit-appearance: slider-vertical !important;
+  appearance: none;
+  width: 28px;
+  height: var(--vol-len);
+  background: transparent;
+  padding: 0; border: 0; outline: none;
+  cursor: pointer;
+  accent-color: transparent;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.fb-vol-slider::-webkit-slider-runnable-track{ background: transparent; border: 0; height: 100%; }
+.fb-vol-slider::-moz-range-track{ background: transparent; border: 0; }
+.fb-vol-slider::-moz-range-progress{ background: transparent !important; }
+
+.fb-vol-slider::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--vol-thumb);
+  height: var(--vol-thumb);
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  margin: 0;
+}
+.fb-vol-slider::-moz-range-thumb{
+  width: var(--vol-thumb);
+  height: var(--vol-thumb);
+  border-radius: 50%;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+  margin: 0;
+}
+
+/* Firefox fallback (rotate) */
+@supports not (-webkit-appearance: slider-vertical) {
+  .fb-vol-slider{
+    -webkit-appearance: none; appearance: none;
+    width: calc(var(--vol-len) + var(--vol-thumb));
+    height: 28px;
+    transform: rotate(-90deg);
+    transform-origin: center;
+    background: transparent;
+  }
+}
+
+/* Focus ring */
+.fb-vol-slider:focus-visible{
+  outline: 2px solid rgba(255,255,255,.6);
+  outline-offset: 2px;
+}
+
+/* --- Inline controls row (time | progress | mute/settings/fs) --- */
+.fb-ctrls{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  pointer-events:auto; /* make the row interactive */
+}
+.fb-ctrl-left{ display:flex; align-items:center; gap:6px; }
+.fb-ctrl-right{ display:flex; align-items:center; gap:6px; }
+
+/* Seek/timeline that sits inline between the left and right clusters */
+.fb-progress-inline{
+  flex:1;
+  position:relative;
+  height:6px;
+  border-radius:999px;
+  background: rgba(255,255,255,.25); /* same as your top progress track */
+  cursor:pointer;
+  overflow:hidden;
+}
+
+/* ===== Admin Login: segmented toggle buttons - equal size ===== */
+.admin-login-wrap .admin-login-card .segmented {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.admin-login-wrap .admin-login-card .segmented .btn {
+  flex: 1 1 0;                  /* equal widths */
+  display: flex;                /* center text vertically */
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;          /* prevent wrapping → consistent height */
+  height: 40px;                 /* fixed equal height */
+  padding: 0 .75rem;            /* consistent horizontal padding */
+  line-height: 1;               /* remove extra vertical space variance */
+}
+
+/* ===== Admin Login: label → field spacing a bit larger ===== */
+.admin-login-wrap .card.admin-login-card label {
+  display: grid;
+  gap: .6rem;                   /* was .4rem — gives a touch more space */
+  margin-top: 1rem;
+}
+
+/* Segmented toggle: lock into one row, equal size, perfectly aligned */
+.admin-login-wrap .admin-login-card .segmented{
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;  /* two equal columns */
+  gap: 8px;
+  align-items: stretch;            /* same vertical alignment */
+}
+
+.admin-login-wrap .admin-login-card .segmented .btn{
+  width: 100%;
+  height: 42px;                    /* same height for both */
+  margin: 0;                       /* kill any stray margins */
+  padding: 0 .75rem;               /* horizontal only */
+  line-height: 1;                  /* consistent vertical centering */
+  display: flex; align-items: center; justify-content: center;
+  white-space: nowrap;
+}
+
+/* --- Feed table row highlighting --- */
+.feed-row {
+  transition: background-color .15s ease, box-shadow .15s ease;
+}
+
+.feed-row:hover {
+  background: var(--row-hover, #f8fafc);
+}
+
+/* currently loaded feed (the one in the editor) */
+.feed-row.is-loaded {
+  background: var(--row-loaded-bg, #eef6ff);
+  box-shadow: inset 0 0 0 2px var(--accent, #2563eb);
+}
+
+/* backend default feed (when not the loaded one) */
+.feed-row.is-default:not(.is-loaded) {
+  background: var(--row-default-bg, #f0fdf4);
+  box-shadow: inset 0 0 0 1px #10b981;
+}
+
+/* tiny state dot in the first column */
+.feed-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--line);
+  vertical-align: middle;
+}
+
+.feed-row.is-default .feed-dot { background: #10b981; } /* green for default */
+.feed-row.is-loaded  .feed-dot { background: #2563eb; } /* blue for loaded */
+
+/* header chip showing which feed is being edited */
+.editing-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--blue, #2563eb);
+  color: #fff;
+  line-height: 1.2;
+}
+
+/* === Admin session warning banner === */
+.admin-banner {
+  /* base “card” look, but slim */
+  border: 1px solid var(--line);
+  background: #fff7ed;           /* warm amber-ish */
+  color: #7c2d12;
+  border-radius: .75rem;
+  box-shadow: var(--shadow);
+
+  /* the padding you asked about */
+  padding: .6rem .8rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: 1rem;            /* space below the bar */
+}
+.admin-banner .title {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  font-weight: 700;
+}
+.admin-banner .title .subtle {
+  font-size: .9rem;
+  color: #92400e;                 /* slightly darker than body text */
+}
+.admin-banner .actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+/* === Admin expired-session overlay === */
+.admin-expired-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,.7);
+  display: grid;
+  place-items: center;
+  z-index: 9999;                 /* above menus/tooltips */
+  padding: 16px;                 /* small gutter on mobile */
+}
+.admin-expired-dialog {
+  width: min(520px, 92vw);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+}
+.admin-expired-dialog h3 { margin: 0 0 .5rem 0; }
+.admin-expired-dialog .subtle { margin: 0 0 .75rem 0; }
+.admin-expired-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
+}
+
+/* ===== DEBUG: show viewport outline (only when debugvp=1) ===== */
+body.debug-vp::before {
+  content: "Viewport boundary";
+  position: fixed;
+  top: var(--vp-top, 0px);
+  left: 0;
+  right: 0;
+  bottom: var(--vp-bottom, 0px);
+  pointer-events: none;
+  border: 3px dashed rgba(255, 0, 0, 0.5);
+  z-index: 9999;
+  font-size: 12px;
+  color: red;
+  background: rgba(255,0,0,0.05);
+}
+
+/* ===== DEBUG: per-post visibility ===== */
+.debug-vp [data-post-id] { position: relative; }
+
+.debug-vp [data-post-id].__vp-in {
+  outline: 3px solid rgba(34,197,94,.9);
+  background: rgba(34,197,94,.06);
+}
+
+.debug-vp [data-post-id].__vp-out {
+  outline: 3px solid rgba(239,68,68,.7);
+  background: rgba(239,68,68,.04);
+}
+
+.debug-vp [data-post-id]::after {
+  content: attr(data-vis) " · " attr(data-state) " · th=" attr(data-th);
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  font: 600 11px/1 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: #111;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Smooth expand/collapse for section bodies */
+.section-collapse{
+  display: grid;
+  grid-template-rows: 1fr;          /* open = full height */
+  transition: grid-template-rows .25s ease, opacity .25s ease;
+  will-change: grid-template-rows, opacity;
+  overflow: hidden;
+}
+.section-collapse.is-collapsed{
+  grid-template-rows: 0fr;          /* closed = 0 height */
+  opacity: 0.0;
+}
+.section-collapse > .section-collapse-inner{
+  min-height: 0;                     /* allow shrinking to 0 */
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .section-collapse{ transition: none; }
+}
+
+/* Section header host must be relative */
+.card > :first-child { position: relative; }
+
+/* add a bit of right padding so the chev doesn't overlap header content */
+.card > :first-child { padding-right: 44px; }
+
+
+/* Smooth section expand/collapse */
+.section-collapse{
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .22s ease, opacity .22s ease;
+}
+.section-collapse:not(.is-collapsed){
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.section-collapse-inner{ overflow: hidden; }
+
+/* Chevron button: stable hit area + rotation */
+.section-chev{
+  width:32px; height:32px; min-width:32px;
+  display:grid; place-items:center;
+  padding:0; border-radius:8px;
+}
+.section-chev svg{ width:16px; height:16px; transition: transform .18s ease; }
+.section-chev[aria-expanded="true"] svg{ transform: rotate(180deg); }
+
+
+/* Touch-only tweaks so iOS/Android don't select "Like" text */
+@media (hover: none) and (pointer: coarse) {
+  .actions,
+  .like-wrap,
+  .like-wrap .action,
+  .like-wrap .action button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* faster taps, prevent double-tap zoom */
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* ensure flyout is touch-friendly above other content */
+  .react-flyout { z-index: 1000; }
+}
+
+/* ---- Bottom sheet helpers (global) ---- */
+:root {
+  --bs-radius: 16px;
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  .bs-backdrop,
+  .bs-panel {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* iOS/Android safe-area padding */
+.bs-panel {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Prevent any horizontal scroll */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  touch-action: pan-y;            /* disable horizontal swipes */
+}
+
+/* Clamp layout to viewport on mobile */
+@media (max-width: 768px) {
+  .page { max-width: 100vw; overflow-x: hidden; }
+
+  /* Hide rails so they don't push width */
+  .rail { display: none !important; }
+
+  /* Main column is full width */
+  .container.feed {
+    width: 100%;
+    max-width: 100vw;
+    padding: 8px;
+    margin: 0 auto;
+  }
+
+  /* Cards must never exceed viewport */
+  .post-card {
+    width: 100%;
+    max-width: 100vw;
+    margin: 8px 0;
+    overflow: hidden;
+  }
+
+  /* Media must scale down */
+  .video-wrap,
+  .drive-embed,
+  .image-btn,
+  .image-btn img,
+  .video-el {
+    display: block;
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: auto;
+  }
+
+  /* Long names/text/links shouldn't force width */
+  .card-head .name-row,
+  .card-head .meta,
+  .card-body,
+  .link-row {
+    min-width: 0;            /* important for flex items */
+    overflow: hidden;
+  }
+  .card-head .name { 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-head .meta { flex-wrap: wrap; }
+  .link-row .link { word-break: break-word; }
+}
+
+
+/* --- MOBILE ZOOM/FIT FIXES (paste at end) --- */
+
+/* 1) Kill the hard min width that forces oversize layouts */
+:root { --feed-min: 0px !important; }
+
+/* 2) Clamp the center column to the viewport width */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, min(100%, var(--feed-max)))
+    minmax(0, 1fr) !important;
+}
+
+/* Top rail uses the same grid—clamp it too */
+.top-rail-placeholder .trp-inner{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, min(100%, var(--feed-max)))
+    minmax(0, 1fr) !important;
+}
+
+/* 3) Keep the 1200px breakpoint from re-introducing a min */
+@media (max-width: 1200px){
+  .page{ grid-template-columns: 0 minmax(0, 1fr) minmax(0, 1fr) !important; }
+}
+
+/* 4) iOS text autosize can make things feel “zoomed” */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
+
+
+/* --- FIX: restore center track + remove hard min that caused zoom --- */
+
+/* 0) Make the feed min width flexible on phones */
+:root { --feed-min: 0px !important; }
+
+/* 1) Restore the 3-col grid formula so the center shows up */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+}
+
+/* 2) Top rail uses the same center track */
+.top-rail-placeholder .trp-inner{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+}
+
+/* 3) Keep the breakpoint simple (no hidden center) */
+@media (max-width: 1200px){
+  .page{ grid-template-columns: 0 minmax(0, 1fr) minmax(0, 1fr) !important; }
+}
+
+/* 4) Guardrails so content can shrink inside tracks */
+.page, .feed, .container.feed,
+.card, .card-head, .card-body, .link-row { min-width: 0 !important; }
+
+/* 5) iOS auto-text zoom can feel like “zoomed in” */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
+
+
+/* --- HARDEN LAYOUT MAPPING --- */
+/* Make sure we always have three tracks on desktop */
+.page{
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(var(--feed-min), var(--feed-max))
+    minmax(0, 1fr) !important;
+  grid-auto-flow: row; /* stack children vertically within their column */
+}
+
+/* Explicitly map children to columns */
+.rail-left{ grid-column: 1 !important; }
+.container.feed, .feed{ grid-column: 2 !important; }  /* your main feed wrapper */
+.rail-right{ grid-column: 3 !important; }
+
+/* If you don’t render a left rail, still keep the feed visible */
+.page > .container.feed:first-child,
+.page > .feed:first-child{
+  grid-column: 2 !important;
+}
+
+/* Prevent “zoomed” feeling from a too-large min on phones */
+@media (max-width: 700px){
+  :root{
+    --feed-min: 0px !important;
+    --feed-max: 100vw !important;
+  }
+  .page{
+    grid-template-columns: 1fr !important;
+    padding-inline: 0 !important;
+  }
+  /* everything stacks in one column */
+  .rail-left,
+  .rail-right,
+  .container.feed,
+  .feed{ grid-column: 1 !important; }
+}
+
+/* Make sure the feed can actually shrink inside the track */
+.page, .feed, .container.feed,
+.card, .card-head, .card-body, .link-row { min-width: 0 !important; }
+
+/* Guard against accidental invisibility */
+.container.feed, .feed{ display:block !important; opacity:1 !important; visibility:visible !important; }
+
+/* iOS text auto-zoom sometimes looks like an initial “zoomed in” feed */
+html{
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+@supports (-webkit-touch-callout: none){
+  html{ -webkit-text-size-adjust: 100% !important; }
+}
+
+
+/* --- iPhone fix: let the feed shrink on small screens --- */
+@media (max-width: 820px){
+  :root{
+    --feed-min: 0 !important;                 /* kill the 640px minimum */
+    --feed-max: min(700px, 100vw) !important; /* keep your cap, but allow <= viewport */
+  }
+
+  /* One-column grid so nothing forces horizontal scaling */
+  .page{
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding-inline: 12px !important;          /* small gutter; no overflow */
+  }
+
+  /* Make the top rail match the single-column layout */
+  .top-rail-placeholder .trp-inner{
+    grid-template-columns: 1fr !important;
+    padding: 0 12px !important;
+  }
+
+  /* Ensure the feed column can actually shrink */
+  .container.feed{
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+  }
+
+  /* Safety: nothing inside should insist on extra width */
+  .card, .card-head, .card-body, .link-row{ min-width: 0 !important; }
+}
+
+/* Also stop iOS from doing any “helpful” zooming behavior */
+html{ -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+input, select, textarea{ font-size:16px; } /* prevent focus-zoom later */
+
+
+/* iOS: stop focus-zoom on the participant overlay */
+@supports (-webkit-touch-callout: none) {
+  .participant-overlay input,
+  .participant-overlay .input,
+  .participant-overlay select,
+  .participant-overlay textarea {
+    font-size: 16px !important;
+    line-height: 1.2;
+    min-height: 40px;          /* comfy tap target */
+  }
+}
+
+/* Also stop iOS auto-resizing text weirdness */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+
+.note-title-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.note-title-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+}
+
+.note-title-btn:hover {
+  text-decoration: underline;
+}
+
+.note-title-caret {
+  font-size: 0.9em;
+  opacity: 0.7;
+}
+
+.note-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  width: 320px;
+  background: #fff;
+  color: #111;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  padding: 12px;
+}
+
+.note-popover-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.note-popover-label {
+  opacity: 0.75;
+}
+
+.note-popover-value {
+  font-weight: 600;
+}
+
+.note-popover-divider {
+  height: 1px;
+  background: rgba(0,0,0,0.10);
+  margin: 10px 0;
+}
+
+.note-popover-help {
+  font-size: 0.9em;
+  line-height: 1.35;
+  opacity: 0.9;
+}
+
+/* Optional: small arrow */
+.note-popover::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 16px;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-left: 1px solid rgba(0,0,0,0.12);
+  border-top: 1px solid rgba(0,0,0,0.12);
+  transform: rotate(45deg);
+}
+
+
+/* ======================================================
+   Facebook comment/share modal + sheet enhancements
+   ====================================================== */
+
+/* Desktop comment modal layout */
+.fb-comment-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(380px, 1fr);
+  width: min(980px, calc(100vw - 48px));
+  height: min(86vh, 760px);
+  background: #fff;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.fb-comment-left {
+  background: #f9fafb;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.fb-comment-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+}
+
+.fb-comment-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fb-comment-compose {
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+/* Small post preview inside desktop comment modal */
+.fb-post-preview {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.fb-post-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  object-fit: cover;
+  background: #f3f4f6;
+}
+
+/* Desktop share picker */
+.fb-share-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  justify-items: center;
+  overflow-y: auto;
+}
+
+.fb-share-friend {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.fb-share-friend-name {
+  font-size: 13px;
+  color: #111;
+  text-align: center;
+  margin-top: 6px;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-share-avatar {
+  border-radius: 50%;
+  transition: border 0.2s ease;
+}
+
+.fb-share-avatar.is-selected {
+  border: 2px solid var(--blue);
+}
+
+.fb-share-check {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 0 0 3px #fff;
+}
+
+/* Animated message section for share modal/sheet */
+.fb-share-message-wrap {
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.fb-share-message-inner {
+  transition: transform 0.35s cubic-bezier(0.25,1,0.5,1);
+}
+
+/* Mobile comments sheet: make body + composer work like IG */
+.fb-comment-sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 60vh;
+  max-height: 86vh;
+}
+
+.fb-comment-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fb-comment-sheet-compose {
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+/* Slightly nicer modal close button hit area */
+.fb-modal-close {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.fb-modal-close:hover {
+  background: #f3f4f6;
+}
+
+/* Mobile: stack safely */
+@media (max-width: 820px) {
+  .fb-comment-modal-grid {
+    grid-template-columns: 1fr;
+    width: min(680px, calc(100vw - 24px));
+    height: min(88vh, 760px);
+  }
+
+  .fb-comment-left {
+    display: none;
+  }
+
+  .fb-share-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Small screens */
+@media (max-width: 520px) {
+  .fb-share-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+}
+
+/* =========================
+   Desktop comment modal unification
+   ========================= */
+
+.fb-comment-modal-body{
+  background: #fff;                /* make the whole modal interior white */
+}
+
+.fb-comment-modal-inner{
+  padding: 0;
+}
+
+.fb-comment-modal-post-wrap{
+  background: #fff;
+  border-radius: 0;                /* no separate rounded card look */
+  box-shadow: none;                /* remove second-box shadow */
+  overflow: hidden;
+}
+
+.fb-modal-post-shell{
+  margin: 0;
+  background: #fff;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+/* Kill card styling inside the desktop comment modal */
+.fb-modal-post-shell.card,
+.fb-modal-post-shell.post-card,
+.fb-modal-post-shell .card,
+.fb-modal-post-shell .post-card{
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 0 !important;
+  background: #fff !important;
+}
+
+/* Make the comments feel like part of the same modal, not a second card */
+.fb-comment-thread{
+  background: #fff;
+  margin-top: 0;
+  padding: 14px 16px 10px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Optional: slightly tighter comments heading */
+.fb-comment-thread > .fb-comment-thread-title{
+  margin-bottom: 12px;
+}
+
+/* Participant comment row */
+.fb-comment-item{
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fb-comment-bubble{
+  background: transparent;         /* no bubble/card effect */
+  padding: 0;
+  border-radius: 0;
+}
+
+.fb-comment-author{
+  font-weight: 700;
+  font-size: 14px;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+.fb-comment-text{
+  font-size: 14px;
+  line-height: 1.45;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Composer stays attached visually */
+.fb-comment-composer{
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+/* Make modal clear the sticky top rail a bit more comfortably */
+.fb-desktop-overlay-offset{
+  padding-top: 68px;
+}
+
+
+/* ======================================================
+   Facebook mobile feed: full-width with sane layering
+   ====================================================== */
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    background: #fff !important;
+  }
+
+  .page {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    background: #fff !important;
+  }
+
+  .rail,
+  .rail-left,
+  .rail-right {
+    display: none !important;
+  }
+
+  .container.feed,
+  .page .container.feed,
+  .page .feed,
+  main.container.feed {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .card,
+  .post-card,
+  .card.post-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 0 !important;
+  }
+
+  .page .feed > .card:first-child,
+  .container.feed > .card:first-child {
+    margin-top: 0 !important;
+  }
+
+  .page .feed > .card + .card,
+  .container.feed > .card + .card {
+    margin-top: 0 !important;
+  }
+
+  .card-head,
+  .card-body,
+  .footer,
+  .bar-stats,
+  .info-bar,
+  .note-bar {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .card-head,
+  .card-body,
+  .bar-stats,
+  .footer,
+  .actions,
+  .like-wrap {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  /* Keep normal post layers low */
+  .card-head,
+  .card-body,
+  .footer,
+  .actions,
+  .like-wrap,
+  .action,
+  .action.active,
+  .menu-wrap,
+  .dots {
+    z-index: auto !important;
+  }
+
+  /* Reaction summary must stay underneath the flyout */
+  .bar-stats,
+  .rx-stack,
+  .rx-stack .rx,
+  .rx-count {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* Only the flyout itself should be high */
+  .react-flyout {
+    position: absolute;
+    bottom: 100%;
+    left: 0.5rem;
+    transform: translateY(-6px);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.1rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    gap: 0;
+    white-space: nowrap;
+    z-index: 25000 !important;
+  }
+
+  .image-btn,
+  .image-btn img,
+  .video-wrap,
+  .video-el,
+  .drive-embed,
+  .video-wrap iframe {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+  }
+
+  .end,
+  .submit-wrap {
+    margin-top: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .top-rail-placeholder {
+    display: block !important;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .top-rail-placeholder .trp-inner {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    height: 52px !important;
+    padding: 0 12px !important;
+    width: 100% !important;
+  }
+
+  .trp-left,
+  .trp-center,
+  .trp-right {
+    grid-column: auto !important;
+    justify-self: auto !important;
+    min-width: 0 !important;
+  }
+
+  .trp-left {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+  }
+
+  .trp-center {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .trp-right {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    flex-shrink: 0 !important;
+  }
+
+  .trp-logo,
+  .trp-btn,
+  .trp-avatar {
+    flex: 0 0 auto !important;
+  }
+
+  .trp-search {
+    width: 100% !important;
+    max-width: 140px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+
+  .trp-tab {
+    display: none !important;
+  }
+}
+
+
+/* iOS: stop focus-zoom for mobile comment/share sheets */
+@supports (-webkit-touch-callout: none) {
+  .fb-comment-sheet input,
+  .fb-comment-sheet textarea,
+  .fb-share-message-wrap input,
+  .fb-share-message-wrap textarea {
+    font-size: 16px !important;
+    line-height: 1.3;
+    min-height: 40px;
+  }
+}
+
+
+@supports (-webkit-touch-callout: none) {
+  .fb-mobile-input {
+    font-size: 16px !important;
+    line-height: 1.3;
+    min-height: 40px;
+  }
+}
+
+/* =========================
+   Admin section layout
+   ========================== */
+
+.admin-section {
+  padding: 1rem;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: .5rem;
+}
+
+.admin-section-title-wrap {
+  min-width: 0;
+}
+
+.admin-section-title-wrap h3 {
+  margin: 0;
+}
+
+.admin-section-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.admin-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.admin-section-subtitle {
+  margin-top: 4px;
+}
+
+/* ==========================================================================
+   FACEBOOK SURVEY THEME — CLEAN VERSION
+   Matches ui-survey.jsx / ui-survey-mobile.jsx selectors without duplicating
+   the full Instagram stylesheet.
+   ========================================================================== */
 
 :root{
-  --bg:#ffffff;
-  --card:#ffffff;
-  --text:#0f1111;
-  --muted:#565959;
-  --line:#d5d9d9;
+  --survey-blue: var(--blue, #1877f2);
+  --survey-blue-dark: var(--blue-ink, #0b5cc4);
+  --survey-blue-soft: #e7f3ff;
+  --survey-bg: var(--bg, #f0f2f5);
+  --survey-card: var(--card, #fff);
+  --survey-line: var(--line, #e5e7eb);
+  --survey-text: var(--text, #111827);
+  --survey-muted: var(--muted, #6b7280);
+}
+
+/* Full-page / survey-only mode */
+body.survey-mode .top-rail-placeholder,
+body.survey-mode .ig-topbar,
+body.survey-mode .rail,
+body.survey-mode .rail-left,
+body.survey-mode .rail-right{
+  display:none !important;
+}
+
+.survey-page{
+  min-height:100vh;
+  width:100%;
+  padding:32px 20px 56px;
+  background:
+    radial-gradient(900px 460px at 8% -10%, rgba(24,119,242,.10), transparent 60%),
+    radial-gradient(900px 460px at 105% 110%, rgba(59,130,246,.08), transparent 60%),
+    linear-gradient(#f8fafc, var(--survey-bg));
+}
+
+.survey-shell{
+  width:100%;
+  max-width:980px;
+  margin:0 auto;
+  padding:16px 12px 28px;
+}
+
+.survey-page .survey-shell{
+  padding:0;
+}
+
+/* Main survey card */
+.survey-card{
+  background:rgba(255,255,255,.98);
+  border:1px solid var(--survey-line);
+  border-radius:20px;
+  box-shadow:0 8px 30px rgba(0,0,0,.08);
+  overflow:hidden;
+}
+
+.survey-head{
+  position:relative;
+  padding:20px 20px 14px;
+  border-bottom:1px solid var(--survey-line);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.94)),
+    linear-gradient(135deg, #1877f2, #3b82f6);
+}
+
+.survey-head::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:3px;
+  background:linear-gradient(135deg, #1877f2, #3b82f6);
+}
+
+.survey-title{
+  margin:0;
+  font-size:1.35rem;
+  line-height:1.2;
+  font-weight:800;
+  color:var(--survey-text);
+}
+
+.survey-description{
+  margin:8px 0 0;
+  font-size:.96rem;
+  line-height:1.55;
+  color:var(--survey-muted);
+}
+
+.survey-body{
+  padding:24px 32px 32px;
+  display:grid;
+  gap:16px;
+}
+
+.survey-body-standalone{
+  padding-top:24px;
+}
+
+/* Page navigation / progress */
+.survey-page-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:18px;
+  padding-bottom:14px;
+  border-bottom:1px solid #ececec;
+}
+
+.survey-page-title-wrap{
+  min-width:0;
+  flex:1;
+}
+
+.survey-page-title{
+  margin:0;
+  font-size:1.08rem;
+  line-height:1.3;
+  font-weight:800;
+  color:var(--survey-text);
+}
+
+.survey-page-subtitle{
+  margin:6px 0 0;
+  font-size:.92rem;
+  line-height:1.5;
+  color:var(--survey-muted);
+}
+
+.survey-page-count{
+  font-size:.88rem;
+  font-weight:700;
+  color:var(--survey-blue);
+  background:rgba(24,119,242,.08);
+  border:1px solid rgba(24,119,242,.12);
+  border-radius:999px;
+  padding:6px 12px;
+  white-space:nowrap;
+}
+
+.survey-progress{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:18px;
+}
+
+.survey-progress-step{
+  flex:1;
+  height:8px;
+  border-radius:999px;
+  background:#eceff3;
+  overflow:hidden;
+}
+
+.survey-progress-step.is-complete{
+  background:linear-gradient(135deg, rgba(24,119,242,.92), rgba(59,130,246,.92));
+}
+
+.survey-progress-step.is-current{
+  background:linear-gradient(135deg, rgba(24,119,242,.22), rgba(59,130,246,.22));
+  border:1px solid rgba(24,119,242,.28);
+}
+
+.survey-nav{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:8px;
+  padding-top:6px;
+}
+
+.survey-nav-left,
+.survey-nav-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.survey-nav-btn{
+  min-width:120px;
+  border:1px solid #d1d5db;
+  background:#fff;
+  color:var(--survey-text);
+  border-radius:999px;
+  padding:.72rem 1.1rem;
+  font-size:.95rem;
+  font-weight:700;
+  line-height:1.1;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .08s ease;
+}
+
+.survey-nav-btn:hover:not(:disabled){
+  background:#fcfcfd;
+  border-color:#cbd5e1;
+  box-shadow:0 6px 16px rgba(0,0,0,.06);
+}
+
+.survey-nav-btn:active:not(:disabled){
+  transform:scale(.99);
+}
+
+.survey-nav-btn:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
+.survey-nav-btn-primary,
+.survey-submit-btn{
+  border-color:transparent !important;
+  background:linear-gradient(135deg, #1877f2, #3b82f6) !important;
+  color:#fff !important;
+  box-shadow:0 8px 22px rgba(24,119,242,.18);
+}
+
+.survey-nav-btn-primary:hover:not(:disabled),
+.survey-submit-btn:hover{
+  box-shadow:0 10px 26px rgba(24,119,242,.24);
+  filter:brightness(.99);
+}
+
+/* Questions */
+.survey-question{
+  position:relative;
+  border:1px solid #ececec;
+  border-radius:16px;
+  padding:16px 16px 14px;
+  background:linear-gradient(180deg, #fff, #fcfcfd);
+  box-shadow:0 1px 2px rgba(0,0,0,.03);
+}
+
+.survey-question-title{
+  display:block;
+  margin-bottom:12px;
+  font-size:1rem;
+  line-height:1.45;
+  font-weight:400;
+  color:var(--survey-text);
+}
+
+.survey-question-title-inner{
+  display:flex;
+  align-items:flex-start;
+  gap:6px;
+}
+
+.survey-question-number{
+  flex:0 0 auto;
+  font-weight:400;
+  line-height:1.45;
+}
+
+.survey-question-title-content{
+  min-width:0;
+  flex:1;
+  font-weight:400;
+}
+
+.survey-question-title-content p,
+.survey-question-description p,
+.survey-info-block p{
+  margin:0 0 10px;
+}
+
+.survey-question-title-content p:last-child,
+.survey-question-description p:last-child,
+.survey-info-block p:last-child{
+  margin-bottom:0;
+}
+
+.survey-question-title-content strong,
+.survey-question-title-content b,
+.survey-question-description strong,
+.survey-question-description b,
+.survey-info-block strong,
+.survey-info-block b{
+  font-weight:700;
+}
+
+.survey-question-title-content em,
+.survey-question-title-content i,
+.survey-question-description em,
+.survey-question-description i,
+.survey-info-block em,
+.survey-info-block i{
+  font-style:italic;
+}
+
+.survey-question-title-content ul,
+.survey-question-title-content ol{
+  margin:0 0 10px 1.25rem;
+  padding:0;
+}
+
+.survey-question-title-content li{
+  margin:0 0 6px;
+}
+
+.survey-question-description{
+  margin-bottom:12px;
+  font-size:.92rem;
+  line-height:1.5;
+  color:var(--survey-muted);
+}
+
+.survey-question-info{
+  padding:0;
+  border:none;
+  background:transparent;
+  box-shadow:none;
+}
+
+.survey-info-block{
+  border:1px solid rgba(24,119,242,.18);
+  background:linear-gradient(180deg, #f0f6ff, #fff);
+  color:var(--survey-blue-dark);
+  border-radius:12px;
+  padding:14px 16px;
+  font-size:1rem;
+  font-weight:700;
+  line-height:1.6;
+  box-shadow:0 4px 14px rgba(24,119,242,.08);
+}
+
+/* Inputs */
+.survey-input,
+.survey-textarea,
+.survey-select{
+  width:100%;
+  border:1px solid var(--survey-line);
+  background:#fff;
+  color:var(--survey-text);
+  border-radius:12px;
+  padding:11px 12px;
+  font-size:.95rem;
+  line-height:1.4;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.survey-textarea{
+  resize:vertical;
+  min-height:110px;
+}
+
+.survey-input:focus,
+.survey-textarea:focus,
+.survey-select:focus{
+  outline:none;
+  border-color:var(--survey-blue);
+  box-shadow:0 0 0 3px rgba(24,119,242,.12);
+}
+
+/* Options and scales */
+.survey-options{
+  display:grid;
+  gap:10px;
+}
+
+.survey-option{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid #ececec;
+  background:#fff;
+  border-radius:12px;
+  padding:11px 12px;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, transform .08s ease, box-shadow .15s ease;
+}
+
+.survey-option:hover{
+  border-color:#cbd5e1;
+  background:#f8fbff;
+}
+
+.survey-option:active{
+  transform:scale(.997);
+}
+
+.survey-option input{
+  margin-top:0;
+  accent-color:var(--survey-blue);
+  flex:0 0 auto;
+}
+
+.survey-option span{
+  display:block;
+  font-size:.95rem;
+  line-height:1.45;
+  color:var(--survey-text);
+  font-weight:400;
+}
+
+.survey-scale{
+  display:grid;
+  gap:10px;
+}
+
+.survey-scale-labels{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  font-size:.84rem;
+  font-weight:400;
+  color:var(--survey-muted);
+}
+
+.survey-range{
+  width:100%;
+  accent-color:var(--survey-blue);
+}
+
+.survey-range-value{
+  justify-self:center;
+  min-width:44px;
+  text-align:center;
+  font-size:.92rem;
+  font-weight:700;
+  color:var(--survey-blue);
+  background:rgba(24,119,242,.08);
+  border:1px solid rgba(24,119,242,.12);
+  border-radius:999px;
+  padding:5px 10px;
+}
+
+/* Matrix */
+.survey-matrix{
+  overflow-x:auto;
+  border:1px solid #ececec;
+  border-radius:14px;
+  background:#fff;
+}
+
+.survey-matrix-table{
+  width:100%;
+  min-width:520px;
+  border-collapse:separate;
+  border-spacing:0;
+  font-size:.92rem;
+}
+
+.survey-matrix-table thead th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background:linear-gradient(180deg, #fbfbfc, #f4f6f8);
+  color:#4b5563;
+  font-weight:400;
+  text-align:center;
+  padding:12px 10px;
+  border-bottom:1px solid #ececec;
+}
+
+.survey-matrix-table thead th:first-child{
+  text-align:left;
+  min-width:180px;
+  border-right:1px solid #f1f1f1;
+}
+
+.survey-matrix-table tbody td{
+  padding:12px 10px;
+  border-bottom:1px solid #f3f4f6;
+  text-align:center;
+  vertical-align:middle;
+}
+
+.survey-matrix-table tbody tr:last-child td{
+  border-bottom:none;
+}
+
+.survey-matrix-table tbody td:first-child{
+  text-align:left;
+  font-weight:400;
+  color:var(--survey-text);
+  background:#fcfcfd;
+  border-right:1px solid #f3f4f6;
+}
+
+.survey-bipolar-matrix .survey-matrix-table thead th:last-child,
+.survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  text-align:left;
+  min-width:180px;
+  border-left:1px solid #f1f1f1;
+}
+
+.survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  font-weight:400;
+  color:var(--survey-text);
+  background:#fcfcfd;
+  white-space:normal;
+  word-break:break-word;
+}
+
+.survey-bipolar-matrix .survey-matrix-table tbody td:not(:first-child):not(:last-child),
+.survey-bipolar-matrix .survey-matrix-table thead th:not(:first-child):not(:last-child){
+  min-width:52px;
+  text-align:center;
+}
+
+.survey-matrix-table input[type="radio"],
+.survey-matrix-table input[type="checkbox"]{
+  transform:scale(1.08);
+  accent-color:var(--survey-blue);
+  cursor:pointer;
+}
+
+/* Errors */
+.survey-question.has-error{
+  border:2px solid var(--survey-blue);
+  background:linear-gradient(180deg, #fff, #eff6ff);
+  box-shadow:
+    0 0 0 4px rgba(24,119,242,.12),
+    0 8px 22px rgba(24,119,242,.10);
+  animation:surveyErrorPulse .22s ease;
+}
+
+.survey-question.has-error::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:10px;
+  bottom:10px;
+  width:5px;
+  border-radius:999px;
+  background:linear-gradient(180deg, var(--survey-blue), var(--survey-blue-dark));
+}
+
+.survey-question.has-error .survey-input,
+.survey-question.has-error .survey-textarea,
+.survey-question.has-error .survey-select,
+.survey-question.has-error .survey-matrix{
+  border-color:var(--survey-blue);
+  box-shadow:0 0 0 3px rgba(24,119,242,.08);
+}
+
+.survey-error{
+  margin-top:10px;
+  font-size:.9rem;
+  font-weight:700;
+  color:#b42318;
+}
+
+.survey-error-banner{
+  border:1px solid #fecaca;
+  background:#fff1f2;
+  color:#b42318;
+  border-radius:12px;
+  padding:11px 12px;
+  font-size:.92rem;
+  line-height:1.45;
+}
+
+@keyframes surveyErrorPulse{
+  0%{transform:translateX(0)}
+  25%{transform:translateX(-2px)}
+  50%{transform:translateX(2px)}
+  75%{transform:translateX(-1px)}
+  100%{transform:translateX(0)}
+}
+
+/* Submit */
+.survey-submit-wrap{
+  padding-top:4px;
+  display:flex;
+  justify-content:center;
+}
+
+.survey-submit-btn{
+  min-width:220px;
+  border-radius:999px !important;
+  padding:.72rem 1.2rem !important;
+  font-size:.96rem !important;
+  font-weight:700 !important;
+}
+
+/* Post reminder card */
+.survey-question-post-reminder{
+  overflow:visible;
+}
+
+.survey-post-reminder-block{
+  width:100%;
+}
+
+.survey-post-reminder-intro{
+  margin-bottom:10px;
+}
+
+.survey-post-reminder-outer{
+  width:100%;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  margin-top:8px;
+}
+
+.survey-post-reminder-frame{
+  width:100%;
+  max-width:470px;
+  min-width:0;
+}
+
+.survey-post-reminder-card{
+  width:100%;
+  min-width:0;
+}
+
+.survey-post-reminder-card > .page,
+.survey-post-reminder-card > .container,
+.survey-post-reminder-card > .feed,
+.survey-post-reminder-card > .feed-wrap,
+.survey-post-reminder-card > .insta-feed,
+.survey-post-reminder-card > .ig-feed{
+  width:100% !important;
+  max-width:100% !important;
+  margin:0 !important;
+  padding:0 !important;
+}
+
+.survey-post-reminder-status{
+  width:100%;
+  max-width:470px;
+  margin:0 auto;
+  padding:12px 14px;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  color:var(--survey-muted);
+  font-size:.92rem;
+  line-height:1.4;
+  text-align:center;
+}
+
+/* Mobile survey layout */
+@media (max-width:700px){
+  .survey-page{
+    padding:0;
+    background:#fff;
+  }
+
+  .survey-shell,
+  .survey-page .survey-shell{
+    max-width:100%;
+    padding:0 0 20px;
+  }
+
+  .survey-card,
+  .survey-page .survey-card{
+    border:none;
+    border-radius:0;
+    box-shadow:none;
+    min-height:100vh;
+  }
+
+  .survey-head{
+    padding:16px 14px 12px;
+  }
+
+  .survey-title{
+    font-size:1.12rem;
+  }
+
+  .survey-description{
+    font-size:.9rem;
+    line-height:1.45;
+  }
+
+  .survey-body,
+  .survey-page .survey-body{
+    padding:14px 12px 26px;
+    gap:10px;
+  }
+
+  .survey-question{
+    border-radius:13px;
+    padding:12px 10px 10px;
+  }
+
+  .survey-question-title{
+    margin-bottom:10px;
+    font-size:.95rem;
+    line-height:1.4;
+  }
+
+  .survey-question-description{
+    margin-bottom:10px;
+    font-size:.86rem;
+    line-height:1.4;
+  }
+
+  .survey-input,
+  .survey-textarea,
+  .survey-select{
+    padding:10px 11px;
+    font-size:.92rem;
+    border-radius:11px;
+  }
+
+  .survey-textarea{
+    min-height:96px;
+  }
+
+  .survey-option{
+    padding:8px 10px;
+    min-height:40px;
+    border-radius:11px;
+    gap:9px;
+  }
+
+  .survey-option span{
+    font-size:.9rem;
+    line-height:1.35;
+  }
+
+  .survey-scale-labels{
+    font-size:.78rem;
+    line-height:1.3;
+  }
+
+  .survey-range-value{
+    font-size:.85rem;
+    padding:4px 9px;
+    min-width:40px;
+  }
+
+  .survey-matrix{
+    border-radius:12px;
+  }
+
+  .survey-matrix-table{
+    min-width:440px;
+    font-size:.84rem;
+  }
+
+  .survey-matrix-table thead th{
+    padding:8px 6px;
+    font-size:.76rem;
+    line-height:1.2;
+  }
+
+  .survey-matrix-table tbody td{
+    padding:8px 6px;
+  }
+
+  .survey-bipolar-matrix .survey-matrix-table{
+    min-width:580px;
+  }
+
+  .survey-bipolar-matrix .survey-matrix-table thead th:first-child,
+  .survey-bipolar-matrix .survey-matrix-table thead th:last-child,
+  .survey-bipolar-matrix .survey-matrix-table tbody td:first-child,
+  .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+    min-width:132px;
+  }
+
+  .survey-bipolar-matrix .survey-matrix-table thead th:not(:first-child):not(:last-child),
+  .survey-bipolar-matrix .survey-matrix-table tbody td:not(:first-child):not(:last-child){
+    min-width:40px;
+  }
+
+  .survey-page-meta{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:8px;
+    margin-bottom:12px;
+    padding-bottom:10px;
+  }
+
+  .survey-page-count{
+    font-size:.79rem;
+    padding:4px 9px;
+  }
+
+  .survey-page-title{
+    font-size:.96rem;
+    line-height:1.25;
+  }
+
+  .survey-page-subtitle{
+    font-size:.86rem;
+    line-height:1.4;
+  }
+
+  .survey-progress{
+    margin-bottom:12px;
+    gap:6px;
+  }
+
+  .survey-progress-step{
+    height:7px;
+  }
+
+  .survey-nav{
+    flex-direction:column-reverse;
+    align-items:stretch;
+    gap:10px;
+  }
+
+  .survey-nav-left,
+  .survey-nav-right{
+    width:100%;
+    justify-content:stretch;
+  }
+
+  .survey-nav-btn,
+  .survey-submit-btn{
+    width:100%;
+    min-width:0;
+    font-size:.9rem !important;
+    padding:.68rem 1rem !important;
+  }
+
+  .survey-post-reminder-frame,
+  .survey-post-reminder-card,
+  .survey-post-reminder-status{
+    max-width:100%;
+  }
+}
+
+/* iOS: prevent input focus zoom */
+@supports (-webkit-touch-callout:none){
+  .survey-shell input,
+  .survey-shell textarea,
+  .survey-shell select{
+    font-size:16px !important;
+    line-height:1.25;
+  }
+}
+
+
+/* ======================================================
+   Survey post reminder: Facebook width/proportion fix
+   Added for shared FB/IG survey component.
+   Keeps default/IG reminder cards narrow, but lets FB reminder posts
+   render like Facebook feed cards inside the survey.
+   ====================================================== */
+
+.survey-post-reminder-block.fb-reminder-post,
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-outer{
+  width:100% !important;
+  max-width:100% !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
+.survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card{
+  width:100% !important;
+  max-width:min(760px, 100%) !important;
+  min-width:0 !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+
+/* Remove feed-page/rail constraints when a Facebook post is embedded as a survey reminder. */
+.survey-post-reminder-block.fb-reminder-post .page,
+.survey-post-reminder-block.fb-reminder-post .container,
+.survey-post-reminder-block.fb-reminder-post .container.feed,
+.survey-post-reminder-block.fb-reminder-post .feed{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  grid-template-columns:1fr !important;
+}
+
+/* Hide desktop feed rails/top rail if the PostCard wrapper accidentally brings them into the reminder. */
+.survey-post-reminder-block.fb-reminder-post .rail,
+.survey-post-reminder-block.fb-reminder-post .rail-left,
+.survey-post-reminder-block.fb-reminder-post .rail-right,
+.survey-post-reminder-block.fb-reminder-post .top-rail-placeholder{
+  display:none !important;
+}
+
+/* Make the embedded Facebook card fill the survey reminder frame. */
+.survey-post-reminder-block.fb-reminder-post .card,
+.survey-post-reminder-block.fb-reminder-post .post-card,
+.survey-post-reminder-block.fb-reminder-post .card.post-card,
+.survey-post-reminder-block.fb-reminder-post article{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+}
+
+/* Keep Facebook media landscape/wide rather than Instagram-like portrait. */
+.survey-post-reminder-block.fb-reminder-post .image-btn,
+.survey-post-reminder-block.fb-reminder-post .image-btn img,
+.survey-post-reminder-block.fb-reminder-post .video-wrap,
+.survey-post-reminder-block.fb-reminder-post .video-el,
+.survey-post-reminder-block.fb-reminder-post .drive-embed,
+.survey-post-reminder-block.fb-reminder-post .video-wrap iframe{
+  width:100% !important;
+  max-width:100% !important;
+}
+
+.survey-post-reminder-block.fb-reminder-post .image-btn img,
+.survey-post-reminder-block.fb-reminder-post img{
+  height:auto !important;
+  max-height:min(420px, 58vh) !important;
+  object-fit:cover !important;
+}
+
+/* In the survey context, avoid the mobile full-bleed FB override making the reminder look like a phone feed card. */
+@media (max-width:700px){
+  .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
+  .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card{
+    max-width:100% !important;
+  }
+
+  .survey-post-reminder-block.fb-reminder-post .card,
+  .survey-post-reminder-block.fb-reminder-post .post-card,
+  .survey-post-reminder-block.fb-reminder-post .card.post-card{
+    border:1px solid var(--line) !important;
+    border-radius:12px !important;
+    box-shadow:none !important;
+    overflow:hidden !important;
+  }
+}
+
+.fb-news-clickable {
+  cursor: pointer;
+}
+
+.fb-news-clickable img,
+.fb-news-clickable .fb-post-image {
+  cursor: pointer;
+}
+
+
+/* =========================================================
+   Amazon reviews environment overrides
+   Keep the fully styled admin/dashboard base from Facebook CSS,
+   but render the participant-facing environment as Amazon Reviews.
+   ========================================================= */
+
+:root{
+  --amz-bg:#ffffff;
+  --amz-card:#ffffff;
+  --amz-text:#0f1111;
+  --amz-muted:#565959;
+  --amz-line:#d5d9d9;
   --amz-orange:#ffa41c;
   --amz-orange-dark:#c45500;
   --amz-link:#007185;
@@ -18,35 +3022,87 @@
   --amz-button-border:#fcd200;
   --amz-button-hover:#f7ca00;
   --amz-shadow:0 2px 5px rgba(15,17,17,.15);
-  --feed-min:0px;
-  --feed-max:1120px;
-  --gap:24px;
-  --rail-gap:30px;
-  --feed-gap:0px;
 }
 
-*{box-sizing:border-box}
-html,body,#root{min-height:100%;}
-html,body{margin:0;overflow-x:hidden;background:#fff;color:var(--text);font-family:Arial, Helvetica, sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
-body{font-size:14px;line-height:1.35;}
-a{color:var(--amz-link);text-decoration:none}
-a:hover{color:var(--amz-link-hover);text-decoration:underline}
+/* Do not show the Amazon Reviews logo/header rail on the admin page. */
+body.admin-mode .top-rail-placeholder,
+body.admin-mode .nav,
+body:has(.admin-shell) .top-rail-placeholder,
+body:has(.admin-shell) .nav{
+  display:none!important;
+}
 
-/* Generic controls used by admin/survey overlays */
-.input,.select{border:1px solid var(--line);border-radius:4px;padding:.42rem .52rem;font-size:.9rem;background:#fff;color:#0f1111;}
-.btn{border:1px solid var(--line);border-radius:7px;background:#fff;padding:.42rem .7rem;font-size:.9rem;cursor:pointer;color:#0f1111;}
-.btn:hover{background:#f7fafa;}
-.btn.primary{background:var(--amz-button);border-color:var(--amz-button-border);color:#0f1111;box-shadow:0 2px 5px rgba(213,217,217,.5);}
-.btn.primary:hover{background:var(--amz-button-hover);}
-.container{max-width:var(--feed-max);margin:0 auto;padding:0 18px;}
-.subtle,.muted{color:var(--muted);font-size:.9rem;}
-.card{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:none;margin-bottom:1rem;overflow:visible;}
-.card h3{font-weight:700;font-size:1.15rem;}
+/* Admin should keep the polished dashboard styling. */
+body.admin-mode,
+body:has(.admin-shell){
+  background:#f0f2f5!important;
+}
 
-/* Hide the Facebook-like placeholder rail in the participant view. */
-.top-rail-placeholder{display:none!important;}
-body:not(.admin-mode) .nav{display:none!important;}
-body.admin-mode .nav{display:block!important;}
+/* Participant-facing Amazon page should not inherit Facebook rails. */
+body:not(.admin-mode) .top-rail-placeholder,
+body:not(.admin-mode) .nav{
+  display:none!important;
+}
+
+body:not(.admin-mode){
+  background:#fff!important;
+  color:#0f1111;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Amazon accent for admin loaded/default indicators while preserving layout polish. */
+body.admin-mode .btn.primary,
+body:has(.admin-shell) .btn.primary{
+  background:var(--amz-button);
+  border-color:var(--amz-button-border);
+  color:#0f1111;
+}
+body.admin-mode .btn.primary:hover,
+body:has(.admin-shell) .btn.primary:hover{
+  background:var(--amz-button-hover);
+}
+body.admin-mode .feed-row.is-loaded,
+body:has(.admin-shell) .feed-row.is-loaded{
+  background:#fff7e6;
+  box-shadow:inset 0 0 0 2px #f59e0b;
+}
+body.admin-mode .feed-row.is-loaded .feed-dot,
+body:has(.admin-shell) .feed-row.is-loaded .feed-dot{
+  background:#f59e0b;
+}
+body.admin-mode .editing-chip,
+body:has(.admin-shell) .editing-chip{
+  background:#f59e0b;
+  color:#111827;
+}
+
+/* Amazon-style generic controls for participant overlays only. */
+body:not(.admin-mode) .input,
+body:not(.admin-mode) .select{
+  border:1px solid var(--amz-line);
+  border-radius:4px;
+  padding:.42rem .52rem;
+  font-size:.9rem;
+  background:#fff;
+  color:#0f1111;
+}
+body:not(.admin-mode) .btn{
+  border:1px solid var(--amz-line);
+  border-radius:7px;
+  background:#fff;
+  padding:.42rem .7rem;
+  font-size:.9rem;
+  cursor:pointer;
+  color:#0f1111;
+}
+body:not(.admin-mode) .btn:hover{background:#f7fafa;}
+body:not(.admin-mode) .btn.primary{
+  background:var(--amz-button);
+  border-color:var(--amz-button-border);
+  color:#0f1111;
+  box-shadow:0 2px 5px rgba(213,217,217,.5);
+}
+body:not(.admin-mode) .btn.primary:hover{background:var(--amz-button-hover);}
 
 /* Amazon reviews page */
 .amz-page{width:100%;background:#fff;min-height:100vh;padding:22px 16px 42px;}
@@ -91,76 +3147,30 @@ body.admin-mode .nav{display:block!important;}
 .amz-submit-btn:hover:not(:disabled){background:var(--amz-button-hover);}
 .amz-submit-btn:disabled,.amz-helpful-btn:disabled,.amz-report-btn:disabled,.amz-read-more:disabled{opacity:.58;cursor:not-allowed;}
 
-/* Generic modal/overlay support used by participant ID, loading, survey, admin. */
-.app-shell{transition:filter .2s ease,opacity .2s ease;}
-.app-shell.blurred{pointer-events:none;user-select:none;}
-.modal-backdrop{position:fixed;isolation:isolate;inset:0;display:grid;place-items:center;padding:16px;z-index:11000;background:rgba(0,0,0,.45);}
-.modal{position:relative;z-index:11001;background:#fff;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);width:calc(100vw - 48px);max-width:680px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;}
-.modal.modal-wide{max-width:1120px;width:calc(100vw - 64px);}
-.modal.modal-compact{max-width:460px;width:calc(100vw - 56px);text-align:center;padding:32px 28px;}
-.modal-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--line);}
-.modal-body{flex:1 1 auto;padding:1rem;overflow:auto;-webkit-overflow-scrolling:touch;}
-.modal-footer{padding:10px 16px;border-top:1px solid var(--line);background:#fff;display:flex;gap:.5rem;justify-content:flex-end;}
-.textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:.75rem;font-size:1rem;outline:none;}
-.textarea:focus,.input:focus,.select:focus{border-color:#007185;box-shadow:0 0 0 3px rgba(0,113,133,.18);outline:0;}
-.spinner-ring{width:42px;height:42px;margin:0 auto 14px;border-radius:50%;border:3px solid #e5e7eb;border-top-color:#ffa41c;animation:spin .9s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;background:#0f1111;color:#fff;padding:.5rem .75rem;border-radius:.5rem;font-size:.85rem;box-shadow:var(--amz-shadow);z-index:12000;}
-.ack-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:12000;pointer-events:none;animation:ackInOut 2.8s ease forwards;}
-.ack-overlay-box{pointer-events:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--amz-shadow);padding:20px 24px;min-width:320px;max-width:480px;display:flex;align-items:center;gap:12px;text-align:left;}
-.ack-check{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;background:#067d62;color:#fff;font-weight:700;flex:0 0 auto;}
-.ack-text{color:#0f1111;font-size:.98rem;line-height:1.35;}
-@keyframes ackInOut{0%{opacity:0;transform:translateY(8px)}12%{opacity:1;transform:translateY(0)}82%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-6px)}}
 
-/* Admin support */
-.nav{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.95);backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line);}
-.nav-inner{max-width:960px;margin:0 auto;display:flex;gap:.5rem;align-items:center;padding:.5rem .75rem;}
-.admin-shell{width:100%;max-width:1440px;margin:0 auto;padding:16px;}
-.admin-grid{grid-template-columns:minmax(0,1fr);}
-@media (min-width:1024px){.admin-grid{grid-template-columns:1fr 1fr;align-items:start;}}
-.editor-grid{display:grid;gap:16px;grid-template-columns:1fr 480px;}
-@media (max-width:980px){.editor-grid{grid-template-columns:1fr;}}
-.editor-form{display:grid;gap:.75rem;}
-.section-title{margin:.25rem 0;font-size:.95rem;font-weight:700;color:#374151;}
-.fieldset{border:1px solid var(--line);border-radius:.5rem;padding:.75rem;display:grid;gap:.75rem;}
-.grid-2{display:grid;gap:.5rem;grid-template-columns:1fr 1fr;}
-.grid-3{display:grid;gap:.5rem;grid-template-columns:repeat(3,1fr);}
-@media (max-width:640px){.grid-2,.grid-3{grid-template-columns:1fr;}}
-.avatar-preview{display:flex;align-items:center;justify-content:flex-end;}
-.rx-pills{display:flex;flex-wrap:wrap;gap:.5rem;}
-.pill{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--line);border-radius:.5rem;padding:.25rem .55rem;cursor:pointer;user-select:none;}
-.pill input{display:none;}.pill .emoji{font-size:1rem;}.pill.active{background:#f3f4f6;border-color:#e5e7eb;}
-.editor-preview{position:sticky;top:16px;align-self:start;overflow:hidden;}.preview-head{font-size:.85rem;color:#6b7280;margin-bottom:.5rem;padding-left:.25rem;}.editor-preview .card{box-shadow:none;border:1px solid var(--line);}.preview-zoom{transform:scale(.9);transform-origin:top left;}
-.admin-fab-wrap{position:fixed;bottom:12px;right:12px;z-index:2000;pointer-events:none;}.admin-fab-wrap .btn.admin-fab{pointer-events:auto;}.btn.admin-fab{position:relative;width:40px;height:40px;border-radius:999px;border:0;background:transparent;color:#6b7280;display:flex;align-items:center;justify-content:center;font-size:1.1rem;opacity:.08;transition:opacity .25s ease,transform .25s ease,box-shadow .25s ease;}.btn.admin-fab:hover,.btn.admin-fab:focus-visible{opacity:1;transform:scale(1.05);background:#fff;box-shadow:0 0 0 1px var(--line),0 6px 18px rgba(0,0,0,.08);}
-.input-wrap,.input-with-toggle{position:relative;display:flex;align-items:center;}.input-wrap .input,.input-with-toggle .input{width:100%;padding-right:2.5rem;}.input-icon-btn,.eye-btn{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);padding:.25rem;background:none;border:none;cursor:pointer;color:#6b7280;transition:color .2s ease;}.input-icon-btn:hover,.eye-btn:hover{color:#111827;}
-.admin-login-wrap{min-height:100vh;display:grid;place-items:center;padding:16px;background:linear-gradient(#fff,#f7fafa);}.admin-login-wrap .card.admin-login-card{width:min(420px,92vw);padding:16px 20px;border-radius:12px;border:1px solid var(--line);background:#fff;box-shadow:0 10px 30px rgba(2,6,23,.08);}.admin-login-wrap .card.admin-login-card h2{font-size:1.25rem;font-weight:700;}.admin-login-wrap .card.admin-login-card label{font-weight:600;display:grid;gap:.6rem;margin-top:1rem;}.admin-login-wrap .card.admin-login-card .btn.primary{width:100%;margin-top:1rem;}.admin-login-wrap .admin-login-card .segmented{display:grid!important;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;margin-top:12px;}.admin-login-wrap .admin-login-card .segmented .btn{width:100%;height:42px;margin:0;padding:0 .75rem;line-height:1;display:flex;align-items:center;justify-content:center;white-space:nowrap;}
-.admin-banner{border:1px solid var(--line);background:#fff7ed;color:#7c2d12;border-radius:.75rem;box-shadow:var(--amz-shadow);padding:.6rem .8rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:1rem;}.admin-banner .title{display:flex;align-items:baseline;gap:.5rem;font-weight:700;}.admin-banner .title .subtle{font-size:.9rem;color:#92400e;}.admin-banner .actions{display:flex;gap:.5rem;flex-wrap:wrap;}
-.admin-expired-backdrop{position:fixed;inset:0;background:rgba(17,24,39,.7);display:grid;place-items:center;z-index:9999;padding:16px;}.admin-expired-dialog{width:min(520px,92vw);background:#fff;border:1px solid var(--line);border-radius:.75rem;box-shadow:var(--amz-shadow);padding:1.2rem;}.admin-expired-dialog h3{margin:0 0 .5rem 0;}.admin-expired-actions{display:flex;gap:.5rem;justify-content:flex-end;}
-.feed-row{transition:background-color .15s ease,box-shadow .15s ease;}.feed-row:hover{background:#f8fafc;}.feed-row.is-loaded{background:#eef6ff;box-shadow:inset 0 0 0 2px #007185;}.feed-row.is-default:not(.is-loaded){background:#f0fdf4;box-shadow:inset 0 0 0 1px #10b981;}.feed-dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--line);vertical-align:middle;}.feed-row.is-default .feed-dot{background:#10b981;}.feed-row.is-loaded .feed-dot{background:#007185;}.editing-chip{display:inline-flex;align-items:center;justify-content:center;padding:.25rem .6rem;border-radius:9999px;font-size:.85rem;font-weight:500;background:#007185;color:#fff;line-height:1.2;}
-.section-collapse{display:grid;grid-template-rows:1fr;transition:grid-template-rows .22s ease,opacity .22s ease;overflow:hidden;}.section-collapse.is-collapsed{grid-template-rows:0fr;opacity:0;}.section-collapse-inner{min-height:0;overflow:hidden;}.section-chev{width:32px;height:32px;min-width:32px;display:grid;place-items:center;padding:0;border-radius:8px;}.section-chev svg{width:16px;height:16px;transition:transform .18s ease;}.section-chev[aria-expanded="true"] svg{transform:rotate(180deg);}
 
-/* Survey basics */
-.survey-page{background:#fff;min-height:100vh;color:#0f1111;}.survey-card,.survey-shell,.survey-preface-card{background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--amz-shadow);max-width:840px;margin:24px auto;padding:24px;}.survey-question{margin:0 0 20px;}.survey-question-title{font-weight:700;margin-bottom:8px;}.survey-actions{display:flex;gap:.75rem;justify-content:flex-end;margin-top:24px;}.survey-error{color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.5rem .6rem;}
-
+/* Amazon review page mobile adjustments */
 @media (max-width:900px){
   .amz-page{padding:14px 12px 32px;}
-  .amz-reviews-shell{display:block;width:100%;}
-  .amz-reviews-summary{position:static;border-right:0;border-bottom:1px solid #e7e7e7;padding:0 0 18px;margin-bottom:18px;}
+  .amz-reviews-shell{display:block;width:100%;max-width:760px;}
+  .amz-reviews-summary{position:static;border-right:0;border-bottom:1px solid #e7e7e7;padding:0 0 16px;margin-bottom:18px;}
   .amz-reviews-summary h1{font-size:22px;}
 }
 @media (max-width:560px){
-  body{font-size:14px;}
-  .amz-page{padding-left:10px;padding-right:10px;}
-  .amz-review{padding-bottom:20px;margin-bottom:20px;}
-  .amz-rating-row{align-items:flex-start;gap:6px;}
-  .amz-stars{font-size:17px;}
-  .amz-review-title{font-size:14px;}
+  .amz-page{padding:10px 10px 28px;}
+  .amz-review{padding-bottom:18px;margin-bottom:18px;}
+  .amz-review-actions{gap:8px;flex-wrap:wrap;}
   .amz-helpful-btn{min-width:82px;padding:5px 14px;}
-  .amz-submit-btn{width:100%;min-width:0;}
-  .modal{width:calc(100vw - 24px);}
-  input,select,textarea{font-size:16px;}
 }
 
-/* Debug viewport support retained from the existing environment. */
-body.debug-vp::before{content:"Viewport boundary";position:fixed;top:var(--vp-top,0px);left:0;right:0;bottom:var(--vp-bottom,0px);pointer-events:none;border:3px dashed rgba(255,0,0,.5);z-index:9999;font-size:12px;color:red;background:rgba(255,0,0,.05);}
-.debug-vp [data-post-id]{position:relative;}.debug-vp [data-post-id].__vp-in{outline:3px solid rgba(34,197,94,.9);background:rgba(34,197,94,.06);}.debug-vp [data-post-id].__vp-out{outline:3px solid rgba(239,68,68,.7);background:rgba(239,68,68,.04);}.debug-vp [data-post-id]::after{content:attr(data-vis) " · " attr(data-state) " · th=" attr(data-th);position:absolute;top:6px;right:6px;padding:2px 6px;font:600 11px/1 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111;background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.15);border-radius:6px;pointer-events:none;z-index:2;}
+/* Make Amazon modals/overlays consistent with the admin base. */
+body:not(.admin-mode) .spinner-ring{
+  border-top-color:var(--amz-orange)!important;
+}
+body:not(.admin-mode) .ack-check{
+  background:#067d62!important;
+}
+body:not(.admin-mode) .toast{
+  background:#0f1111!important;
+  color:#fff!important;
+}
