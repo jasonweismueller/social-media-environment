@@ -714,17 +714,7 @@ export function SurveyScreenMobile(props) {
 
 /* ------------------------- Route-aware top bar ----------------------------- */
 export function TopRailPlaceholder() {
-  return (
-    <div className="amz-topbar-placeholder" aria-hidden="true">
-      <div className="amz-topbar-inner">
-        <div className="amz-brand">
-          <IconLogo />
-        </div>
-        <div className="amz-search-placeholder"></div>
-        <div className="amz-topbar-copy">Customer reviews</div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 export function RouteAwareTopbar() {
@@ -745,7 +735,7 @@ export function RouteAwareTopbar() {
     else document.body.classList.remove("admin-mode");
   }, [onAdmin]);
 
-  if (onSurvey || isMobile) return null;
+  if (onSurvey || isMobile || onAdmin) return null;
 
   return (
     <>
