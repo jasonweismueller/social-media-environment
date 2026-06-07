@@ -1,6 +1,6 @@
 // ui-posts-amazon.jsx
 // Amazon reviews-only environment.
-/// Uses the same Feed API as the Facebook/Instagram feed components so App-amazon.jsx
+// Uses the same Feed API as the Facebook/Instagram feed components so App-amazon.jsx
 // can keep the existing project/feed/survey/session logging architecture.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -264,6 +264,53 @@ function ReviewsSummary({ posts = [] }) {
       <div className="amz-summary-count">{fmtInt(count)} global {count === 1 ? "rating" : "ratings"}</div>
       <div className="amz-summary-note">Showing reviews selected for this study</div>
     </section>
+  );
+}
+
+
+export function PostCard({
+  post,
+  review,
+  disabled = false,
+  state = {},
+  onHelpful,
+  onReport,
+  onVisible,
+  onAction,
+  registerViewRef,
+  projectId,
+  feedId,
+  participantSeed,
+  onDisplayedPostSnapshot,
+}) {
+  const normalizedReview = review || post || {};
+
+  const handleAction = (action, payload) => {
+    if (action === "review_helpful" || action === "review_helpful_removed") {
+      onHelpful?.(payload);
+    }
+    if (action === "review_report") {
+      onReport?.(payload);
+    }
+    onAction?.(action, payload);
+  };
+
+  const handleViewRef = (id, el) => {
+    registerViewRef?.(id, el);
+    if (el) onVisible?.(id, el);
+  };
+
+  return (
+    <ReviewCard
+      review={normalizedReview}
+      disabled={disabled}
+      registerViewRef={handleViewRef}
+      onAction={handleAction}
+      projectId={projectId}
+      feedId={feedId}
+      participantSeed={participantSeed}
+      onDisplayedPostSnapshot={onDisplayedPostSnapshot}
+    />
   );
 }
 
