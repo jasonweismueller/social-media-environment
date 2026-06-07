@@ -13,7 +13,7 @@ import {
    previews. This fieldset preserves the same component contract as the
    Facebook admin media fieldset, but focuses on Amazon review metadata and CSV
    naming support. It can be expanded later if you want product thumbnails.
---------------------------------------------------------------------------- */
+---------------------------------------------------------------------------- */
 
 export function MediaFieldset({
   editing,

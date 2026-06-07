@@ -1,4 +1,4 @@
-// components/ui-posts/index.js
+/// components/ui-posts/index.js
 
 import * as FB from "./ui-posts-facebook";
 import * as IG from "./ui-posts-instagram";

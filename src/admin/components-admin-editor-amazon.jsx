@@ -4,7 +4,7 @@ import { uid } from "../utils";
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-amazon";
 
-/* ---------------------------------------------------------------------------
+/* ----------------------------------------------------------------------------
    Amazon Reviews admin editor
    ---------------------------------------------------------------------------
    Uses the same high-level admin contract as the Facebook editor:

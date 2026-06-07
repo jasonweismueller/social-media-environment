@@ -10,7 +10,7 @@ import {
   CF_BASE,
 } from "./utils-core";
 
-/* --------------------- App + endpoints ----------------------- */
+/* --------------------- App + endpoints ------------------------ */
 function msToSeconds(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return "";

@@ -1,4 +1,4 @@
-/* ------------------------------ Basics ------------------------------------ */
+/* ------------------------------ Basics ------------------------------------- */
 export const uid = () =>
   Math.random().toString(36).slice(2) + Date.now().toString(36);
 export const now = () => Date.now();
