@@ -1,6 +1,6 @@
 // ui-posts-amazon.jsx
 // Amazon reviews-only environment.
-// Uses the same Feed API as the Facebook/Instagram feed components so App-amazon.jsx
+/// Uses the same Feed API as the Facebook/Instagram feed components so App-amazon.jsx
 // can keep the existing project/feed/survey/session logging architecture.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
