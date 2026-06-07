@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 
 // ui-mobile-amazon.jsx
-// Bottom sheet used by Amazon review mobile dialogs/menus.
+// Bottom sheet used by Amazon review mobile dialogs/menus...
 
 export function BottomSheet({
   open,

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { fakeNamesFor as utilsFakeNamesFor,uid } from "../utils";
 
-/* ------------------------------- Tiny helpers ------------------------------ */
+/* ------------------------------- Tiny helpers ------------------------------- */
 function useIsMobile(breakpointPx = 700) {
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined"
