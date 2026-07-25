@@ -29,6 +29,20 @@ export const QUESTION_TYPE_LABELS = {
   [EDITOR_PAGE_BREAK_TYPE]: "Page break",
 };
 
+export const QUESTION_TYPE_SHORT_LABELS = {
+  [SURVEY_QUESTION_TYPES.TEXT]: "Txt",
+  [SURVEY_QUESTION_TYPES.TEXTAREA]: "Long",
+  [SURVEY_QUESTION_TYPES.SINGLE]: "1-ch",
+  [SURVEY_QUESTION_TYPES.MULTI]: "M-ch",
+  [SURVEY_QUESTION_TYPES.DROPDOWN]: "Drop",
+  [SURVEY_QUESTION_TYPES.MATRIX_SINGLE]: "Mtx1",
+  [SURVEY_QUESTION_TYPES.MATRIX_MULTI]: "MtxM",
+  [SURVEY_QUESTION_TYPES.BIPOLAR]: "Bip",
+  [SURVEY_QUESTION_TYPES.SLIDER]: "Sldr",
+  [SURVEY_QUESTION_TYPES.INFO]: "Info",
+  [POST_REMINDER_TYPE]: "Post",
+};
+
 export const INSERTABLE_TYPES = [
   SURVEY_QUESTION_TYPES.TEXT,
   SURVEY_QUESTION_TYPES.TEXTAREA,
@@ -2786,17 +2800,17 @@ function CompactDragHandle({ onDragStart, onDragEnd }) {
       onDragEnd={onDragEnd}
       title="Drag to reorder"
       style={{
-        width: 22,
-        height: 22,
+        width: 18,
+        height: 18,
         flex: "0 0 auto",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        borderRadius: 6,
+        borderRadius: 5,
         border: "1px solid #d1d5db",
         background: "#fff",
         cursor: "grab",
-        fontSize: 12,
+        fontSize: 10,
         color: "#9ca3af",
         userSelect: "none",
       }}
@@ -2808,8 +2822,8 @@ function CompactDragHandle({ onDragStart, onDragEnd }) {
 
 function compactArrowStyle(disabled) {
   return {
-    width: 20,
-    height: 15,
+    width: 16,
+    height: 16,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -2820,7 +2834,7 @@ function compactArrowStyle(disabled) {
     cursor: disabled ? "not-allowed" : "pointer",
     padding: 0,
     lineHeight: 1,
-    fontSize: 10,
+    fontSize: 9,
   };
 }
 
@@ -2845,6 +2859,29 @@ function OutlineRow({
   const isDragging = draggingId === item._editorId;
   const isDragOver = dragOverId === item._editorId;
 
+  const arrowPair = (
+    <div style={{ display: "flex", gap: 2, flex: "0 0 auto" }}>
+      <button
+        type="button"
+        onClick={onMoveUp}
+        disabled={flatIndex === 0}
+        style={compactArrowStyle(flatIndex === 0)}
+        title="Move up"
+      >
+        ↑
+      </button>
+      <button
+        type="button"
+        onClick={onMoveDown}
+        disabled={flatIndex === totalCount - 1}
+        style={compactArrowStyle(flatIndex === totalCount - 1)}
+        title="Move down"
+      >
+        ↓
+      </button>
+    </div>
+  );
+
   if (isPageBreak) {
     return (
       <div
@@ -2853,10 +2890,10 @@ function OutlineRow({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          margin: "6px 0",
-          padding: "3px 6px",
-          borderRadius: 6,
+          gap: 5,
+          margin: "3px 0",
+          padding: "2px 5px",
+          borderRadius: 5,
           borderTop: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
           opacity: isDragging ? 0.5 : 1,
         }}
@@ -2865,9 +2902,10 @@ function OutlineRow({
           onDragStart={(e) => onDragStart(e, item._editorId)}
           onDragEnd={onDragEnd}
         />
+        {arrowPair}
         <span
           style={{
-            fontSize: 10,
+            fontSize: 9,
             fontWeight: 700,
             color: "#6b7280",
             textTransform: "uppercase",
@@ -2877,33 +2915,14 @@ function OutlineRow({
           Page break
           {item.next_delay_seconds ? ` · ${item.next_delay_seconds}s delay` : ""}
         </span>
-
-        <div style={{ display: "flex", gap: 3, marginLeft: "auto" }}>
-          <button
-            type="button"
-            onClick={onMoveUp}
-            disabled={flatIndex === 0}
-            style={compactArrowStyle(flatIndex === 0)}
-            title="Move up"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            onClick={onMoveDown}
-            disabled={flatIndex === totalCount - 1}
-            style={compactArrowStyle(flatIndex === totalCount - 1)}
-            title="Move down"
-          >
-            ↓
-          </button>
-        </div>
       </div>
     );
   }
 
   const rawText = stripHtmlForEmptyCheck(item.text || "");
   const preview = rawText || "(no question text yet)";
+  const shortType = QUESTION_TYPE_SHORT_LABELS[item.type] || item.type;
+  const fullType = QUESTION_TYPE_LABELS[item.type] || item.type;
 
   return (
     <div
@@ -2912,13 +2931,13 @@ function OutlineRow({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 6,
-        padding: "3px 6px",
-        borderRadius: 8,
+        gap: 5,
+        padding: "2px 5px",
+        borderRadius: 6,
         border: isDragOver ? "2px solid #6366f1" : "1px solid #e5e7eb",
         background: isDragging ? "#f8fafc" : "#fff",
         opacity: isDragging ? 0.6 : 1,
-        marginBottom: 3,
+        marginBottom: 2,
       }}
     >
       <CompactDragHandle
@@ -2926,33 +2945,14 @@ function OutlineRow({
         onDragEnd={onDragEnd}
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={flatIndex === 0}
-          style={compactArrowStyle(flatIndex === 0)}
-          title="Move up"
-        >
-          ↑
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={flatIndex === totalCount - 1}
-          style={compactArrowStyle(flatIndex === totalCount - 1)}
-          title="Move down"
-        >
-          ↓
-        </button>
-      </div>
+      {arrowPair}
 
       <span
         style={{
-          fontSize: 11,
+          fontSize: 10,
           color: "#9ca3af",
           flex: "0 0 auto",
-          minWidth: 20,
+          minWidth: 16,
         }}
         title={displayNumber != null ? `Question ${displayNumber}` : ""}
       >
@@ -2966,24 +2966,39 @@ function OutlineRow({
         placeholder="ID"
         title="Question ID / variable name"
         style={{
-          width: 96,
+          width: 78,
           flex: "0 0 auto",
-          height: 24,
-          padding: "0 6px",
-          borderRadius: 6,
+          height: 20,
+          padding: "0 5px",
+          borderRadius: 5,
           border: "1px solid #d1d5db",
-          fontSize: 11,
+          fontSize: 10,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           boxSizing: "border-box",
         }}
       />
 
+      <span
+        title={fullType}
+        style={{
+          fontSize: 9,
+          color: "#6b7280",
+          background: "#f3f4f6",
+          borderRadius: 4,
+          padding: "1px 4px",
+          flex: "0 0 auto",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {shortType}
+      </span>
+
       {item.required ? (
         <span
           title="Required"
           style={{
-            width: 6,
-            height: 6,
+            width: 5,
+            height: 5,
             borderRadius: "50%",
             background: "#dc2626",
             flex: "0 0 auto",
@@ -3002,30 +3017,17 @@ function OutlineRow({
           border: "none",
           cursor: "pointer",
           padding: 0,
-          display: "flex",
-          alignItems: "baseline",
-          gap: 6,
         }}
         title="Jump to this question in the editor"
       >
         <span
           style={{
-            fontSize: 10,
-            color: "#9ca3af",
-            flex: "0 0 auto",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {QUESTION_TYPE_LABELS[item.type] || item.type}
-        </span>
-        <span
-          style={{
-            fontSize: 12,
+            fontSize: 11,
             color: "#111827",
+            display: "block",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            minWidth: 0,
           }}
         >
           {preview}
@@ -3035,10 +3037,10 @@ function OutlineRow({
       <IconOnlyButton
         onClick={onDuplicate}
         title="Copy question"
-        size={13}
-        style={{ width: 24, height: 24, flex: "0 0 auto" }}
+        size={11}
+        style={{ width: 20, height: 20, flex: "0 0 auto" }}
       >
-        <CopyIcon size={13} />
+        <CopyIcon size={11} />
       </IconOnlyButton>
     </div>
   );
@@ -3136,7 +3138,7 @@ function StudyOutlineModal({
           </button>
         </div>
 
-        <div style={{ padding: "8px 10px", overflowY: "auto" }}>
+        <div style={{ padding: "6px 8px", overflowY: "auto" }}>
           {currentQuestions.length === 0 ? (
             <div style={{ color: "#6b7280", padding: "6px 4px" }}>No questions yet.</div>
           ) : (
