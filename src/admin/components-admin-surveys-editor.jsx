@@ -2789,7 +2789,7 @@ function smallActionButtonStyle(disabled) {
 }
 
 /* =========================
-   Study outline (compact overview + reorder)
+   Study overview (sortable list + page-break rows)
    ========================= */
 
 function CompactDragHandle({ onDragStart, onDragEnd }) {
@@ -2842,6 +2842,7 @@ function OutlineRow({
   item,
   flatIndex,
   displayNumber,
+  pageNumber,
   totalCount,
   onMoveUp,
   onMoveDown,
@@ -2912,7 +2913,7 @@ function OutlineRow({
             letterSpacing: 0.4,
           }}
         >
-          Page break
+          Page break · Page {pageNumber} starts below
           {item.next_delay_seconds ? ` · ${item.next_delay_seconds}s delay` : ""}
         </span>
       </div>
@@ -3058,12 +3059,32 @@ function StudyOutlineModal({
   onDrop,
   onDragEnd,
   onJumpTo,
+  onAddPageBreak,
   onClose,
 }) {
   const displayNumbers = useMemo(
     () => computeQuestionDisplayNumbers(currentQuestions),
     [currentQuestions]
   );
+
+  const pageNumbers = useMemo(() => {
+    let page = 1;
+    return currentQuestions.map((item) => {
+      if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
+        page += 1;
+        return page;
+      }
+      return page;
+    });
+  }, [currentQuestions]);
+
+  const questionCount = currentQuestions.filter(
+    (item) => item?.type !== EDITOR_PAGE_BREAK_TYPE
+  ).length;
+  const pageBreakCount = currentQuestions.filter(
+    (item) => item?.type === EDITOR_PAGE_BREAK_TYPE
+  ).length;
+  const pageCount = Math.max(1, pageBreakCount + 1);
 
   useEffect(() => {
     function handleEscape(e) {
@@ -3113,9 +3134,9 @@ function StudyOutlineModal({
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: 16 }}>Study outline</h3>
+            <h3 style={{ margin: 0, fontSize: 16 }}>Study overview</h3>
             <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-              Drag, use ↑ / ↓, edit an ID inline, copy a question, or click its text to jump to it.
+              {questionCount} {questionCount === 1 ? "question" : "questions"} across {pageCount} {pageCount === 1 ? "page" : "pages"}. Drag questions and page-break rows to reorder them, edit IDs inline, or click question text to jump to it.
             </div>
           </div>
           <button
@@ -3148,6 +3169,7 @@ function StudyOutlineModal({
                 item={item}
                 flatIndex={i}
                 displayNumber={displayNumbers[i]}
+                pageNumber={pageNumbers[i]}
                 totalCount={currentQuestions.length}
                 onMoveUp={() => moveQuestion(i, i - 1)}
                 onMoveDown={() => moveQuestion(i, i + 1)}
@@ -3174,12 +3196,36 @@ function StudyOutlineModal({
 
         <div
           style={{
-            padding: "12px 20px",
+            padding: "12px 16px",
             borderTop: "1px solid #e5e7eb",
             display: "flex",
-            justifyContent: "flex-end",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
           }}
         >
+          <button
+            type="button"
+            onClick={onAddPageBreak}
+            style={{
+              padding: "9px 12px",
+              borderRadius: 9,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: "#111827",
+              fontWeight: 650,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+            }}
+            title="Add a page break at the end of the study"
+          >
+            <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>＋</span>
+            Add page break
+          </button>
+
           <button
             type="button"
             onClick={onClose}
@@ -3220,6 +3266,11 @@ export function SurveyEditor({
   const questionNodeRefs = useRef({});
 
   const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);
+  const overviewQuestionCount = currentQuestions.filter(
+    (item) => item?.type !== EDITOR_PAGE_BREAK_TYPE
+  ).length;
+  const overviewPageCount =
+    currentQuestions.filter((item) => item?.type === EDITOR_PAGE_BREAK_TYPE).length + 1;
 
   function jumpToQuestion(editorId) {
     setOutlineOpen(false);
@@ -3391,9 +3442,30 @@ export function SurveyEditor({
 
   return (
     <>
-      <SectionCard
-        title="Questions"
-        right={
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          padding: "12px 14px",
+          marginBottom: 14,
+          border: "1px solid #dbe3ef",
+          borderRadius: 12,
+          background: "#f8fafc",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 750, color: "#111827" }}>
+            Study structure
+          </div>
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+            {overviewQuestionCount} {overviewQuestionCount === 1 ? "question" : "questions"} · {overviewPageCount} {overviewPageCount === 1 ? "page" : "pages"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
             onClick={() => setOutlineOpen(true)}
@@ -3401,11 +3473,11 @@ export function SurveyEditor({
             title="See the whole study structure at once and reorder without scrolling"
             style={{
               padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              color: currentQuestions.length === 0 ? "#9ca3af" : "#111827",
-              fontWeight: 600,
+              borderRadius: 9,
+              border: "1px solid #4f46e5",
+              background: currentQuestions.length === 0 ? "#eef2ff" : "#4f46e5",
+              color: currentQuestions.length === 0 ? "#9ca3af" : "#fff",
+              fontWeight: 700,
               fontSize: 13,
               cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
               display: "inline-flex",
@@ -3428,13 +3500,15 @@ export function SurveyEditor({
               <line x1="4" y1="12" x2="20" y2="12" />
               <line x1="4" y1="18" x2="20" y2="18" />
             </svg>
-            Study outline
+            Study overview
           </button>
-        }
-      >
+        </div>
+      </div>
+
+      <SectionCard title="Questions">
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
           Drag items by the dotted handle to reorder them. Use the + buttons on the borders
-          to insert new questions, or open "Study outline" for a compact, scroll-free overview.
+          to insert new questions, or use Study overview above for a compact, scroll-free view of the full study.
         </div>
 
         {currentQuestions.map((q, i) => (
@@ -3511,6 +3585,7 @@ export function SurveyEditor({
           onDrop={handleQuestionDrop}
           onDragEnd={handleQuestionDragEnd}
           onJumpTo={jumpToQuestion}
+          onAddPageBreak={() => addQuestion(EDITOR_PAGE_BREAK_TYPE)}
           onClose={() => setOutlineOpen(false)}
         />
       )}
