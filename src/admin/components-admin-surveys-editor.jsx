@@ -2778,6 +2778,52 @@ function smallActionButtonStyle(disabled) {
    Study outline (compact overview + reorder)
    ========================= */
 
+function CompactDragHandle({ onDragStart, onDragEnd }) {
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      title="Drag to reorder"
+      style={{
+        width: 22,
+        height: 22,
+        flex: "0 0 auto",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 6,
+        border: "1px solid #d1d5db",
+        background: "#fff",
+        cursor: "grab",
+        fontSize: 12,
+        color: "#9ca3af",
+        userSelect: "none",
+      }}
+    >
+      ⋮⋮
+    </div>
+  );
+}
+
+function compactArrowStyle(disabled) {
+  return {
+    width: 20,
+    height: 15,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 4,
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    color: disabled ? "#d1d5db" : "#4b5563",
+    cursor: disabled ? "not-allowed" : "pointer",
+    padding: 0,
+    lineHeight: 1,
+    fontSize: 10,
+  };
+}
+
 function OutlineRow({
   item,
   flatIndex,
@@ -2786,6 +2832,8 @@ function OutlineRow({
   onMoveUp,
   onMoveDown,
   onJump,
+  onIdChange,
+  onDuplicate,
   draggingId,
   dragOverId,
   onDragStart,
@@ -2805,21 +2853,21 @@ function OutlineRow({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          margin: "12px 0",
-          padding: "6px 8px",
-          borderRadius: 8,
+          gap: 6,
+          margin: "6px 0",
+          padding: "3px 6px",
+          borderRadius: 6,
           borderTop: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
           opacity: isDragging ? 0.5 : 1,
         }}
       >
-        <DragHandle
+        <CompactDragHandle
           onDragStart={(e) => onDragStart(e, item._editorId)}
           onDragEnd={onDragEnd}
         />
         <span
           style={{
-            fontSize: 12,
+            fontSize: 10,
             fontWeight: 700,
             color: "#6b7280",
             textTransform: "uppercase",
@@ -2830,12 +2878,12 @@ function OutlineRow({
           {item.next_delay_seconds ? ` · ${item.next_delay_seconds}s delay` : ""}
         </span>
 
-        <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+        <div style={{ display: "flex", gap: 3, marginLeft: "auto" }}>
           <button
             type="button"
             onClick={onMoveUp}
             disabled={flatIndex === 0}
-            style={smallActionButtonStyle(flatIndex === 0)}
+            style={compactArrowStyle(flatIndex === 0)}
             title="Move up"
           >
             ↑
@@ -2844,7 +2892,7 @@ function OutlineRow({
             type="button"
             onClick={onMoveDown}
             disabled={flatIndex === totalCount - 1}
-            style={smallActionButtonStyle(flatIndex === totalCount - 1)}
+            style={compactArrowStyle(flatIndex === totalCount - 1)}
             title="Move down"
           >
             ↓
@@ -2855,11 +2903,7 @@ function OutlineRow({
   }
 
   const rawText = stripHtmlForEmptyCheck(item.text || "");
-  const preview = rawText
-    ? rawText.length > 100
-      ? `${rawText.slice(0, 100)}…`
-      : rawText
-    : "(no question text yet)";
+  const preview = rawText || "(no question text yet)";
 
   return (
     <div
@@ -2868,26 +2912,26 @@ function OutlineRow({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 8,
-        padding: "8px 10px",
-        borderRadius: 10,
+        gap: 6,
+        padding: "3px 6px",
+        borderRadius: 8,
         border: isDragOver ? "2px solid #6366f1" : "1px solid #e5e7eb",
         background: isDragging ? "#f8fafc" : "#fff",
         opacity: isDragging ? 0.6 : 1,
-        marginBottom: 6,
+        marginBottom: 3,
       }}
     >
-      <DragHandle
+      <CompactDragHandle
         onDragStart={(e) => onDragStart(e, item._editorId)}
         onDragEnd={onDragEnd}
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <button
           type="button"
           onClick={onMoveUp}
           disabled={flatIndex === 0}
-          style={{ ...smallActionButtonStyle(flatIndex === 0), width: 30, height: 22 }}
+          style={compactArrowStyle(flatIndex === 0)}
           title="Move up"
         >
           ↑
@@ -2896,12 +2940,56 @@ function OutlineRow({
           type="button"
           onClick={onMoveDown}
           disabled={flatIndex === totalCount - 1}
-          style={{ ...smallActionButtonStyle(flatIndex === totalCount - 1), width: 30, height: 22 }}
+          style={compactArrowStyle(flatIndex === totalCount - 1)}
           title="Move down"
         >
           ↓
         </button>
       </div>
+
+      <span
+        style={{
+          fontSize: 11,
+          color: "#9ca3af",
+          flex: "0 0 auto",
+          minWidth: 20,
+        }}
+        title={displayNumber != null ? `Question ${displayNumber}` : ""}
+      >
+        {displayNumber != null ? `Q${displayNumber}` : ""}
+      </span>
+
+      <input
+        value={item.id || ""}
+        onChange={(e) => onIdChange(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        placeholder="ID"
+        title="Question ID / variable name"
+        style={{
+          width: 96,
+          flex: "0 0 auto",
+          height: 24,
+          padding: "0 6px",
+          borderRadius: 6,
+          border: "1px solid #d1d5db",
+          fontSize: 11,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          boxSizing: "border-box",
+        }}
+      />
+
+      {item.required ? (
+        <span
+          title="Required"
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: "#dc2626",
+            flex: "0 0 auto",
+          }}
+        />
+      ) : null}
 
       <button
         type="button"
@@ -2915,40 +3003,43 @@ function OutlineRow({
           cursor: "pointer",
           padding: 0,
           display: "flex",
-          flexDirection: "column",
-          gap: 2,
+          alignItems: "baseline",
+          gap: 6,
         }}
         title="Jump to this question in the editor"
       >
-        <span style={{ fontSize: 12, color: "#6b7280" }}>
-          {displayNumber != null ? `Q${displayNumber} · ` : ""}
+        <span
+          style={{
+            fontSize: 10,
+            color: "#9ca3af",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+          }}
+        >
           {QUESTION_TYPE_LABELS[item.type] || item.type}
-          {item.required ? " · Required" : ""}
         </span>
         <span
           style={{
-            fontSize: 14,
+            fontSize: 12,
             color: "#111827",
-            fontWeight: 500,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
+            minWidth: 0,
           }}
         >
           {preview}
         </span>
-        {item.id ? (
-          <span
-            style={{
-              fontSize: 11,
-              color: "#9ca3af",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            }}
-          >
-            {item.id}
-          </span>
-        ) : null}
       </button>
+
+      <IconOnlyButton
+        onClick={onDuplicate}
+        title="Copy question"
+        size={13}
+        style={{ width: 24, height: 24, flex: "0 0 auto" }}
+      >
+        <CopyIcon size={13} />
+      </IconOnlyButton>
     </div>
   );
 }
@@ -2956,6 +3047,8 @@ function OutlineRow({
 function StudyOutlineModal({
   currentQuestions,
   moveQuestion,
+  updateQuestion,
+  duplicateQuestion,
   draggingId,
   dragOverId,
   onDragStart,
@@ -2999,8 +3092,8 @@ function StudyOutlineModal({
       <div
         style={{
           background: "#fff",
-          borderRadius: 16,
-          width: "min(760px, 100%)",
+          borderRadius: 14,
+          width: "min(640px, 100%)",
           maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
@@ -3013,14 +3106,14 @@ function StudyOutlineModal({
             justifyContent: "space-between",
             alignItems: "flex-start",
             gap: 12,
-            padding: "16px 20px",
+            padding: "12px 16px",
             borderBottom: "1px solid #e5e7eb",
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: 18 }}>Study outline</h3>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-              Drag a handle, use ↑ / ↓, or click a question to jump to it in the editor.
+            <h3 style={{ margin: 0, fontSize: 16 }}>Study outline</h3>
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+              Drag, use ↑ / ↓, edit an ID inline, copy a question, or click its text to jump to it.
             </div>
           </div>
           <button
@@ -3028,14 +3121,14 @@ function StudyOutlineModal({
             onClick={onClose}
             aria-label="Close"
             style={{
-              width: 36,
-              height: 36,
+              width: 30,
+              height: 30,
               flex: "0 0 auto",
-              borderRadius: 8,
+              borderRadius: 7,
               border: "1px solid #d1d5db",
               background: "#fff",
               cursor: "pointer",
-              fontSize: 18,
+              fontSize: 16,
               lineHeight: 1,
             }}
           >
@@ -3043,9 +3136,9 @@ function StudyOutlineModal({
           </button>
         </div>
 
-        <div style={{ padding: "14px 20px", overflowY: "auto" }}>
+        <div style={{ padding: "8px 10px", overflowY: "auto" }}>
           {currentQuestions.length === 0 ? (
-            <div style={{ color: "#6b7280" }}>No questions yet.</div>
+            <div style={{ color: "#6b7280", padding: "6px 4px" }}>No questions yet.</div>
           ) : (
             currentQuestions.map((item, i) => (
               <OutlineRow
@@ -3057,6 +3150,15 @@ function StudyOutlineModal({
                 onMoveUp={() => moveQuestion(i, i - 1)}
                 onMoveDown={() => moveQuestion(i, i + 1)}
                 onJump={() => onJumpTo(item._editorId)}
+                onIdChange={(nextValue) => {
+                  const cleanedId = sanitizeQuestionId(nextValue, "");
+                  let nextQuestion = { ...item, id: cleanedId };
+                  if (cleanedId && shouldAutoRewriteRowValues(nextQuestion)) {
+                    nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
+                  }
+                  updateQuestion(i, nextQuestion);
+                }}
+                onDuplicate={() => duplicateQuestion(i)}
                 draggingId={draggingId}
                 dragOverId={dragOverId}
                 onDragStart={onDragStart}
@@ -3398,6 +3500,8 @@ export function SurveyEditor({
         <StudyOutlineModal
           currentQuestions={currentQuestions}
           moveQuestion={moveQuestion}
+          updateQuestion={updateQuestion}
+          duplicateQuestion={duplicateQuestion}
           draggingId={draggingQuestionId}
           dragOverId={dragOverQuestionId}
           onDragStart={handleQuestionDragStart}
