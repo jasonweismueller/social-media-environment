@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   makeEmptySurvey,
   makeQuestionByType,
@@ -316,6 +317,17 @@ export function isCountedQuestionType(type) {
     type !== POST_REMINDER_TYPE &&
     type !== EDITOR_PAGE_BREAK_TYPE
   );
+}
+
+export function computeQuestionDisplayNumbers(items = []) {
+  let count = 0;
+  return (Array.isArray(items) ? items : []).map((item) => {
+    if (isCountedQuestionType(item?.type)) {
+      count += 1;
+      return count;
+    }
+    return null;
+  });
 }
 
 function derivePostOptionLabel(post = {}, index = 0, feedName = "") {
@@ -2763,6 +2775,330 @@ function smallActionButtonStyle(disabled) {
 }
 
 /* =========================
+   Study outline (compact overview + reorder)
+   ========================= */
+
+function OutlineRow({
+  item,
+  flatIndex,
+  displayNumber,
+  totalCount,
+  onMoveUp,
+  onMoveDown,
+  onJump,
+  draggingId,
+  dragOverId,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}) {
+  const isPageBreak = item.type === EDITOR_PAGE_BREAK_TYPE;
+  const isDragging = draggingId === item._editorId;
+  const isDragOver = dragOverId === item._editorId;
+
+  if (isPageBreak) {
+    return (
+      <div
+        onDragOver={(e) => onDragOver(e, item._editorId)}
+        onDrop={(e) => onDrop(e, item._editorId)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          margin: "12px 0",
+          padding: "6px 8px",
+          borderRadius: 8,
+          borderTop: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
+          opacity: isDragging ? 0.5 : 1,
+        }}
+      >
+        <DragHandle
+          onDragStart={(e) => onDragStart(e, item._editorId)}
+          onDragEnd={onDragEnd}
+        />
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#6b7280",
+            textTransform: "uppercase",
+            letterSpacing: 0.4,
+          }}
+        >
+          Page break
+          {item.next_delay_seconds ? ` · ${item.next_delay_seconds}s delay` : ""}
+        </span>
+
+        <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={flatIndex === 0}
+            style={smallActionButtonStyle(flatIndex === 0)}
+            title="Move up"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={flatIndex === totalCount - 1}
+            style={smallActionButtonStyle(flatIndex === totalCount - 1)}
+            title="Move down"
+          >
+            ↓
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const rawText = stripHtmlForEmptyCheck(item.text || "");
+  const preview = rawText
+    ? rawText.length > 100
+      ? `${rawText.slice(0, 100)}…`
+      : rawText
+    : "(no question text yet)";
+
+  return (
+    <div
+      onDragOver={(e) => onDragOver(e, item._editorId)}
+      onDrop={(e) => onDrop(e, item._editorId)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 10px",
+        borderRadius: 10,
+        border: isDragOver ? "2px solid #6366f1" : "1px solid #e5e7eb",
+        background: isDragging ? "#f8fafc" : "#fff",
+        opacity: isDragging ? 0.6 : 1,
+        marginBottom: 6,
+      }}
+    >
+      <DragHandle
+        onDragStart={(e) => onDragStart(e, item._editorId)}
+        onDragEnd={onDragEnd}
+      />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={flatIndex === 0}
+          style={{ ...smallActionButtonStyle(flatIndex === 0), width: 30, height: 22 }}
+          title="Move up"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={flatIndex === totalCount - 1}
+          style={{ ...smallActionButtonStyle(flatIndex === totalCount - 1), width: 30, height: 22 }}
+          title="Move down"
+        >
+          ↓
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={onJump}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          textAlign: "left",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+        title="Jump to this question in the editor"
+      >
+        <span style={{ fontSize: 12, color: "#6b7280" }}>
+          {displayNumber != null ? `Q${displayNumber} · ` : ""}
+          {QUESTION_TYPE_LABELS[item.type] || item.type}
+          {item.required ? " · Required" : ""}
+        </span>
+        <span
+          style={{
+            fontSize: 14,
+            color: "#111827",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {preview}
+        </span>
+        {item.id ? (
+          <span
+            style={{
+              fontSize: 11,
+              color: "#9ca3af",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            }}
+          >
+            {item.id}
+          </span>
+        ) : null}
+      </button>
+    </div>
+  );
+}
+
+function StudyOutlineModal({
+  currentQuestions,
+  moveQuestion,
+  draggingId,
+  dragOverId,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  onJumpTo,
+  onClose,
+}) {
+  const displayNumbers = useMemo(
+    () => computeQuestionDisplayNumbers(currentQuestions),
+    [currentQuestions]
+  );
+
+  useEffect(() => {
+    function handleEscape(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.45)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 16,
+          width: "min(760px, 100%)",
+          maxHeight: "88vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+            padding: "16px 20px",
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18 }}>Study outline</h3>
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+              Drag a handle, use ↑ / ↓, or click a question to jump to it in the editor.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              width: 36,
+              height: 36,
+              flex: "0 0 auto",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              cursor: "pointer",
+              fontSize: 18,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ padding: "14px 20px", overflowY: "auto" }}>
+          {currentQuestions.length === 0 ? (
+            <div style={{ color: "#6b7280" }}>No questions yet.</div>
+          ) : (
+            currentQuestions.map((item, i) => (
+              <OutlineRow
+                key={item._editorId || i}
+                item={item}
+                flatIndex={i}
+                displayNumber={displayNumbers[i]}
+                totalCount={currentQuestions.length}
+                onMoveUp={() => moveQuestion(i, i - 1)}
+                onMoveDown={() => moveQuestion(i, i + 1)}
+                onJump={() => onJumpTo(item._editorId)}
+                draggingId={draggingId}
+                dragOverId={dragOverId}
+                onDragStart={onDragStart}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                onDragEnd={onDragEnd}
+              />
+            ))
+          )}
+        </div>
+
+        <div
+          style={{
+            padding: "12px 20px",
+            borderTop: "1px solid #e5e7eb",
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid #4f46e5",
+              background: "#4f46e5",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* =========================
    Main editor component
    ========================= */
 
@@ -2775,24 +3111,34 @@ export function SurveyEditor({
 }) {
   const [draggingQuestionId, setDraggingQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [highlightedQuestionId, setHighlightedQuestionId] = useState(null);
+  const questionNodeRefs = useRef({});
 
   const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);
+
+  function jumpToQuestion(editorId) {
+    setOutlineOpen(false);
+    requestAnimationFrame(() => {
+      const el = questionNodeRefs.current[editorId];
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedQuestionId(editorId);
+      setTimeout(() => {
+        setHighlightedQuestionId((cur) => (cur === editorId ? null : cur));
+      }, 1600);
+    });
+  }
 
   const orderedLinkedFeeds = useMemo(
     () => orderFeedsBySequence(linkedFeeds, feedSequenceIds || survey?.feed_sequence_ids || []),
     [linkedFeeds, feedSequenceIds, survey?.feed_sequence_ids]
   );
 
-  const questionDisplayNumbers = useMemo(() => {
-    let count = 0;
-    return currentQuestions.map((item) => {
-      if (isCountedQuestionType(item?.type)) {
-        count += 1;
-        return count;
-      }
-      return null;
-    });
-  }, [currentQuestions]);
+  const questionDisplayNumbers = useMemo(
+    () => computeQuestionDisplayNumbers(currentQuestions),
+    [currentQuestions]
+  );
 
   function addQuestion(type) {
     onSurveyChange((prev) => {
@@ -2940,56 +3286,128 @@ export function SurveyEditor({
   }
 
   return (
-    <SectionCard title="Questions">
-      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
-        Drag items by the dotted handle to reorder them. Use the + buttons on the borders
-        to insert new questions.
-      </div>
+    <>
+      <SectionCard
+        title="Questions"
+        right={
+          <button
+            type="button"
+            onClick={() => setOutlineOpen(true)}
+            disabled={currentQuestions.length === 0}
+            title="See the whole study structure at once and reorder without scrolling"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: currentQuestions.length === 0 ? "#9ca3af" : "#111827",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+            Study outline
+          </button>
+        }
+      >
+        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
+          Drag items by the dotted handle to reorder them. Use the + buttons on the borders
+          to insert new questions, or open "Study outline" for a compact, scroll-free overview.
+        </div>
 
-      {currentQuestions.map((q, i) => (
-        <QuestionCard
-          key={q._editorId || i}
-          q={q}
-          index={i}
-          displayNumber={questionDisplayNumbers[i]}
-          totalQuestions={currentQuestions.length}
-          linkedFeeds={orderedLinkedFeeds}
-          linkedFeedPostsMap={linkedFeedPostsMap}
-          updateQuestion={updateQuestion}
-          removeQuestion={removeQuestion}
+        {currentQuestions.map((q, i) => (
+          <div
+            key={q._editorId || i}
+            ref={(el) => {
+              questionNodeRefs.current[q._editorId] = el;
+            }}
+            style={{
+              borderRadius: 14,
+              outline:
+                highlightedQuestionId === q._editorId
+                  ? "3px solid #6366f1"
+                  : "3px solid transparent",
+              outlineOffset: 4,
+              transition: "outline-color 0.2s ease",
+            }}
+          >
+            <QuestionCard
+              q={q}
+              index={i}
+              displayNumber={questionDisplayNumbers[i]}
+              totalQuestions={currentQuestions.length}
+              linkedFeeds={orderedLinkedFeeds}
+              linkedFeedPostsMap={linkedFeedPostsMap}
+              updateQuestion={updateQuestion}
+              removeQuestion={removeQuestion}
+              moveQuestion={moveQuestion}
+              duplicateQuestion={duplicateQuestion}
+              insertQuestionAt={insertQuestionAt}
+              draggingId={draggingQuestionId}
+              dragOverId={dragOverQuestionId}
+              onDragStart={handleQuestionDragStart}
+              onDragOver={handleQuestionDragOver}
+              onDrop={handleQuestionDrop}
+              onDragEnd={handleQuestionDragEnd}
+            />
+          </div>
+        ))}
+
+        {currentQuestions.length === 0 && (
+          <div
+            style={{
+              position: "relative",
+              border: "1px dashed #d1d5db",
+              borderRadius: 12,
+              padding: 28,
+              background: "#fff",
+              textAlign: "center",
+              color: "#6b7280",
+            }}
+          >
+            No questions yet.
+            <div style={{ marginTop: 10 }}>
+              <InsertAtBorderButton
+                position="bottom"
+                onInsert={(nextType) => addQuestion(nextType)}
+              />
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {outlineOpen && (
+        <StudyOutlineModal
+          currentQuestions={currentQuestions}
           moveQuestion={moveQuestion}
-          duplicateQuestion={duplicateQuestion}
-          insertQuestionAt={insertQuestionAt}
           draggingId={draggingQuestionId}
           dragOverId={dragOverQuestionId}
           onDragStart={handleQuestionDragStart}
           onDragOver={handleQuestionDragOver}
           onDrop={handleQuestionDrop}
           onDragEnd={handleQuestionDragEnd}
+          onJumpTo={jumpToQuestion}
+          onClose={() => setOutlineOpen(false)}
         />
-      ))}
-
-      {currentQuestions.length === 0 && (
-        <div
-          style={{
-            position: "relative",
-            border: "1px dashed #d1d5db",
-            borderRadius: 12,
-            padding: 28,
-            background: "#fff",
-            textAlign: "center",
-            color: "#6b7280",
-          }}
-        >
-          No questions yet.
-          <div style={{ marginTop: 10 }}>
-            <InsertAtBorderButton
-              position="bottom"
-              onInsert={(nextType) => addQuestion(nextType)}
-            />
-          </div>
-        </div>
       )}
-    </SectionCard>
+    </>
   );
 }
