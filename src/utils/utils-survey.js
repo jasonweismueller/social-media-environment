@@ -259,6 +259,216 @@ function normalizeRichSurveyField(value, fallback = "") {
 }
 
 /* =========================
+   Page blocks
+   ========================= */
+
+function sanitizePageBlockId(value, fallback = "") {
+  const cleaned = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Za-z0-9_-]/g, "");
+
+  return cleaned || fallback;
+}
+
+export function makePageBlock(overrides = {}) {
+  const safeOverrides = asObject(overrides);
+
+  return {
+    id: sanitizePageBlockId(safeOverrides.id, `block_${uid()}`),
+    title: String(safeOverrides.title || "Page block"),
+    randomize_pages: !!safeOverrides.randomize_pages,
+    page_ids: uniqueStringArray(safeOverrides.page_ids),
+  };
+}
+
+/**
+ * Ensures that:
+ * - every page belongs to exactly one block;
+ * - deleted page IDs are removed;
+ * - duplicate page assignments are removed;
+ * - block IDs are unique;
+ * - legacy surveys receive one default block;
+ * - newly created/unassigned pages are appended to the final block.
+ */
+export function reconcilePageBlocks(pages = [], pageBlocks = []) {
+  const safePages = (Array.isArray(pages) ? pages : [])
+    .map(normalizePage)
+    .filter(Boolean);
+
+  const pageIds = safePages
+    .map((page) => String(page?.id ?? "").trim())
+    .filter(Boolean);
+
+  const validPageIds = new Set(pageIds);
+  const assignedPageIds = new Set();
+  const usedBlockIds = new Set();
+
+  const sourceBlocks = Array.isArray(pageBlocks) ? pageBlocks : [];
+  const normalizedBlocks = [];
+
+  sourceBlocks.forEach((rawBlock, blockIndex) => {
+    const source = asObject(rawBlock);
+
+    let blockId = sanitizePageBlockId(
+      source.id,
+      `block_${blockIndex + 1}`
+    );
+
+    if (usedBlockIds.has(blockId)) {
+      const baseId = blockId;
+      let suffix = 2;
+
+      while (usedBlockIds.has(`${baseId}_${suffix}`)) {
+        suffix += 1;
+      }
+
+      blockId = `${baseId}_${suffix}`;
+    }
+
+    usedBlockIds.add(blockId);
+
+    const blockPageIds = [];
+
+    uniqueStringArray(source.page_ids).forEach((pageId) => {
+      if (!validPageIds.has(pageId)) return;
+      if (assignedPageIds.has(pageId)) return;
+
+      assignedPageIds.add(pageId);
+      blockPageIds.push(pageId);
+    });
+
+    normalizedBlocks.push({
+      id: blockId,
+      title: String(source.title || `Block ${blockIndex + 1}`),
+      randomize_pages: !!source.randomize_pages,
+      page_ids: blockPageIds,
+    });
+  });
+
+  const unassignedPageIds = pageIds.filter(
+    (pageId) => !assignedPageIds.has(pageId)
+  );
+
+  if (!normalizedBlocks.length) {
+    return [
+      {
+        id: "block_1",
+        title: "All pages",
+        randomize_pages: false,
+        page_ids: [...pageIds],
+      },
+    ];
+  }
+
+  if (unassignedPageIds.length) {
+    const lastIndex = normalizedBlocks.length - 1;
+
+    normalizedBlocks[lastIndex] = {
+      ...normalizedBlocks[lastIndex],
+      page_ids: [
+        ...normalizedBlocks[lastIndex].page_ids,
+        ...unassignedPageIds,
+      ],
+    };
+  }
+
+  return normalizedBlocks;
+}
+
+export function normalizePageBlocks(pageBlocks = [], pages = []) {
+  return reconcilePageBlocks(pages, pageBlocks);
+}
+
+export function frontendPageBlocksToBackend(
+  pageBlocks = [],
+  pages = []
+) {
+  return reconcilePageBlocks(pages, pageBlocks).map((block) => ({
+    id: block.id,
+    title: block.title,
+    randomize_pages: !!block.randomize_pages,
+    page_ids: [...block.page_ids],
+  }));
+}
+
+/**
+ * Produces the participant-facing page order.
+ *
+ * Block order always remains fixed. Pages are shuffled only inside blocks
+ * where randomize_pages is true.
+ */
+export function materializePagesFromBlocks(
+  surveyOrPages = {},
+  pageBlocksArg = [],
+  {
+    participantSeed = "",
+    randomize = true,
+  } = {}
+) {
+  const receivedPagesArray = Array.isArray(surveyOrPages);
+
+  const pages = receivedPagesArray
+    ? surveyOrPages.map(normalizePage).filter(Boolean)
+    : coerceQuestionsIntoPages(asObject(surveyOrPages));
+
+  const rawPageBlocks = receivedPagesArray
+    ? pageBlocksArg
+    : asObject(surveyOrPages).page_blocks;
+
+  const pageBlocks = reconcilePageBlocks(pages, rawPageBlocks);
+
+  const pageById = new Map(
+    pages.map((page) => [
+      String(page.id ?? "").trim(),
+      page,
+    ])
+  );
+
+  return pageBlocks.flatMap((block, blockIndex) => {
+    const blockPages = block.page_ids
+      .map((pageId) => pageById.get(pageId))
+      .filter(Boolean);
+
+    if (
+      !randomize ||
+      !block.randomize_pages ||
+      blockPages.length < 2
+    ) {
+      return blockPages;
+    }
+
+    return seededShuffle(
+      blockPages,
+      `${participantSeed}::page_block::${
+        block.id || blockIndex + 1
+      }`
+    );
+  });
+}
+
+/**
+ * Returns a normalized survey whose pages have been arranged for one
+ * participant. The stored page_blocks metadata is retained.
+ */
+export function randomizePagesWithinBlocks(
+  survey,
+  {
+    participantSeed = "",
+  } = {}
+) {
+  const normalized = normalizeSurvey(survey);
+
+  return {
+    ...normalized,
+    pages: materializePagesFromBlocks(normalized, [], {
+      participantSeed,
+      randomize: true,
+    }),
+  };
+}
+
+/* =========================
    Post reminder helpers
    ========================= */
 
@@ -785,12 +995,20 @@ export function makeEmptySurvey(overrides = {}) {
   const safeOverrides = asObject(overrides);
   const pages = coerceQuestionsIntoPages(safeOverrides);
 
+  const pageBlocks = reconcilePageBlocks(
+    pages,
+    safeOverrides.page_blocks
+  );
+
   return {
     survey_id: safeOverrides.survey_id || `survey_${uid()}`,
     name: safeOverrides.name || "Untitled Survey",
     description: safeOverrides.description || "",
     pages,
-    version: Number.isFinite(safeOverrides.version) ? safeOverrides.version : 1,
+    page_blocks: pageBlocks,
+    version: Number.isFinite(safeOverrides.version)
+      ? safeOverrides.version
+      : 1,
     status: safeOverrides.status || "draft",
     created_at: safeOverrides.created_at || null,
     updated_at: safeOverrides.updated_at || null,
@@ -798,11 +1016,15 @@ export function makeEmptySurvey(overrides = {}) {
     linked_feed_ids: Array.isArray(safeOverrides.linked_feed_ids)
       ? safeOverrides.linked_feed_ids.map(String).filter(Boolean)
       : [],
-    feed_sequence_ids: Array.isArray(safeOverrides.feed_sequence_ids)
+
+    feed_sequence_ids: Array.isArray(
+      safeOverrides.feed_sequence_ids
+    )
       ? safeOverrides.feed_sequence_ids.map(String).filter(Boolean)
       : Array.isArray(safeOverrides.linked_feed_ids)
         ? safeOverrides.linked_feed_ids.map(String).filter(Boolean)
         : [],
+
     linked_project_id: safeOverrides.linked_project_id || "",
     trigger: safeOverrides.trigger || "after_feed_submit",
 
@@ -810,30 +1032,37 @@ export function makeEmptySurvey(overrides = {}) {
       safeOverrides.participant_information_title,
       "Participant Information"
     ),
+
     participant_information_html: normalizeRichSurveyField(
       safeOverrides.participant_information_html,
       ""
     ),
+
     consent_title: normalizeRichSurveyField(
       safeOverrides.consent_title,
       "Participant Consent"
     ),
+
     consent_text_html: normalizeRichSurveyField(
       safeOverrides.consent_text_html,
       ""
     ),
+
     consent_decline_message_html: normalizeRichSurveyField(
       safeOverrides.consent_decline_message_html,
       "You cannot proceed because you did not provide consent to participate."
     ),
+
     instructions_title: normalizeRichSurveyField(
       safeOverrides.instructions_title,
       "Instructions"
     ),
+
     instructions_html: normalizeRichSurveyField(
       safeOverrides.instructions_html,
       ""
     ),
+
     pre_feed_button_label: normalizeRichSurveyField(
       safeOverrides.pre_feed_button_label,
       "Go to feed"
@@ -843,19 +1072,27 @@ export function makeEmptySurvey(overrides = {}) {
       safeOverrides.thank_you_message_html,
       "<p>Thank you for completing the study.</p><p>You may now close this window.</p>"
     ),
+
     completion_code: normalizeRichSurveyField(
       safeOverrides.completion_code,
       ""
     ),
+
     completion_mode:
-      String(safeOverrides.completion_mode || "").trim().toLowerCase() === "redirect"
+      String(safeOverrides.completion_mode || "")
+        .trim()
+        .toLowerCase() === "redirect"
         ? "redirect"
         : "message",
+
     completion_redirect_url: normalizeRichSurveyField(
       safeOverrides.completion_redirect_url,
       ""
     ),
-    delivery_mode: normalizeSurveyDeliveryMode(safeOverrides.delivery_mode),
+
+    delivery_mode: normalizeSurveyDeliveryMode(
+      safeOverrides.delivery_mode
+    ),
   };
 }
 
@@ -863,12 +1100,20 @@ export function normalizeSurvey(raw = {}) {
   const safeRaw = asObject(raw);
   const pages = coerceQuestionsIntoPages(safeRaw);
 
+  const pageBlocks = reconcilePageBlocks(
+    pages,
+    safeRaw.page_blocks
+  );
+
   return {
     survey_id: safeRaw.survey_id || `survey_${uid()}`,
     name: String(safeRaw.name || "Untitled Survey"),
     description: String(safeRaw.description || ""),
     pages,
-    version: Number.isFinite(safeRaw.version) ? safeRaw.version : 1,
+    page_blocks: pageBlocks,
+    version: Number.isFinite(safeRaw.version)
+      ? safeRaw.version
+      : 1,
     status: String(safeRaw.status || "draft"),
     created_at: safeRaw.created_at || null,
     updated_at: safeRaw.updated_at || null,
@@ -876,11 +1121,15 @@ export function normalizeSurvey(raw = {}) {
     linked_feed_ids: Array.isArray(safeRaw.linked_feed_ids)
       ? safeRaw.linked_feed_ids.map(String).filter(Boolean)
       : [],
-    feed_sequence_ids: Array.isArray(safeRaw.feed_sequence_ids)
+
+    feed_sequence_ids: Array.isArray(
+      safeRaw.feed_sequence_ids
+    )
       ? safeRaw.feed_sequence_ids.map(String).filter(Boolean)
       : Array.isArray(safeRaw.linked_feed_ids)
         ? safeRaw.linked_feed_ids.map(String).filter(Boolean)
         : [],
+
     linked_project_id: safeRaw.linked_project_id || "",
     trigger: safeRaw.trigger || "after_feed_submit",
 
@@ -888,30 +1137,37 @@ export function normalizeSurvey(raw = {}) {
       safeRaw.participant_information_title,
       "Participant Information"
     ),
+
     participant_information_html: normalizeRichSurveyField(
       safeRaw.participant_information_html,
       ""
     ),
+
     consent_title: normalizeRichSurveyField(
       safeRaw.consent_title,
       "Participant Consent"
     ),
+
     consent_text_html: normalizeRichSurveyField(
       safeRaw.consent_text_html,
       ""
     ),
+
     consent_decline_message_html: normalizeRichSurveyField(
       safeRaw.consent_decline_message_html,
       "You cannot proceed because you did not provide consent to participate."
     ),
+
     instructions_title: normalizeRichSurveyField(
       safeRaw.instructions_title,
       "Instructions"
     ),
+
     instructions_html: normalizeRichSurveyField(
       safeRaw.instructions_html,
       ""
     ),
+
     pre_feed_button_label: normalizeRichSurveyField(
       safeRaw.pre_feed_button_label,
       "Go to feed"
@@ -921,19 +1177,27 @@ export function normalizeSurvey(raw = {}) {
       safeRaw.thank_you_message_html,
       "<p>Thank you for completing the study.</p><p>You may now close this window.</p>"
     ),
+
     completion_code: normalizeRichSurveyField(
       safeRaw.completion_code,
       ""
     ),
+
     completion_mode:
-      String(safeRaw.completion_mode || "").trim().toLowerCase() === "redirect"
+      String(safeRaw.completion_mode || "")
+        .trim()
+        .toLowerCase() === "redirect"
         ? "redirect"
         : "message",
+
     completion_redirect_url: normalizeRichSurveyField(
       safeRaw.completion_redirect_url,
       ""
     ),
-    delivery_mode: normalizeSurveyDeliveryMode(safeRaw.delivery_mode),
+
+    delivery_mode: normalizeSurveyDeliveryMode(
+      safeRaw.delivery_mode
+    ),
   };
 }
 
@@ -946,13 +1210,26 @@ export function frontendSurveyToBackend(survey = {}) {
     description: s.description,
     version: s.version,
     status: s.status,
+
     pages: frontendPagesToBackend(s.pages),
 
-    participant_information_title: s.participant_information_title,
-    participant_information_html: s.participant_information_html,
+    page_blocks: frontendPageBlocksToBackend(
+      s.page_blocks,
+      s.pages
+    ),
+
+    participant_information_title:
+      s.participant_information_title,
+
+    participant_information_html:
+      s.participant_information_html,
+
     consent_title: s.consent_title,
     consent_text_html: s.consent_text_html,
-    consent_decline_message_html: s.consent_decline_message_html,
+
+    consent_decline_message_html:
+      s.consent_decline_message_html,
+
     instructions_title: s.instructions_title,
     instructions_html: s.instructions_html,
     pre_feed_button_label: s.pre_feed_button_label,
@@ -961,9 +1238,15 @@ export function frontendSurveyToBackend(survey = {}) {
     completion_code: s.completion_code,
     completion_mode: s.completion_mode,
     completion_redirect_url: s.completion_redirect_url,
+
     delivery_mode: s.delivery_mode,
     linked_feed_ids: s.linked_feed_ids,
-    feed_sequence_ids: Array.isArray(s.feed_sequence_ids) && s.feed_sequence_ids.length ? s.feed_sequence_ids : s.linked_feed_ids,
+
+    feed_sequence_ids:
+      Array.isArray(s.feed_sequence_ids) &&
+      s.feed_sequence_ids.length
+        ? s.feed_sequence_ids
+        : s.linked_feed_ids,
   };
 }
 
@@ -975,10 +1258,18 @@ export function surveyQuestions(survey) {
 export function setSurveyQuestions(survey, questions = []) {
   const normalized = normalizeSurvey(survey);
 
+  const pages = splitQuestionsIntoPages(
+    (Array.isArray(questions) ? questions : []).map(
+      normalizeQuestion
+    )
+  );
+
   return {
     ...normalized,
-    pages: splitQuestionsIntoPages(
-      (Array.isArray(questions) ? questions : []).map(normalizeQuestion)
+    pages,
+    page_blocks: reconcilePageBlocks(
+      pages,
+      normalized.page_blocks
     ),
   };
 }
