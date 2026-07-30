@@ -2838,6 +2838,27 @@ function compactArrowStyle(disabled) {
   };
 }
 
+function InsertPageBreakIcon({ size = 12 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="3" y1="7" x2="21" y2="7" strokeDasharray="3 3" />
+      <line x1="3" y1="17" x2="21" y2="17" strokeDasharray="3 3" />
+      <line x1="12" y1="10" x2="12" y2="14" />
+      <line x1="10" y1="12" x2="14" y2="12" />
+    </svg>
+  );
+}
+
 function OutlineRow({
   item,
   flatIndex,
@@ -2849,6 +2870,8 @@ function OutlineRow({
   onJump,
   onIdChange,
   onDuplicate,
+  onInsertPageBreakAfter,
+  onDelete,
   draggingId,
   dragOverId,
   onDragStart,
@@ -2916,6 +2939,16 @@ function OutlineRow({
           Page break · Page {pageNumber} starts below
           {item.next_delay_seconds ? ` · ${item.next_delay_seconds}s delay` : ""}
         </span>
+
+        <IconOnlyButton
+          onClick={onDelete}
+          title="Delete page break"
+          danger
+          size={11}
+          style={{ width: 20, height: 20, flex: "0 0 auto", marginLeft: "auto" }}
+        >
+          <TrashIcon size={11} />
+        </IconOnlyButton>
       </div>
     );
   }
@@ -3043,6 +3076,25 @@ function OutlineRow({
       >
         <CopyIcon size={11} />
       </IconOnlyButton>
+
+      <IconOnlyButton
+        onClick={onInsertPageBreakAfter}
+        title="Insert a page break after this question"
+        size={11}
+        style={{ width: 20, height: 20, flex: "0 0 auto" }}
+      >
+        <InsertPageBreakIcon size={12} />
+      </IconOnlyButton>
+
+      <IconOnlyButton
+        onClick={onDelete}
+        title="Delete question"
+        danger
+        size={11}
+        style={{ width: 20, height: 20, flex: "0 0 auto" }}
+      >
+        <TrashIcon size={11} />
+      </IconOnlyButton>
     </div>
   );
 }
@@ -3052,6 +3104,8 @@ function StudyOutlineModal({
   moveQuestion,
   updateQuestion,
   duplicateQuestion,
+  insertQuestionAt,
+  removeQuestion,
   draggingId,
   dragOverId,
   onDragStart,
@@ -3059,7 +3113,6 @@ function StudyOutlineModal({
   onDrop,
   onDragEnd,
   onJumpTo,
-  onAddPageBreak,
   onClose,
 }) {
   const displayNumbers = useMemo(
@@ -3136,7 +3189,7 @@ function StudyOutlineModal({
           <div>
             <h3 style={{ margin: 0, fontSize: 16 }}>Study overview</h3>
             <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-              {questionCount} {questionCount === 1 ? "question" : "questions"} across {pageCount} {pageCount === 1 ? "page" : "pages"}. Drag to reorder, edit IDs inline, or click question text to jump to it.
+              {questionCount} {questionCount === 1 ? "question" : "questions"} across {pageCount} {pageCount === 1 ? "page" : "pages"}. Drag to reorder, edit IDs inline, insert a page break, delete, or click question text to jump to it.
             </div>
           </div>
           <button
@@ -3183,6 +3236,18 @@ function StudyOutlineModal({
                   updateQuestion(i, nextQuestion);
                 }}
                 onDuplicate={() => duplicateQuestion(i)}
+                onInsertPageBreakAfter={() =>
+                  insertQuestionAt(i, EDITOR_PAGE_BREAK_TYPE, "below")
+                }
+                onDelete={() => {
+                  if (item.type === EDITOR_PAGE_BREAK_TYPE) {
+                    removeQuestion(i);
+                    return;
+                  }
+                  if (window.confirm("Delete this question?")) {
+                    removeQuestion(i);
+                  }
+                }}
                 draggingId={draggingId}
                 dragOverId={dragOverId}
                 onDragStart={onDragStart}
@@ -3200,32 +3265,10 @@ function StudyOutlineModal({
             borderTop: "1px solid #e5e7eb",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             gap: 10,
-            flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            onClick={onAddPageBreak}
-            style={{
-              padding: "9px 12px",
-              borderRadius: 9,
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              color: "#111827",
-              fontWeight: 650,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-            }}
-            title="Add a page break at the end of the study"
-          >
-            <span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>＋</span>
-            Add page break
-          </button>
-
           <button
             type="button"
             onClick={onClose}
@@ -3468,24 +3511,6 @@ export function SurveyEditor({
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={() => addQuestion(EDITOR_PAGE_BREAK_TYPE)}
-            title="Add a page break at the end of the study"
-            style={{
-              padding: "8px 11px",
-              borderRadius: 9,
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              color: "#111827",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            ＋ Page break
-          </button>
-
-          <button
-            type="button"
             onClick={() => setOutlineOpen(true)}
             disabled={currentQuestions.length === 0}
             title="See the whole study structure at once and reorder without scrolling"
@@ -3596,6 +3621,8 @@ export function SurveyEditor({
           moveQuestion={moveQuestion}
           updateQuestion={updateQuestion}
           duplicateQuestion={duplicateQuestion}
+          insertQuestionAt={insertQuestionAt}
+          removeQuestion={removeQuestion}
           draggingId={draggingQuestionId}
           dragOverId={dragOverQuestionId}
           onDragStart={handleQuestionDragStart}
@@ -3603,7 +3630,6 @@ export function SurveyEditor({
           onDrop={handleQuestionDrop}
           onDragEnd={handleQuestionDragEnd}
           onJumpTo={jumpToQuestion}
-          onAddPageBreak={() => addQuestion(EDITOR_PAGE_BREAK_TYPE)}
           onClose={() => setOutlineOpen(false)}
         />
       )}
