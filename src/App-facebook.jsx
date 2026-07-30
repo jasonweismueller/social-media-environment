@@ -238,6 +238,141 @@ async function getSurveyBootFromBackendBySurveyId(
 
 
 
+
+const preloadedReminderImages = new Set();
+
+async function preloadReminderImage(src, signal) {
+  const url = String(src || "").trim();
+
+  if (
+    !url ||
+    preloadedReminderImages.has(url) ||
+    url.startsWith("data:") ||
+    url.startsWith("blob:")
+  ) {
+    return;
+  }
+
+  preloadedReminderImages.add(url);
+
+  await new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+
+    const img = new Image();
+    let finished = false;
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      img.onload = null;
+      img.onerror = null;
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+
+    img.onload = finish;
+    img.onerror = finish;
+    signal?.addEventListener("abort", finish, { once: true });
+    img.src = url;
+
+    if (typeof img.decode === "function") {
+      img.decode().then(finish).catch(() => {
+        // onload/onerror will still complete the preload.
+      });
+    }
+  });
+}
+
+function collectReminderImageUrls(post) {
+  if (!post || typeof post !== "object") return [];
+
+  const urls = new Set();
+  const imageFieldNames = new Set([
+    "avatar",
+    "avatar_url",
+    "avatarUrl",
+    "profile_image",
+    "profile_image_url",
+    "profileImage",
+    "profileImageUrl",
+    "profile_photo",
+    "profile_photo_url",
+    "profilePhoto",
+    "profilePhotoUrl",
+    "profile_picture",
+    "profile_picture_url",
+    "profilePicture",
+    "profilePictureUrl",
+    "author_avatar",
+    "author_avatar_url",
+    "authorAvatar",
+    "authorAvatarUrl",
+    "image",
+    "image_url",
+    "imageUrl",
+    "photo",
+    "photo_url",
+    "photoUrl",
+    "thumbnail",
+    "thumbnail_url",
+    "thumbnailUrl",
+    "poster",
+    "poster_url",
+    "posterUrl",
+    "media_url",
+    "mediaUrl",
+  ]);
+
+  function visit(value, key = "") {
+    if (value == null) return;
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, key));
+      return;
+    }
+
+    if (typeof value === "object") {
+      Object.entries(value).forEach(([childKey, childValue]) => {
+        visit(childValue, childKey);
+      });
+      return;
+    }
+
+    if (typeof value !== "string") return;
+
+    const url = value.trim();
+    if (!url) return;
+
+    const looksLikeImageField =
+      imageFieldNames.has(key) ||
+      /avatar|profile.*(?:image|photo|picture)|image|photo|thumbnail|poster/i.test(
+        key
+      );
+
+    if (
+      looksLikeImageField &&
+      (/^https?:\/\//i.test(url) ||
+        url.startsWith("/") ||
+        url.startsWith("data:image/"))
+    ) {
+      urls.add(url);
+    }
+  }
+
+  visit(post);
+  return Array.from(urls);
+}
+
+async function preloadReminderPostAssets(post, signal) {
+  const imageUrls = collectReminderImageUrls(post);
+  await Promise.allSettled(
+    imageUrls.map((url) => preloadReminderImage(url, signal))
+  );
+}
+
 async function preloadSurveyPostReminders({
   survey,
   fallbackFeedId = "",
@@ -280,14 +415,20 @@ async function preloadSurveyPostReminders({
   if (!uniqueTargets.size) return [];
 
   return Promise.all(
-    Array.from(uniqueTargets.values()).map(({ feedId, postId }) =>
-      loadPostByIdFromBackend({
+    Array.from(uniqueTargets.values()).map(async ({ feedId, postId }) => {
+      const post = await loadPostByIdFromBackend({
         projectId,
         feedId,
         postId,
         signal,
-      })
-    )
+      });
+
+      if (post && !signal?.aborted) {
+        await preloadReminderPostAssets(post, signal);
+      }
+
+      return post;
+    })
   );
 }
 
