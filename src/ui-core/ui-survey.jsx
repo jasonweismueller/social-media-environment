@@ -52,6 +52,14 @@ function safeLocalStorageGet_(key) {
   }
 }
 
+// Module-level cache for reminder posts fetched via loadPostByIdFromBackend.
+// Keyed by "projectId::feedId::postId". This avoids re-fetching over the
+// network every time a PostReminderCard remounts (e.g. the participant
+// navigates back to a previous survey page and returns to it later), which
+// otherwise re-shows the "Loading post..." state and adds a network round
+// trip each time.
+const reminderPostFetchCache = new Map();
+
 function isDisplayedPostSnapshot(post) {
   return !!(post && post.__studyfeed_displayed_snapshot);
 }
@@ -829,6 +837,15 @@ const PostReminderCard = memo(function PostReminderCard({
       return;
     }
 
+    if (reminderPostFetchCache.has(requestKey)) {
+      const cached = reminderPostFetchCache.get(requestKey);
+      setLazyPost(cached);
+      setLazyStatus(cached ? "ready" : "error");
+      setLazyError(cached ? "" : "The reminder post could not be loaded.");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
     let cancelled = false;
     const controller = new AbortController();
 
@@ -847,6 +864,8 @@ const PostReminderCard = memo(function PostReminderCard({
         });
 
         if (cancelled || requestKeyRef.current !== requestKey) return;
+
+        reminderPostFetchCache.set(requestKey, fetched || null);
 
         if (fetched) {
           setLazyPost(fetched);
@@ -1341,32 +1360,50 @@ export function SurveyScreen({
   const [delayRemaining, setDelayRemaining] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
 
-  const visiblePages = useMemo(() => {
+  // Rendered questions are only recomputed when the survey definition, feed,
+  // or participant seed change — NOT on every response update. This keeps each
+  // question object's identity stable while the participant is answering,
+  // which matters because child components (e.g. the post-reminder card)
+  // treat a new `question` reference as a reason to re-fetch/re-render.
+  // Previously this was combined with the visibility filter in one memo keyed
+  // on `responses`, so every keystroke/click produced brand-new question
+  // objects for the whole page and re-triggered the reminder post's fetch.
+  const renderedPages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
     const activeFeedId = String(feedId ?? "").trim();
 
-    return pages
-      .map((page, pageIdx) => {
-        const visibleQuestions = (page?.questions || [])
-          .filter(isRenderableQuestion)
-          .filter((q) => isQuestionVisible(q, responses, { feedId: activeFeedId }))
-          .map((question) =>
-            getRenderedQuestion(question, {
-              participantSeed: participantSeed || "",
-              feedId: activeFeedId,
-            })
-          );
+    return pages.map((page, pageIdx) => {
+      const renderedQuestions = (page?.questions || [])
+        .filter(isRenderableQuestion)
+        .map((question) =>
+          getRenderedQuestion(question, {
+            participantSeed: participantSeed || "",
+            feedId: activeFeedId,
+          })
+        );
 
-        return {
-  id: page?.id || `page_${pageIdx + 1}`,
-  title: page?.title || "",
-  description: page?.description || "",
-  next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
-  questions: visibleQuestions,
-};
-      })
+      return {
+        id: page?.id || `page_${pageIdx + 1}`,
+        title: page?.title || "",
+        description: page?.description || "",
+        next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
+        questions: renderedQuestions,
+      };
+    });
+  }, [survey, participantSeed, feedId]);
+
+  const visiblePages = useMemo(() => {
+    const activeFeedId = String(feedId ?? "").trim();
+
+    return renderedPages
+      .map((page) => ({
+        ...page,
+        questions: page.questions.filter((q) =>
+          isQuestionVisible(q, responses, { feedId: activeFeedId })
+        ),
+      }))
       .filter((page) => page.questions.length > 0);
-  }, [survey, responses, participantSeed, feedId]);
+  }, [renderedPages, responses, feedId]);
 
   useEffect(() => {
     setCurrentPageIndex(0);

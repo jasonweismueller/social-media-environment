@@ -443,6 +443,10 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
   );
 });
 
+// Module-level cache for reminder posts fetched via loadPostByIdFromBackend.
+// See the matching comment in ui-survey.jsx for the rationale.
+const reminderPostFetchCache = new Map();
+
 const PostReminderCardMobile = memo(function PostReminderCardMobile({
   question,
   posts = [],
@@ -512,6 +516,15 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
       return;
     }
 
+    if (reminderPostFetchCache.has(requestKey)) {
+      const cached = reminderPostFetchCache.get(requestKey);
+      setLazyPost(cached);
+      setLazyStatus(cached ? "ready" : "error");
+      setLazyError(cached ? "" : "The reminder post could not be loaded.");
+      requestKeyRef.current = requestKey;
+      return;
+    }
+
     let cancelled = false;
     const controller = new AbortController();
 
@@ -530,6 +543,8 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
         });
 
         if (cancelled || requestKeyRef.current !== requestKey) return;
+
+        reminderPostFetchCache.set(requestKey, fetched || null);
 
         if (fetched) {
           setLazyPost(fetched);
@@ -1041,32 +1056,46 @@ export function SurveyScreenMobile({
   const [delayRemaining, setDelayRemaining] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
 
-  const visiblePages = useMemo(() => {
+  // See ui-survey.jsx for the rationale: keep rendered question object
+  // identity stable across response changes so child components (like the
+  // post-reminder card) don't treat every keystroke as a reason to
+  // re-fetch/re-render.
+  const renderedPages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
     const activeFeedId = String(feedId ?? "").trim();
 
-    return pages
-      .map((page, pageIdx) => {
-        const visibleQuestions = (page?.questions || [])
-          .filter(isRenderableQuestion)
-          .filter((q) => isQuestionVisible(q, responses, { feedId: activeFeedId }))
-          .map((question) =>
-            getRenderedQuestion(question, {
-              participantSeed: participantSeed || "",
-              feedId: activeFeedId,
-            })
-          );
+    return pages.map((page, pageIdx) => {
+      const renderedQuestions = (page?.questions || [])
+        .filter(isRenderableQuestion)
+        .map((question) =>
+          getRenderedQuestion(question, {
+            participantSeed: participantSeed || "",
+            feedId: activeFeedId,
+          })
+        );
 
-        return {
-          id: page?.id || `page_${pageIdx + 1}`,
-          title: page?.title || "",
-          description: page?.description || "",
-          next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
-          questions: visibleQuestions,
-        };
-      })
+      return {
+        id: page?.id || `page_${pageIdx + 1}`,
+        title: page?.title || "",
+        description: page?.description || "",
+        next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
+        questions: renderedQuestions,
+      };
+    });
+  }, [survey, participantSeed, feedId]);
+
+  const visiblePages = useMemo(() => {
+    const activeFeedId = String(feedId ?? "").trim();
+
+    return renderedPages
+      .map((page) => ({
+        ...page,
+        questions: page.questions.filter((q) =>
+          isQuestionVisible(q, responses, { feedId: activeFeedId })
+        ),
+      }))
       .filter((page) => page.questions.length > 0);
-  }, [survey, responses, participantSeed, feedId]);
+  }, [renderedPages, responses, feedId]);
 
   useEffect(() => {
     setCurrentPageIndex(0);
