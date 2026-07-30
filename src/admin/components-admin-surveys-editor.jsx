@@ -578,7 +578,7 @@ const pages = splitPages.map((pageData, pageIndex) => {
   };
 });
 
-  return {
+  const nextSurvey = {
     ...safeSurvey,
     pages: pages.length
       ? pages
@@ -590,6 +590,78 @@ const pages = splitPages.map((pageData, pageIndex) => {
             questions: [],
           },
         ],
+  };
+
+  return reconcileSurveyPageBlocks(nextSurvey);
+}
+
+
+export function normalizeSurveyPageBlocks(survey) {
+  const safeSurvey = survey && typeof survey === "object" ? survey : {};
+  const pages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
+  const validPageIds = pages
+    .map((page, index) => String(page?.id || `page_${index + 1}`).trim())
+    .filter(Boolean);
+  const validSet = new Set(validPageIds);
+  const assigned = new Set();
+  const sourceBlocks = Array.isArray(safeSurvey.page_blocks)
+    ? safeSurvey.page_blocks
+    : [];
+
+  const blocks = sourceBlocks.map((rawBlock, blockIndex) => {
+    const block = rawBlock && typeof rawBlock === "object" ? rawBlock : {};
+    const pageIds = uniqueStringList(block.page_ids)
+      .filter((pageId) => validSet.has(pageId))
+      .filter((pageId) => {
+        if (assigned.has(pageId)) return false;
+        assigned.add(pageId);
+        return true;
+      });
+
+    return {
+      id: String(block.id || `block_${blockIndex + 1}`),
+      title: String(block.title || `Block ${blockIndex + 1}`),
+      randomize_pages: !!block.randomize_pages,
+      page_ids: pageIds,
+    };
+  });
+
+  if (!blocks.length) {
+    return [
+      {
+        id: "block_1",
+        title: "Survey pages",
+        randomize_pages: false,
+        page_ids: validPageIds,
+      },
+    ];
+  }
+
+  const unassigned = validPageIds.filter((pageId) => !assigned.has(pageId));
+  if (unassigned.length) {
+    blocks[blocks.length - 1] = {
+      ...blocks[blocks.length - 1],
+      page_ids: [...blocks[blocks.length - 1].page_ids, ...unassigned],
+    };
+  }
+
+  return blocks;
+}
+
+export function reconcileSurveyPageBlocks(survey) {
+  const safeSurvey = survey && typeof survey === "object" ? survey : makeEmptySurvey();
+  return {
+    ...safeSurvey,
+    page_blocks: normalizeSurveyPageBlocks(safeSurvey),
+  };
+}
+
+function makePageBlock(index = 0) {
+  return {
+    id: `block_${Date.now()}_${index}`,
+    title: `Block ${index + 1}`,
+    randomize_pages: false,
+    page_ids: [],
   };
 }
 
@@ -3099,7 +3171,165 @@ function OutlineRow({
   );
 }
 
+
+function PageBlocksEditor({ survey, onSurveyChange }) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const blocks = normalizeSurveyPageBlocks(survey);
+  const pageById = new Map(
+    pages.map((page, index) => [
+      String(page?.id || `page_${index + 1}`),
+      { ...page, _pageNumber: index + 1 },
+    ])
+  );
+
+  const applyBlocks = useCallback(
+    (nextBlocks) => {
+      onSurveyChange((prev) => ({
+        ...prev,
+        page_blocks: normalizeSurveyPageBlocks({
+          ...prev,
+          page_blocks: nextBlocks,
+        }),
+      }));
+    },
+    [onSurveyChange]
+  );
+
+  function updateBlock(blockIndex, patch) {
+    const next = blocks.map((block, index) =>
+      index === blockIndex ? { ...block, ...patch } : block
+    );
+    applyBlocks(next);
+  }
+
+  function moveBlock(fromIndex, toIndex) {
+    if (toIndex < 0 || toIndex >= blocks.length) return;
+    applyBlocks(reorderArray(blocks, fromIndex, toIndex));
+  }
+
+  function addBlock() {
+    applyBlocks([...blocks, makePageBlock(blocks.length)]);
+  }
+
+  function deleteBlock(blockIndex) {
+    if (blocks.length <= 1) return;
+    const removed = blocks[blockIndex];
+    const next = blocks.filter((_, index) => index !== blockIndex);
+    const destinationIndex = Math.max(0, blockIndex - 1);
+    next[destinationIndex] = {
+      ...next[destinationIndex],
+      page_ids: [
+        ...next[destinationIndex].page_ids,
+        ...(removed?.page_ids || []),
+      ],
+    };
+    applyBlocks(next);
+  }
+
+  function movePageWithinBlock(blockIndex, fromIndex, toIndex) {
+    const block = blocks[blockIndex];
+    if (!block || toIndex < 0 || toIndex >= block.page_ids.length) return;
+    updateBlock(blockIndex, {
+      page_ids: reorderArray(block.page_ids, fromIndex, toIndex),
+    });
+  }
+
+  function movePageToBlock(pageId, fromBlockIndex, targetBlockId) {
+    if (!targetBlockId || blocks[fromBlockIndex]?.id === targetBlockId) return;
+    const next = blocks.map((block) => ({
+      ...block,
+      page_ids: block.page_ids.filter((id) => id !== pageId),
+    }));
+    const targetIndex = next.findIndex((block) => block.id === targetBlockId);
+    if (targetIndex < 0) return;
+    next[targetIndex] = {
+      ...next[targetIndex],
+      page_ids: [...next[targetIndex].page_ids, pageId],
+    };
+    applyBlocks(next);
+  }
+
+  return (
+    <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Page blocks</div>
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+            Blocks stay in this order. Only pages inside blocks marked for randomisation will be shuffled for participants.
+          </div>
+        </div>
+        <button type="button" onClick={addBlock} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #4f46e5", background: "#fff", color: "#4338ca", fontWeight: 700, cursor: "pointer" }}>
+          + Add block
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        {blocks.map((block, blockIndex) => (
+          <div key={block.id} style={{ border: "1px solid #dbe3ef", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 50 }}>Block {blockIndex + 1}</div>
+              <input
+                value={block.title}
+                onChange={(e) => updateBlock(blockIndex, { title: e.target.value })}
+                placeholder={`Block ${blockIndex + 1}`}
+                style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
+              />
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#334155", whiteSpace: "nowrap" }}>
+                <input
+                  type="checkbox"
+                  checked={!!block.randomize_pages}
+                  onChange={(e) => updateBlock(blockIndex, { randomize_pages: e.target.checked })}
+                />
+                Randomise pages
+              </label>
+              <IconOnlyButton onClick={() => moveBlock(blockIndex, blockIndex - 1)} title="Move block up" disabled={blockIndex === 0}>↑</IconOnlyButton>
+              <IconOnlyButton onClick={() => moveBlock(blockIndex, blockIndex + 1)} title="Move block down" disabled={blockIndex === blocks.length - 1}>↓</IconOnlyButton>
+              <IconOnlyButton onClick={() => deleteBlock(blockIndex)} title="Delete block" danger disabled={blocks.length <= 1}><TrashIcon size={12} /></IconOnlyButton>
+            </div>
+
+            <div style={{ padding: 8, display: "grid", gap: 6 }}>
+              {block.page_ids.length === 0 ? (
+                <div style={{ fontSize: 11, color: "#94a3b8", padding: "5px 4px" }}>No pages in this block.</div>
+              ) : (
+                block.page_ids.map((pageId, pageIndex) => {
+                  const page = pageById.get(pageId);
+                  const questionCount = Array.isArray(page?.questions) ? page.questions.length : 0;
+                  return (
+                    <div key={pageId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                      <div style={{ width: 52, fontSize: 11, fontWeight: 800, color: "#64748b" }}>Page {page?._pageNumber || "?"}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {String(page?.title || "").trim() || `Page ${page?._pageNumber || pageIndex + 1}`}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{questionCount} {questionCount === 1 ? "question" : "questions"}</div>
+                      </div>
+                      <IconOnlyButton onClick={() => movePageWithinBlock(blockIndex, pageIndex, pageIndex - 1)} title="Move page up within block" disabled={pageIndex === 0}>↑</IconOnlyButton>
+                      <IconOnlyButton onClick={() => movePageWithinBlock(blockIndex, pageIndex, pageIndex + 1)} title="Move page down within block" disabled={pageIndex === block.page_ids.length - 1}>↓</IconOnlyButton>
+                      <select
+                        value={block.id}
+                        onChange={(e) => movePageToBlock(pageId, blockIndex, e.target.value)}
+                        title="Move page to another block"
+                        style={{ height: 30, border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 11, padding: "0 6px", background: "#fff" }}
+                      >
+                        {blocks.map((optionBlock, optionIndex) => (
+                          <option key={optionBlock.id} value={optionBlock.id}>Block {optionIndex + 1}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StudyOutlineModal({
+  survey,
+  onSurveyChange,
   currentQuestions,
   moveQuestion,
   updateQuestion,
@@ -3169,7 +3399,7 @@ function StudyOutlineModal({
         style={{
           background: "#fff",
           borderRadius: 14,
-          width: "min(640px, 100%)",
+          width: "min(860px, 100%)",
           maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
@@ -3211,6 +3441,8 @@ function StudyOutlineModal({
             ×
           </button>
         </div>
+
+        <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
 
         <div style={{ padding: "6px 8px", overflowY: "auto" }}>
           {currentQuestions.length === 0 ? (
@@ -3314,6 +3546,7 @@ export function SurveyEditor({
   ).length;
   const overviewPageCount =
     currentQuestions.filter((item) => item?.type === EDITOR_PAGE_BREAK_TYPE).length + 1;
+  const overviewBlockCount = normalizeSurveyPageBlocks(survey).length;
 
   function jumpToQuestion(editorId) {
     setOutlineOpen(false);
@@ -3504,7 +3737,7 @@ export function SurveyEditor({
             Study structure
           </div>
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-            {overviewQuestionCount} {overviewQuestionCount === 1 ? "question" : "questions"} · {overviewPageCount} {overviewPageCount === 1 ? "page" : "pages"}
+            {overviewQuestionCount} {overviewQuestionCount === 1 ? "question" : "questions"} · {overviewPageCount} {overviewPageCount === 1 ? "page" : "pages"} · {overviewBlockCount} {overviewBlockCount === 1 ? "block" : "blocks"}
           </div>
         </div>
 
@@ -3617,6 +3850,8 @@ export function SurveyEditor({
 
       {outlineOpen && (
         <StudyOutlineModal
+          survey={survey}
+          onSurveyChange={onSurveyChange}
           currentQuestions={currentQuestions}
           moveQuestion={moveQuestion}
           updateQuestion={updateQuestion}
