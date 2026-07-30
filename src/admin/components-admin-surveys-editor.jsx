@@ -3173,6 +3173,7 @@ function OutlineRow({
 
 
 function PageBlocksEditor({ survey, onSurveyChange }) {
+  const [collapsedBlockIds, setCollapsedBlockIds] = useState(() => new Set());
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
   const blocks = normalizeSurveyPageBlocks(survey);
   const pageById = new Map(
@@ -3249,6 +3250,15 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     applyBlocks(next);
   }
 
+  function toggleBlockCollapsed(blockId) {
+    setCollapsedBlockIds((current) => {
+      const next = new Set(current);
+      if (next.has(blockId)) next.delete(blockId);
+      else next.add(blockId);
+      return next;
+    });
+  }
+
   return (
     <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
@@ -3264,9 +3274,20 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
       </div>
 
       <div style={{ display: "grid", gap: 10 }}>
-        {blocks.map((block, blockIndex) => (
+        {blocks.map((block, blockIndex) => {
+          const isCollapsed = collapsedBlockIds.has(block.id);
+          const pageCount = block.page_ids.length;
+
+          return (
           <div key={block.id} style={{ border: "1px solid #dbe3ef", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f8fafc", borderBottom: isCollapsed ? "none" : "1px solid #e5e7eb" }}>
+              <IconOnlyButton
+                onClick={() => toggleBlockCollapsed(block.id)}
+                title={isCollapsed ? "Expand block" : "Collapse block"}
+                aria-label={isCollapsed ? `Expand block ${blockIndex + 1}` : `Collapse block ${blockIndex + 1}`}
+              >
+                <ChevronDownIcon size={12} open={!isCollapsed} />
+              </IconOnlyButton>
               <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 50 }}>Block {blockIndex + 1}</div>
               <input
                 value={block.title}
@@ -3274,6 +3295,9 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
                 placeholder={`Block ${blockIndex + 1}`}
                 style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
               />
+              <div style={{ fontSize: 10, color: "#64748b", whiteSpace: "nowrap" }}>
+                {pageCount} {pageCount === 1 ? "page" : "pages"}
+              </div>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#334155", whiteSpace: "nowrap" }}>
                 <input
                   type="checkbox"
@@ -3287,6 +3311,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
               <IconOnlyButton onClick={() => deleteBlock(blockIndex)} title="Delete block" danger disabled={blocks.length <= 1}><TrashIcon size={12} /></IconOnlyButton>
             </div>
 
+            {!isCollapsed ? (
             <div style={{ padding: 8, display: "grid", gap: 6 }}>
               {block.page_ids.length === 0 ? (
                 <div style={{ fontSize: 11, color: "#94a3b8", padding: "5px 4px" }}>No pages in this block.</div>
@@ -3320,8 +3345,10 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
                 })
               )}
             </div>
+            ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
