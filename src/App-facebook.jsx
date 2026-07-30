@@ -37,6 +37,7 @@ import {
   getSurveyForFeedFromBackend,
   sendSurveyResponseToBackend,
   normalizeSurvey as normalizeFrontendSurvey,
+  materializePagesFromBlocks,
   makeEmptySurveyResponses,
   validateSurveyResponses,
   getTrackingIdsFromUrl,
@@ -1496,7 +1497,7 @@ export default function App() {
       ).trim().toLowerCase();
       const loadedIsSurveyOnly = isSurveyOnlyDeliveryMode(loadedDeliveryMode);
 
-      const normalizedSurvey = normalizedSurveyRaw && loadedIsSurveyOnly
+      const normalizedSurveyBase = normalizedSurveyRaw && loadedIsSurveyOnly
         ? {
             ...normalizedSurveyRaw,
             delivery_mode: "survey_only",
@@ -1506,6 +1507,23 @@ export default function App() {
             trigger: "",
           }
         : normalizedSurveyRaw;
+
+      const surveyParticipantSeed =
+        participantId || sessionIdRef.current || "";
+
+      const normalizedSurvey = normalizedSurveyBase
+        ? {
+            ...normalizedSurveyBase,
+            pages: materializePagesFromBlocks(
+              normalizedSurveyBase,
+              normalizedSurveyBase.page_blocks,
+              {
+                participantSeed: surveyParticipantSeed,
+                randomize: true,
+              }
+            ),
+          }
+        : null;
 
       const normalizedSequence = loadedIsSurveyOnly
         ? []
@@ -1547,6 +1565,12 @@ export default function App() {
         hasSurveyDef: !!surveyDef,
         hasNormalizedSurvey: !!normalizedSurvey,
         pages: normalizedSurvey?.pages?.length || 0,
+        pageBlocks: normalizedSurvey?.page_blocks?.length || 0,
+        randomizedPageBlocks:
+          normalizedSurvey?.page_blocks?.filter(
+            (block) => block?.randomize_pages
+          ).length || 0,
+        surveyParticipantSeed,
       });
 
       return normalizedSurvey;
@@ -1565,7 +1589,16 @@ export default function App() {
         surveyAbortRef.current = null;
       }
     }
-  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId, effectiveSurveyId, isDirectSurveyLaunch]);
+  }, [
+    onAdmin,
+    activeFeedId,
+    surveyBoot,
+    linkedSurvey,
+    projectId,
+    effectiveSurveyId,
+    isDirectSurveyLaunch,
+    participantId,
+  ]);
 
   const preloadSurveyOnlyAssets = useCallback(async () => {
     const t = timerStart("preloadSurveyOnlyAssets", {
