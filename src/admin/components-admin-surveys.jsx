@@ -3087,8 +3087,17 @@ export function AdminSurveysPanel({
 
             <SurveyEditor
               survey={survey}
-              onSurveyChange={(nextSurvey) =>
-                setSurvey(withNormalizedPageBlocks(nextSurvey || {}))
+              onSurveyChange={(nextSurveyOrUpdater) =>
+                setSurvey((currentSurvey) => {
+                  const nextSurvey =
+                    typeof nextSurveyOrUpdater === "function"
+                      ? nextSurveyOrUpdater(currentSurvey)
+                      : nextSurveyOrUpdater;
+
+                  return withNormalizedPageBlocks(
+                    nextSurvey || currentSurvey || {}
+                  );
+                })
               }
               linkedFeeds={linkedFeedsForEditor}
               linkedFeedPostsMap={linkedFeedPostsMap}
