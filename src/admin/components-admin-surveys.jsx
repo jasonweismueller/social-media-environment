@@ -665,6 +665,70 @@ function normalizeSurveyPagesWithDelay(pages = []) {
   }));
 }
 
+
+function makeDefaultPageBlock(pages = []) {
+  return {
+    id: "block_1",
+    title: "Survey pages",
+    randomize_pages: false,
+    page_ids: (Array.isArray(pages) ? pages : [])
+      .map((page) => String(page?.id || "").trim())
+      .filter(Boolean),
+  };
+}
+
+function normalizeSurveyPageBlocks(pageBlocks = [], pages = []) {
+  const safePages = Array.isArray(pages) ? pages : [];
+  const validPageIds = safePages
+    .map((page) => String(page?.id || "").trim())
+    .filter(Boolean);
+  const validPageIdSet = new Set(validPageIds);
+  const assigned = new Set();
+
+  const blocks = (Array.isArray(pageBlocks) ? pageBlocks : [])
+    .map((rawBlock, blockIndex) => {
+      const block = rawBlock && typeof rawBlock === "object" ? rawBlock : {};
+      const pageIds = [];
+
+      (Array.isArray(block.page_ids) ? block.page_ids : []).forEach((rawPageId) => {
+        const pageId = String(rawPageId || "").trim();
+        if (!pageId || !validPageIdSet.has(pageId) || assigned.has(pageId)) return;
+        assigned.add(pageId);
+        pageIds.push(pageId);
+      });
+
+      return {
+        id: String(block.id || `block_${blockIndex + 1}`).trim() || `block_${blockIndex + 1}`,
+        title: String(block.title || `Block ${blockIndex + 1}`),
+        randomize_pages: !!block.randomize_pages,
+        page_ids: pageIds,
+      };
+    });
+
+  if (!blocks.length) {
+    return [makeDefaultPageBlock(safePages)];
+  }
+
+  const unassigned = validPageIds.filter((pageId) => !assigned.has(pageId));
+  if (unassigned.length) {
+    blocks[blocks.length - 1] = {
+      ...blocks[blocks.length - 1],
+      page_ids: [...blocks[blocks.length - 1].page_ids, ...unassigned],
+    };
+  }
+
+  return blocks;
+}
+
+function withNormalizedPageBlocks(surveyLike = {}) {
+  const pages = normalizeSurveyPagesWithDelay(surveyLike?.pages || []);
+  return {
+    ...surveyLike,
+    pages,
+    page_blocks: normalizeSurveyPageBlocks(surveyLike?.page_blocks, pages),
+  };
+}
+
 function normalizeSurveyMetaFields(source = {}) {
   return {
     participant_information_title:
@@ -700,6 +764,10 @@ function applySurveyMetaDefaults(sourceSurvey = {}, projectId = "") {
     version: normalized.version || 1,
     ...normalizeSurveyMetaFields(normalized),
     pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
+    page_blocks: normalizeSurveyPageBlocks(
+      normalized.page_blocks,
+      normalizeSurveyPagesWithDelay(normalized.pages || [])
+    ),
   };
 }
 
@@ -725,6 +793,10 @@ function resetSurveyIdentityForCopy(
     delivery_mode:
       normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
     pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
+    page_blocks: normalizeSurveyPageBlocks(
+      normalized.page_blocks,
+      normalizeSurveyPagesWithDelay(normalized.pages || [])
+    ),
   };
 
   return buildSurveyPagesFromFlatQuestions(
@@ -750,6 +822,10 @@ function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
     delivery_mode:
       normalized.delivery_mode || DELIVERY_MODE_FEED_THEN_SURVEY,
     pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
+    page_blocks: normalizeSurveyPageBlocks(
+      normalized.page_blocks,
+      normalizeSurveyPagesWithDelay(normalized.pages || [])
+    ),
   };
 
   return buildSurveyPagesFromFlatQuestions(
@@ -1302,6 +1378,10 @@ export function AdminSurveysPanel({
                   ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
                   : DELIVERY_MODE_FEED_THEN_SURVEY),
               pages: normalizeSurveyPagesWithDelay(normalizedFull.pages || []),
+              page_blocks: normalizeSurveyPageBlocks(
+                normalizedFull.page_blocks,
+                normalizeSurveyPagesWithDelay(normalizedFull.pages || [])
+              ),
             };
           } catch {
             return {
@@ -1311,6 +1391,7 @@ export function AdminSurveysPanel({
               trigger: "after_feed_submit",
               delivery_mode: DELIVERY_MODE_FEED_THEN_SURVEY,
               pages: [],
+              page_blocks: [makeDefaultPageBlock([])],
               ...normalizeSurveyMetaFields({}),
             };
           }
@@ -1365,6 +1446,10 @@ export function AdminSurveysPanel({
               ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
               : DELIVERY_MODE_FEED_THEN_SURVEY),
           pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
+          page_blocks: normalizeSurveyPageBlocks(
+            normalized.page_blocks,
+            normalizeSurveyPagesWithDelay(normalized.pages || [])
+          ),
         },
         flattenSurveyPagesForEditor(normalized)
       );
@@ -1396,6 +1481,14 @@ export function AdminSurveysPanel({
           description: "",
           next_delay_seconds: DEFAULT_PAGE_NEXT_DELAY_SECONDS,
           questions: [],
+        },
+      ],
+      page_blocks: [
+        {
+          id: "block_1",
+          title: "Survey pages",
+          randomize_pages: false,
+          page_ids: ["page_1"],
         },
       ],
     };
@@ -1440,6 +1533,10 @@ export function AdminSurveysPanel({
       ...normalizeSurveyMetaFields(survey),
       delivery_mode: normalizeDeliveryMode(survey?.delivery_mode),
       pages: normalizeSurveyPagesWithDelay(survey?.pages || []),
+      page_blocks: normalizeSurveyPageBlocks(
+        survey?.page_blocks,
+        normalizeSurveyPagesWithDelay(survey?.pages || [])
+      ),
     };
 
     const exportPayload = {
@@ -1471,6 +1568,10 @@ export function AdminSurveysPanel({
         normalized.completion_redirect_url || ""
       ),
       pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
+      page_blocks: normalizeSurveyPageBlocks(
+        normalized.page_blocks,
+        normalizeSurveyPagesWithDelay(normalized.pages || [])
+      ),
       exported_at: new Date().toISOString(),
       export_format: "survey_v1",
     };
@@ -1555,6 +1656,10 @@ export function AdminSurveysPanel({
         delivery_mode: normalizedDeliveryMode,
         ...normalizeSurveyMetaFields(survey),
         pages: normalizeSurveyPagesWithDelay(survey.pages || []),
+        page_blocks: normalizeSurveyPageBlocks(
+          survey.page_blocks,
+          normalizeSurveyPagesWithDelay(survey.pages || [])
+        ),
       };
 
       const rebuiltSurvey = buildSurveyPagesFromFlatQuestions(
@@ -1581,6 +1686,11 @@ export function AdminSurveysPanel({
           })
         ),
       };
+
+      payload.page_blocks = normalizeSurveyPageBlocks(
+        rebuiltSurvey.page_blocks || normalized.page_blocks,
+        payload.pages
+      );
 
       const res = await saveSurveyToBackend(payload, { projectId });
 
@@ -1628,6 +1738,10 @@ export function AdminSurveysPanel({
                 ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
                 : DELIVERY_MODE_FEED_THEN_SURVEY),
             pages: normalizeSurveyPagesWithDelay(fresh?.pages || []),
+            page_blocks: normalizeSurveyPageBlocks(
+              fresh?.page_blocks,
+              normalizeSurveyPagesWithDelay(fresh?.pages || [])
+            ),
           },
           projectId
         );
@@ -2973,7 +3087,9 @@ export function AdminSurveysPanel({
 
             <SurveyEditor
               survey={survey}
-              onSurveyChange={setSurvey}
+              onSurveyChange={(nextSurvey) =>
+                setSurvey(withNormalizedPageBlocks(nextSurvey || {}))
+              }
               linkedFeeds={linkedFeedsForEditor}
               linkedFeedPostsMap={linkedFeedPostsMap}
               feedSequenceIds={selectedFeedIds}
