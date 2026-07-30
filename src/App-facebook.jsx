@@ -41,6 +41,7 @@ import {
   validateSurveyResponses,
   getTrackingIdsFromUrl,
   getSurveyBootForFeedFromBackend,
+  loadPostByIdFromBackend,
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
@@ -236,6 +237,59 @@ async function getSurveyBootFromBackendBySurveyId(
 }
 
 
+
+async function preloadSurveyPostReminders({
+  survey,
+  fallbackFeedId = "",
+  projectId = "",
+  signal,
+} = {}) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const uniqueTargets = new Map();
+
+  pages.forEach((page) => {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+
+    questions.forEach((question) => {
+      if (String(question?.type || "").trim() !== "post_reminder") return;
+
+      const postId = String(
+        question?.post_id ?? question?.meta?.post_id ?? ""
+      ).trim();
+      const feedId = String(
+        question?.post_feed_id ??
+          question?.meta?.post_feed_id ??
+          fallbackFeedId ??
+          ""
+      ).trim();
+
+      if (!postId || !feedId) return;
+
+      const key = [
+        String(projectId || "").trim(),
+        feedId,
+        postId,
+      ].join("::");
+
+      if (!uniqueTargets.has(key)) {
+        uniqueTargets.set(key, { feedId, postId });
+      }
+    });
+  });
+
+  if (!uniqueTargets.size) return [];
+
+  return Promise.all(
+    Array.from(uniqueTargets.values()).map(({ feedId, postId }) =>
+      loadPostByIdFromBackend({
+        projectId,
+        feedId,
+        postId,
+        signal,
+      })
+    )
+  );
+}
 
 function normalizeSurveyOnlyRuntimeBoot(boot, fallbackSurveyId = "") {
   if (!boot || typeof boot !== "object") return boot;
@@ -1326,6 +1380,20 @@ export default function App() {
         setActiveFeedId(String(normalizedSequence[0] || ""));
       }
 
+      if (normalizedSurvey) {
+        await preloadSurveyPostReminders({
+          survey: normalizedSurvey,
+          fallbackFeedId: activeFeedId || "",
+          projectId: projectId || undefined,
+          signal: ctrl.signal,
+        });
+
+        if (ctrl.signal.aborted) {
+          t.end({ aborted: true });
+          return null;
+        }
+      }
+
       setLinkedSurvey(normalizedSurvey);
       setSurveyResponses(
         normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
@@ -1370,7 +1438,7 @@ export default function App() {
       setContentPhase("loading");
 
       // Survey-only mode should not hidden-load the full feed.
-      // Post reminders can be lazy-loaded later via post_by_id.
+      // Reminder posts are preloaded while ensureSurveyLoaded prepares the survey.
       setFlagsReady(true);
       setAssetsReady(true);
       setMinDelayDone(true);

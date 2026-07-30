@@ -2748,33 +2748,122 @@ export async function loadSurveyParticipantsStats(arg1, arg2) {
   }
 }
 
+const __postByIdCache = new Map();
+const __postByIdPromiseCache = new Map();
+
+function postByIdCacheKey({ projectId = "", feedId = "", postId = "" } = {}) {
+  return [
+    String(projectId || "").trim(),
+    String(feedId || "").trim(),
+    String(postId || "").trim(),
+  ].join("::");
+}
+
 export async function loadPostByIdFromBackend({
   feedId,
   postId,
   projectId = getProjectId(),
   signal,
+  force = false,
 } = {}) {
-  if (!feedId || !postId) return null;
+  const cleanFeedId = String(feedId || "").trim();
+  const cleanPostId = String(postId || "").trim();
+  const cleanProjectId = String(projectId || "").trim();
 
-  try {
-    const url = buildQueryUrl(POST_BY_ID_GET_URL(), {
-      project_id: projectId || undefined,
-      feed_id: feedId || undefined,
-      post_id: postId || undefined,
-      _ts: Date.now(),
-    });
+  if (!cleanFeedId || !cleanPostId) return null;
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+  const cacheKey = postByIdCacheKey({
+    projectId: cleanProjectId,
+    feedId: cleanFeedId,
+    postId: cleanPostId,
+  });
 
-    return data && typeof data === "object" ? data : null;
-  } catch (e) {
-    console.warn("loadPostByIdFromBackend failed:", e);
-    return null;
+  if (!force && __postByIdCache.has(cacheKey)) {
+    return __postByIdCache.get(cacheKey);
   }
+
+  if (!force && __postByIdPromiseCache.has(cacheKey)) {
+    return __postByIdPromiseCache.get(cacheKey);
+  }
+
+  const request = (async () => {
+    try {
+      const url = buildQueryUrl(POST_BY_ID_GET_URL(), {
+        project_id: cleanProjectId || undefined,
+        feed_id: cleanFeedId,
+        post_id: cleanPostId,
+        _ts: Date.now(),
+      });
+
+      const data = await getJsonWithRetry(
+        url,
+        { method: "GET", mode: "cors", cache: "no-store", signal },
+        { retries: 1, timeoutMs: 8000 }
+      );
+
+      const post = data && typeof data === "object" ? data : null;
+      __postByIdCache.set(cacheKey, post);
+      return post;
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        console.warn("loadPostByIdFromBackend failed:", e);
+      }
+      return null;
+    } finally {
+      __postByIdPromiseCache.delete(cacheKey);
+    }
+  })();
+
+  __postByIdPromiseCache.set(cacheKey, request);
+  return request;
+}
+
+export async function preloadSurveyPostRemindersFromBackend({
+  survey,
+  fallbackFeedId = "",
+  projectId = getProjectId(),
+  signal,
+} = {}) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const uniqueTargets = new Map();
+
+  pages.forEach((page) => {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+
+    questions.forEach((question) => {
+      if (String(question?.type || "").trim() !== "post_reminder") return;
+
+      const postId = String(
+        question?.post_id ?? question?.meta?.post_id ?? ""
+      ).trim();
+      const feedId = String(
+        question?.post_feed_id ??
+          question?.meta?.post_feed_id ??
+          fallbackFeedId ??
+          ""
+      ).trim();
+
+      if (!postId || !feedId) return;
+
+      const key = postByIdCacheKey({ projectId, feedId, postId });
+      if (!uniqueTargets.has(key)) {
+        uniqueTargets.set(key, { feedId, postId });
+      }
+    });
+  });
+
+  if (!uniqueTargets.size) return [];
+
+  return Promise.all(
+    Array.from(uniqueTargets.values()).map(({ feedId, postId }) =>
+      loadPostByIdFromBackend({
+        projectId,
+        feedId,
+        postId,
+        signal,
+      })
+    )
+  );
 }
 
 export async function wipeParticipantsOnBackend(feedId, { projectId = getProjectId() } = {}) {
