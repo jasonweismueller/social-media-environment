@@ -319,17 +319,6 @@ function shallowEqualObject(a, b) {
   return true;
 }
 
-function getReminderPostLabel(question = {}, post = {}) {
-  return firstNonEmpty(
-    question?.post_label,
-    post?.name,
-    post?.author,
-    post?.username,
-    post?.text,
-    question?.post_id
-  );
-}
-
 function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
   const visibleFeedFallback = Array.isArray(question?.visible_in_feeds)
     ? question.visible_in_feeds.find((feedId) => String(feedId || "").trim())
@@ -899,7 +888,6 @@ const PostReminderCard = memo(function PostReminderCard({
   ]);
 
   const post = storedSnapshot || inlinePost || lazyPost;
-  const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   return (
   <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
@@ -915,7 +903,7 @@ const PostReminderCard = memo(function PostReminderCard({
       <div className="survey-post-reminder-outer">
         <div className="survey-post-reminder-status">
           {lazyStatus === "loading"
-            ? `Loading post${fallbackLabel ? `: ${fallbackLabel}` : ""}...`
+            ? "Loading post…"
             : lazyError || "The reminder post could not be displayed."}
         </div>
       </div>

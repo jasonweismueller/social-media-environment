@@ -236,17 +236,6 @@ function firstNonEmpty(...values) {
   return "";
 }
 
-function getReminderPostLabel(question = {}, post = {}) {
-  return firstNonEmpty(
-    question?.post_label,
-    post?.name,
-    post?.author,
-    post?.username,
-    post?.text,
-    question?.post_id
-  );
-}
-
 function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
   const visibleFeedFallback = Array.isArray(question?.visible_in_feeds)
     ? question.visible_in_feeds.find((feedId) => String(feedId || "").trim())
@@ -578,7 +567,6 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   ]);
 
   const post = storedSnapshot || inlinePost || lazyPost;
-  const fallbackLabel = getReminderPostLabel(question, post || lazyPost || {});
 
   return (
     <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
@@ -594,11 +582,8 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
         <div className="survey-post-reminder-outer">
           <div className="survey-post-reminder-status">
             {lazyStatus === "loading"
-              ? `Loading post${fallbackLabel ? `: ${fallbackLabel}` : ""}...`
-              : lazyError ||
-                (fallbackLabel
-                  ? `Reminder post selected: ${fallbackLabel}`
-                  : "No reminder post has been selected for this survey item yet.")}
+              ? "Loading post…"
+              : lazyError || "The reminder post could not be displayed."}
           </div>
         </div>
       ) : (
