@@ -2789,7 +2789,7 @@ function smallActionButtonStyle(disabled) {
 }
 
 /* =========================
-   Study overview (sortable list + page-break rows)
+   Study outline (compact overview + reorder)
    ========================= */
 
 function CompactDragHandle({ onDragStart, onDragEnd }) {
@@ -3136,7 +3136,7 @@ function StudyOutlineModal({
           <div>
             <h3 style={{ margin: 0, fontSize: 16 }}>Study overview</h3>
             <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-              {questionCount} {questionCount === 1 ? "question" : "questions"} across {pageCount} {pageCount === 1 ? "page" : "pages"}. Drag questions and page-break rows to reorder them, edit IDs inline, or click question text to jump to it.
+              {questionCount} {questionCount === 1 ? "question" : "questions"} across {pageCount} {pageCount === 1 ? "page" : "pages"}. Drag to reorder, edit IDs inline, or click question text to jump to it.
             </div>
           </div>
           <button
@@ -3466,6 +3466,24 @@ export function SurveyEditor({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => addQuestion(EDITOR_PAGE_BREAK_TYPE)}
+            title="Add a page break at the end of the study"
+            style={{
+              padding: "8px 11px",
+              borderRadius: 9,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: "#111827",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            ＋ Page break
+          </button>
+
           <button
             type="button"
             onClick={() => setOutlineOpen(true)}
