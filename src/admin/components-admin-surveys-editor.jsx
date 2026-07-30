@@ -3403,6 +3403,7 @@ function StudyOutlineModal({
           maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
+          overflow: "hidden",
           boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
         }}
       >
@@ -3442,14 +3443,43 @@ function StudyOutlineModal({
           </button>
         </div>
 
-        <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
 
-        <div style={{ padding: "6px 8px", overflowY: "auto" }}>
-          {currentQuestions.length === 0 ? (
-            <div style={{ color: "#6b7280", padding: "6px 4px" }}>No questions yet.</div>
-          ) : (
-            currentQuestions.map((item, i) => (
-              <OutlineRow
+          <div
+            style={{
+              padding: "6px 8px 14px",
+              borderTop: "1px solid #e5e7eb",
+            }}
+          >
+            <div
+              style={{
+                padding: "8px 4px 6px",
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#475569",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Pages and questions
+            </div>
+
+            {currentQuestions.length === 0 ? (
+              <div style={{ color: "#6b7280", padding: "6px 4px" }}>
+                No questions yet.
+              </div>
+            ) : (
+              currentQuestions.map((item, i) => (
+                <OutlineRow
                 key={item._editorId || i}
                 item={item}
                 flatIndex={i}
@@ -3486,9 +3516,10 @@ function StudyOutlineModal({
                 onDragOver={onDragOver}
                 onDrop={onDrop}
                 onDragEnd={onDragEnd}
-              />
-            ))
-          )}
+                />
+              ))
+            )}
+          </div>
         </div>
 
         <div
