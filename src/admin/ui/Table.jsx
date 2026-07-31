@@ -22,12 +22,12 @@ export function Table({ children, style }) {
   );
 }
 
-export function Th({ children, style, ...rest }) {
+export function Th({ children, style, dense, ...rest }) {
   return (
     <th
       style={{
         textAlign: "left",
-        padding: "8px 10px",
+        padding: dense ? "5px 10px" : "8px 10px",
         fontSize: 11,
         fontWeight: 700,
         color: "var(--admin-muted)",
@@ -44,11 +44,11 @@ export function Th({ children, style, ...rest }) {
   );
 }
 
-export function Td({ children, style, ...rest }) {
+export function Td({ children, style, dense, ...rest }) {
   return (
     <td
       style={{
-        padding: "10px",
+        padding: dense ? "5px 10px" : "10px",
         borderBottom: "1px solid var(--admin-border-subtle)",
         verticalAlign: "middle",
         color: "var(--admin-text)",

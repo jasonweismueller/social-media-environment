@@ -1451,14 +1451,14 @@ export function AdminDashboard({
                     <Table>
                       <thead>
                         <tr>
-                          <Th style={{ width: 36 }} />
-                          <Th>Name</Th>
-                          <Th>ID</Th>
-                          <Th>Updated</Th>
-                          <Th style={{ textAlign: "center" }}>Total</Th>
-                          <Th style={{ textAlign: "center" }}>Submitted</Th>
-                          <Th style={{ textAlign: "center" }}>Avg (m:ss)</Th>
-                          <Th style={{ minWidth: 220 }}>Actions</Th>
+                          <Th dense style={{ width: 36 }} />
+                          <Th dense>Name</Th>
+                          <Th dense>ID</Th>
+                          <Th dense>Updated</Th>
+                          <Th dense style={{ textAlign: "center" }}>Total</Th>
+                          <Th dense style={{ textAlign: "center" }}>Submitted</Th>
+                          <Th dense style={{ textAlign: "center" }}>Avg (m:ss)</Th>
+                          <Th dense style={{ minWidth: 220 }}>Actions</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1471,7 +1471,7 @@ export function AdminDashboard({
                           if (!visible.length) {
                             return (
                               <tr>
-                                <Td colSpan={8} style={{ color: "var(--admin-muted)" }}>
+                                <Td dense colSpan={8} style={{ color: "var(--admin-muted)" }}>
                                   No feeds yet. Click "+ New feed" to create one, then use "Save" to publish posts into it.
                                 </Td>
                               </tr>
@@ -1493,10 +1493,11 @@ export function AdminDashboard({
                                 className={`feed-row ${isLoaded ? "is-loaded" : ""} ${isDefault ? "is-default" : ""}`}
                                 aria-current={isLoaded ? "true" : undefined}
                               >
-                                <Td>
+                                <Td dense>
                                   <span className="feed-dot" aria-hidden="true" />
                                 </Td>
                                 <Td
+                                  dense
                                   style={{
                                     fontWeight: 600,
                                     whiteSpace: "nowrap",
@@ -1508,20 +1509,20 @@ export function AdminDashboard({
                                   {isDefault ? <Badge tone="accent">default</Badge> : null}{" "}
                                   {isLoaded && !isDefault ? <Badge>loaded</Badge> : null}
                                 </Td>
-                                <Td style={{ fontFamily: "monospace" }}>{f.feed_id}</Td>
-                                <Td>
+                                <Td dense style={{ fontFamily: "monospace" }}>{f.feed_id}</Td>
+                                <Td dense>
                                   <span className="subtle">
                                     {f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}
                                   </span>
                                 </Td>
-                                <Td style={{ textAlign: "center" }}>{stats ? stats.total : "—"}</Td>
-                                <Td style={{ textAlign: "center" }}>{stats ? stats.submitted : "—"}</Td>
-                                <Td style={{ textAlign: "center" }}>
+                                <Td dense style={{ textAlign: "center" }}>{stats ? stats.total : "—"}</Td>
+                                <Td dense style={{ textAlign: "center" }}>{stats ? stats.submitted : "—"}</Td>
+                                <Td dense style={{ textAlign: "center" }}>
                                   {stats && stats.avg_ms_enter_to_submit != null
                                     ? msToMinSec(stats.avg_ms_enter_to_submit)
                                     : "—"}
                                 </Td>
-                                <Td>
+                                <Td dense>
                                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                                     <Button
                                       size="sm"

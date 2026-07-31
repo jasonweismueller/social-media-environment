@@ -12,7 +12,11 @@ import { createPortal } from "react-dom";
  * child) because callers commonly sit inside ancestors with `overflow:
  * hidden`/`auto` (Card, Table's horizontal-scroll wrapper) — an in-tree
  * absolute panel gets visually clipped by those ancestors instead of
- * floating above the page.
+ * floating above the page. It portals into the nearest `.admin-shell`
+ * ancestor rather than `document.body` because the admin design tokens
+ * (`--admin-surface`, `--admin-accent`, etc., see ui/tokens.css) are CSS
+ * variables scoped to `.admin-shell` — a panel portaled past that boundary
+ * renders with no background/border/shadow and a colorless toggle track.
  */
 export function Popover({ trigger, children, align = "start", open, onOpenChange }) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -21,6 +25,7 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const [coords, setCoords] = useState(null);
+  const [portalTarget, setPortalTarget] = useState(null);
 
   function setOpen(next) {
     if (onOpenChange) onOpenChange(next);
@@ -29,6 +34,7 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
 
   useLayoutEffect(() => {
     if (!isOpen) return;
+    setPortalTarget(triggerRef.current?.closest(".admin-shell") || document.body);
 
     function updatePosition() {
       const el = triggerRef.current;
@@ -82,6 +88,7 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
 
       {isOpen &&
         coords &&
+        portalTarget &&
         createPortal(
           <div
             ref={panelRef}
@@ -101,7 +108,7 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
           >
             {children}
           </div>,
-          document.body
+          portalTarget
         )}
     </>
   );
