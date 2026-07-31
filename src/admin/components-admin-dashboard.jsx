@@ -1350,7 +1350,7 @@ export function AdminDashboard({
           }
         >
           <Routes>
-            <Route index element={<Navigate to="feeds" replace />} />
+            <Route index element={<Navigate to="/admin/feeds" replace />} />
 
             <Route
               path="feeds"
@@ -2049,7 +2049,7 @@ export function AdminDashboard({
               }
             />
 
-            <Route path="*" element={<Navigate to="feeds" replace />} />
+            <Route path="*" element={<Navigate to="/admin/feeds" replace />} />
           </Routes>
         </AdminShell>
       </div>

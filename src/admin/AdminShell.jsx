@@ -1,12 +1,16 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 
+// Absolute paths (not relative "feeds"/"posts") — relative NavLink targets
+// resolve against the current URL segment-by-segment in react-router, so a
+// relative link clicked from a non-index route appends onto the existing
+// path instead of replacing it.
 const NAV_ITEMS = [
-  { to: "feeds", label: "Feeds", icon: "🗂️" },
-  { to: "posts", label: "Posts", icon: "📝" },
-  { to: "surveys", label: "Surveys", icon: "📋" },
-  { to: "participants", label: "Participants", icon: "👥" },
-  { to: "users", label: "Users", icon: "🔐", ownerOnly: true },
+  { to: "/admin/feeds", label: "Feeds", icon: "🗂️" },
+  { to: "/admin/posts", label: "Posts", icon: "📝" },
+  { to: "/admin/surveys", label: "Surveys", icon: "📋" },
+  { to: "/admin/participants", label: "Participants", icon: "👥" },
+  { to: "/admin/users", label: "Users", icon: "🔐", ownerOnly: true },
 ];
 
 /**
