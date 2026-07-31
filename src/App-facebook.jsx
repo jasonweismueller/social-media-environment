@@ -33,6 +33,7 @@ import {
   GS_ENDPOINT,
   fetchFeedFlags,
   getAvatarPool,
+  pickDeterministic,
   getImagePool,
   getSurveyForFeedFromBackend,
   sendSurveyResponseToBackend,
@@ -378,6 +379,7 @@ async function preloadSurveyPostReminders({
   survey,
   fallbackFeedId = "",
   projectId = "",
+  participantSeed = "",
   signal,
 } = {}) {
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
@@ -401,14 +403,22 @@ async function preloadSurveyPostReminders({
 
       if (!postId || !feedId) return;
 
+      const applyFeedRandomization =
+        (question?.apply_feed_randomization ??
+          question?.meta?.apply_feed_randomization ??
+          true) !== false;
+
       const key = [
         String(projectId || "").trim(),
         feedId,
         postId,
       ].join("::");
 
-      if (!uniqueTargets.has(key)) {
-        uniqueTargets.set(key, { feedId, postId });
+      const existing = uniqueTargets.get(key);
+      if (!existing) {
+        uniqueTargets.set(key, { feedId, postId, applyFeedRandomization });
+      } else if (applyFeedRandomization) {
+        existing.applyFeedRandomization = true;
       }
     });
   });
@@ -416,20 +426,55 @@ async function preloadSurveyPostReminders({
   if (!uniqueTargets.size) return [];
 
   return Promise.all(
-    Array.from(uniqueTargets.values()).map(async ({ feedId, postId }) => {
-      const post = await loadPostByIdFromBackend({
-        projectId,
-        feedId,
-        postId,
-        signal,
-      });
+    Array.from(uniqueTargets.values()).map(
+      async ({ feedId, postId, applyFeedRandomization }) => {
+        const post = await loadPostByIdFromBackend({
+          projectId,
+          feedId,
+          postId,
+          signal,
+        });
 
-      if (post && !signal?.aborted) {
-        await preloadReminderPostAssets(post, signal);
+        if (post && !signal?.aborted) {
+          await preloadReminderPostAssets(post, signal);
+
+          // When there's no stored "displayed post" snapshot to fall back
+          // on (e.g. survey_only mode, where the participant never actually
+          // viewed the feed), PostReminderCard (ui-survey.jsx) assigns a
+          // real pool avatar instead of trusting the post's own (often
+          // unset) avatarUrl. That assignment only happens once the survey
+          // page renders the reminder, so without preloading the same pick
+          // here too, the participant sees a blank/gray avatar circle for
+          // as long as that pool-list + image fetch takes. Mirror the exact
+          // same seed used there so we preload the same image it will pick.
+          if (applyFeedRandomization) {
+            try {
+              const kind =
+                post.authorType === "male" || post.authorType === "company"
+                  ? post.authorType
+                  : "female";
+              const pool = await getAvatarPool(kind);
+              const pick = pickDeterministic(pool, [
+                participantSeed || "survey-reminder-preview",
+                APP || "app",
+                projectId || "proj",
+                feedId || "feed",
+                String(post.id ?? postId),
+                "reminder-avatar",
+              ]);
+              if (pick && !signal?.aborted) {
+                await preloadReminderImage(pick, signal);
+              }
+            } catch {
+              // Best-effort preload only — the renderer still fetches/picks
+              // its own avatar if this fails, just without the head start.
+            }
+          }
+        }
+
+        return post;
       }
-
-      return post;
-    })
+    )
   );
 }
 
@@ -1544,6 +1589,7 @@ export default function App() {
           survey: normalizedSurvey,
           fallbackFeedId: activeFeedId || "",
           projectId: projectId || undefined,
+          participantSeed: surveyParticipantSeed,
           signal: ctrl.signal,
         });
 
