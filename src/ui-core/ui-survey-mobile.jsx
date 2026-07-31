@@ -12,7 +12,10 @@ import {
   isQuestionVisible,
   getRenderedQuestion,
   getProjectId,
-  loadPostByIdFromBackend
+  loadPostByIdFromBackend,
+  fetchFeedFlags,
+  getAvatarPool,
+  pickDeterministic
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -403,6 +406,7 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
   feedId,
   flags,
   participantSeed,
+  assignedAvatarUrl,
 }) {
   const noopAction = useCallback(() => {}, []);
   const noopRegisterViewRef = useCallback(() => undefined, []);
@@ -428,13 +432,28 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
       feedId={feedId}
       runSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
+      assignedAvatarUrl={assignedAvatarUrl || null}
     />
+  );
+}, (prev, next) => {
+  return (
+    prev.post === next.post &&
+    prev.app === next.app &&
+    prev.projectId === next.projectId &&
+    prev.feedId === next.feedId &&
+    prev.flags === next.flags &&
+    prev.participantSeed === next.participantSeed &&
+    prev.assignedAvatarUrl === next.assignedAvatarUrl
   );
 });
 
 // Module-level cache for reminder posts fetched via loadPostByIdFromBackend.
 // See the matching comment in ui-survey.jsx for the rationale.
 const reminderPostFetchCache = new Map();
+
+// Module-level cache for the source feed's randomize flags. See the matching
+// comment in ui-survey.jsx for the rationale.
+const reminderFlagsFetchCache = new Map();
 
 const PostReminderCardMobile = memo(function PostReminderCardMobile({
   question,
@@ -449,7 +468,13 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
 
+  // Per-question editor toggle: when off, the reminder always shows the
+  // original, unrandomized post (same for every participant) instead of
+  // whatever randomized version this participant actually saw on the feed.
+  const applyFeedRandomization = question?.apply_feed_randomization !== false;
+
   const storedSnapshot = useMemo(() => {
+    if (!applyFeedRandomization) return null;
     if (!targetPostId || !reminderFeedId) return null;
     return getDisplayedPostSnapshot({
       projectId: resolvedProjectId,
@@ -457,7 +482,50 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
       postId: targetPostId,
       participantSeed,
     });
-  }, [resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+  }, [applyFeedRandomization, resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+
+  const reminderFlagsCacheKey = `${resolvedProjectId}::${reminderFeedId || ""}`;
+  const [reminderFlags, setReminderFlags] = useState(() =>
+    reminderFlagsFetchCache.has(reminderFlagsCacheKey)
+      ? reminderFlagsFetchCache.get(reminderFlagsCacheKey)
+      : null
+  );
+
+  useEffect(() => {
+    // storedSnapshot already carries randomization baked into its literal
+    // field values, so no flags are needed to render it correctly. Same when
+    // the editor toggle turns randomization off for this reminder entirely.
+    if (!applyFeedRandomization || storedSnapshot || !reminderFeedId) return;
+
+    if (reminderFlagsFetchCache.has(reminderFlagsCacheKey)) {
+      setReminderFlags(reminderFlagsFetchCache.get(reminderFlagsCacheKey));
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const result = await fetchFeedFlags({
+          app,
+          projectId: resolvedProjectId,
+          feedId: reminderFeedId,
+          signal: controller.signal,
+        });
+        const next = result || {};
+        reminderFlagsFetchCache.set(reminderFlagsCacheKey, next);
+        if (!cancelled) setReminderFlags(next);
+      } catch {
+        if (!cancelled) setReminderFlags((prev) => prev || {});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [applyFeedRandomization, storedSnapshot, reminderFeedId, reminderFlagsCacheKey, app, resolvedProjectId]);
 
   const inlinePost = useMemo(
     () => getQuestionReminderPost(question, posts),
@@ -568,6 +636,65 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
 
   const post = storedSnapshot || inlinePost || lazyPost;
 
+  // No stored snapshot means the participant never actually viewed this exact
+  // post in a feed, so there's no "real" randomized avatar to recover — the
+  // pool assignment feeds normally use is keyed by a per-page-load runSeed
+  // that only exists in memory during that feed render and can't be
+  // recovered here. Rather than falling back to the post's raw stored
+  // avatarUrl (often an unused placeholder never meant to be shown — e.g. a
+  // wide, non-square source image that crops badly into the avatar circle),
+  // deterministically assign a real pool avatar so the reminder always shows
+  // something properly cropped.
+  const [assignedAvatarUrl, setAssignedAvatarUrl] = useState(null);
+
+  useEffect(() => {
+    const nonSnapshotPost = inlinePost || lazyPost;
+
+    if (!applyFeedRandomization || storedSnapshot || !nonSnapshotPost) {
+      setAssignedAvatarUrl(null);
+      return;
+    }
+
+    const kind =
+      nonSnapshotPost.authorType === "male" || nonSnapshotPost.authorType === "company"
+        ? nonSnapshotPost.authorType
+        : "female";
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const pool = await getAvatarPool(kind);
+        if (cancelled) return;
+        const pick = pickDeterministic(pool, [
+          participantSeed || "survey-reminder-preview",
+          app || "app",
+          resolvedProjectId || "proj",
+          reminderFeedId || "feed",
+          String(nonSnapshotPost.id ?? targetPostId),
+          "reminder-avatar",
+        ]);
+        setAssignedAvatarUrl(pick || null);
+      } catch {
+        if (!cancelled) setAssignedAvatarUrl(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyFeedRandomization,
+    storedSnapshot,
+    inlinePost,
+    lazyPost,
+    participantSeed,
+    app,
+    resolvedProjectId,
+    reminderFeedId,
+    targetPostId,
+  ]);
+
   return (
     <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
       <SurveyReminderPostStyle />
@@ -595,8 +722,9 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
                 app={app}
                 projectId={resolvedProjectId}
                 feedId={reminderFeedId || ""}
-                flags={flags}
+                flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
                 participantSeed={participantSeed}
+                assignedAvatarUrl={assignedAvatarUrl}
               />
             </div>
           </div>

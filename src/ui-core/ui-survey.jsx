@@ -13,7 +13,9 @@ import {
   getRenderedQuestion,
   getProjectId,
   loadPostByIdFromBackend,
-  fetchFeedFlags
+  fetchFeedFlags,
+  getAvatarPool,
+  pickDeterministic
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -730,6 +732,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
   feedId,
   flags,
   participantSeed,
+  assignedAvatarUrl,
 }) {
   const noopAction = useCallback(() => {}, []);
   const noopRegisterViewRef = useCallback(() => undefined, []);
@@ -755,6 +758,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
       feedId={feedId}
       runSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
+      assignedAvatarUrl={assignedAvatarUrl || null}
     />
   );
 }, (prev, next) => {
@@ -764,7 +768,8 @@ const ReminderPostInner = memo(function ReminderPostInner({
     prev.projectId === next.projectId &&
     prev.feedId === next.feedId &&
     prev.flags === next.flags &&
-    prev.participantSeed === next.participantSeed
+    prev.participantSeed === next.participantSeed &&
+    prev.assignedAvatarUrl === next.assignedAvatarUrl
   );
 });
 
@@ -949,6 +954,65 @@ const PostReminderCard = memo(function PostReminderCard({
 
   const post = storedSnapshot || inlinePost || lazyPost;
 
+  // No stored snapshot means the participant never actually viewed this exact
+  // post in a feed, so there's no "real" randomized avatar to recover — the
+  // pool assignment feeds normally use is keyed by a per-page-load runSeed
+  // that only exists in memory during that feed render and can't be
+  // recovered here. Rather than falling back to the post's raw stored
+  // avatarUrl (often an unused placeholder never meant to be shown — e.g. a
+  // wide, non-square source image that crops badly into the avatar circle),
+  // deterministically assign a real pool avatar so the reminder always shows
+  // something properly cropped.
+  const [assignedAvatarUrl, setAssignedAvatarUrl] = useState(null);
+
+  useEffect(() => {
+    const nonSnapshotPost = inlinePost || lazyPost;
+
+    if (!applyFeedRandomization || storedSnapshot || !nonSnapshotPost) {
+      setAssignedAvatarUrl(null);
+      return;
+    }
+
+    const kind =
+      nonSnapshotPost.authorType === "male" || nonSnapshotPost.authorType === "company"
+        ? nonSnapshotPost.authorType
+        : "female";
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const pool = await getAvatarPool(kind);
+        if (cancelled) return;
+        const pick = pickDeterministic(pool, [
+          participantSeed || "survey-reminder-preview",
+          app || "app",
+          resolvedProjectId || "proj",
+          reminderFeedId || "feed",
+          String(nonSnapshotPost.id ?? targetPostId),
+          "reminder-avatar",
+        ]);
+        setAssignedAvatarUrl(pick || null);
+      } catch {
+        if (!cancelled) setAssignedAvatarUrl(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyFeedRandomization,
+    storedSnapshot,
+    inlinePost,
+    lazyPost,
+    participantSeed,
+    app,
+    resolvedProjectId,
+    reminderFeedId,
+    targetPostId,
+  ]);
+
   return (
   <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
     <SurveyReminderPostStyle />
@@ -978,6 +1042,7 @@ const PostReminderCard = memo(function PostReminderCard({
               feedId={reminderFeedId || ""}
               flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
               participantSeed={participantSeed}
+              assignedAvatarUrl={assignedAvatarUrl}
             />
           </div>
         </div>
