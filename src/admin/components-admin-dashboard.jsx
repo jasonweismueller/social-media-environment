@@ -1258,18 +1258,94 @@ export function AdminDashboard({
           onLogout={onLogout}
           showUsersNav={hasAdminRole("owner")}
           projectSwitcher={
-            <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--admin-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  Project ({projects.length || 0})
+                </div>
+                <OverflowMenu
+                  title="Project actions"
+                  items={[
+                    {
+                      key: "refresh",
+                      label: "Refresh",
+                      onClick: () => loadProjects(),
+                    },
+                    {
+                      key: "new",
+                      label: "+ New project",
+                      hidden: !hasAdminRole("editor"),
+                      onClick: createNewProject,
+                    },
+                    {
+                      key: "default",
+                      label: "Set as default",
+                      hidden: !hasAdminRole("editor"),
+                      disabled: !projectId || projectId === defaultProjectId,
+                      onClick: async () => {
+                        const ok = await setDefaultProjectOnBackend?.(projectId);
+                        if (ok) setDefaultProjectId(projectId);
+                      },
+                    },
+                    {
+                      key: "delete",
+                      label: "Delete project",
+                      danger: true,
+                      hidden: !hasAdminRole("owner"),
+                      onClick: async () => {
+                        if (!projectId) return;
+                        if (
+                          !confirm(
+                            `Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`
+                          )
+                        ) {
+                          return;
+                        }
+                        const ok = await deleteProjectOnBackend?.(projectId);
+                        if (!ok) {
+                          alert("Failed to delete project.");
+                          return;
+                        }
+                        const next = projects.filter((p) => p.project_id !== projectId);
+                        setProjects(next);
+                        const fallback = next[0] || { project_id: "global", name: "Global" };
+                        setProjectId(fallback.project_id);
+                        setProjectName(fallback.name || fallback.project_id);
+                        persistProjectId(fallback.project_id, { persist: true, updateUrl: true });
+                      },
+                    },
+                  ]}
+                />
+              </div>
+
+              {/* Full name shown here (not just inside the <select>) since a
+                  narrow sidebar truncates the selected <option> text with no
+                  way to see the rest of a long name. */}
               <div
+                title={projectName || projectId || ""}
                 style={{
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: 700,
-                  color: "var(--admin-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: 0.3,
+                  color: "var(--admin-text)",
+                  wordBreak: "break-word",
                 }}
               >
-                Project ({projects.length || 0})
+                {projectName || projectId || "—"}
+                {projectId === defaultProjectId && (
+                  <Badge tone="accent" style={{ marginLeft: 6 }}>
+                    default
+                  </Badge>
+                )}
               </div>
+
               <select
                 className="select"
                 value={projectId || "global"}
@@ -1295,57 +1371,6 @@ export function AdminDashboard({
                   </option>
                 ))}
               </select>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <Button size="sm" variant="ghost" onClick={() => loadProjects()} title="Reload project list">
-                  Refresh
-                </Button>
-                <RoleGate min="editor">
-                  <Button size="sm" variant="ghost" onClick={createNewProject}>
-                    + New
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={async () => {
-                      const ok = await setDefaultProjectOnBackend?.(projectId);
-                      if (ok) setDefaultProjectId(projectId);
-                    }}
-                    disabled={!projectId || projectId === defaultProjectId}
-                    title="Make this the default project"
-                  >
-                    Set default
-                  </Button>
-                </RoleGate>
-                <RoleGate min="owner">
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={async () => {
-                      if (!projectId) return;
-                      if (
-                        !confirm(
-                          `Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`
-                        )
-                      ) {
-                        return;
-                      }
-                      const ok = await deleteProjectOnBackend?.(projectId);
-                      if (!ok) {
-                        alert("Failed to delete project.");
-                        return;
-                      }
-                      const next = projects.filter((p) => p.project_id !== projectId);
-                      setProjects(next);
-                      const fallback = next[0] || { project_id: "global", name: "Global" };
-                      setProjectId(fallback.project_id);
-                      setProjectName(fallback.name || fallback.project_id);
-                      persistProjectId(fallback.project_id, { persist: true, updateUrl: true });
-                    }}
-                  >
-                    Delete
-                  </Button>
-                </RoleGate>
-              </div>
             </div>
           }
           feedSwitcher={
