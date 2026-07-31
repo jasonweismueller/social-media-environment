@@ -24,6 +24,7 @@ import {
   loadMultiFeedParticipantSurveyRoster,
   readPostNames,
   SURVEY_QUESTION_TYPES,
+  loadExperimentGroupCounts,
 } from "../utils";
 
 import {
@@ -674,6 +675,7 @@ function makeDefaultPageBlock(pages = []) {
     page_ids: (Array.isArray(pages) ? pages : [])
       .map((page) => String(page?.id || "").trim())
       .filter(Boolean),
+    visible_to_group_ids: [],
   };
 }
 
@@ -697,11 +699,20 @@ function normalizeSurveyPageBlocks(pageBlocks = [], pages = []) {
         pageIds.push(pageId);
       });
 
+      const visibleToGroupIds = Array.from(
+        new Set(
+          (Array.isArray(block.visible_to_group_ids) ? block.visible_to_group_ids : [])
+            .map((groupId) => String(groupId || "").trim())
+            .filter(Boolean)
+        )
+      );
+
       return {
         id: String(block.id || `block_${blockIndex + 1}`).trim() || `block_${blockIndex + 1}`,
         title: String(block.title || `Block ${blockIndex + 1}`),
         randomize_pages: !!block.randomize_pages,
         page_ids: pageIds,
+        visible_to_group_ids: visibleToGroupIds,
       };
     });
 
@@ -1315,6 +1326,34 @@ export function AdminSurveysPanel({
   const [loadingReminderPosts, setLoadingReminderPosts] = useState(false);
   const [copiedLinkState, setCopiedLinkState] = useState("");
   const [activeEditorTab, setActiveEditorTab] = useState("setup");
+  const [experimentGroupCounts, setExperimentGroupCounts] = useState(null);
+  const [experimentGroupCountsLoading, setExperimentGroupCountsLoading] = useState(false);
+
+  const hasExperimentGroups =
+    Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
+
+  const refreshExperimentGroupCounts = useCallback(async () => {
+    if (!survey?.survey_id) {
+      setExperimentGroupCounts(null);
+      return;
+    }
+    setExperimentGroupCountsLoading(true);
+    try {
+      const data = await loadExperimentGroupCounts({
+        projectId,
+        surveyId: survey.survey_id,
+      });
+      setExperimentGroupCounts(data);
+    } finally {
+      setExperimentGroupCountsLoading(false);
+    }
+  }, [survey?.survey_id, projectId]);
+
+  useEffect(() => {
+    if (activeEditorTab === "launch" && survey?.survey_id && hasExperimentGroups) {
+      refreshExperimentGroupCounts();
+    }
+  }, [activeEditorTab, survey?.survey_id, hasExperimentGroups, refreshExperimentGroupCounts]);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -2661,6 +2700,82 @@ export function AdminSurveysPanel({
                     </button>
                   </div>
                 </FieldBlock>
+              )}
+            </SectionCard>
+            )}
+
+            {activeEditorTab === "launch" && hasExperimentGroups && (
+            <SectionCard
+              title="Experiment group balance"
+              subtitle="Live counts of how many participants have been assigned to each group so far."
+              right={
+                <button
+                  type="button"
+                  onClick={refreshExperimentGroupCounts}
+                  disabled={experimentGroupCountsLoading || !survey?.survey_id}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 9,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor:
+                      experimentGroupCountsLoading || !survey?.survey_id
+                        ? "not-allowed"
+                        : "pointer",
+                    fontWeight: 600,
+                    fontSize: 13,
+                  }}
+                >
+                  {experimentGroupCountsLoading ? "Refreshing..." : "Refresh"}
+                </button>
+              }
+            >
+              {!survey?.survey_id ? (
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  Save the survey first to start tracking group assignments.
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  {survey.experiment_groups.map((group) => {
+                    const count =
+                      (experimentGroupCounts?.counts || {})[group.id] || 0;
+                    return (
+                      <div
+                        key={group.id}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 10,
+                          border: "1px solid #e5e7eb",
+                          background: "#f8fafc",
+                          minWidth: 120,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                          {group.name}
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: "#111827" }}>
+                          {count}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #e5e7eb",
+                      background: "#fff",
+                      minWidth: 120,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                      Total
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#111827" }}>
+                      {experimentGroupCounts?.total || 0}
+                    </div>
+                  </div>
+                </div>
               )}
             </SectionCard>
             )}

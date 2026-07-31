@@ -598,6 +598,32 @@ const pages = splitPages.map((pageData, pageIndex) => {
 }
 
 
+export function normalizeSurveyExperimentGroups(survey) {
+  const safeSurvey = survey && typeof survey === "object" ? survey : {};
+  const sourceGroups = Array.isArray(safeSurvey.experiment_groups)
+    ? safeSurvey.experiment_groups
+    : [];
+
+  const usedIds = new Set();
+
+  return sourceGroups.map((rawGroup, index) => {
+    const group = rawGroup && typeof rawGroup === "object" ? rawGroup : {};
+    let groupId = String(group.id || `group_${index + 1}`).trim() || `group_${index + 1}`;
+    if (usedIds.has(groupId)) {
+      let suffix = 2;
+      const baseId = groupId;
+      while (usedIds.has(`${baseId}_${suffix}`)) suffix += 1;
+      groupId = `${baseId}_${suffix}`;
+    }
+    usedIds.add(groupId);
+
+    return {
+      id: groupId,
+      name: String(group.name || `Group ${index + 1}`),
+    };
+  });
+}
+
 export function normalizeSurveyPageBlocks(survey) {
   const safeSurvey = survey && typeof survey === "object" ? survey : {};
   const pages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
@@ -609,6 +635,9 @@ export function normalizeSurveyPageBlocks(survey) {
   const sourceBlocks = Array.isArray(safeSurvey.page_blocks)
     ? safeSurvey.page_blocks
     : [];
+  const validGroupIdSet = new Set(
+    normalizeSurveyExperimentGroups(safeSurvey).map((group) => group.id)
+  );
 
   const blocks = sourceBlocks.map((rawBlock, blockIndex) => {
     const block = rawBlock && typeof rawBlock === "object" ? rawBlock : {};
@@ -620,11 +649,16 @@ export function normalizeSurveyPageBlocks(survey) {
         return true;
       });
 
+    const visibleToGroupIds = uniqueStringList(block.visible_to_group_ids).filter(
+      (groupId) => validGroupIdSet.has(groupId)
+    );
+
     return {
       id: String(block.id || `block_${blockIndex + 1}`),
       title: String(block.title || `Block ${blockIndex + 1}`),
       randomize_pages: !!block.randomize_pages,
       page_ids: pageIds,
+      visible_to_group_ids: visibleToGroupIds,
     };
   });
 
@@ -635,6 +669,7 @@ export function normalizeSurveyPageBlocks(survey) {
         title: "Survey pages",
         randomize_pages: false,
         page_ids: validPageIds,
+        visible_to_group_ids: [],
       },
     ];
   }
@@ -652,9 +687,13 @@ export function normalizeSurveyPageBlocks(survey) {
 
 export function reconcileSurveyPageBlocks(survey) {
   const safeSurvey = survey && typeof survey === "object" ? survey : makeEmptySurvey();
-  return {
+  const withGroups = {
     ...safeSurvey,
-    page_blocks: normalizeSurveyPageBlocks(safeSurvey),
+    experiment_groups: normalizeSurveyExperimentGroups(safeSurvey),
+  };
+  return {
+    ...withGroups,
+    page_blocks: normalizeSurveyPageBlocks(withGroups),
   };
 }
 
@@ -664,6 +703,14 @@ function makePageBlock(index = 0) {
     title: `Block ${index + 1}`,
     randomize_pages: false,
     page_ids: [],
+    visible_to_group_ids: [],
+  };
+}
+
+function makeExperimentGroup(index = 0) {
+  return {
+    id: `group_${Date.now()}_${index}`,
+    name: `Group ${index + 1}`,
   };
 }
 
@@ -3229,10 +3276,118 @@ function OutlineRow({
 }
 
 
+function ExperimentGroupsEditor({ survey, onSurveyChange }) {
+  const groups = normalizeSurveyExperimentGroups(survey);
+
+  const applyGroups = useCallback(
+    (nextGroups) => {
+      onSurveyChange((prev) => {
+        const withGroups = {
+          ...prev,
+          experiment_groups: normalizeSurveyExperimentGroups({
+            ...prev,
+            experiment_groups: nextGroups,
+          }),
+        };
+        return {
+          ...withGroups,
+          page_blocks: normalizeSurveyPageBlocks(withGroups),
+        };
+      });
+    },
+    [onSurveyChange]
+  );
+
+  function updateGroup(groupIndex, patch) {
+    const next = groups.map((group, index) =>
+      index === groupIndex ? { ...group, ...patch } : group
+    );
+    applyGroups(next);
+  }
+
+  function addGroup() {
+    applyGroups([...groups, makeExperimentGroup(groups.length)]);
+  }
+
+  function deleteGroup(groupIndex) {
+    const removed = groups[groupIndex];
+    const next = groups.filter((_, index) => index !== groupIndex);
+    applyGroups(next);
+
+    // Also drop the deleted group from any block's visibility list, so a
+    // block doesn't silently reference a group id that no longer exists.
+    if (removed) {
+      onSurveyChange((prev) => {
+        const nextBlocks = (Array.isArray(prev?.page_blocks) ? prev.page_blocks : []).map(
+          (block) => ({
+            ...block,
+            visible_to_group_ids: (block.visible_to_group_ids || []).filter(
+              (groupId) => groupId !== removed.id
+            ),
+          })
+        );
+        return { ...prev, page_blocks: nextBlocks };
+      });
+    }
+  }
+
+  return (
+    <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Experiment groups</div>
+          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+            For between-subjects experiments: define groups here, then scope individual page blocks below to specific
+            groups. Each participant is assigned to exactly one group automatically (evenly rotated), the first time
+            they reach this survey. Leave this empty if you don't need group-scoped blocks — every block is shown to
+            everyone by default.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={addGroup}
+          style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #4f46e5", background: "#fff", color: "#4338ca", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+        >
+          + Add group
+        </button>
+      </div>
+
+      {groups.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#94a3b8", padding: "5px 4px" }}>
+          No experiment groups defined — all blocks are shown to every participant.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {groups.map((group, groupIndex) => (
+            <div
+              key={group.id}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #dbe3ef", borderRadius: 8, background: "#fff" }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 60 }}>
+                Group {groupIndex + 1}
+              </div>
+              <input
+                value={group.name}
+                onChange={(e) => updateGroup(groupIndex, { name: e.target.value })}
+                placeholder={`Group ${groupIndex + 1}`}
+                style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
+              />
+              <IconOnlyButton onClick={() => deleteGroup(groupIndex)} title="Delete group" danger>
+                <TrashIcon size={12} />
+              </IconOnlyButton>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PageBlocksEditor({ survey, onSurveyChange }) {
   const [collapsedBlockIds, setCollapsedBlockIds] = useState(() => new Set());
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
   const blocks = normalizeSurveyPageBlocks(survey);
+  const experimentGroups = normalizeSurveyExperimentGroups(survey);
   const pageById = new Map(
     pages.map((page, index) => [
       String(page?.id || `page_${index + 1}`),
@@ -3316,6 +3471,15 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     });
   }
 
+  function toggleBlockGroupVisibility(blockIndex, groupId) {
+    const block = blocks[blockIndex];
+    if (!block) return;
+    const current = new Set(block.visible_to_group_ids || []);
+    if (current.has(groupId)) current.delete(groupId);
+    else current.add(groupId);
+    updateBlock(blockIndex, { visible_to_group_ids: Array.from(current) });
+  }
+
   return (
     <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
@@ -3323,6 +3487,9 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
           <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Page blocks</div>
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
             Blocks stay in this order. Only pages inside blocks marked for randomisation will be shuffled for participants.
+            {experimentGroups.length > 0
+              ? " Blocks with no experiment group checked are shown to everyone; check one or more groups to restrict a block to only those participants."
+              : ""}
           </div>
         </div>
         <button type="button" onClick={addBlock} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #4f46e5", background: "#fff", color: "#4338ca", fontWeight: 700, cursor: "pointer" }}>
@@ -3367,6 +3534,49 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
               <IconOnlyButton onClick={() => moveBlock(blockIndex, blockIndex + 1)} title="Move block down" disabled={blockIndex === blocks.length - 1}>↓</IconOnlyButton>
               <IconOnlyButton onClick={() => deleteBlock(blockIndex)} title="Delete block" danger disabled={blocks.length <= 1}><TrashIcon size={12} /></IconOnlyButton>
             </div>
+
+            {experimentGroups.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  padding: "6px 10px",
+                  borderBottom: isCollapsed ? "none" : "1px solid #e5e7eb",
+                  background: "#fbfbfe",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", whiteSpace: "nowrap" }}>
+                  Visible to:
+                </span>
+                <span style={{ fontSize: 10, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                  {(block.visible_to_group_ids || []).length === 0
+                    ? "everyone"
+                    : null}
+                </span>
+                {experimentGroups.map((group) => (
+                  <label
+                    key={group.id}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      fontSize: 11,
+                      color: "#334155",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={(block.visible_to_group_ids || []).includes(group.id)}
+                      onChange={() => toggleBlockGroupVisibility(blockIndex, group.id)}
+                    />
+                    {group.name}
+                  </label>
+                ))}
+              </div>
+            )}
 
             {!isCollapsed ? (
             <div style={{ padding: 8, display: "grid", gap: 6 }}>
@@ -3536,6 +3746,7 @@ function StudyOutlineModal({
             WebkitOverflowScrolling: "touch",
           }}
         >
+          <ExperimentGroupsEditor survey={survey} onSurveyChange={onSurveyChange} />
           <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
 
           <div

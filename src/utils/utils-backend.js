@@ -208,6 +208,8 @@ const SURVEY_PARTICIPANTS_GET_URL = () =>
 const SURVEY_PARTICIPANTS_STATS_GET_URL = () =>
   `${GS_ENDPOINT}?path=survey_participants_stats&app=${getApp()}`;
 const POST_BY_ID_GET_URL = () => `${GS_ENDPOINT}?path=post_by_id&app=${getApp()}`;
+const EXPERIMENT_GROUP_COUNTS_GET_URL = () =>
+  `${GS_ENDPOINT}?path=experiment_group_counts&app=${getApp()}`;
 
 /* --------------------- Fetch helpers (timeout + retry) -------------------- */
 async function fetchWithTimeout(url, opts = {}, { timeoutMs = 8000 } = {}) {
@@ -1634,6 +1636,7 @@ export async function sendSurveyResponseToBackend(args = {}) {
     prolific_pid: args.prolific_pid || legacyRow.prolific_pid || "",
     prolific_session_id: args.prolific_session_id || legacyRow.prolific_session_id || "",
     prolific_study_id: args.prolific_study_id || legacyRow.prolific_study_id || "",
+    experiment_group_id: args.experiment_group_id || legacyRow.experiment_group_id || "",
   };
 
   const body = JSON.stringify(payload);
@@ -1657,6 +1660,43 @@ export async function sendSurveyResponseToBackend(args = {}) {
   } catch (err) {
     console.warn("sendSurveyResponseToBackend(fetch) failed:", err);
     return false;
+  }
+}
+
+/**
+ * Assigns (or recalls) this participant's experiment group for a survey.
+ * The backend does round-robin assignment across a shared, persistent
+ * per-survey counter (so distribution stays even across all participants,
+ * not just this browser), and is idempotent per session_id — calling this
+ * again for the same session returns the same group_id rather than
+ * reassigning. Returns null if the survey has no experiment groups, or on
+ * any failure (callers should treat that the same as "no group scoping").
+ */
+export async function assignExperimentGroup({
+  projectId = getProjectId(),
+  surveyId,
+  sessionId = "",
+  participantId = "",
+} = {}) {
+  const survey_id = String(surveyId || "").trim();
+  if (!survey_id) return null;
+
+  try {
+    const { res, data } = await postJson({
+      token: GS_TOKEN,
+      action: "assign_experiment_group",
+      app: APP,
+      project_id: projectId || undefined,
+      survey_id,
+      session_id: String(sessionId || ""),
+      participant_id: String(participantId || ""),
+    });
+
+    if (!res.ok || data?.ok === false) return null;
+    return data?.group_id ? String(data.group_id) : null;
+  } catch (e) {
+    console.warn("assignExperimentGroup failed:", e);
+    return null;
   }
 }
 
@@ -2745,6 +2785,41 @@ export async function loadSurveyParticipantsStats(arg1, arg2) {
   } catch (e) {
     console.warn("loadSurveyParticipantsStats failed:", e);
     return { total: 0 };
+  }
+}
+
+export async function loadExperimentGroupCounts({
+  projectId = getProjectId(),
+  surveyId,
+  signal,
+} = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) {
+    console.warn("loadExperimentGroupCounts: missing admin_token");
+    return { counts: {}, total: 0 };
+  }
+
+  const survey_id = String(surveyId || "").trim();
+  if (!survey_id) return { counts: {}, total: 0 };
+
+  try {
+    const url = buildQueryUrl(EXPERIMENT_GROUP_COUNTS_GET_URL(), {
+      project_id: projectId || undefined,
+      survey_id,
+      admin_token,
+      _ts: Date.now(),
+    });
+
+    const data = await getJsonWithRetry(
+      url,
+      { method: "GET", mode: "cors", cache: "no-store", signal },
+      { retries: 1, timeoutMs: 8000 }
+    );
+
+    return data && typeof data === "object" ? data : { counts: {}, total: 0 };
+  } catch (e) {
+    console.warn("loadExperimentGroupCounts failed:", e);
+    return { counts: {}, total: 0 };
   }
 }
 

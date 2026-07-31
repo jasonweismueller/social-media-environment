@@ -43,6 +43,8 @@ import {
   getTrackingIdsFromUrl,
   getSurveyBootForFeedFromBackend,
   loadPostByIdFromBackend,
+  assignExperimentGroup,
+  materializePagesFromBlocks,
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
@@ -553,6 +555,39 @@ function elementHasImage(el) {
       ":scope video",
     ].join(", ")
   );
+}
+
+const EXPERIMENT_GROUP_CACHE_PREFIX = "studyfeed:experiment_group";
+
+// Caches the participant's assigned experiment group locally so a page
+// reload doesn't need a fresh round trip. The backend assignment call is
+// idempotent regardless (same session_id always gets the same group back),
+// so this is purely an optimization, not a correctness requirement.
+function experimentGroupCacheKey(projectId, surveyId, participantSeed) {
+  return [
+    EXPERIMENT_GROUP_CACHE_PREFIX,
+    encodeURIComponent(String(projectId || "")),
+    encodeURIComponent(String(surveyId || "")),
+    encodeURIComponent(String(participantSeed || "")),
+  ].join("::");
+}
+
+function readExperimentGroupCache(key) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return "";
+    return window.localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeExperimentGroupCache(key, groupId) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.setItem(key, String(groupId || ""));
+  } catch {
+    // best-effort cache only
+  }
 }
 
 const preloadedReminderImages = new Set();
@@ -1407,25 +1442,79 @@ export default function App() {
         return null;
       }
 
-      const normalizedSurvey = surveyDef
+      const normalizedSurveyBase = surveyDef
         ? normalizeFrontendSurvey(surveyDef)
         : null;
 
       if (
         isDirectSurveyLaunch &&
         !activeFeedId &&
-        Array.isArray(normalizedSurvey?.linked_feed_ids) &&
-        normalizedSurvey.linked_feed_ids.length
+        Array.isArray(normalizedSurveyBase?.linked_feed_ids) &&
+        normalizedSurveyBase.linked_feed_ids.length
       ) {
-        setActiveFeedId(String(normalizedSurvey.linked_feed_ids[0] || ""));
+        setActiveFeedId(String(normalizedSurveyBase.linked_feed_ids[0] || ""));
       }
+
+      const surveyParticipantSeed =
+        participantId || sessionIdRef.current || "";
+
+      const experimentGroups = Array.isArray(
+        normalizedSurveyBase?.experiment_groups
+      )
+        ? normalizedSurveyBase.experiment_groups
+        : [];
+
+      let assignedGroupId = "";
+      if (normalizedSurveyBase && experimentGroups.length) {
+        const groupCacheKey = experimentGroupCacheKey(
+          projectId,
+          normalizedSurveyBase.survey_id,
+          surveyParticipantSeed
+        );
+        assignedGroupId = readExperimentGroupCache(groupCacheKey);
+
+        if (!assignedGroupId) {
+          assignedGroupId =
+            (await assignExperimentGroup({
+              projectId: projectId || undefined,
+              surveyId: normalizedSurveyBase.survey_id,
+              sessionId: sessionIdRef.current,
+              participantId,
+            })) || "";
+
+          if (ctrl.signal.aborted) {
+            t.end({ aborted: true });
+            return null;
+          }
+
+          if (assignedGroupId) {
+            writeExperimentGroupCache(groupCacheKey, assignedGroupId);
+          }
+        }
+      }
+
+      const normalizedSurvey = normalizedSurveyBase
+        ? {
+            ...normalizedSurveyBase,
+            experiment_assigned_group_id: assignedGroupId,
+            pages: materializePagesFromBlocks(
+              normalizedSurveyBase,
+              normalizedSurveyBase.page_blocks,
+              {
+                participantSeed: surveyParticipantSeed,
+                randomize: true,
+                assignedGroupId,
+              }
+            ),
+          }
+        : null;
 
       if (normalizedSurvey) {
         await preloadSurveyPostReminders({
           survey: normalizedSurvey,
           fallbackFeedId: activeFeedId || "",
           projectId: projectId || undefined,
-          participantSeed: participantId || sessionIdRef.current || "",
+          participantSeed: surveyParticipantSeed,
           signal: ctrl.signal,
         });
 
@@ -2205,6 +2294,7 @@ export default function App() {
         entered_at_iso: enteredAtMs ? fmtTime(enteredAtMs) : "",
         submitted_at_iso: submittedAtIso,
         duration_ms: durationMs,
+        experiment_group_id: linkedSurvey.experiment_assigned_group_id || "",
       });
 
       if (!ok) {
@@ -2715,8 +2805,13 @@ export default function App() {
                               feed_id,
                               feed_checksum,
                             });
+                            row.experiment_group_id =
+                              linkedSurvey?.experiment_assigned_group_id || "";
 
                             const header = buildMinimalHeader(posts);
+                            if (!header.includes("experiment_group_id")) {
+                              header.push("experiment_group_id");
+                            }
 
                             const sendTimer = timerStart("sendToSheet", {
                               feed_id,

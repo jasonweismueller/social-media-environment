@@ -279,7 +279,70 @@ export function makePageBlock(overrides = {}) {
     title: String(safeOverrides.title || "Page block"),
     randomize_pages: !!safeOverrides.randomize_pages,
     page_ids: uniqueStringArray(safeOverrides.page_ids),
+    visible_to_group_ids: uniqueStringArray(safeOverrides.visible_to_group_ids),
   };
+}
+
+function sanitizeExperimentGroupId(value, fallback = "") {
+  const cleaned = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Za-z0-9_-]/g, "");
+
+  return cleaned || fallback;
+}
+
+export function makeExperimentGroup(overrides = {}) {
+  const safeOverrides = asObject(overrides);
+
+  return {
+    id: sanitizeExperimentGroupId(safeOverrides.id, `group_${uid()}`),
+    name: String(safeOverrides.name || "Group"),
+  };
+}
+
+/**
+ * Ensures experiment group ids are unique and non-empty. Legacy/missing
+ * names get a positional default ("Group 1", "Group 2", ...).
+ */
+export function normalizeExperimentGroups(experimentGroups = []) {
+  const usedIds = new Set();
+
+  return (Array.isArray(experimentGroups) ? experimentGroups : []).map(
+    (rawGroup, index) => {
+      const source = asObject(rawGroup);
+
+      let groupId = sanitizeExperimentGroupId(
+        source.id,
+        `group_${index + 1}`
+      );
+
+      if (usedIds.has(groupId)) {
+        const baseId = groupId;
+        let suffix = 2;
+
+        while (usedIds.has(`${baseId}_${suffix}`)) {
+          suffix += 1;
+        }
+
+        groupId = `${baseId}_${suffix}`;
+      }
+
+      usedIds.add(groupId);
+
+      return {
+        id: groupId,
+        name: String(source.name || `Group ${index + 1}`),
+      };
+    }
+  );
+}
+
+export function frontendExperimentGroupsToBackend(experimentGroups = []) {
+  return normalizeExperimentGroups(experimentGroups).map((group) => ({
+    id: group.id,
+    name: group.name,
+  }));
 }
 
 /**
@@ -291,7 +354,11 @@ export function makePageBlock(overrides = {}) {
  * - legacy surveys receive one default block;
  * - newly created/unassigned pages are appended to the final block.
  */
-export function reconcilePageBlocks(pages = [], pageBlocks = []) {
+export function reconcilePageBlocks(
+  pages = [],
+  pageBlocks = [],
+  experimentGroupIds = null
+) {
   const safePages = (Array.isArray(pages) ? pages : [])
     .map(normalizePage)
     .filter(Boolean);
@@ -303,6 +370,12 @@ export function reconcilePageBlocks(pages = [], pageBlocks = []) {
   const validPageIds = new Set(pageIds);
   const assignedPageIds = new Set();
   const usedBlockIds = new Set();
+
+  const validGroupIds = Array.isArray(experimentGroupIds)
+    ? new Set(
+        experimentGroupIds.map((id) => String(id ?? "").trim()).filter(Boolean)
+      )
+    : null;
 
   const sourceBlocks = Array.isArray(pageBlocks) ? pageBlocks : [];
   const normalizedBlocks = [];
@@ -338,11 +411,19 @@ export function reconcilePageBlocks(pages = [], pageBlocks = []) {
       blockPageIds.push(pageId);
     });
 
+    const rawVisibleToGroupIds = uniqueStringArray(
+      source.visible_to_group_ids
+    );
+    const visibleToGroupIds = validGroupIds
+      ? rawVisibleToGroupIds.filter((groupId) => validGroupIds.has(groupId))
+      : rawVisibleToGroupIds;
+
     normalizedBlocks.push({
       id: blockId,
       title: String(source.title || `Block ${blockIndex + 1}`),
       randomize_pages: !!source.randomize_pages,
       page_ids: blockPageIds,
+      visible_to_group_ids: visibleToGroupIds,
     });
   });
 
@@ -357,6 +438,7 @@ export function reconcilePageBlocks(pages = [], pageBlocks = []) {
         title: "All pages",
         randomize_pages: false,
         page_ids: [...pageIds],
+        visible_to_group_ids: [],
       },
     ];
   }
@@ -376,20 +458,28 @@ export function reconcilePageBlocks(pages = [], pageBlocks = []) {
   return normalizedBlocks;
 }
 
-export function normalizePageBlocks(pageBlocks = [], pages = []) {
-  return reconcilePageBlocks(pages, pageBlocks);
+export function normalizePageBlocks(
+  pageBlocks = [],
+  pages = [],
+  experimentGroupIds = null
+) {
+  return reconcilePageBlocks(pages, pageBlocks, experimentGroupIds);
 }
 
 export function frontendPageBlocksToBackend(
   pageBlocks = [],
-  pages = []
+  pages = [],
+  experimentGroupIds = null
 ) {
-  return reconcilePageBlocks(pages, pageBlocks).map((block) => ({
-    id: block.id,
-    title: block.title,
-    randomize_pages: !!block.randomize_pages,
-    page_ids: [...block.page_ids],
-  }));
+  return reconcilePageBlocks(pages, pageBlocks, experimentGroupIds).map(
+    (block) => ({
+      id: block.id,
+      title: block.title,
+      randomize_pages: !!block.randomize_pages,
+      page_ids: [...block.page_ids],
+      visible_to_group_ids: [...(block.visible_to_group_ids || [])],
+    })
+  );
 }
 
 /**
@@ -404,6 +494,7 @@ export function materializePagesFromBlocks(
   {
     participantSeed = "",
     randomize = true,
+    assignedGroupId = "",
   } = {}
 ) {
   const receivedPagesArray = Array.isArray(surveyOrPages);
@@ -416,7 +507,20 @@ export function materializePagesFromBlocks(
     ? pageBlocksArg
     : asObject(surveyOrPages).page_blocks;
 
-  const pageBlocks = reconcilePageBlocks(pages, rawPageBlocks);
+  // Only available when we were handed the full survey object (not a bare
+  // pages array) — used solely to drop stale group references from blocks;
+  // the actual per-participant gating below doesn't depend on this.
+  const experimentGroupIds = receivedPagesArray
+    ? null
+    : normalizeExperimentGroups(
+        asObject(surveyOrPages).experiment_groups
+      ).map((group) => group.id);
+
+  const pageBlocks = reconcilePageBlocks(
+    pages,
+    rawPageBlocks,
+    experimentGroupIds
+  );
 
   const pageById = new Map(
     pages.map((page) => [
@@ -425,7 +529,22 @@ export function materializePagesFromBlocks(
     ])
   );
 
+  const cleanAssignedGroupId = String(assignedGroupId || "").trim();
+
   return pageBlocks.flatMap((block, blockIndex) => {
+    const visibleToGroupIds = Array.isArray(block.visible_to_group_ids)
+      ? block.visible_to_group_ids
+      : [];
+
+    // Empty visible_to_group_ids means "shown to everyone" — the default,
+    // and what every pre-existing block/survey already behaves as.
+    if (
+      visibleToGroupIds.length &&
+      !visibleToGroupIds.includes(cleanAssignedGroupId)
+    ) {
+      return [];
+    }
+
     const blockPages = block.page_ids
       .map((pageId) => pageById.get(pageId))
       .filter(Boolean);
@@ -455,6 +574,7 @@ export function randomizePagesWithinBlocks(
   survey,
   {
     participantSeed = "",
+    assignedGroupId = "",
   } = {}
 ) {
   const normalized = normalizeSurvey(survey);
@@ -464,6 +584,7 @@ export function randomizePagesWithinBlocks(
     pages: materializePagesFromBlocks(normalized, [], {
       participantSeed,
       randomize: true,
+      assignedGroupId,
     }),
   };
 }
@@ -1005,9 +1126,14 @@ export function makeEmptySurvey(overrides = {}) {
   const safeOverrides = asObject(overrides);
   const pages = coerceQuestionsIntoPages(safeOverrides);
 
+  const experimentGroups = normalizeExperimentGroups(
+    safeOverrides.experiment_groups
+  );
+
   const pageBlocks = reconcilePageBlocks(
     pages,
-    safeOverrides.page_blocks
+    safeOverrides.page_blocks,
+    experimentGroups.map((group) => group.id)
   );
 
   return {
@@ -1016,6 +1142,7 @@ export function makeEmptySurvey(overrides = {}) {
     description: safeOverrides.description || "",
     pages,
     page_blocks: pageBlocks,
+    experiment_groups: experimentGroups,
     version: Number.isFinite(safeOverrides.version)
       ? safeOverrides.version
       : 1,
@@ -1110,9 +1237,14 @@ export function normalizeSurvey(raw = {}) {
   const safeRaw = asObject(raw);
   const pages = coerceQuestionsIntoPages(safeRaw);
 
+  const experimentGroups = normalizeExperimentGroups(
+    safeRaw.experiment_groups
+  );
+
   const pageBlocks = reconcilePageBlocks(
     pages,
-    safeRaw.page_blocks
+    safeRaw.page_blocks,
+    experimentGroups.map((group) => group.id)
   );
 
   return {
@@ -1121,6 +1253,7 @@ export function normalizeSurvey(raw = {}) {
     description: String(safeRaw.description || ""),
     pages,
     page_blocks: pageBlocks,
+    experiment_groups: experimentGroups,
     version: Number.isFinite(safeRaw.version)
       ? safeRaw.version
       : 1,
@@ -1213,6 +1346,9 @@ export function normalizeSurvey(raw = {}) {
 
 export function frontendSurveyToBackend(survey = {}) {
   const s = normalizeSurvey(survey);
+  const experimentGroups = frontendExperimentGroupsToBackend(
+    s.experiment_groups
+  );
 
   return {
     survey_id: s.survey_id,
@@ -1225,8 +1361,11 @@ export function frontendSurveyToBackend(survey = {}) {
 
     page_blocks: frontendPageBlocksToBackend(
       s.page_blocks,
-      s.pages
+      s.pages,
+      experimentGroups.map((group) => group.id)
     ),
+
+    experiment_groups: experimentGroups,
 
     participant_information_title:
       s.participant_information_title,
