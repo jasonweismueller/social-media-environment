@@ -2262,6 +2262,8 @@ function QuestionActions({
   updateQuestion,
   onDragStart,
   onDragEnd,
+  isCollapsed,
+  onToggleCollapsed,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(q?.type);
 
@@ -2275,6 +2277,14 @@ function QuestionActions({
           height: INPUT_HEIGHT,
         }}
       >
+        <IconOnlyButton
+          onClick={onToggleCollapsed}
+          title={isCollapsed ? "Expand question" : "Collapse question"}
+          aria-label={isCollapsed ? "Expand question" : "Collapse question"}
+        >
+          <ChevronDownIcon size={12} open={!isCollapsed} />
+        </IconOnlyButton>
+
         <DragHandle
           onDragStart={(e) => onDragStart(e, q._editorId)}
           onDragEnd={onDragEnd}
@@ -2337,6 +2347,8 @@ function QuestionCard({
   onDragOver,
   onDrop,
   onDragEnd,
+  isCollapsed,
+  onToggleCollapsed,
 }) {
   const type = q?.type;
   const isPageBreak = type === EDITOR_PAGE_BREAK_TYPE;
@@ -2591,9 +2603,13 @@ function QuestionCard({
           updateQuestion={updateQuestion}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
+          isCollapsed={isCollapsed}
+          onToggleCollapsed={onToggleCollapsed}
         />
       </div>
 
+      {isCollapsed ? null : (
+      <>
       <FieldBlock label="Question ID / variable name">
         <TextInput
           value={q.id || ""}
@@ -2877,6 +2893,8 @@ function QuestionCard({
             />
           </FieldBlock>
         </div>
+      )}
+      </>
       )}
     </div>
   );
@@ -3635,9 +3653,33 @@ export function SurveyEditor({
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [highlightedQuestionId, setHighlightedQuestionId] = useState(null);
+  const [collapsedQuestionIds, setCollapsedQuestionIds] = useState(() => new Set());
   const questionNodeRefs = useRef({});
 
   const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);
+
+  function toggleQuestionCollapsed(editorId) {
+    setCollapsedQuestionIds((current) => {
+      const next = new Set(current);
+      if (next.has(editorId)) next.delete(editorId);
+      else next.add(editorId);
+      return next;
+    });
+  }
+
+  function collapseAllQuestions() {
+    setCollapsedQuestionIds(
+      new Set(
+        currentQuestions
+          .filter((item) => item?.type !== EDITOR_PAGE_BREAK_TYPE)
+          .map((item) => item._editorId)
+      )
+    );
+  }
+
+  function expandAllQuestions() {
+    setCollapsedQuestionIds(new Set());
+  }
   const overviewQuestionCount = currentQuestions.filter(
     (item) => item?.type !== EDITOR_PAGE_BREAK_TYPE
   ).length;
@@ -3647,6 +3689,12 @@ export function SurveyEditor({
 
   function jumpToQuestion(editorId) {
     setOutlineOpen(false);
+    setCollapsedQuestionIds((current) => {
+      if (!current.has(editorId)) return current;
+      const next = new Set(current);
+      next.delete(editorId);
+      return next;
+    });
     requestAnimationFrame(() => {
       const el = questionNodeRefs.current[editorId];
       if (!el) return;
@@ -3842,6 +3890,44 @@ export function SurveyEditor({
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
+            onClick={collapseAllQuestions}
+            disabled={currentQuestions.length === 0}
+            title="Collapse every question to just its header row"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 9,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              color: currentQuestions.length === 0 ? "#9ca3af" : "#334155",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
+            }}
+          >
+            Collapse all
+          </button>
+
+          <button
+            type="button"
+            onClick={expandAllQuestions}
+            disabled={currentQuestions.length === 0}
+            title="Expand every question"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 9,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              color: currentQuestions.length === 0 ? "#9ca3af" : "#334155",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
+            }}
+          >
+            Expand all
+          </button>
+
+          <button
+            type="button"
             onClick={() => setOutlineOpen(true)}
             disabled={currentQuestions.length === 0}
             title="See the whole study structure at once and reorder without scrolling"
@@ -3919,6 +4005,8 @@ export function SurveyEditor({
               onDragOver={handleQuestionDragOver}
               onDrop={handleQuestionDrop}
               onDragEnd={handleQuestionDragEnd}
+              isCollapsed={collapsedQuestionIds.has(q._editorId)}
+              onToggleCollapsed={() => toggleQuestionCollapsed(q._editorId)}
             />
           </div>
         ))}
