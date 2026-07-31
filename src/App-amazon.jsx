@@ -1359,6 +1359,20 @@ export default function App() {
     }
   }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId, effectiveSurveyId, isDirectSurveyLaunch]);
 
+  // Start loading the full survey (survey definition + all post-reminder
+  // preloading) as soon as we know one is linked, instead of waiting for the
+  // participant to click through participant-information/consent/
+  // instructions first. That screen is otherwise dead time from a loading
+  // perspective — the participant is reading, not waiting. ensureSurveyLoaded
+  // short-circuits once linkedSurvey is set, so this doesn't add an extra
+  // fetch: it just moves the same work earlier so it's often already done by
+  // the time the participant reaches hasEntered.
+  useEffect(() => {
+    if (onAdmin || linkedSurvey) return;
+    if (bootPhase !== "ready" || !surveyBoot?.has_survey) return;
+    ensureSurveyLoaded();
+  }, [onAdmin, linkedSurvey, bootPhase, surveyBoot?.has_survey, ensureSurveyLoaded]);
+
   const preloadSurveyOnlyAssets = useCallback(async () => {
     const t = timerStart("preloadSurveyOnlyAssets", {
       projectId,
