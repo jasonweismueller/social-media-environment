@@ -1507,16 +1507,17 @@ export function SurveyScreen({
 
   const visiblePages = useMemo(() => {
     const activeFeedId = String(feedId ?? "").trim();
+    const assignedGroupId = String(survey?.experiment_assigned_group_id ?? "").trim();
 
     return renderedPages
       .map((page) => ({
         ...page,
         questions: page.questions.filter((q) =>
-          isQuestionVisible(q, responses, { feedId: activeFeedId })
+          isQuestionVisible(q, responses, { feedId: activeFeedId, assignedGroupId })
         ),
       }))
       .filter((page) => page.questions.length > 0);
-  }, [renderedPages, responses, feedId]);
+  }, [renderedPages, responses, feedId, survey?.experiment_assigned_group_id]);
 
   useEffect(() => {
     setCurrentPageIndex(0);

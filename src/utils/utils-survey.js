@@ -346,6 +346,30 @@ export function frontendExperimentGroupsToBackend(experimentGroups = []) {
 }
 
 /**
+ * Drops question-level visible_to_group_ids references to experiment groups
+ * that no longer exist (e.g. a group was deleted from the survey). Mirrors
+ * how reconcilePageBlocks prunes stale group ids off blocks — without this,
+ * a question scoped only to a deleted group would stay permanently hidden
+ * instead of reverting to "shown to everyone".
+ */
+function pruneQuestionGroupVisibility(pages = [], validGroupIds = null) {
+  if (!Array.isArray(validGroupIds)) return pages;
+  const validSet = new Set(validGroupIds);
+
+  return (Array.isArray(pages) ? pages : []).map((page) => ({
+    ...page,
+    questions: (Array.isArray(page?.questions) ? page.questions : []).map(
+      (question) => ({
+        ...question,
+        visible_to_group_ids: uniqueStringArray(
+          question?.visible_to_group_ids
+        ).filter((groupId) => validSet.has(groupId)),
+      })
+    ),
+  }));
+}
+
+/**
  * Ensures that:
  * - every page belongs to exactly one block;
  * - deleted page IDs are removed;
@@ -688,6 +712,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     visible_if: overrides.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
+    visible_to_group_ids: uniqueStringArray(overrides.visible_to_group_ids),
     placeholder: String(overrides.placeholder || ""),
     post_id: String(overrides.post_id ?? ""),
     post_label: String(overrides.post_label ?? ""),
@@ -808,6 +833,7 @@ export function normalizeQuestion(raw = {}) {
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
+    visible_to_group_ids: uniqueStringArray(raw.visible_to_group_ids),
     placeholder: String(raw.placeholder || ""),
     post_id: postId,
     post_label: postLabel,
@@ -839,6 +865,7 @@ export function frontendQuestionToBackend(question = {}) {
     required: isDisplayOnlyQuestion(q) ? false : !!q.required,
     visible_in_feeds: q.visible_in_feeds,
     feed_overrides: q.feed_overrides,
+    visible_to_group_ids: q.visible_to_group_ids,
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
@@ -1124,10 +1151,15 @@ export function frontendPagesToBackend(pages = []) {
 
 export function makeEmptySurvey(overrides = {}) {
   const safeOverrides = asObject(overrides);
-  const pages = coerceQuestionsIntoPages(safeOverrides);
+  const rawPages = coerceQuestionsIntoPages(safeOverrides);
 
   const experimentGroups = normalizeExperimentGroups(
     safeOverrides.experiment_groups
+  );
+
+  const pages = pruneQuestionGroupVisibility(
+    rawPages,
+    experimentGroups.map((group) => group.id)
   );
 
   const pageBlocks = reconcilePageBlocks(
@@ -1235,10 +1267,15 @@ export function makeEmptySurvey(overrides = {}) {
 
 export function normalizeSurvey(raw = {}) {
   const safeRaw = asObject(raw);
-  const pages = coerceQuestionsIntoPages(safeRaw);
+  const rawPages = coerceQuestionsIntoPages(safeRaw);
 
   const experimentGroups = normalizeExperimentGroups(
     safeRaw.experiment_groups
+  );
+
+  const pages = pruneQuestionGroupVisibility(
+    rawPages,
+    experimentGroups.map((group) => group.id)
   );
 
   const pageBlocks = reconcilePageBlocks(
@@ -1530,7 +1567,11 @@ export function makeQuestionByType(type) {
    Visibility
    ========================= */
 
-export function isQuestionVisible(question, responses = {}, { feedId = "" } = {}) {
+export function isQuestionVisible(
+  question,
+  responses = {},
+  { feedId = "", assignedGroupId = "" } = {}
+) {
   if (question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK) return true;
 
   const normalizedQuestion = normalizeQuestion(question);
@@ -1558,6 +1599,20 @@ export function isQuestionVisible(question, responses = {}, { feedId = "" } = {}
       reminderSourceFeedId && visibleInFeeds.includes(reminderSourceFeedId);
 
     if (!matchesActiveFeed && !matchesReminderSourceFeed) {
+      return false;
+    }
+  }
+
+  // Empty visible_to_group_ids means "shown to everyone" — the default,
+  // and what every pre-existing question already behaves as. Mirrors the
+  // same-shaped check for page blocks in materializePagesFromBlocks.
+  const visibleToGroupIds = Array.isArray(normalizedQuestion.visible_to_group_ids)
+    ? normalizedQuestion.visible_to_group_ids.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+
+  if (visibleToGroupIds.length > 0) {
+    const cleanAssignedGroupId = String(assignedGroupId ?? "").trim();
+    if (!cleanAssignedGroupId || !visibleToGroupIds.includes(cleanAssignedGroupId)) {
       return false;
     }
   }
@@ -1685,11 +1740,15 @@ export function isQuestionAnswered(q, value) {
 
 export function validateSurveyResponses(survey, responses, { feedId = "" } = {}) {
   const normalized = normalizeSurvey(survey);
+  // experiment_assigned_group_id is stapled onto the survey object by the
+  // App-*.jsx loaders after normalizeSurvey runs, so it has to be read off
+  // the raw `survey` argument here rather than off `normalized`.
+  const assignedGroupId = String(survey?.experiment_assigned_group_id ?? "").trim();
   const errors = {};
 
   for (const page of normalized.pages || []) {
     for (const q of page.questions || []) {
-      if (!isQuestionVisible(q, responses, { feedId })) continue;
+      if (!isQuestionVisible(q, responses, { feedId, assignedGroupId })) continue;
 
       const value = responses?.[q.id];
       if (!isQuestionAnswered(q, value)) {

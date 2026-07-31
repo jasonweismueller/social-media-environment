@@ -2886,7 +2886,7 @@ export default function App() {
           />
 
           <Route
-            path="/admin"
+            path="/admin/*"
             element={
               adminAuthed ? (
                 <AdminDashboard

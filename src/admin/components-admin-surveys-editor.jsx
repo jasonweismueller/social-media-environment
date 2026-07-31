@@ -457,12 +457,14 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       visible_if: null,
       visible_in_feeds: [],
       feed_overrides: {},
+      visible_to_group_ids: [],
       post_id: "",
       post_label: "",
       post_feed_id: "",
       next_delay_seconds: normalizePageDelaySeconds(q?.next_delay_seconds),
       _showFeedVisibilityEditor: false,
       _showFeedOverridesEditor: false,
+      _showGroupVisibilityEditor: false,
       meta: q?.meta || {},
     };
   }
@@ -492,6 +494,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     visible_if: q?.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q?.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q?.feed_overrides),
+    visible_to_group_ids: uniqueStringList(q?.visible_to_group_ids),
     post_id: String(q?.post_id ?? ""),
     post_label: String(q?.post_label ?? ""),
     post_feed_id: String(q?.post_feed_id ?? q?.meta?.post_feed_id ?? ""),
@@ -499,6 +502,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       (q?.apply_feed_randomization ?? q?.meta?.apply_feed_randomization ?? true) !== false,
     _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
     _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
+    _showGroupVisibilityEditor: !!q?._showGroupVisibilityEditor,
     meta: q?.meta || {},
   };
 }
@@ -865,6 +869,7 @@ export function buildSavedQuestion(q, index) {
       cleanQ.feed_overrides,
       normalizeVisibleInFeeds(cleanQ.visible_in_feeds)
     ),
+    visible_to_group_ids: uniqueStringList(cleanQ.visible_to_group_ids),
     post_id: cleanQ.type === POST_REMINDER_TYPE ? String(cleanQ.post_id || "") : "",
     post_label:
       cleanQ.type === POST_REMINDER_TYPE ? String(cleanQ.post_label || "") : "",
@@ -1052,6 +1057,27 @@ function EyeIcon({ size = 14 }) {
     >
       <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function UsersIcon({ size = 14 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }
@@ -2052,6 +2078,91 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
   );
 }
 
+function QuestionGroupVisibilityEditor({ experimentGroups, value, onChange }) {
+  const safeGroups = Array.isArray(experimentGroups) ? experimentGroups : [];
+  const selected = new Set(uniqueStringList(value));
+
+  function toggleGroup(groupId) {
+    const next = new Set(selected);
+    if (next.has(groupId)) next.delete(groupId);
+    else next.add(groupId);
+    onChange(Array.from(next));
+  }
+
+  function clearSelection() {
+    onChange([]);
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: 10,
+        padding: 12,
+        background: "#fafafa",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          marginBottom: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 13, color: "#111827" }}>
+          If no groups are selected, this question is shown to everyone.
+        </div>
+
+        <button
+          type="button"
+          onClick={clearSelection}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          Show to everyone
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {safeGroups.map((group) => {
+          const groupId = String(group?.id || "").trim();
+          if (!groupId) return null;
+
+          return (
+            <label
+              key={groupId}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                cursor: "pointer",
+                padding: "6px 2px",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(groupId)}
+                onChange={() => toggleGroup(groupId)}
+              />
+              <span>{group?.name || groupId}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function FeedOverridesEditor({ availableFeeds, value, onChange }) {
   const safeFeeds = Array.isArray(availableFeeds) ? availableFeeds : [];
   const normalized = normalizeFeedOverridesMap(value);
@@ -2241,12 +2352,16 @@ function PostReminderEditor({
 function QuestionAdvancedFeedTools({
   q,
   linkedFeeds,
+  experimentGroups,
   onToggleVisibilityEditor,
   onToggleOverridesEditor,
+  onToggleGroupVisibilityEditor,
 }) {
   const visibleFeedCount = normalizeVisibleInFeeds(q?.visible_in_feeds).length;
   const overrideCount = Object.keys(pruneFeedOverridesMap(q?.feed_overrides)).length;
   const hasLinkedFeeds = Array.isArray(linkedFeeds) && linkedFeeds.length > 0;
+  const hasExperimentGroups = Array.isArray(experimentGroups) && experimentGroups.length > 0;
+  const groupCount = uniqueStringList(q?.visible_to_group_ids).length;
 
   return (
     <div
@@ -2285,6 +2400,21 @@ function QuestionAdvancedFeedTools({
         </span>
         <ChevronDownIcon size={12} open={!!q?._showFeedOverridesEditor} />
       </SecondaryPillButton>
+
+      {hasExperimentGroups && (
+        <SecondaryPillButton
+          onClick={onToggleGroupVisibilityEditor}
+          active={!!q?._showGroupVisibilityEditor}
+          title="Question display by experiment group"
+        >
+          <UsersIcon size={14} />
+          <span>
+            Group visibility
+            {groupCount > 0 ? ` (${groupCount})` : ""}
+          </span>
+          <ChevronDownIcon size={12} open={!!q?._showGroupVisibilityEditor} />
+        </SecondaryPillButton>
+      )}
 
       {!hasLinkedFeeds && (
         <span style={{ fontSize: 12, color: "#6b7280" }}>
@@ -2383,6 +2513,7 @@ function QuestionCard({
   totalQuestions,
   linkedFeeds,
   linkedFeedPostsMap,
+  experimentGroups,
   updateQuestion,
   removeQuestion,
   moveQuestion,
@@ -2875,6 +3006,7 @@ function QuestionCard({
       <QuestionAdvancedFeedTools
         q={q}
         linkedFeeds={linkedFeeds}
+        experimentGroups={experimentGroups}
         onToggleVisibilityEditor={() =>
           updateQuestion(index, {
             _showFeedVisibilityEditor: !q?._showFeedVisibilityEditor,
@@ -2885,7 +3017,31 @@ function QuestionCard({
             _showFeedOverridesEditor: !q?._showFeedOverridesEditor,
           })
         }
+        onToggleGroupVisibilityEditor={() =>
+          updateQuestion(index, {
+            _showGroupVisibilityEditor: !q?._showGroupVisibilityEditor,
+          })
+        }
       />
+
+      {q?._showGroupVisibilityEditor && (
+        <div style={{ marginTop: 12 }}>
+          <FieldBlock
+            label="Experiment group visibility"
+            hint="Restrict this question to participants assigned to selected experiment groups. Leaving all unchecked means it's shown to everyone."
+          >
+            <QuestionGroupVisibilityEditor
+              experimentGroups={experimentGroups}
+              value={q.visible_to_group_ids}
+              onChange={(nextVisibleToGroupIds) =>
+                updateQuestion(index, {
+                  visible_to_group_ids: uniqueStringList(nextVisibleToGroupIds),
+                })
+              }
+            />
+          </FieldBlock>
+        </div>
+      )}
 
       {q?._showFeedVisibilityEditor && (
         <div style={{ marginTop: 12 }}>
@@ -3868,6 +4024,10 @@ export function SurveyEditor({
   const questionNodeRefs = useRef({});
 
   const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);
+  const experimentGroups = useMemo(
+    () => normalizeSurveyExperimentGroups(survey),
+    [survey]
+  );
 
   function toggleQuestionCollapsed(editorId) {
     setCollapsedQuestionIds((current) => {
@@ -4205,6 +4365,7 @@ export function SurveyEditor({
               totalQuestions={currentQuestions.length}
               linkedFeeds={orderedLinkedFeeds}
               linkedFeedPostsMap={linkedFeedPostsMap}
+              experimentGroups={experimentGroups}
               updateQuestion={updateQuestion}
               removeQuestion={removeQuestion}
               moveQuestion={moveQuestion}

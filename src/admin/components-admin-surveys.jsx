@@ -25,6 +25,7 @@ import {
   readPostNames,
   SURVEY_QUESTION_TYPES,
   loadExperimentGroupCounts,
+  resetExperimentGroupAssignments,
 } from "../utils";
 
 import {
@@ -34,6 +35,8 @@ import {
   flattenSurveyPagesForEditor,
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
+
+import { Card as AdminUiCard } from "./ui";
 
 /* =========================
    Local helpers
@@ -661,6 +664,9 @@ function normalizeSurveyPagesWithDelay(pages = []) {
         feed_overrides: cleanQ?.feed_overrides
           ? deepClone(cleanQ.feed_overrides)
           : {},
+        visible_to_group_ids: Array.isArray(cleanQ?.visible_to_group_ids)
+          ? [...cleanQ.visible_to_group_ids]
+          : [],
       };
     }),
   }));
@@ -862,36 +868,17 @@ function surveyListButtonStyle(isActive) {
   };
 }
 
+// Delegates to the shared admin design system (src/admin/ui/Card.jsx) so this
+// panel's outer chrome matches the rest of the redesigned dashboard, without
+// having to touch any of this file's SectionCard call sites individually —
+// `right` here maps onto Card's `actions` prop, everything else passes
+// through unchanged.
 function SectionCard({ title, children, right = null, subtitle = "" }) {
   return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        background: "#fff",
-        padding: 16,
-        marginBottom: 18,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
-        <h4 style={{ margin: 0, fontSize: 16 }}>{title}</h4>
-        {right}
-      </div>
-      {subtitle ? (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-          {subtitle}
-        </div>
-      ) : null}
-      {children}
+    <div style={{ marginBottom: 18 }}>
+      <AdminUiCard title={title} subtitle={subtitle || undefined} actions={right}>
+        {children}
+      </AdminUiCard>
     </div>
   );
 }
@@ -1328,6 +1315,8 @@ export function AdminSurveysPanel({
   const [activeEditorTab, setActiveEditorTab] = useState("setup");
   const [experimentGroupCounts, setExperimentGroupCounts] = useState(null);
   const [experimentGroupCountsLoading, setExperimentGroupCountsLoading] = useState(false);
+  const [resettingGroupBalance, setResettingGroupBalance] = useState(false);
+  const [resetGroupBalanceError, setResetGroupBalanceError] = useState("");
 
   const hasExperimentGroups =
     Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
@@ -1354,6 +1343,36 @@ export function AdminSurveysPanel({
       refreshExperimentGroupCounts();
     }
   }, [activeEditorTab, survey?.survey_id, hasExperimentGroups, refreshExperimentGroupCounts]);
+
+  const handleResetGroupBalance = useCallback(async () => {
+    if (!survey?.survey_id || resettingGroupBalance) return;
+
+    const confirmed = window.confirm(
+      "Reset experiment group balance for this survey?\n\n" +
+        "This clears every recorded group assignment and restarts the " +
+        "round-robin counter from group 1. Participants who already " +
+        "submitted responses keep their recorded group in past data, but " +
+        "anyone who started and didn't finish will be reassigned (possibly " +
+        "to a different group) the next time they're seen. This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setResettingGroupBalance(true);
+    setResetGroupBalanceError("");
+    try {
+      const res = await resetExperimentGroupAssignments({
+        projectId,
+        surveyId: survey.survey_id,
+      });
+      if (!res?.ok) {
+        setResetGroupBalanceError(res?.err || "Reset failed.");
+        return;
+      }
+      await refreshExperimentGroupCounts();
+    } finally {
+      setResettingGroupBalance(false);
+    }
+  }, [survey?.survey_id, projectId, resettingGroupBalance, refreshExperimentGroupCounts]);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -2709,27 +2728,62 @@ export function AdminSurveysPanel({
               title="Experiment group balance"
               subtitle="Live counts of how many participants have been assigned to each group so far."
               right={
-                <button
-                  type="button"
-                  onClick={refreshExperimentGroupCounts}
-                  disabled={experimentGroupCountsLoading || !survey?.survey_id}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 9,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor:
-                      experimentGroupCountsLoading || !survey?.survey_id
-                        ? "not-allowed"
-                        : "pointer",
-                    fontWeight: 600,
-                    fontSize: 13,
-                  }}
-                >
-                  {experimentGroupCountsLoading ? "Refreshing..." : "Refresh"}
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={refreshExperimentGroupCounts}
+                    disabled={experimentGroupCountsLoading || !survey?.survey_id}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 9,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      cursor:
+                        experimentGroupCountsLoading || !survey?.survey_id
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    {experimentGroupCountsLoading ? "Refreshing..." : "Refresh"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetGroupBalance}
+                    disabled={resettingGroupBalance || !survey?.survey_id}
+                    title="Clear all recorded group assignments and restart round-robin at group 1"
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 9,
+                      border: "1px solid #fca5a5",
+                      background: "#fff",
+                      color: "#b91c1c",
+                      cursor:
+                        resettingGroupBalance || !survey?.survey_id
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    {resettingGroupBalance ? "Resetting..." : "Reset balance"}
+                  </button>
+                </div>
               }
             >
+              {resetGroupBalanceError && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#b91c1c",
+                    marginBottom: 12,
+                  }}
+                >
+                  {resetGroupBalanceError}
+                </div>
+              )}
               {!survey?.survey_id ? (
                 <div style={{ fontSize: 12, color: "#6b7280" }}>
                   Save the survey first to start tracking group assignments.

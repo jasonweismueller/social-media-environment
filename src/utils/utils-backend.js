@@ -2823,6 +2823,48 @@ export async function loadExperimentGroupCounts({
   }
 }
 
+/**
+ * Clears every recorded experiment-group assignment for a survey and resets
+ * the round-robin counter back to zero, so the next participant lands in
+ * group 1 again. Use when the live balance has drifted (e.g. participants
+ * started but never finished, so their slot is "spent" without a completed
+ * response) and the study needs to restart assignment from a clean slate.
+ *
+ * Destructive and irreversible server-side — existing participants' already-
+ * recorded group_id (in ExperimentAssignments and in any submitted
+ * SurveyResponses rows) is untouched, but anyone who started the survey and
+ * has not yet had their assignment logged again will be reassigned on their
+ * next request.
+ */
+export async function resetExperimentGroupAssignments({
+  projectId = getProjectId(),
+  surveyId,
+} = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+
+  const survey_id = String(surveyId || "").trim();
+  if (!survey_id) return { ok: false, err: "survey_id required" };
+
+  try {
+    const { res, data } = await postJson({
+      action: "reset_experiment_group_assignments",
+      app: APP,
+      admin_token,
+      project_id: projectId || undefined,
+      survey_id,
+    });
+
+    if (!res.ok || data?.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
 const __postByIdCache = new Map();
 const __postByIdPromiseCache = new Map();
 

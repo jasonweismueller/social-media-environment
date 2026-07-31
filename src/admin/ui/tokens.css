@@ -1,0 +1,38 @@
+/* Admin design tokens — scoped under .admin-shell so they never leak into the
+   participant-facing app, which has its own brand color (var(--blue)). */
+.admin-shell {
+  --admin-accent: #4f46e5;
+  --admin-accent-ink: #3730a3;
+  --admin-accent-soft: #eef2ff;
+  --admin-accent-border: #c7d2fe;
+
+  --admin-danger: #dc2626;
+  --admin-danger-ink: #991b1b;
+  --admin-danger-soft: #fef2f2;
+  --admin-danger-border: #fecaca;
+
+  --admin-border: #d1d5db;
+  --admin-border-subtle: #e5e7eb;
+  --admin-text: #111827;
+  --admin-muted: #6b7280;
+  --admin-muted-2: #9ca3af;
+  --admin-surface: #ffffff;
+  --admin-surface-alt: #f9fafb;
+  --admin-surface-sunken: #f8fafc;
+
+  --admin-radius-sm: 7px;
+  --admin-radius-md: 10px;
+  --admin-radius-lg: 14px;
+
+  --admin-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --admin-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+
+  background: var(--admin-surface-sunken);
+  color: var(--admin-text);
+}
+
+@keyframes admin-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
