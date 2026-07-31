@@ -596,7 +596,7 @@ export function AdminDashboard({
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAllFeeds, setShowAllFeeds] = useState(false);
+  const [showAllFeeds, setShowAllFeeds] = useState(true);
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
@@ -1597,9 +1597,12 @@ export function AdminDashboard({
                                       </Button>
 
                                       <Popover
+                                        onOpenChange={(next) => {
+                                          if (next) loadFlagsFor(f.feed_id);
+                                        }}
                                         trigger={
                                           <Button size="sm" variant="secondary" busy={anyFlagBusy}>
-                                            Randomize {onCount}/5
+                                            Randomize {ff.loaded || ff.loading ? `${onCount}/5` : "…"}
                                           </Button>
                                         }
                                       >
@@ -1609,7 +1612,7 @@ export function AdminDashboard({
                                               key={kind}
                                               label={label}
                                               checked={readFlagValue(ff, kind)}
-                                              busy={!!ff[savingKey] || !!ff.loading}
+                                              busy={!!ff[savingKey] || !ff.loaded}
                                               disabled={ALL_SAVING_KEYS.some((k) => k !== savingKey && ff[k])}
                                               onChange={() => toggleFlag(f.feed_id, kind)}
                                             />
