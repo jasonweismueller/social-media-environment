@@ -24,9 +24,6 @@ import {
   buildFeedShareUrl,
   listProjectsFromBackend,
   getDefaultProjectFromBackend,
-  setDefaultProjectOnBackend,
-  createProjectOnBackend,
-  deleteProjectOnBackend,
   setProjectId as persistProjectId,
   getProjectId,
   getSurveyIdFromUrl,
@@ -1008,28 +1005,6 @@ export function AdminDashboard({
     loadFlagsFor(id);
   };
 
-  const createNewProject = async () => {
-    const id = prompt(
-      "New project ID (letters/numbers/underscores):",
-      `proj_${(projects.length || 0) + 1}`
-    );
-    if (!id) return;
-    const name = prompt("Optional project name:", id) || id;
-    const ok = await createProjectOnBackend?.({ projectId: id, name }).catch(() => true);
-    if (!ok) {
-      alert("Failed to create project.");
-      return;
-    }
-    setProjects((prev) => [{ project_id: id, name }, ...prev]);
-    setProjectId(id);
-    setProjectName(name);
-    setFeeds([]);
-    setFeedId("");
-    setFeedName("");
-    setPosts([]);
-    loadFeeds();
-  };
-
   const createNewFeed = () => {
     const id = prompt(
       "New feed ID (letters/numbers/underscores):",
@@ -1257,78 +1232,25 @@ export function AdminDashboard({
           subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
           onLogout={onLogout}
           showUsersNav={hasAdminRole("owner")}
+          backTo="/admin"
+          backLabel="← Switch project / platform"
           projectSwitcher={
-            <div style={{ display: "grid", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: "var(--admin-muted)",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.3,
-                  }}
-                >
-                  Project ({projects.length || 0})
-                </div>
-                <OverflowMenu
-                  title="Project actions"
-                  items={[
-                    {
-                      key: "refresh",
-                      label: "Refresh",
-                      onClick: () => loadProjects(),
-                    },
-                    {
-                      key: "new",
-                      label: "+ New project",
-                      hidden: !hasAdminRole("editor"),
-                      onClick: createNewProject,
-                    },
-                    {
-                      key: "default",
-                      label: "Set as default",
-                      hidden: !hasAdminRole("editor"),
-                      disabled: !projectId || projectId === defaultProjectId,
-                      onClick: async () => {
-                        const ok = await setDefaultProjectOnBackend?.(projectId);
-                        if (ok) setDefaultProjectId(projectId);
-                      },
-                    },
-                    {
-                      key: "delete",
-                      label: "Delete project",
-                      danger: true,
-                      hidden: !hasAdminRole("owner"),
-                      onClick: async () => {
-                        if (!projectId) return;
-                        if (
-                          !confirm(
-                            `Delete project "${projectName || projectId}"?\nThis deletes ALL its feeds and participants.`
-                          )
-                        ) {
-                          return;
-                        }
-                        const ok = await deleteProjectOnBackend?.(projectId);
-                        if (!ok) {
-                          alert("Failed to delete project.");
-                          return;
-                        }
-                        const next = projects.filter((p) => p.project_id !== projectId);
-                        setProjects(next);
-                        const fallback = next[0] || { project_id: "global", name: "Global" };
-                        setProjectId(fallback.project_id);
-                        setProjectName(fallback.name || fallback.project_id);
-                        persistProjectId(fallback.project_id, { persist: true, updateUrl: true });
-                      },
-                    },
-                  ]}
-                />
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--admin-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.3,
+                }}
+              >
+                Project
               </div>
-
-              {/* Full name shown here (not just inside the <select>) since a
-                  narrow sidebar truncates the selected <option> text with no
-                  way to see the rest of a long name. */}
+              {/* Full name shown here (not truncated by a narrow sidebar) —
+                  switching project/platform now happens on a dedicated page
+                  (AdminProjectPicker/AdminPlatformPicker) via the back link
+                  above, so this is just an identity readout. */}
               <div
                 title={projectName || projectId || ""}
                 style={{
@@ -1336,6 +1258,7 @@ export function AdminDashboard({
                   fontWeight: 700,
                   color: "var(--admin-text)",
                   wordBreak: "break-word",
+                  marginTop: 4,
                 }}
               >
                 {projectName || projectId || "—"}
@@ -1345,32 +1268,6 @@ export function AdminDashboard({
                   </Badge>
                 )}
               </div>
-
-              <select
-                className="select"
-                value={projectId || "global"}
-                onChange={async (e) => {
-                  const pid = e.target.value;
-                  const row = projects.find((p) => p.project_id === pid);
-                  setBooting(true);
-                  setProjectId(pid);
-                  setProjectName(row?.name || pid);
-                  persistProjectId(pid, { persist: true, updateUrl: true });
-                  setFeeds([]);
-                  setFeedId("");
-                  setFeedName("");
-                  setPosts([]);
-                }}
-                title="Choose project"
-                style={{ width: "100%" }}
-              >
-                {projects.map((p) => (
-                  <option key={p.project_id} value={p.project_id}>
-                    {(p.name || p.project_id)}
-                    {p.project_id === defaultProjectId ? " (default)" : ""}
-                  </option>
-                ))}
-              </select>
             </div>
           }
           feedSwitcher={
@@ -1391,26 +1288,47 @@ export function AdminDashboard({
                   No feeds yet — create one on the Feeds page.
                 </div>
               ) : (
-                <select
-                  className="select"
-                  value={feedId || ""}
-                  onChange={(e) => selectFeed(e.target.value)}
-                  title="Choose which feed Posts and Participants act on"
-                  style={{ width: "100%" }}
-                >
-                  {feeds.map((f) => (
-                    <option key={f.feed_id} value={f.feed_id}>
-                      {(f.name || f.feed_id)}
-                      {f.feed_id === defaultFeedId ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  {/* Full name shown here too, same reasoning as the project
+                      name above — the <select> below truncates it. */}
+                  <div
+                    title={feedName || feedId || ""}
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "var(--admin-text)",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {feedName || feedId || "—"}
+                    {feedId === defaultFeedId && (
+                      <Badge tone="accent" style={{ marginLeft: 6 }}>
+                        default
+                      </Badge>
+                    )}
+                  </div>
+
+                  <select
+                    className="select"
+                    value={feedId || ""}
+                    onChange={(e) => selectFeed(e.target.value)}
+                    title="Choose which feed Posts and Participants act on"
+                    style={{ width: "100%" }}
+                  >
+                    {feeds.map((f) => (
+                      <option key={f.feed_id} value={f.feed_id}>
+                        {(f.name || f.feed_id)}
+                        {f.feed_id === defaultFeedId ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}
             </div>
           }
         >
           <Routes>
-            <Route index element={<Navigate to="/admin/feeds" replace />} />
+            <Route index element={<Navigate to="/admin/dashboard/feeds" replace />} />
 
             <Route
               path="feeds"
@@ -2100,7 +2018,7 @@ export function AdminDashboard({
               }
             />
 
-            <Route path="*" element={<Navigate to="/admin/feeds" replace />} />
+            <Route path="*" element={<Navigate to="/admin/dashboard/feeds" replace />} />
           </Routes>
         </AdminShell>
       </div>

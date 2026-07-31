@@ -1312,11 +1312,15 @@ export function normalizeFlagsForRead(flags) {
   return out;
 }
 
-/* ====================== Admin auth (session token + role/email) ============ */
-const ADMIN_TOKEN_KEY = `${APP}_admin_token_v1`;
-const ADMIN_TOKEN_EXP_KEY = `${APP}_admin_token_exp_v1`;
-const ADMIN_ROLE_KEY = `${APP}_admin_role_v1`;
-const ADMIN_EMAIL_KEY = `${APP}_admin_email_v1`;
+/* ====================== Admin auth (session token + role/email) ============
+ * Deliberately NOT namespaced by ${APP} — admin accounts/sessions are shared
+ * across the Facebook/Instagram/Amazon bundles, so logging in once should
+ * carry over when the platform picker navigates to a different ?app=.
+ */
+const ADMIN_TOKEN_KEY = `admin_token_v1`;
+const ADMIN_TOKEN_EXP_KEY = `admin_token_exp_v1`;
+const ADMIN_ROLE_KEY = `admin_role_v1`;
+const ADMIN_EMAIL_KEY = `admin_email_v1`;
 
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
 

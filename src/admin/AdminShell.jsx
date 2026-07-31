@@ -1,16 +1,16 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 
 // Absolute paths (not relative "feeds"/"posts") — relative NavLink targets
 // resolve against the current URL segment-by-segment in react-router, so a
 // relative link clicked from a non-index route appends onto the existing
 // path instead of replacing it.
 const NAV_ITEMS = [
-  { to: "/admin/feeds", label: "Feeds", icon: "🗂️" },
-  { to: "/admin/posts", label: "Posts", icon: "📝" },
-  { to: "/admin/surveys", label: "Surveys", icon: "📋" },
-  { to: "/admin/participants", label: "Participants", icon: "👥" },
-  { to: "/admin/users", label: "Users", icon: "🔐", ownerOnly: true },
+  { to: "/admin/dashboard/feeds", label: "Feeds", icon: "🗂️" },
+  { to: "/admin/dashboard/posts", label: "Posts", icon: "📝" },
+  { to: "/admin/dashboard/surveys", label: "Surveys", icon: "📋" },
+  { to: "/admin/dashboard/participants", label: "Participants", icon: "👥" },
+  { to: "/admin/dashboard/users", label: "Users", icon: "🔐", ownerOnly: true },
 ];
 
 /**
@@ -22,6 +22,8 @@ export function AdminShell({
   title,
   subtitle,
   onLogout,
+  backTo,
+  backLabel = "← All projects",
   projectSwitcher,
   feedSwitcher,
   showUsersNav = true,
@@ -52,6 +54,21 @@ export function AdminShell({
         }}
       >
         <div style={{ padding: "4px 8px 16px" }}>
+          {backTo && (
+            <Link
+              to={backTo}
+              style={{
+                display: "inline-block",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--admin-muted)",
+                textDecoration: "none",
+                marginBottom: 8,
+              }}
+            >
+              {backLabel}
+            </Link>
+          )}
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
             {title}
           </div>

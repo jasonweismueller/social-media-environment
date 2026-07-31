@@ -59,8 +59,7 @@ import {
   SurveyPrefaceFlow,
 } from "./ui-core";
 
-import { AdminDashboard } from "./admin/components-admin-dashboard";
-import AdminLogin from "./admin/components-admin-login";
+import { AdminEntry } from "./admin/AdminEntry";
 
 /* =========================================================================
    Facebook app with survey support
@@ -3100,46 +3099,45 @@ export default function App() {
           <Route
             path="/admin/*"
             element={
-              adminAuthed ? (
-                <AdminDashboard
-                  posts={posts}
-                  setPosts={setPosts}
-                  randomize={randomize}
-                  setRandomize={setRandomize}
-                  showComposer={showComposer}
-                  setShowComposer={setShowComposer}
-                  resetLog={() => {
-                    setEvents([]);
-                    showToast("Event log cleared");
-                  }}
-                  onPublishPosts={async (nextPosts, ctx = {}) => {
-                    try {
-                      const ok = await savePostsToBackend(nextPosts, ctx);
-                      if (ok) {
-                        const fresh = await loadPostsFromBackend(ctx?.feedId, {
-                          projectId: ctx?.projectId || projectId,
-                          force: true,
-                        });
-                        setPosts(fresh || []);
-                        showToast("Feed saved to backend");
-                      } else {
-                        showToast("Publish failed");
-                      }
-                    } catch {
+              <AdminEntry
+                adminAuthed={adminAuthed}
+                onAuth={() => setAdminAuthed(true)}
+                currentApp="fb"
+                posts={posts}
+                setPosts={setPosts}
+                randomize={randomize}
+                setRandomize={setRandomize}
+                showComposer={showComposer}
+                setShowComposer={setShowComposer}
+                resetLog={() => {
+                  setEvents([]);
+                  showToast("Event log cleared");
+                }}
+                onPublishPosts={async (nextPosts, ctx = {}) => {
+                  try {
+                    const ok = await savePostsToBackend(nextPosts, ctx);
+                    if (ok) {
+                      const fresh = await loadPostsFromBackend(ctx?.feedId, {
+                        projectId: ctx?.projectId || projectId,
+                        force: true,
+                      });
+                      setPosts(fresh || []);
+                      showToast("Feed saved to backend");
+                    } else {
                       showToast("Publish failed");
                     }
-                  }}
-                  onLogout={async () => {
-                    try {
-                      await adminLogout();
-                    } catch {}
-                    setAdminAuthed(false);
-                    window.location.hash = "#/admin";
-                  }}
-                />
-              ) : (
-                <AdminLogin onAuth={() => setAdminAuthed(true)} />
-              )
+                  } catch {
+                    showToast("Publish failed");
+                  }
+                }}
+                onLogout={async () => {
+                  try {
+                    await adminLogout();
+                  } catch {}
+                  setAdminAuthed(false);
+                  window.location.hash = "#/admin";
+                }}
+              />
             }
           />
         </Routes>
