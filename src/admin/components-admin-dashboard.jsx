@@ -1348,6 +1348,41 @@ export function AdminDashboard({
               </div>
             </div>
           }
+          feedSwitcher={
+            <div style={{ display: "grid", gap: 8 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "var(--admin-muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.3,
+                }}
+              >
+                Editing feed
+              </div>
+              {feeds.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
+                  No feeds yet — create one on the Feeds page.
+                </div>
+              ) : (
+                <select
+                  className="select"
+                  value={feedId || ""}
+                  onChange={(e) => selectFeed(e.target.value)}
+                  title="Choose which feed Posts and Participants act on"
+                  style={{ width: "100%" }}
+                >
+                  {feeds.map((f) => (
+                    <option key={f.feed_id} value={f.feed_id}>
+                      {(f.name || f.feed_id)}
+                      {f.feed_id === defaultFeedId ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          }
         >
           <Routes>
             <Route index element={<Navigate to="/admin/feeds" replace />} />
@@ -1358,41 +1393,23 @@ export function AdminDashboard({
                 <>
                   <PageHeader
                     title={`Feeds (${feeds.length || 0})`}
-                    subtitle="Choose the editing feed via dropdown. By default, only the Default and Loaded feeds are shown; expand to see all."
+                    subtitle="The feed registry for this project. Use the sidebar's “Editing feed” picker, or Load on a row below, to choose which feed Posts and Participants act on."
                   />
                   <Card
                     actions={
                       <>
-                        <div className="feed-picker" style={{ display: "flex", alignItems: "center", gap: ".5rem" }}>
-                          <span className="subtle">Editing:</span>
-                          <select
-                            className="select"
-                            value={feedId || ""}
-                            onChange={(e) => selectFeed(e.target.value)}
-                            title="Choose which feed to load into the editor"
-                            style={{ minWidth: 220 }}
-                          >
-                            {feeds.map((f) => (
-                              <option key={f.feed_id} value={f.feed_id}>
-                                {(f.name || f.feed_id)}
-                                {f.feed_id === defaultFeedId ? " (default)" : ""}
-                              </option>
-                            ))}
-                          </select>
-
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setShowAllFeeds((v) => !v)}
-                            title={
-                              showAllFeeds
-                                ? "Hide full list and show only Default + Loaded"
-                                : "Show all feeds in the registry"
-                            }
-                          >
-                            {showAllFeeds ? "Hide full list" : "All feeds…"}
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setShowAllFeeds((v) => !v)}
+                          title={
+                            showAllFeeds
+                              ? "Hide full list and show only Default + Loaded"
+                              : "Show all feeds in the registry"
+                          }
+                        >
+                          {showAllFeeds ? "Hide full list" : "All feeds…"}
+                        </Button>
 
                         <RoleGate min="editor">
                           <Button size="sm" variant="ghost" onClick={createNewFeed}>
@@ -1783,9 +1800,14 @@ export function AdminDashboard({
                   <PageHeader
                     title={`${CONTENT_UNIT_LABEL_PLURAL} (${posts.length})`}
                     subtitle={
-                      showAllPosts
-                        ? `Compact list of all ${CONTENT_UNIT_LABEL_PLURAL.toLowerCase()}.`
-                        : `Compact list · showing first ${Math.min(5, posts.length)}`
+                      <>
+                        Editing feed:{" "}
+                        <code style={{ fontSize: ".9em" }}>{feedName || feedId || "none loaded"}</code>
+                        <span className="subtle"> · </span>
+                        {showAllPosts
+                          ? `all ${CONTENT_UNIT_LABEL_PLURAL.toLowerCase()}`
+                          : `showing first ${Math.min(5, posts.length)}`}
+                      </>
                     }
                     actions={
                       <>

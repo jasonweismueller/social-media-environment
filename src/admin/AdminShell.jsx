@@ -23,6 +23,7 @@ export function AdminShell({
   subtitle,
   onLogout,
   projectSwitcher,
+  feedSwitcher,
   showUsersNav = true,
   children,
 }) {
@@ -65,13 +66,27 @@ export function AdminShell({
           <div
             style={{
               padding: "10px 8px",
-              marginBottom: 12,
+              marginBottom: 8,
               borderRadius: "var(--admin-radius-md)",
               background: "var(--admin-surface-alt)",
               border: "1px solid var(--admin-border-subtle)",
             }}
           >
             {projectSwitcher}
+          </div>
+        )}
+
+        {feedSwitcher && (
+          <div
+            style={{
+              padding: "10px 8px",
+              marginBottom: 12,
+              borderRadius: "var(--admin-radius-md)",
+              background: "var(--admin-surface-alt)",
+              border: "1px solid var(--admin-border-subtle)",
+            }}
+          >
+            {feedSwitcher}
           </div>
         )}
 
