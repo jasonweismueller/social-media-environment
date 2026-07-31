@@ -41,6 +41,7 @@ import {
   validateSurveyResponses,
   getTrackingIdsFromUrl,
   getSurveyBootForFeedFromBackend,
+  loadPostByIdFromBackend,
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
@@ -602,6 +603,215 @@ function elementHasImage(el) {
       ":scope [data-has-image='1']",
       ":scope video",
     ].join(", ")
+  );
+}
+
+const preloadedReminderImages = new Set();
+
+async function preloadReminderImage(src, signal) {
+  const url = String(src || "").trim();
+
+  if (
+    !url ||
+    preloadedReminderImages.has(url) ||
+    url.startsWith("data:") ||
+    url.startsWith("blob:")
+  ) {
+    return;
+  }
+
+  preloadedReminderImages.add(url);
+
+  await new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+
+    const img = new Image();
+    let finished = false;
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      img.onload = null;
+      img.onerror = null;
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+
+    img.onload = finish;
+    img.onerror = finish;
+    signal?.addEventListener("abort", finish, { once: true });
+    img.src = url;
+
+    if (typeof img.decode === "function") {
+      img.decode().then(finish).catch(() => {
+        // onload/onerror will still complete the preload.
+      });
+    }
+  });
+}
+
+function collectReminderImageUrls(post) {
+  if (!post || typeof post !== "object") return [];
+
+  const urls = new Set();
+  const imageFieldNames = new Set([
+    "avatar",
+    "avatar_url",
+    "avatarUrl",
+    "profile_image",
+    "profile_image_url",
+    "profileImage",
+    "profileImageUrl",
+    "profile_photo",
+    "profile_photo_url",
+    "profilePhoto",
+    "profilePhotoUrl",
+    "profile_picture",
+    "profile_picture_url",
+    "profilePicture",
+    "profilePictureUrl",
+    "author_avatar",
+    "author_avatar_url",
+    "authorAvatar",
+    "authorAvatarUrl",
+    "image",
+    "image_url",
+    "imageUrl",
+    "photo",
+    "photo_url",
+    "photoUrl",
+    "thumbnail",
+    "thumbnail_url",
+    "thumbnailUrl",
+    "poster",
+    "poster_url",
+    "posterUrl",
+    "media_url",
+    "mediaUrl",
+  ]);
+
+  function visit(value, key = "") {
+    if (value == null) return;
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, key));
+      return;
+    }
+
+    if (typeof value === "object") {
+      Object.entries(value).forEach(([childKey, childValue]) => {
+        visit(childValue, childKey);
+      });
+      return;
+    }
+
+    if (typeof value !== "string") return;
+
+    const url = value.trim();
+    if (!url) return;
+
+    const looksLikeImageField =
+      imageFieldNames.has(key) ||
+      /avatar|profile.*(?:image|photo|picture)|image|photo|thumbnail|poster/i.test(
+        key
+      );
+
+    if (
+      looksLikeImageField &&
+      (/^https?:\/\//i.test(url) ||
+        url.startsWith("/") ||
+        url.startsWith("data:image/"))
+    ) {
+      urls.add(url);
+    }
+  }
+
+  visit(post);
+  return Array.from(urls);
+}
+
+async function preloadReminderPostAssets(post, signal) {
+  const imageUrls = collectReminderImageUrls(post);
+  await Promise.allSettled(
+    imageUrls.map((url) => preloadReminderImage(url, signal))
+  );
+}
+
+async function preloadSurveyPostReminders({
+  survey,
+  fallbackFeedId = "",
+  projectId = "",
+  participantSeed = "",
+  signal,
+} = {}) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const uniqueTargets = new Map();
+
+  pages.forEach((page) => {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+
+    questions.forEach((question) => {
+      if (String(question?.type || "").trim() !== "post_reminder") return;
+
+      const postId = String(
+        question?.post_id ?? question?.meta?.post_id ?? ""
+      ).trim();
+      const feedId = String(
+        question?.post_feed_id ??
+          question?.meta?.post_feed_id ??
+          fallbackFeedId ??
+          ""
+      ).trim();
+
+      if (!postId || !feedId) return;
+
+      const applyFeedRandomization =
+        (question?.apply_feed_randomization ??
+          question?.meta?.apply_feed_randomization ??
+          true) !== false;
+
+      const key = [
+        String(projectId || "").trim(),
+        feedId,
+        postId,
+      ].join("::");
+
+      const existing = uniqueTargets.get(key);
+      if (!existing) {
+        uniqueTargets.set(key, { feedId, postId, applyFeedRandomization });
+      } else if (applyFeedRandomization) {
+        existing.applyFeedRandomization = true;
+      }
+    });
+  });
+
+  if (!uniqueTargets.size) return [];
+
+  return Promise.all(
+    Array.from(uniqueTargets.values()).map(
+      // The Amazon review card (ui-posts-amazon.jsx) renders reviewer
+      // "avatars" as a plain letter-in-a-circle (the reviewer name's first
+      // initial) — there's no photo, no avatar pool, and nothing to
+      // randomize. applyFeedRandomization is intentionally unused here,
+      // unlike the Facebook/Instagram versions of this function.
+      async ({ feedId, postId }) => {
+        const post = await loadPostByIdFromBackend({
+          projectId,
+          feedId,
+          postId,
+          signal,
+        });
+
+        if (post && !signal?.aborted) {
+          await preloadReminderPostAssets(post, signal);
+        }
+
+        return post;
+      }
+    )
   );
 }
 
@@ -1327,6 +1537,21 @@ export default function App() {
         setActiveFeedId(String(normalizedSequence[0] || ""));
       }
 
+      if (normalizedSurvey) {
+        await preloadSurveyPostReminders({
+          survey: normalizedSurvey,
+          fallbackFeedId: activeFeedId || "",
+          projectId: projectId || undefined,
+          participantSeed: participantId || sessionIdRef.current || "",
+          signal: ctrl.signal,
+        });
+
+        if (ctrl.signal.aborted) {
+          t.end({ aborted: true });
+          return null;
+        }
+      }
+
       setLinkedSurvey(normalizedSurvey);
       setSurveyResponses(
         normalizedSurvey ? makeEmptySurveyResponses(normalizedSurvey) : {}
@@ -1357,7 +1582,7 @@ export default function App() {
         surveyAbortRef.current = null;
       }
     }
-  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId, effectiveSurveyId, isDirectSurveyLaunch]);
+  }, [onAdmin, activeFeedId, surveyBoot, linkedSurvey, projectId, effectiveSurveyId, isDirectSurveyLaunch, participantId]);
 
   // Start loading the full survey (survey definition + all post-reminder
   // preloading) as soon as we know one is linked, instead of waiting for the
