@@ -12,7 +12,8 @@ import {
   isQuestionVisible,
   getRenderedQuestion,
   getProjectId,
-  loadPostByIdFromBackend
+  loadPostByIdFromBackend,
+  fetchFeedFlags
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -59,6 +60,16 @@ function safeLocalStorageGet_(key) {
 // otherwise re-shows the "Loading post..." state and adds a network round
 // trip each time.
 const reminderPostFetchCache = new Map();
+
+// Module-level cache for the source feed's randomize flags, keyed by
+// "projectId::feedId". A post_reminder question always knows which feed its
+// post came from (question.post_feed_id) independently of whichever feed the
+// participant is currently on — that's the only feed-scoped `flags` the app
+// otherwise loads (and in survey_only delivery mode no feed is ever loaded at
+// all, so that `flags` stays at its all-false default). Without fetching the
+// reminder's own feed flags here, a non-snapshot reminder post renders
+// unrandomized even when its source feed has randomization enabled.
+const reminderFlagsFetchCache = new Map();
 
 function isDisplayedPostSnapshot(post) {
   return !!(post && post.__studyfeed_displayed_snapshot);
@@ -770,7 +781,13 @@ const PostReminderCard = memo(function PostReminderCard({
   const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
 
+  // Per-question editor toggle: when off, the reminder always shows the
+  // original, unrandomized post (same for every participant) instead of
+  // whatever randomized version this participant actually saw on the feed.
+  const applyFeedRandomization = question?.apply_feed_randomization !== false;
+
   const storedSnapshot = useMemo(() => {
+    if (!applyFeedRandomization) return null;
     if (!targetPostId || !reminderFeedId) return null;
     return getDisplayedPostSnapshot({
       projectId: resolvedProjectId,
@@ -778,7 +795,50 @@ const PostReminderCard = memo(function PostReminderCard({
       postId: targetPostId,
       participantSeed,
     });
-  }, [resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+  }, [applyFeedRandomization, resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+
+  const reminderFlagsCacheKey = `${resolvedProjectId}::${reminderFeedId || ""}`;
+  const [reminderFlags, setReminderFlags] = useState(() =>
+    reminderFlagsFetchCache.has(reminderFlagsCacheKey)
+      ? reminderFlagsFetchCache.get(reminderFlagsCacheKey)
+      : null
+  );
+
+  useEffect(() => {
+    // storedSnapshot already carries randomization baked into its literal
+    // field values, so no flags are needed to render it correctly. Same when
+    // the editor toggle turns randomization off for this reminder entirely.
+    if (!applyFeedRandomization || storedSnapshot || !reminderFeedId) return;
+
+    if (reminderFlagsFetchCache.has(reminderFlagsCacheKey)) {
+      setReminderFlags(reminderFlagsFetchCache.get(reminderFlagsCacheKey));
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const result = await fetchFeedFlags({
+          app,
+          projectId: resolvedProjectId,
+          feedId: reminderFeedId,
+          signal: controller.signal,
+        });
+        const next = result || {};
+        reminderFlagsFetchCache.set(reminderFlagsCacheKey, next);
+        if (!cancelled) setReminderFlags(next);
+      } catch {
+        if (!cancelled) setReminderFlags((prev) => prev || {});
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [applyFeedRandomization, storedSnapshot, reminderFeedId, reminderFlagsCacheKey, app, resolvedProjectId]);
 
   const inlinePost = useMemo(
     () => getQuestionReminderPost(question, posts),
@@ -916,7 +976,7 @@ const PostReminderCard = memo(function PostReminderCard({
               app={app}
               projectId={resolvedProjectId}
               feedId={reminderFeedId || ""}
-              flags={flags}
+              flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
               participantSeed={participantSeed}
             />
           </div>

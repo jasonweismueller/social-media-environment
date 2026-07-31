@@ -571,6 +571,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     post_id: String(overrides.post_id ?? ""),
     post_label: String(overrides.post_label ?? ""),
     post_feed_id: String(overrides.post_feed_id ?? ""),
+    apply_feed_randomization: overrides.apply_feed_randomization !== false,
     next_delay_seconds: normalizePageDelaySeconds(overrides.next_delay_seconds),
     meta: asObject(overrides.meta),
   };
@@ -623,6 +624,11 @@ export function normalizeQuestion(raw = {}) {
     type === SURVEY_QUESTION_TYPES.POST_REMINDER
       ? String(raw.post_feed_id ?? meta.post_feed_id ?? "")
       : "";
+
+  const applyFeedRandomization =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? (raw.apply_feed_randomization ?? meta.apply_feed_randomization ?? true) !== false
+      : true;
 
   return {
     id: questionId,
@@ -685,6 +691,7 @@ export function normalizeQuestion(raw = {}) {
     post_id: postId,
     post_label: postLabel,
     post_feed_id: postFeedId,
+    apply_feed_randomization: applyFeedRandomization,
     next_delay_seconds: normalizePageDelaySeconds(raw.next_delay_seconds),
     meta: {
       ...meta,
@@ -693,6 +700,7 @@ export function normalizeQuestion(raw = {}) {
             post_id: postId,
             post_label: postLabel,
             post_feed_id: postFeedId,
+            apply_feed_randomization: applyFeedRandomization,
           }
         : {}),
     },
@@ -717,6 +725,7 @@ export function frontendQuestionToBackend(question = {}) {
             post_id: String(q.post_id ?? ""),
             post_label: String(q.post_label ?? ""),
             post_feed_id: String(q.post_feed_id ?? ""),
+            apply_feed_randomization: q.apply_feed_randomization !== false,
           }
         : {}),
     },
@@ -819,6 +828,7 @@ export function frontendQuestionToBackend(question = {}) {
         post_id: String(q.post_id ?? ""),
         post_label: String(q.post_label ?? ""),
         post_feed_id: String(q.post_feed_id ?? ""),
+        apply_feed_randomization: q.apply_feed_randomization !== false,
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:

@@ -495,6 +495,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     post_id: String(q?.post_id ?? ""),
     post_label: String(q?.post_label ?? ""),
     post_feed_id: String(q?.post_feed_id ?? q?.meta?.post_feed_id ?? ""),
+    apply_feed_randomization:
+      (q?.apply_feed_randomization ?? q?.meta?.apply_feed_randomization ?? true) !== false,
     _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
     _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
     meta: q?.meta || {},
@@ -713,6 +715,7 @@ export function makeBackendQuestionFromType(type, index = 0) {
     post_id: String(base?.post_id ?? ""),
     post_label: String(base?.post_label ?? ""),
     post_feed_id: String(base?.post_feed_id ?? ""),
+    apply_feed_randomization: base?.apply_feed_randomization !== false,
     _showFeedVisibilityEditor: false,
     _showFeedOverridesEditor: false,
     meta: base?.meta || {},
@@ -822,11 +825,16 @@ export function buildSavedQuestion(q, index) {
       cleanQ.type === POST_REMINDER_TYPE
         ? String(cleanQ.post_feed_id || "")
         : "",
+    apply_feed_randomization:
+      cleanQ.type === POST_REMINDER_TYPE
+        ? cleanQ.apply_feed_randomization !== false
+        : true,
     meta:
       cleanQ.type === POST_REMINDER_TYPE
         ? {
             ...(cleanQ.meta || {}),
             post_feed_id: String(cleanQ.post_feed_id || ""),
+            apply_feed_randomization: cleanQ.apply_feed_randomization !== false,
           }
         : cleanQ.meta || {},
     randomize_options: false,
@@ -2549,6 +2557,10 @@ function QuestionCard({
                   nextType === POST_REMINDER_TYPE
                     ? String(q.post_feed_id || "")
                     : "",
+                apply_feed_randomization:
+                  nextType === POST_REMINDER_TYPE
+                    ? q.apply_feed_randomization !== false
+                    : true,
                 _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
                 _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
                 meta: q.meta || {},
@@ -2615,6 +2627,33 @@ function QuestionCard({
             selectedPostFeedId={q.post_feed_id || q?.meta?.post_feed_id || ""}
             onChange={(patch) => updateQuestion(index, patch)}
           />
+        </FieldBlock>
+      )}
+
+      {isPostReminder && (
+        <FieldBlock
+          label="Randomization"
+          hint="On: the reminder shows the exact version of the post this participant saw (same randomized avatar, image, bio, and time as the feed, if those are turned on). Off: the reminder always shows the original, unrandomized post, the same for every participant."
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={q.apply_feed_randomization !== false}
+              onChange={(e) =>
+                updateQuestion(index, {
+                  apply_feed_randomization: e.target.checked,
+                })
+              }
+            />
+            <span>Carry over the feed's randomize settings for this reminder</span>
+          </label>
         </FieldBlock>
       )}
 
@@ -3684,6 +3723,7 @@ export function SurveyEditor({
         post_id: String(sourceQuestion?.post_id ?? ""),
         post_label: String(sourceQuestion?.post_label ?? ""),
         post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
+        apply_feed_randomization: sourceQuestion?.apply_feed_randomization !== false,
         _showFeedVisibilityEditor: !!sourceQuestion?._showFeedVisibilityEditor,
         _showFeedOverridesEditor: !!sourceQuestion?._showFeedOverridesEditor,
       };
