@@ -2969,7 +2969,7 @@ body.survey-mode .rail-right{
 }
 
 .survey-post-reminder-block.fb-reminder-post .image-btn img,
-.survey-post-reminder-block.fb-reminder-post img{
+.survey-post-reminder-block.fb-reminder-post img:not(.avatar-img){
   height:auto !important;
   max-height:min(420px, 58vh) !important;
   object-fit:cover !important;
