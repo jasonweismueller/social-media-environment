@@ -1559,6 +1559,9 @@ export default function App() {
             projectId: projectId || undefined,
             signal: ctrl.signal,
             force: true,
+            knownLink: surveyBoot?.survey_id
+              ? { survey_id: surveyBoot.survey_id, trigger: surveyBoot.trigger }
+              : null,
           }).catch(() => null);
 
       if (ctrl.signal.aborted) {

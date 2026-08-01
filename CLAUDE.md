@@ -479,6 +479,88 @@ real experiment-group survey (same sandbox limitation) — worth downloading a C
 groups configured to confirm both `experiment_group_id` and `experiment_group_name` show up with
 the expected values.
 
+## Survey/posts loading performance fixes (2026-08-01)
+
+Root cause investigation for "survey loading (loading questions) sometimes runs ~15 seconds for
+participants." Two real bugs found and fixed; both make the case that the backend architecture
+itself has a ceiling caching can't fully solve (see "Backend migration planning" below).
+
+1. **Redundant network round-trip on every survey load — fixed, frontend-only, committed.**
+   `ensureSurveyLoaded()` (in all three `App-*.jsx`) called `getSurveyForFeedFromBackend()`,
+   which did two *sequential* Apps Script requests: first "which survey is linked to this feed?"
+   (`FEED_SURVEY_GET_URL`), then "give me that survey's definition." The first is redundant —
+   `surveyBoot` (already fetched earlier, at initial page boot) already has the `survey_id`,
+   because every feed in a `feed_sequence_ids` gets linked to the same survey server-side
+   (`handleSaveSurvey_` links all of them). Added a `knownLink` param to
+   `getSurveyForFeedFromBackend()` (`utils-backend.js`) so the link lookup is skipped whenever
+   already known; all three `App-*.jsx` now pass `{ survey_id: surveyBoot.survey_id, trigger:
+   surveyBoot.trigger }` when available. Cuts one full Apps Script round-trip off every survey
+   load.
+
+2. **CacheService 100,000-byte-per-value silent-failure bug — diagnosed and fixed, handed to user
+   as a full revised Code.gs, paste+redeploy status unconfirmed.** `cachePut_`'s try/catch
+   silently swallows the error CacheService throws when a single cached value exceeds 100,000
+   bytes. `readSurveyJSON_`/`writeSurveyJSON_` cache the *entire* reconstituted survey JSON as one
+   value (even though it's already chunked across sheet *rows* to dodge the unrelated 50K-char
+   Sheets cell limit) — so any survey whose JSON exceeds ~100KB (easy with several pages of
+   rich-text questions) **never successfully caches, ever**, and pays the full
+   open-spreadsheet-and-reconstruct cost on every single request. This matches "sometimes 15
+   seconds" precisely: small surveys cache fine and load fast; larger ones never cache and are
+   always slow. The same bug pattern hits `POSTS_CACHE_PREFIX` too, which matters here because
+   `post_by_id` (used by survey-reminder preloading, see below) goes through it. Fix: added
+   `cachePutChunked_`/`cacheGetChunked_`/`cacheDelChunked_` helpers (split a large value across
+   `base::0`, `base::1`, ... keys plus a `base::n` count key) and swapped them in at every call
+   site that can plausibly exceed 100KB — `readSurveyJSON_`/`writeSurveyJSON_`/`deleteSurveyJSON_`,
+   the `doGet` `posts`/`post_by_id` handlers, `handlePublishPosts_`, and the two
+   `POSTS_CACHE_PREFIX` invalidation call sites (`set_feed_flags`/`set_flags`, `deleteFeed_`).
+   Deliberately left every other cache prefix (admin sessions, survey link, survey boot, surveys
+   list, survey responses) on the plain unchunked helpers — those values are small and not at
+   risk, no need to touch code that isn't part of the problem.
+
+3. **Preloading was investigated and found already solid — no gap, nothing changed.** The user
+   asked for posts/avatars/images (including randomized picks) to be preloaded. Both existing
+   mechanisms already do this: the main feed's `assetsReady` gate (avatar/image pool preloading
+   for `randomize_avatars`/`randomize_images`) and `preloadSurveyPostReminders`
+   (`App-facebook.jsx`, mirrored in ig/amz) — which already preloads every post referenced by a
+   `post_reminder` question in parallel, via a recursive walk that catches avatar/image/poster
+   URLs by field-name pattern, and already special-cases randomized avatars (preloading the exact
+   deterministic avatar the renderer will pick later, keyed off the same seed). The 15-second
+   complaint was backend latency/caching, not missing preload logic.
+
+Not click-tested live (same sandbox dev-server limitation as elsewhere in this file). Worth
+confirming after redeploy: load the largest/most complex survey in the project first, since it's
+the one most likely to have been silently failing to cache.
+
+## Backend migration planning: Apps Script/Sheets → Supabase (2026-08-01, planning only)
+
+Following the investigation above, the user asked whether Apps Script itself is the wrong
+long-term architecture now that the project has grown. Answer worked out with the user: yes —
+genuine structural ceiling, not just a bug. Beyond the 100KB CacheService limit found above, this
+app's storage model creates a new sheet per (project × feed) and per (project × feed × survey),
+so the workbook accumulates sheets over a study's lifetime, and `SpreadsheetApp.openById()`/
+`ss.getSheets()` (used by `readSurveyResponsesBySurvey_`, `listSurveyDefSheetRefs_`,
+`readParticipantsBySurvey_`) get slower as sheet count grows — a well-known real-world
+Sheets-as-a-database scaling limit, inherent to the platform, not something more caching fixes.
+
+**Decision: migrate to Supabase** (managed Postgres + auto REST API + Auth + Storage) — the
+current data model (Projects/Feeds/Posts/Participants/Surveys/SurveyResponses/
+ExperimentAssignments/FeedSurveys) is already relational in shape, so this is a storage-layer
+swap, not a logic rewrite. Full plan — entity-by-entity schema mapping, phase breakdown, and the
+safety approach below — is in `~/.claude/plans/gradual-migrating-codd.md`.
+
+**Status: planning complete, zero implementation started.** No Supabase account/project exists
+yet. Next session should start with Phase 1 (schema design), which doesn't require the account to
+exist yet — pure SQL authorship against the entity mapping already worked out in the plan file.
+
+**Key safety decision, worth restating here since it governs how *any* future session should do
+this work**: build the new backend integration as inert code behind a feature flag that defaults
+to the current GAS backend, rather than relying on git-branch isolation. The mechanism that
+auto-commits/auto-deploys this repo (see "Deployment" section up top) is external to Claude's own
+tool calls and not fully understood — flag-gating is the only safety guarantee that doesn't
+depend on knowing what that pipeline actually watches. Testing happens via the *user's own* local
+`npm run dev` (broken only in Claude's sandbox, confirmed fine in general) rather than a deployed
+staging environment.
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this

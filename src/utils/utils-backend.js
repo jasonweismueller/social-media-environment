@@ -2180,7 +2180,7 @@ export async function loadSurveyFromBackend(
 
 export async function getSurveyForFeedFromBackend(
   feedId,
-  { projectId = getProjectId(), signal, force = false } = {}
+  { projectId = getProjectId(), signal, force = false, knownLink = null } = {}
 ) {
   if (!feedId) return null;
 
@@ -2190,17 +2190,24 @@ export async function getSurveyForFeedFromBackend(
   }
 
   try {
-    const linkUrl = buildQueryUrl(FEED_SURVEY_GET_URL(), {
-      feed_id: feedId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    });
-
-    const link = await getJsonWithRetry(
-      linkUrl,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+    // Every feed in a survey's feed_sequence_ids is linked to the same
+    // survey_id (handleSaveSurvey_ links all of them server-side), so the
+    // feed→survey link is already known once surveyBoot has resolved it —
+    // callers that already have that (survey_id, trigger) pair can pass it
+    // as knownLink to skip this network round trip entirely, cutting one
+    // full Apps-Script request out of every survey load.
+    const link =
+      knownLink && knownLink.survey_id
+        ? knownLink
+        : await getJsonWithRetry(
+            buildQueryUrl(FEED_SURVEY_GET_URL(), {
+              feed_id: feedId,
+              project_id: projectId || undefined,
+              _ts: Date.now(),
+            }),
+            { method: "GET", mode: "cors", cache: "no-store", signal },
+            { retries: 1, timeoutMs: 8000 }
+          );
 
     if (!link || !link.survey_id) {
       __setCachedFeedSurvey(feedId, projectId, null);
