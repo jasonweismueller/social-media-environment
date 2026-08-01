@@ -452,6 +452,33 @@ Five direct-user-feedback fixes, all small/isolated:
 None of these were click-tested live — same sandbox dev-server limitation noted throughout this
 file.
 
+## Experiment group missing from survey CSV export (2026-08-01)
+
+Root cause found and fixed on the frontend only — no Code.gs change needed this time. The backend
+already stores `experiment_group_id` on every `SurveyResponses` row (confirmed present in the live
+Code.gs's `handleLogSurveyResponse_` header). The bug was in `utils-backend.js`'s CSV-roster
+builders, which read that backend data through **hardcoded field whitelists** that simply didn't
+list `experiment_group_id`, silently dropping it before it ever reached the CSV:
+
+- `loadSurveyOnlyRoster`'s `participantRows` mapping (feeds "Download survey CSV") — added
+  `experiment_group_id: row?.experiment_group_id ?? ""`.
+- `mergeParticipantRowsWithSurveyRows`'s `orderedParticipant` (shared by `loadSurveyOnlyRoster` and
+  the unused-but-fixed-anyway `loadMergedParticipantSurveyRoster`) — added `experiment_group_id`
+  *and* a resolved `experiment_group_name` (via new `resolveExperimentGroupName()` helper, looked
+  up against `survey.experiment_groups`), both **only when the survey actually has
+  `experiment_groups`** — otherwise the columns don't appear at all, so non-experiment surveys'
+  CSVs stay unchanged.
+- `loadMultiFeedParticipantSurveyRoster` (feeds "Download multi-feed CSV") — same two columns,
+  added directly in its own bespoke row-merge (it doesn't go through
+  `mergeParticipantRowsWithSurveyRows`).
+
+Both CSV buttons in `components-admin-surveys.jsx` already build their header row dynamically from
+`Object.keys()` across all response rows, so no change was needed there — once the roster
+functions stopped dropping the field, the columns appear automatically. Not click-tested against a
+real experiment-group survey (same sandbox limitation) — worth downloading a CSV from a survey with
+groups configured to confirm both `experiment_group_id` and `experiment_group_name` show up with
+the expected values.
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this

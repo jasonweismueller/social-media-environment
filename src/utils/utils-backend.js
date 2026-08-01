@@ -771,6 +771,20 @@ export async function getSurveyBootFromBackend(
   }
 }
 
+// Looks up a between-subjects experiment group's display name from the
+// survey definition (falls back to "" if the survey has no groups, or the
+// id no longer matches one — e.g. a group was renamed/removed after
+// responses were already recorded with the old id).
+function resolveExperimentGroupName(surveyDefinition, groupId) {
+  const gid = String(groupId || "").trim();
+  if (!gid) return "";
+  const groups = Array.isArray(surveyDefinition?.experiment_groups)
+    ? surveyDefinition.experiment_groups
+    : [];
+  const match = groups.find((g) => String(g?.id || "").trim() === gid);
+  return match?.name ? String(match.name) : "";
+}
+
 function mergeParticipantRowsWithSurveyRows({
   participantRows = [],
   surveyRows = [],
@@ -824,6 +838,11 @@ function mergeParticipantRowsWithSurveyRows({
     delete remainingParticipantFields.ms_enter_to_last_interaction;
     delete remainingParticipantFields.feed_checksum;
 
+    delete remainingParticipantFields.experiment_group_id;
+
+    const experimentGroupId =
+      match?.raw?.experiment_group_id ?? participant?.experiment_group_id ?? "";
+
     const orderedParticipant = {
   session_id: participant?.session_id ?? "",
   participant_id: participant?.participant_id ?? "",
@@ -836,6 +855,12 @@ function mergeParticipantRowsWithSurveyRows({
     "",
   duration_s: msToSeconds(durationMs),
   feed_id: participant?.feed_id ?? "",
+  ...(Array.isArray(surveyDefinition?.experiment_groups) && surveyDefinition.experiment_groups.length
+    ? {
+        experiment_group_id: experimentGroupId,
+        experiment_group_name: resolveExperimentGroupName(surveyDefinition, experimentGroupId),
+      }
+    : {}),
 };
 
     return {
@@ -1063,12 +1088,20 @@ export async function loadMultiFeedParticipantSurveyRoster({
       surveyPayload[key] = value === "" || value == null ? fillValue : value;
     });
 
+    const experimentGroupId = match?.raw?.experiment_group_id ?? "";
+
     return {
       ...participant,
       submitted_at_iso: match?.raw?.submitted_at_iso ?? participant.submitted_at_iso ?? "",
       duration_s: msToSeconds(match?.raw?.duration_ms ?? ""),
       feed_sequence_ids: sequence.join(" | "),
       final_survey_feed_id: sequence[sequence.length - 1],
+      ...(Array.isArray(surveyDefinition?.experiment_groups) && surveyDefinition.experiment_groups.length
+        ? {
+            experiment_group_id: experimentGroupId,
+            experiment_group_name: resolveExperimentGroupName(surveyDefinition, experimentGroupId),
+          }
+        : {}),
       ...surveyPayload,
     };
   });
@@ -1151,6 +1184,7 @@ const participantRows = surveyResponses.map((row) => ({
   original_feed_id: row?.feed_id ?? "",
   survey_id: row?.survey_id ?? effectiveSurveyId,
   project_id: row?.project_id ?? projectId ?? "",
+  experiment_group_id: row?.experiment_group_id ?? "",
 }));
 
   const merged = mergeParticipantRowsWithSurveyRows({
