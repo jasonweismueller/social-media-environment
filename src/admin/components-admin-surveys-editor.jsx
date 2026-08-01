@@ -2506,6 +2506,160 @@ function QuestionActions({
   );
 }
 
+/**
+ * Collapsed view of a question card — one row with just enough to identify
+ * and act on the question (number, type, required dot, truncated text,
+ * reorder/copy/delete), styled to match the compact rows already used in
+ * the study outline (OutlineRow) rather than shrinking the full editor.
+ */
+function CollapsedQuestionRow({
+  q,
+  index,
+  displayNumber,
+  totalQuestions,
+  type,
+  moveQuestion,
+  removeQuestion,
+  duplicateQuestion,
+  onDragStart,
+  onDragEnd,
+  onToggleCollapsed,
+}) {
+  const isDisplayOnly = isEditorDisplayOnlyType(type);
+  const rawText = stripHtmlForEmptyCheck(q.text || "");
+  const preview =
+    rawText || (isDisplayOnly ? "(no display text yet)" : "(no question text yet)");
+  const shortType = QUESTION_TYPE_SHORT_LABELS[type] || type;
+  const fullType = QUESTION_TYPE_LABELS[type] || type;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 2px",
+      }}
+    >
+      <IconOnlyButton
+        onClick={onToggleCollapsed}
+        title="Expand question"
+        aria-label="Expand question"
+        size={12}
+        style={{ width: 24, height: 24, flex: "0 0 auto" }}
+      >
+        <ChevronDownIcon size={12} open={false} />
+      </IconOnlyButton>
+
+      <CompactDragHandle
+        onDragStart={(e) => onDragStart(e, q._editorId)}
+        onDragEnd={onDragEnd}
+      />
+
+      {!isDisplayOnly && (
+        <span
+          style={{ fontSize: 11, color: "#9ca3af", flex: "0 0 auto", minWidth: 20 }}
+          title={`Question ${displayNumber}`}
+        >
+          {`Q${displayNumber}`}
+        </span>
+      )}
+
+      <span
+        title={fullType}
+        style={{
+          fontSize: 10,
+          color: "#6b7280",
+          background: "#f3f4f6",
+          borderRadius: 4,
+          padding: "2px 6px",
+          flex: "0 0 auto",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {shortType}
+      </span>
+
+      {q.required ? (
+        <span
+          title="Required"
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: "#dc2626",
+            flex: "0 0 auto",
+          }}
+        />
+      ) : null}
+
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          textAlign: "left",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+        }}
+        title="Click to expand"
+      >
+        <span
+          style={{
+            fontSize: 13,
+            color: "#111827",
+            display: "block",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {preview}
+        </span>
+      </button>
+
+      <div style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
+        <button
+          type="button"
+          onClick={() => moveQuestion(index, index - 1)}
+          disabled={index === 0}
+          style={compactArrowStyle(index === 0)}
+          title="Move up"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={() => moveQuestion(index, index + 1)}
+          disabled={index === totalQuestions - 1}
+          style={compactArrowStyle(index === totalQuestions - 1)}
+          title="Move down"
+        >
+          ↓
+        </button>
+        <IconOnlyButton
+          onClick={() => duplicateQuestion(index)}
+          title="Copy question"
+          size={11}
+          style={{ width: 20, height: 20, flex: "0 0 auto" }}
+        >
+          <CopyIcon size={11} />
+        </IconOnlyButton>
+        <IconOnlyButton
+          onClick={() => removeQuestion(index)}
+          title="Delete question"
+          danger
+          size={11}
+          style={{ width: 20, height: 20, flex: "0 0 auto" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function QuestionCard({
   q,
   index,
@@ -2692,15 +2846,104 @@ function QuestionCard({
         onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
       />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0,1fr) 220px auto",
-          gap: 10,
-          alignItems: "start",
-          marginBottom: 10,
-        }}
-      >
+      {isCollapsed ? (
+        <CollapsedQuestionRow
+          q={q}
+          index={index}
+          displayNumber={displayNumber}
+          totalQuestions={totalQuestions}
+          type={type}
+          moveQuestion={moveQuestion}
+          removeQuestion={removeQuestion}
+          duplicateQuestion={duplicateQuestion}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onToggleCollapsed={onToggleCollapsed}
+        />
+      ) : (
+      <>
+      <div style={{ marginBottom: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ width: 220, flexShrink: 0 }}>
+            <TopField label="Type">
+              <SelectInput
+                value={q.type}
+                onChange={(nextType) => {
+                  if (nextType === EDITOR_PAGE_BREAK_TYPE) {
+                    updateQuestion(index, makePageBreakForEditor(index));
+                    return;
+                  }
+
+                  const next = makeBackendQuestionFromType(nextType, index);
+                  const preservedId = sanitizeQuestionId(q.id, next.id);
+
+                  let merged = {
+                    ...next,
+                    _editorId: q._editorId,
+                    id: preservedId,
+                    text: q.text || next.text,
+                    required: isEditorDisplayOnlyType(nextType)
+                      ? false
+                      : !!q.required,
+                    visible_if: q.visible_if || null,
+                    visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
+                    feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
+                    post_id: nextType === POST_REMINDER_TYPE ? String(q.post_id || "") : "",
+                    post_label:
+                      nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
+                    post_feed_id:
+                      nextType === POST_REMINDER_TYPE
+                        ? String(q.post_feed_id || "")
+                        : "",
+                    apply_feed_randomization:
+                      nextType === POST_REMINDER_TYPE
+                        ? q.apply_feed_randomization !== false
+                        : true,
+                    _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
+                    _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
+                    meta: q.meta || {},
+                  };
+
+                  if (shouldAutoRewriteRowValues(merged)) {
+                    merged = rewriteQuestionRowValues(merged, preservedId);
+                  }
+
+                  updateQuestion(index, merged);
+                }}
+              >
+                {INSERTABLE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {QUESTION_TYPE_LABELS[t] || t}
+                  </option>
+                ))}
+              </SelectInput>
+            </TopField>
+          </div>
+
+          <QuestionActions
+            q={q}
+            index={index}
+            totalQuestions={totalQuestions}
+            moveQuestion={moveQuestion}
+            removeQuestion={removeQuestion}
+            duplicateQuestion={duplicateQuestion}
+            updateQuestion={updateQuestion}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            isCollapsed={isCollapsed}
+            onToggleCollapsed={onToggleCollapsed}
+          />
+        </div>
+
         <TopField
           label={
             isEditorDisplayOnlyType(type)
@@ -2716,78 +2959,7 @@ function QuestionCard({
             }
           />
         </TopField>
-
-        <TopField label="Type">
-          <SelectInput
-            value={q.type}
-            onChange={(nextType) => {
-              if (nextType === EDITOR_PAGE_BREAK_TYPE) {
-                updateQuestion(index, makePageBreakForEditor(index));
-                return;
-              }
-
-              const next = makeBackendQuestionFromType(nextType, index);
-              const preservedId = sanitizeQuestionId(q.id, next.id);
-
-              let merged = {
-                ...next,
-                _editorId: q._editorId,
-                id: preservedId,
-                text: q.text || next.text,
-                required: isEditorDisplayOnlyType(nextType)
-                  ? false
-                  : !!q.required,
-                visible_if: q.visible_if || null,
-                visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
-                feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
-                post_id: nextType === POST_REMINDER_TYPE ? String(q.post_id || "") : "",
-                post_label:
-                  nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
-                post_feed_id:
-                  nextType === POST_REMINDER_TYPE
-                    ? String(q.post_feed_id || "")
-                    : "",
-                apply_feed_randomization:
-                  nextType === POST_REMINDER_TYPE
-                    ? q.apply_feed_randomization !== false
-                    : true,
-                _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
-                _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
-                meta: q.meta || {},
-              };
-
-              if (shouldAutoRewriteRowValues(merged)) {
-                merged = rewriteQuestionRowValues(merged, preservedId);
-              }
-
-              updateQuestion(index, merged);
-            }}
-          >
-            {INSERTABLE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {QUESTION_TYPE_LABELS[t] || t}
-              </option>
-            ))}
-          </SelectInput>
-        </TopField>
-
-        <QuestionActions
-          q={q}
-          index={index}
-          totalQuestions={totalQuestions}
-          moveQuestion={moveQuestion}
-          removeQuestion={removeQuestion}
-          duplicateQuestion={duplicateQuestion}
-          updateQuestion={updateQuestion}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          isCollapsed={isCollapsed}
-          onToggleCollapsed={onToggleCollapsed}
-        />
       </div>
-
-      {isCollapsed ? null : (
-      <>
       <FieldBlock label="Question ID / variable name">
         <TextInput
           value={q.id || ""}
