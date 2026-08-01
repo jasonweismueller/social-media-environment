@@ -500,17 +500,25 @@ export function LoadingOverlay({
   );
 }
 
-export function ThankYouOverlay({ sessionId }) {
+export function ThankYouOverlay({ sessionId, title, messageHtml, completionCode, hideSessionId }) {
   const fallbackId = useMemo(() => sessionId || uid(), [sessionId]);
+  const code = completionCode || (hideSessionId ? "" : fallbackId);
+
   return (
     <div className="modal-backdrop" style={{ zIndex: 100 }}>
       <div className="modal" style={{ maxWidth: 480, textAlign: "center" }}>
         <div className="modal-body">
-          <h2 style={{ marginTop: 0 }}>Thank you for your response</h2>
-          <p>Please go back to the survey and enter the following code:</p>
-          <p style={{ fontSize: "1.25rem", fontWeight: "bold", marginTop: "0.5rem", fontFamily: "monospace", letterSpacing: "0.5px" }}>
-            {fallbackId}
-          </p>
+          <h2 style={{ marginTop: 0 }}>{title || "Thank you for your response"}</h2>
+          {messageHtml ? (
+            <div dangerouslySetInnerHTML={{ __html: String(messageHtml) }} />
+          ) : (
+            <p>Please go back to the survey and enter the following code:</p>
+          )}
+          {code && (
+            <p style={{ fontSize: "1.25rem", fontWeight: "bold", marginTop: "0.5rem", fontFamily: "monospace", letterSpacing: "0.5px" }}>
+              {code}
+            </p>
+          )}
         </div>
       </div>
     </div>
