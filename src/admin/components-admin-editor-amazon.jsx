@@ -114,7 +114,7 @@ export function AdminPostEditor({
   return (
     <div className="editor-grid">
       <div className="editor-form">
-        <EditorSection title="Review identity" subtitle="Reviewer, rating, title &amp; body" defaultOpen>
+        <EditorSection title="Review identity" subtitle="Reviewer, rating, title &amp; body">
           <Field
             label="Review name (for CSV)"
             hint="Used as the readable review label in exported columns where your existing export code uses post names."
@@ -178,7 +178,7 @@ export function AdminPostEditor({
           </Field>
         </EditorSection>
 
-        <EditorSection title="Review metadata" subtitle="Verified badge, helpful count, date &amp; variant" defaultOpen>
+        <EditorSection title="Review metadata" subtitle="Verified badge, helpful count, date &amp; variant">
           <div className="grid-2">
             <Toggle
               label="Verified purchase"
@@ -227,7 +227,7 @@ export function AdminPostEditor({
           </Field>
         </EditorSection>
 
-        <EditorSection title="Participant actions" subtitle="Helpful/report buttons &amp; read-more truncation" defaultOpen>
+        <EditorSection title="Participant actions" subtitle="Helpful/report buttons &amp; read-more truncation">
           <div className="grid-2">
             <Toggle
               label="Helpful button"

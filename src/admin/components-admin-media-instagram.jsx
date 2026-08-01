@@ -385,7 +385,7 @@ export function MediaFieldset({
     editing.videoMode !== "none" ? "Video" : imageMode === "multi" ? "Carousel" : imageMode !== "none" ? "Image" : null;
 
   return (
-    <EditorSection title="Post Media" subtitle="Image, carousel, or video attached to this post" defaultOpen badge={mediaBadge}>
+    <EditorSection title="Post Media" subtitle="Image, carousel, or video attached to this post" badge={mediaBadge}>
       <Field label="Media type">
         <select
           className="select"

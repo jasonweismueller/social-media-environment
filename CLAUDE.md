@@ -322,11 +322,40 @@ the existing `.card` class. Field width is just flexbox: `Field`/`Group` are `fl
 column`, and flex's default `align-items: stretch` makes the `input`/`select`/`textarea` child fill
 the width with no extra CSS.
 
-Sections default open/closed based on whether they hold "core" content (Basics, Post Media,
-Reactions & Metrics — always open) vs. optional features that are only worth surfacing when
-actually configured (Profile Photo opens if avatar mode isn't "random", Bio/Ad/Intervention open
-only if actually enabled/non-`"none"`) — so editing an existing post that already uses one of these
-features never hides it behind a collapsed section.
+**Update (same day, second pass, per direct user feedback):** all sections now default collapsed
+— no exceptions, including Basics/Post Media/Reactions. The original "smart open" heuristic
+(open a section by default if it already holds non-default content) was replaced by `badge` chips
+on the collapsed header instead (e.g. "Ad", "On", "Custom") so configured sections are still
+visible at a glance without forcing them open.
+
+Facebook's "Link preview / Ad" and "Intervention" sections were merged into one **"Post type"**
+card with a single top-level selector (Regular post / Sponsored ad / News link preview /
+Intervention → then Label or Note). The underlying `adType` and `interventionType` fields are
+still independent in the data model — `InterventionBlock` in
+`src/ui-posts/components-ui-interventions.jsx` renders purely off `interventionType` regardless of
+`adType`, so a post can technically carry both at once. The merge derives the unified selector
+value from whichever is set (`postType = hasIntervention ? "intervention" : editing.adType`)
+**without mutating anything on render** — only an explicit change to the dropdown
+(`setPostType` in `components-admin-editor-facebook.jsx`) clears the other dimension. So opening
+the editor on an old post that happens to have both set won't silently drop one of them; it only
+becomes truly either/or once an admin actively touches the selector. Instagram/Amazon don't have
+an Intervention field in their editors at all (Instagram's data model carries
+`interventionType`/`noteText` defaults from `makeRandomPost()` but no editor UI ever exposed them,
+even before this redesign — a pre-existing gap, left as-is), so only Facebook's editor got this
+merge.
+
+**Duplicate "post name" field removed.** Before this pass, the post name/label used in CSV export
+headers could be edited in *two* different places that partially overlapped: the Basics section's
+"Post name (for CSV)" field (`editing.postName`, only written to storage when the whole editor is
+saved) and a second field inside `MediaFieldset` (`editing.name`, written straight to the
+`postNames` localStorage map — see `readPostNames`/`writePostNames` in `utils-backend.js` — on
+every blur, bypassing Cancel entirely). `components-admin-dashboard.jsx`'s `saveEditing()` already
+treated these as the same concept (`if (clean.postName && !clean.name) clean.name = clean.postName`
+and it separately writes `postNames[clean.id] = clean.postName` on every save), so the
+`MediaFieldset` copy was pure redundant surface area, not a distinct feature — removed from both
+the Facebook and Amazon media fieldsets (Instagram's `MediaFieldset` never had this field to begin
+with). The post ID readout that lived next to Facebook's duplicate field was preserved by folding
+it into the Basics field's hint text instead of being dropped.
 
 Every field's `value`/`onChange` handler was copied verbatim from the old markup — only the
 surrounding structure changed. Verified via diff: identical sets of `editing.*`/`ed.*` field

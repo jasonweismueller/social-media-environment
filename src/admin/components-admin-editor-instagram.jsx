@@ -94,7 +94,7 @@ export function AdminPostEditor({
   return (
     <div className="editor-grid">
       <div className="editor-form">
-        <EditorSection title="Basics" subtitle="Author, timestamp &amp; caption" defaultOpen>
+        <EditorSection title="Basics" subtitle="Author, timestamp &amp; caption">
           <Field
             label="Post name (for CSV)"
             hint={<>Used in CSV export headers (e.g. <code>{(editing.postName || "Name")}_liked</code>).</>}
@@ -171,7 +171,7 @@ export function AdminPostEditor({
           </Field>
         </EditorSection>
 
-        <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" defaultOpen={customAvatar}>
+        <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" badge={customAvatar ? "Custom" : null}>
           <div className="grid-2">
             <Field label="Mode">
               <select
@@ -269,7 +269,6 @@ export function AdminPostEditor({
         <EditorSection
           title="Ad"
           subtitle="Sponsored post or influencer partnership"
-          defaultOpen={hasAd}
           badge={hasAd ? (editing.adType === "ad" ? "Ad" : "Partnership") : null}
         >
           <Field label="Ad type">
@@ -330,7 +329,7 @@ export function AdminPostEditor({
           )}
         </EditorSection>
 
-        <EditorSection title="Author Bio" subtitle="Optional profile stats & bio text" defaultOpen={hasBio} badge={hasBio ? "On" : null}>
+        <EditorSection title="Author Bio" subtitle="Optional profile stats & bio text" badge={hasBio ? "On" : null}>
           <Toggle
             label="Show Bio"
             checked={!!editing.showBio}
@@ -423,7 +422,7 @@ export function AdminPostEditor({
           )}
         </EditorSection>
 
-        <EditorSection title="Reactions & Metrics" subtitle="Like, comment &amp; save counts" defaultOpen>
+        <EditorSection title="Reactions & Metrics" subtitle="Like, comment &amp; save counts">
           <Toggle
             label="Show like count"
             checked={!!editing.showReactions}

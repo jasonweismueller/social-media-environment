@@ -138,18 +138,59 @@ export function AdminPostEditor({
   setUploadingPoster,
 }) {
   const hasBio = !!editing.showBio;
-  const hasAd = (editing.adType || "none") !== "none";
   const hasIntervention = (editing.interventionType || "none") !== "none";
   const customAvatar = (editing.avatarMode || "random") !== "random";
+
+  // Ad/News and Intervention are independent data fields (a post can technically carry
+  // both at once — InterventionBlock renders regardless of adType), but the admin only
+  // ever wants to pick one "post type" at a time. This derives the unified selector value
+  // from whichever is currently set, preferring intervention if both happen to be set,
+  // without mutating anything just from rendering — only an explicit change below clears
+  // the other dimension.
+  const postType = hasIntervention ? "intervention" : (editing.adType || "none");
+  const postTypeBadge =
+    postType === "ad" ? "Ad"
+    : postType === "news" ? "News"
+    : postType === "intervention" ? (editing.interventionType === "note" ? "Note" : "Label")
+    : null;
+
+  const setPostType = (next) => {
+    setEditing((ed) => {
+      if (next === "intervention") {
+        return {
+          ...ed,
+          adType: "none",
+          interventionType: (ed.interventionType && ed.interventionType !== "none") ? ed.interventionType : "label",
+        };
+      }
+      if (next === "none") {
+        return { ...ed, adType: "none", interventionType: "none" };
+      }
+      // "ad" or "news"
+      return {
+        ...ed,
+        interventionType: "none",
+        adType: next,
+        authorType: next === "ad" || next === "news" ? "company" : (ed.authorType || "female"),
+        newsDomain: ed.newsDomain || ed.adDomain || "",
+        newsHeadline: ed.newsHeadline || ed.adHeadline || "",
+        newsDescription: ed.newsDescription || ed.adSubheadline || "",
+        newsUrl: ed.newsUrl || ed.adUrl || "",
+      };
+    });
+  };
 
   return (
     <div className="editor-grid">
       <div className="editor-form">
-        <EditorSection title="Basics" subtitle="Author, timestamp &amp; post text" defaultOpen>
+        <EditorSection title="Basics" subtitle="Author, timestamp &amp; post text">
           <Field
             label="Post name (for CSV)"
             hint={
-              <>This label replaces the post ID in CSV headers (e.g., <code>{(editing.postName || "Name")}_reacted</code>).</>
+              <>
+                This label replaces the post ID in CSV headers (e.g., <code>{(editing.postName || "Name")}_reacted</code>).
+                {editing.id && <> ID: <span style={{ fontFamily: "monospace" }}>{editing.id}</span></>}
+              </>
             }
           >
             <input
@@ -215,7 +256,7 @@ export function AdminPostEditor({
           </Field>
         </EditorSection>
 
-        <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" defaultOpen={customAvatar}>
+        <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" badge={customAvatar ? "Custom" : null}>
           <div className="grid-2">
             <Field label="Mode">
               <select
@@ -322,7 +363,7 @@ export function AdminPostEditor({
           )}
         </EditorSection>
 
-        <EditorSection title="Facebook Profile / Bio" subtitle="Optional profile preview on click/hover" defaultOpen={hasBio} badge={hasBio ? "On" : null}>
+        <EditorSection title="Facebook Profile / Bio" subtitle="Optional profile preview on click/hover" badge={hasBio ? "On" : null}>
           <Toggle
             label="Enable profile preview"
             hint="Participants can open a Facebook-style profile preview by clicking or hovering over the author name/avatar. Recorded as bio_opened and bio_url_clicked."
@@ -424,31 +465,21 @@ export function AdminPostEditor({
           setUploadingPoster={setUploadingPoster}
         />
 
-        <EditorSection title="Link preview / Ad" subtitle="Sponsored ad or news link card" defaultOpen={hasAd} badge={hasAd ? (editing.adType === "ad" ? "Ad" : "News") : null}>
+        <EditorSection title="Post type" subtitle="Regular post, ad, news link, or intervention" badge={postTypeBadge}>
           <Field label="Post type">
             <select
               className="select"
-              value={editing.adType || "none"}
-              onChange={(e) => {
-                const next = e.target.value;
-                setEditing((ed) => ({
-                  ...ed,
-                  adType: next,
-                  authorType: next === "ad" || next === "news" ? "company" : (ed.authorType || "female"),
-                  newsDomain: ed.newsDomain || ed.adDomain || "",
-                  newsHeadline: ed.newsHeadline || ed.adHeadline || "",
-                  newsDescription: ed.newsDescription || ed.adSubheadline || "",
-                  newsUrl: ed.newsUrl || ed.adUrl || "",
-                }));
-              }}
+              value={postType}
+              onChange={(e) => setPostType(e.target.value)}
             >
               <option value="none">Regular post</option>
               <option value="ad">Sponsored ad</option>
               <option value="news">News link preview</option>
+              <option value="intervention">Intervention</option>
             </select>
           </Field>
 
-          {editing.adType === "ad" && (
+          {postType === "ad" && (
             <>
               <Field label="Domain / URL">
                 <input className="input" value={editing.adDomain || ""} onChange={(e) => setEditing({ ...editing, adDomain: e.target.value })} placeholder="www.example.com" />
@@ -468,7 +499,7 @@ export function AdminPostEditor({
             </>
           )}
 
-          {editing.adType === "news" && (
+          {postType === "news" && (
             <>
               <div className="subtle">
                 A news post uses the uploaded/selected image as the preview image. Clicking the image or grey preview banner records <code>news_clicked</code> and shows an “Action noted” message instead of opening the website.
@@ -487,13 +518,12 @@ export function AdminPostEditor({
               </Field>
             </>
           )}
-        </EditorSection>
 
-        <EditorSection title="Intervention" subtitle="False-info label or context note" defaultOpen={hasIntervention} badge={hasIntervention ? (editing.interventionType === "note" ? "Note" : "Label") : null}>
-          <Field label="Type">
+          {postType === "intervention" && (
+          <Field label="Intervention type">
             <select
               className="select"
-              value={editing.interventionType || "none"}
+              value={editing.interventionType === "note" ? "note" : "label"}
               onChange={(e) => {
                 const nextType = e.target.value;
 
@@ -513,11 +543,11 @@ export function AdminPostEditor({
                 });
               }}
             >
-              <option value="none">None</option>
               <option value="label">False info label</option>
               <option value="note">Context note</option>
             </select>
           </Field>
+          )}
 
           {editing.interventionType === "note" && (
             <>
@@ -753,7 +783,7 @@ export function AdminPostEditor({
           )}
         </EditorSection>
 
-        <EditorSection title="Reactions & Metrics" subtitle="Reaction counts, comments, shares" defaultOpen>
+        <EditorSection title="Reactions & Metrics" subtitle="Reaction counts, comments, shares">
           <Toggle
             label="Show reactions"
             checked={!!editing.showReactions}
