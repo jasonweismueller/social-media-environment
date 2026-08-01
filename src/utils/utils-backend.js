@@ -2247,7 +2247,14 @@ export async function saveSurveyToBackend(survey, { projectId = getProjectId() }
     };
     if (surveyId) payload.survey_id = surveyId;
 
-    const { res, data } = await postJson(payload);
+    // Saving a survey fans out to several Apps Script sheet writes server-side
+    // (the chunked survey-definition write, the surveys registry, and a
+    // link/unlink pass across every linked feed × app) — that grows with
+    // survey size and linked-feed count, and can comfortably exceed the
+    // default 12s client timeout for larger surveys, surfacing as an
+    // "AbortError: signal is aborted without reason" here even though the
+    // save frequently completes fine server-side after the client gives up.
+    const { res, data } = await postJson(payload, { timeoutMs: 45000 });
 
     if (!res.ok || data.ok === false) {
       return { ok: false, err: data?.err || `HTTP ${res.status}` };
