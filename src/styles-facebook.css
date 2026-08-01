@@ -366,7 +366,7 @@ a:hover{text-decoration:underline}
 .editor-preview { position:sticky; top:16px; align-self:start; overflow:hidden }
 .preview-head { font-size:.85rem; color:#6b7280; margin-bottom:.5rem; padding-left:.25rem; }
 .editor-preview .card { box-shadow:none; border:1px solid var(--line); }
-.preview-zoom { transform: scale(.9); transform-origin: top left; }
+.preview-zoom { transform: scale(.9); transform-origin: top center; }
 
 /* FAB — ensure always clickable above overlays/top rail */
 /* === Admin FAB (subtle overlay style) === */

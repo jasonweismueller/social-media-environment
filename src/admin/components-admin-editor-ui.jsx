@@ -177,7 +177,7 @@ export function PreviewPane({ label = "Live preview", platformLabel, zoom, child
       >
         <div
           className="preview-zoom"
-          style={{ pointerEvents: "auto", ...(zoom ? { transform: `scale(${zoom})`, transformOrigin: "top left" } : null) }}
+          style={{ pointerEvents: "auto", ...(zoom ? { transform: `scale(${zoom})`, transformOrigin: "top center" } : null) }}
         >
           {children}
         </div>

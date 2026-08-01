@@ -375,7 +375,7 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .editor-preview { position:sticky; top:16px; align-self:start; overflow:hidden }
 .preview-head { font-size:.85rem; color:#6b7280; margin-bottom:.5rem; padding-left:.25rem; }
 .editor-preview .card { box-shadow:none; border:1px solid var(--ig-line); }
-.preview-zoom { transform: scale(.9); transform-origin: top left; }
+.preview-zoom { transform: scale(.9); transform-origin: top center; }
 
 /* FAB */
 .admin-fab-wrap { position:fixed; bottom:12px; right:12px; z-index:2000; pointer-events:none; }

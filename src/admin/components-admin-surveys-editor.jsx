@@ -2526,9 +2526,18 @@ function CollapsedQuestionRow({
   onToggleCollapsed,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(type);
+  const isPostReminder = type === POST_REMINDER_TYPE;
   const rawText = stripHtmlForEmptyCheck(q.text || "");
-  const preview =
-    rawText || (isDisplayOnly ? "(no display text yet)" : "(no question text yet)");
+  // A post reminder's content comes from the referenced post, not q.text — an
+  // empty caption there is normal, not a missing-content warning like it is
+  // for other display-only blocks (e.g. "info"), so it just stays blank.
+  const preview = rawText
+    ? rawText
+    : isPostReminder
+      ? ""
+      : isDisplayOnly
+        ? "(no display text yet)"
+        : "(no question text yet)";
   const shortType = QUESTION_TYPE_SHORT_LABELS[type] || type;
   const fullType = QUESTION_TYPE_LABELS[type] || type;
 
@@ -2564,6 +2573,22 @@ function CollapsedQuestionRow({
           {`Q${displayNumber}`}
         </span>
       )}
+
+      <span
+        title={`Question ID: ${q.id || ""}`}
+        style={{
+          fontSize: 10,
+          color: "#c1c7d0",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          flex: "0 0 auto",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          maxWidth: 90,
+        }}
+      >
+        {q.id || ""}
+      </span>
 
       <span
         title={fullType}
@@ -2738,7 +2763,15 @@ function QuestionCard({
       <div
         onDragOver={(e) => onDragOver(e, q._editorId)}
         onDrop={(e) => onDrop(e, q._editorId)}
-        style={shellStyle}
+        style={{
+          ...shellStyle,
+          padding: "6px 12px",
+          marginTop: 10,
+          marginBottom: 14,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
       >
         <InsertAtBorderButton
           position="top"
@@ -2749,83 +2782,59 @@ function QuestionCard({
           onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
         />
 
-       <div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "1fr 160px auto",
-    gap: 10,
-    alignItems: "start",
-  }}
->
-          <TopField label="Page break">
-            <div
-              style={{
-                height: INPUT_HEIGHT,
-                display: "flex",
-                alignItems: "center",
-                padding: "0 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: 8,
-                background: "#fff",
-                color: "#6b7280",
-              }}
-            >
-              Questions after this will appear on the next page.
-            </div>
-          </TopField>
+        <DragHandle
+          onDragStart={(e) => onDragStart(e, q._editorId)}
+          onDragEnd={onDragEnd}
+        />
 
-          <TopField label="Next delay (sec)">
-  <NumberInput
-    value={q?.next_delay_seconds ?? 0}
-    min={0}
-    step={1}
-    onChange={(v) =>
-      updateQuestion(index, {
-        next_delay_seconds: normalizePageDelaySeconds(v),
-      })
-    }
-  />
-</TopField>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#4b5563", flex: "0 0 auto", whiteSpace: "nowrap" }}>
+          Page break
+        </span>
 
-          <TopField label="Actions">
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-                alignItems: "center",
-                height: INPUT_HEIGHT,
-              }}
-            >
-              <DragHandle
-                onDragStart={(e) => onDragStart(e, q._editorId)}
-                onDragEnd={onDragEnd}
-              />
+        <span style={{ fontSize: 12, color: "#9ca3af", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          Questions after this appear on the next page.
+        </span>
 
-              <button
-                type="button"
-                onClick={() => moveQuestion(index, index - 1)}
-                disabled={index === 0}
-                style={smallActionButtonStyle(index === 0)}
-              >
-                ↑
-              </button>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6b7280", flex: "0 0 auto" }}>
+          Delay
+          <NumberInput
+            value={q?.next_delay_seconds ?? 0}
+            min={0}
+            step={1}
+            onChange={(v) =>
+              updateQuestion(index, {
+                next_delay_seconds: normalizePageDelaySeconds(v),
+              })
+            }
+            style={{ width: 60, height: 30, padding: "4px 8px" }}
+          />
+          sec
+        </label>
 
-              <button
-                type="button"
-                onClick={() => moveQuestion(index, index + 1)}
-                disabled={index === totalQuestions - 1}
-                style={smallActionButtonStyle(index === totalQuestions - 1)}
-              >
-                ↓
-              </button>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "0 0 auto" }}>
+          <button
+            type="button"
+            onClick={() => moveQuestion(index, index - 1)}
+            disabled={index === 0}
+            style={smallActionButtonStyle(index === 0)}
+          >
+            ↑
+          </button>
 
-              <IconOnlyButton
-                onClick={() => removeQuestion(index)}
-                title="Delete page break"
-                danger
-              />
-            </div>
-          </TopField>
+          <button
+            type="button"
+            onClick={() => moveQuestion(index, index + 1)}
+            disabled={index === totalQuestions - 1}
+            style={smallActionButtonStyle(index === totalQuestions - 1)}
+          >
+            ↓
+          </button>
+
+          <IconOnlyButton
+            onClick={() => removeQuestion(index)}
+            title="Delete page break"
+            danger
+          />
         </div>
       </div>
     );
@@ -4192,7 +4201,17 @@ export function SurveyEditor({
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [highlightedQuestionId, setHighlightedQuestionId] = useState(null);
-  const [collapsedQuestionIds, setCollapsedQuestionIds] = useState(() => new Set());
+  // Question cards start collapsed by default (per direct user feedback) —
+  // same set of ids collapseAllQuestions() below would produce, just as the
+  // initial state instead of a user action.
+  const [collapsedQuestionIds, setCollapsedQuestionIds] = useState(
+    () =>
+      new Set(
+        getQuestionList(survey)
+          .filter((item) => item?.type !== EDITOR_PAGE_BREAK_TYPE)
+          .map((item) => item._editorId)
+      )
+  );
   const questionNodeRefs = useRef({});
 
   const currentQuestions = useMemo(() => getQuestionList(survey), [survey]);

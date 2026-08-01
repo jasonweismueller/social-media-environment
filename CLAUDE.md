@@ -413,6 +413,45 @@ the 26,000-cell default-size problem). Wired into `doPost`'s admin-gated switch 
 Deploy → Manage deployments → Edit → New version → Deploy — until then the frontend button calls
 an action the backend doesn't recognize yet and fails with a clear error alert (not silently).
 
+## Small polish batch (2026-08-01)
+
+Five direct-user-feedback fixes, all small/isolated:
+
+- **Live preview centering** (`components-admin-editor-ui.jsx` `PreviewPane`, `.preview-zoom` in
+  all 3 stylesheets): `transform-origin` was `top left`. The frame centers `.preview-zoom` via
+  flexbox *before* the `scale(.9)` transform is applied, so a `top left` origin shrinks the box
+  toward its top-left corner instead of its already-centered middle, visually pulling the post
+  preview off-center. Changed to `top center` — scaling now stays centered on the horizontal axis
+  while still anchored to the top edge vertically (no new empty space above the card).
+- **Posts admin table, Actions cell divider misaligned** (`components-admin-dashboard.jsx`, Posts
+  route): the Actions `<Td>` had `style={{ display: "flex", ... }}` set directly on the cell.
+  Overriding a `<td>`'s `display` away from `table-cell` pulls it out of the table layout
+  algorithm, so its border-bottom no longer lines up with sibling cells' — exactly the "divider
+  below the action buttons sits at a different height" symptom reported. Fixed by keeping `<Td>`
+  as a plain cell and moving `display:flex` onto a `<div>` wrapper inside it instead.
+- **Survey editor question cards now collapse by default** (`components-admin-surveys-editor.jsx`
+  `SurveyEditor`): `collapsedQuestionIds` used to initialize to an empty `Set` (all expanded). Now
+  lazily initializes to every non-page-break question's `_editorId` — the same set
+  `collapseAllQuestions()` already computes, just applied as the starting state instead of a user
+  action.
+- **`CollapsedQuestionRow` now shows the real question `id`** next to the `Q1`/`Q2` display number
+  (small monospace tag, truncated with a full-id tooltip) — the display number alone doesn't help
+  when cross-referencing `visible_in_feeds`/`feed_overrides`/`visible_to_group_ids` elsewhere,
+  which key off the actual id.
+- **Post reminder collapsed preview no longer shows a placeholder when empty**: same function used
+  to fall back to `"(no display text yet)"` for every display-only question type when `q.text` was
+  blank. For `post_reminder` specifically, blank is normal (the shown content comes from the
+  referenced post, not `q.text`), so the preview text is now just blank there — `"info"` blocks
+  still show the placeholder, since an empty info block usually *is* an oversight worth flagging.
+- **Page-break card is now a single compact row** instead of a 3-column grid of full-height
+  labeled fields (`TopField` "Page break" / "Next delay (sec)" / "Actions", each contributing
+  label height + `INPUT_HEIGHT`(42px) on top of the shell's own padding/margins). Same
+  functionality (drag handle, reorder, delay input, delete) in one inline row now — no more stacked
+  labels for what is conceptually just a divider marker.
+
+None of these were click-tested live — same sandbox dev-server limitation noted throughout this
+file.
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this

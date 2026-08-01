@@ -1980,31 +1980,33 @@ export function AdminDashboard({
                                   <span className="subtle">none</span>
                                 )}
                               </Td>
-                              <Td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <Button size="sm" onClick={() => openEdit(p)}>
-                                  Edit
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  title="Rename this post for CSV columns"
-                                  onClick={() => {
-                                    const cur = postNames[p.id] || "";
-                                    const next = prompt("Post name (used in CSV headers):", cur ?? "");
-                                    if (next === null) return;
-                                    const name = (next || "").trim();
-                                    const map = { ...(postNames || {}) };
-                                    if (name) map[p.id] = name;
-                                    else delete map[p.id];
-                                    setPostNames(map);
-                                    writePostNames(projectId, feedId, map);
-                                  }}
-                                >
-                                  Rename
-                                </Button>
-                                <Button size="sm" variant="danger" onClick={() => removePost(p.id)}>
-                                  Delete
-                                </Button>
+                              <Td>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <Button size="sm" onClick={() => openEdit(p)}>
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    title="Rename this post for CSV columns"
+                                    onClick={() => {
+                                      const cur = postNames[p.id] || "";
+                                      const next = prompt("Post name (used in CSV headers):", cur ?? "");
+                                      if (next === null) return;
+                                      const name = (next || "").trim();
+                                      const map = { ...(postNames || {}) };
+                                      if (name) map[p.id] = name;
+                                      else delete map[p.id];
+                                      setPostNames(map);
+                                      writePostNames(projectId, feedId, map);
+                                    }}
+                                  >
+                                    Rename
+                                  </Button>
+                                  <Button size="sm" variant="danger" onClick={() => removePost(p.id)}>
+                                    Delete
+                                  </Button>
+                                </div>
                               </Td>
                             </tr>
                           ))}
