@@ -32,28 +32,30 @@ export function Card({ title, subtitle, actions = null, children, style, bodySty
             flexWrap: "wrap",
           }}
         >
-          <div className="admin-section-title-wrap">
-            {title && (
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: "var(--admin-text)",
-                }}
-              >
-                {title}
-              </h3>
-            )}
-            {subtitle && (
-              <div
-                className="subtle admin-section-subtitle"
-                style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 2 }}
-              >
-                {subtitle}
-              </div>
-            )}
-          </div>
+          {(title || subtitle) && (
+            <div className="admin-section-title-wrap">
+              {title && (
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: "var(--admin-text)",
+                  }}
+                >
+                  {title}
+                </h3>
+              )}
+              {subtitle && (
+                <div
+                  className="subtle admin-section-subtitle"
+                  style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 2 }}
+                >
+                  {subtitle}
+                </div>
+              )}
+            </div>
+          )}
 
           {!!actions && (
             <div

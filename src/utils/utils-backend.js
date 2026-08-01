@@ -193,7 +193,12 @@ const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getAp
 const POSTS_GET_URL = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}`;
 const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}`;
 const WIPE_POLICY_GET_URL = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}`;
-const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects&app=${APP}`;
+// Deliberately no &app= here — projects are shared across platforms (a
+// project can hold feeds for Facebook, Instagram, and Amazon at once), and
+// project_create/project_delete below never send app either. Filtering the
+// list by app would make AdminProjectPicker show a different project set
+// depending on which platform bundle happens to be loaded.
+const PROJECTS_GET_URL = () => `${GS_ENDPOINT}?path=projects`;
 const SURVEYS_GET_URL = () => `${GS_ENDPOINT}?path=surveys&app=${getApp()}`;
 const SURVEY_DEFINITION_GET_URL = () => `${GS_ENDPOINT}?path=survey_definition&app=${getApp()}`;
 const FEED_SURVEY_GET_URL = () => `${GS_ENDPOINT}?path=feed_survey&app=${getApp()}`;

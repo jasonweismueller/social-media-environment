@@ -1343,7 +1343,7 @@ export function AdminDashboard({
                       <>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="secondary"
                           onClick={() => setShowAllFeeds((v) => !v)}
                           title={
                             showAllFeeds
@@ -1355,7 +1355,7 @@ export function AdminDashboard({
                         </Button>
 
                         <RoleGate min="editor">
-                          <Button size="sm" variant="ghost" onClick={createNewFeed}>
+                          <Button size="sm" variant="secondary" onClick={createNewFeed}>
                             + New feed
                           </Button>
                         </RoleGate>
@@ -1391,17 +1391,17 @@ export function AdminDashboard({
                       </>
                     }
                   >
-                    <Table>
+                    <Table style={{ tableLayout: "fixed" }}>
                       <thead>
                         <tr>
-                          <Th dense style={{ width: 36 }} />
-                          <Th dense>Name</Th>
-                          <Th dense>ID</Th>
-                          <Th dense>Updated</Th>
-                          <Th dense style={{ textAlign: "center" }}>Total</Th>
-                          <Th dense style={{ textAlign: "center" }}>Submitted</Th>
-                          <Th dense style={{ textAlign: "center" }}>Avg (m:ss)</Th>
-                          <Th dense style={{ minWidth: 220 }}>Actions</Th>
+                          <Th dense style={{ width: "3%" }} />
+                          <Th dense style={{ width: "20%" }}>Name</Th>
+                          <Th dense style={{ width: "13%" }}>ID</Th>
+                          <Th dense style={{ width: "9%" }}>Updated</Th>
+                          <Th dense style={{ width: "8%", textAlign: "center" }}>Total</Th>
+                          <Th dense style={{ width: "9%", textAlign: "center" }}>Submitted</Th>
+                          <Th dense style={{ width: "9%", textAlign: "center" }}>Avg (m:ss)</Th>
+                          <Th dense style={{ width: "29%" }}>Actions</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1452,10 +1452,21 @@ export function AdminDashboard({
                                   {isDefault ? <Badge tone="accent">default</Badge> : null}{" "}
                                   {isLoaded && !isDefault ? <Badge>loaded</Badge> : null}
                                 </Td>
-                                <Td dense style={{ fontFamily: "monospace" }}>{f.feed_id}</Td>
+                                <Td
+                                  dense
+                                  title={f.feed_id}
+                                  style={{
+                                    fontFamily: "monospace",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {f.feed_id}
+                                </Td>
                                 <Td dense>
-                                  <span className="subtle">
-                                    {f.updated_at ? new Date(f.updated_at).toLocaleString() : "—"}
+                                  <span className="subtle" title={f.updated_at ? new Date(f.updated_at).toLocaleString() : ""}>
+                                    {f.updated_at ? new Date(f.updated_at).toLocaleDateString() : "—"}
                                   </span>
                                 </Td>
                                 <Td dense style={{ textAlign: "center" }}>{stats ? stats.total : "—"}</Td>
