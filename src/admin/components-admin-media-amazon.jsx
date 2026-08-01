@@ -5,6 +5,7 @@ import {
   readPostNames,
   writePostNames,
 } from "../utils";
+import { EditorSection, Field } from "./components-admin-editor-ui";
 
 /* ---------------------------------------------------------------------------
    Amazon reviews-only media/settings fieldset
@@ -63,51 +64,48 @@ export function MediaFieldset({
   }
 
   return (
-    <>
-      <h4 className="section-title">Review export settings</h4>
-      <fieldset className="fieldset amz-review-settings">
-        <label>Review label override
+    <EditorSection title="Review export settings" subtitle="Internal-only labeling &amp; notes" defaultOpen={false}>
+      <Field
+        label="Review label override"
+        hint="Optional. This is useful when exported columns need meaningful review names rather than generated IDs."
+      >
+        <input
+          className="input"
+          placeholder="e.g. review_positive_high_helpful"
+          value={reviewName}
+          onChange={(e) => updateReviewName(e.target.value)}
+        />
+      </Field>
+
+      <div className="grid-2">
+        <Field label="Condition">
           <input
             className="input"
-            placeholder="e.g. review_positive_high_helpful"
-            value={reviewName}
-            onChange={(e) => updateReviewName(e.target.value)}
+            value={editing.condition || ""}
+            placeholder="e.g. control"
+            onChange={(e) => setEditing((ed) => ({ ...ed, condition: e.target.value }))}
           />
-          <div className="subtle" style={{ marginTop: 6 }}>
-            Optional. This is useful when exported columns need meaningful review names rather than generated IDs.
-          </div>
-        </label>
+        </Field>
 
-        <div className="grid-2">
-          <label>Condition
-            <input
-              className="input"
-              value={editing.condition || ""}
-              placeholder="e.g. control"
-              onChange={(e) => setEditing((ed) => ({ ...ed, condition: e.target.value }))}
-            />
-          </label>
-
-          <label>Review type
-            <input
-              className="input"
-              value={editing.review_type || ""}
-              placeholder="e.g. positive / negative / misinformation"
-              onChange={(e) => setEditing((ed) => ({ ...ed, review_type: e.target.value }))}
-            />
-          </label>
-        </div>
-
-        <label>Internal notes
-          <textarea
-            className="textarea"
-            rows={3}
-            value={editing.admin_notes || ""}
-            placeholder="Optional notes for yourself; participants will not see this unless you render it elsewhere."
-            onChange={(e) => setEditing((ed) => ({ ...ed, admin_notes: e.target.value }))}
+        <Field label="Review type">
+          <input
+            className="input"
+            value={editing.review_type || ""}
+            placeholder="e.g. positive / negative / misinformation"
+            onChange={(e) => setEditing((ed) => ({ ...ed, review_type: e.target.value }))}
           />
-        </label>
-      </fieldset>
-    </>
+        </Field>
+      </div>
+
+      <Field label="Internal notes">
+        <textarea
+          className="textarea"
+          rows={3}
+          value={editing.admin_notes || ""}
+          placeholder="Optional notes for yourself; participants will not see this unless you render it elsewhere."
+          onChange={(e) => setEditing((ed) => ({ ...ed, admin_notes: e.target.value }))}
+        />
+      </Field>
+    </EditorSection>
   );
 }

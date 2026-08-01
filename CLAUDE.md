@@ -4,6 +4,26 @@ A research tool for running social-media-exposure studies. Participants are show
 Facebook, Instagram, or Amazon-reviews feed and/or a survey; researchers configure everything
 (posts, feeds, surveys, experiment conditions) through an admin UI.
 
+## Deployment: this repo auto-commits and auto-deploys — there is no staging buffer
+
+Confirmed 2026-08-01, but true retroactively (see the several "Status: implemented and
+committed" notes below from earlier sessions — that phrasing was already accurate before anyone
+had spelled out the mechanism). Something outside Claude's own tool calls auto-commits
+working-tree edits (authored as the user, Jason Weismueller) and pushes them to `origin/main` on
+GitHub — Claude never runs `git commit`/`git push` itself this session, yet `git log` shows a
+fresh commit per logical chunk of work, already on `origin/main`. `main` then appears to
+auto-deploy to the live site (`studyfeed.org`): confirmed by finding a JS chunk
+(`AdminEntry-*.js`, from a component written earlier the same session) already being served in
+production, before any explicit deploy step was taken by anyone.
+
+**Practical implication: there is no "save my work, review later" phase for this repo. A file
+edit this session is very likely a production change on a live research study within the same
+session** — serving real participants (often recruited and paid via Prolific), not a sandbox.
+Combined with `npm run dev`/`npm run build` both being broken in this sandbox (see "Build/dev
+notes"), changes typically ship with only static syntax-checking and careful code reading behind
+them — no live browser click-through is possible from here. Weigh that when deciding how
+confident to sound about something being "fixed," and say plainly when it's unverified.
+
 ## Architecture
 
 **Three parallel frontend apps, one shared core.** `index.html` picks which app bundle to load
@@ -69,10 +89,14 @@ This has been the cause of "I made the fix but it's still broken" multiple times
 
 - **10,000,000 cells per workbook**, total, across every tab. Every `ensureSheet_()` call that
   creates a brand-new tab starts it at Google's default size (1000 rows × 26 cols = 26,000
-  cells) even if the tab only ever holds a one-cell JSON blob. `ensureSheet_` now trims a
-  freshly-created sheet down immediately; if this limit gets hit again, the fix is a one-time
-  `trimAllSheetsToContentSize_()` sweep (see git history / conversation for the exact function)
-  run manually from the Apps Script editor.
+  cells) even if the tab only ever holds a one-cell JSON blob. `ensureSheet_` is *supposed* to
+  trim a freshly-created sheet down immediately via `trimSheetToContentSize_(sh, 2, 2)` — **but
+  for an unknown stretch of time that function was called and never defined**, so every
+  first-ever write to a brand-new sheet threw a `ReferenceError` and silently dropped the data
+  (see "Survey submission bugs found and fixed" below for how this was found and the function
+  that was added). If untrimmed 26,000-cell sheets pile up and the 10M-cell ceiling gets hit
+  anyway, the fix is a one-time `trimAllSheetsToContentSize_()` sweep across existing sheets, run
+  manually from the Apps Script editor (not written yet as of 2026-08-01).
 - **50,000 characters per individual cell.** A single large survey's JSON blob can exceed this.
   `writeSurveyJSON_`/`readSurveyJSON_` now chunk the JSON across multiple rows in one column
   instead of one cell — don't revert to a single `setValue()` call for survey JSON.
@@ -95,6 +119,14 @@ a *different* local function despite the same name). When adding a field to bloc
 silently stripped somewhere in the load/save round-trip. Same risk applies to anything added to
 `experiment_groups`.
 
+Same footgun bit `ThankYouOverlay` (fixed 2026-08-01, see "Survey submission bugs" below): the
+component is defined separately in `ui-core-facebook.jsx`/`-instagram.jsx`/`-amazon.jsx`, and
+the `App-*.jsx` call sites were updated to pass new props (`title`/`messageHtml`/
+`completionCode`/`hideSessionId`) that only got wired up in the component definition itself
+for... none of the three, at first. Any time a prop gets added to a call site of a
+per-app-duplicated component, grep for every definition of that component before assuming it's
+handled.
+
 ## Experiment groups feature (implemented, see plan file)
 
 Between-subjects experiment support: survey-level `experiment_groups: [{id, name}]`, per-block
@@ -112,10 +144,14 @@ admin dashboard` (same session, committed together with the unrelated dashboard 
 be misled by the commit message). **Backend Code.gs changes were handed to the user as a
 copy-paste-ready full file twice** — once for the original block-level feature, once more for the
 question-level + reset-balance additions — **not applied by Claude** (can't touch their Apps
-Script directly either time). **Unverified whether either has been pasted + redeployed.** If
-experiment groups (block or question visibility, or the reset-balance button) don't seem to work
-in a future session, check Code.gs deployment status first before debugging frontend code — this
-has been the actual root cause multiple times.
+Script directly either time). **Confirmed 2026-08-01**: the user pasted their live Code.gs in
+full during an unrelated debugging session, and it does include `assignExperimentGroup_`,
+`resetExperimentGroupAssignments_`, and `sanitizeSurveyPageBlocks_` with `visible_to_group_ids`
+support — so the backend half of this feature was pasted and deployed at some point before that
+date. (That same live Code.gs was missing `trimSheetToContentSize_` — see "Survey submission
+bugs found and fixed" below — so "the file was pasted at some point" doesn't mean every later
+handoff made it in; if experiment groups misbehave, it's still worth confirming the specific
+functions above are present in whatever Code.gs is live *now*.)
 
 ## Admin dashboard redesign (implemented, see plan file)
 
@@ -140,12 +176,178 @@ base — a relative target here silently keeps appending onto the existing path 
 navigation instead of replacing it, and it's easy to not notice until you actually click a nav
 link twice.
 
+**Superseded 2026-08-01** by the Projects → Platform → Dashboard flow below: `AdminDashboard` is
+now mounted one level deeper, at `/admin/dashboard/*` instead of `/admin/*` — every concrete path
+example above (`/admin/feeds` etc.) is now `/admin/dashboard/feeds`. The absolute-path gotcha
+itself still applies unchanged, just one segment deeper.
+
+## Admin dashboard: Projects → Platform → Dashboard flow (2026-08-01, see plan file)
+
+Restructured the admin entry flow from "log in → straight into one dashboard" to "log in → pick
+a project (full page) → pick a platform (fb/ig/amz, full page) → dashboard," with a
+"← All projects" back link, replacing an in-sidebar project `<select>` that was too cramped for
+long names and mixed create/delete/set-default actions in with routine navigation. Full design
+rationale, the two hard constraints that shaped it (platform is chosen by which JS bundle loads,
+before React mounts; admin sessions were namespaced per-app), and verification steps:
+`~/.claude/plans/ancient-mixing-knuth.md`.
+
+Key pieces:
+- `src/admin/AdminEntry.jsx` (new) — owns `/admin/*` sub-routing (index → project picker,
+  `/platform` → platform picker, `/dashboard/*` → existing `AdminDashboard`). Mounted
+  identically in all three `App-*.jsx` files, replacing the old
+  `adminAuthed ? <AdminDashboard/> : <AdminLogin/>` ternary — this branching logic lives in
+  exactly one shared place, specifically to avoid the near-duplicate-`App-*.jsx` footgun above.
+- `src/admin/AdminProjectPicker.jsx`, `src/admin/AdminPlatformPicker.jsx` (new) — full-page
+  pickers. The project list is intentionally app-agnostic: the live Code.gs's `listProjects_`
+  ignores the `app` query param entirely and `project_create` never sent one, so a project can
+  hold feeds across fb/ig/amz simultaneously — nothing backend-side restricts it to one
+  platform.
+- `src/utils/utils-backend.js` — admin session localStorage keys (`ADMIN_TOKEN_KEY` etc.,
+  ~line 1316) are no longer namespaced by `${APP}`; one login now covers all three platforms.
+  This was necessary because picking a different platform than the one currently loaded does a
+  full page navigation (`?app=` is resolved by `index.html`'s dynamic `import()` before React
+  mounts, so the platform can't be swapped client-side) — without a shared token, that navigation
+  would have forced a second login every time. Also dropped a stray `&app=` param from
+  `PROJECTS_GET_URL` that the backend never read.
+- `src/admin/AdminShell.jsx` — nav paths moved to `/admin/dashboard/*` (see gotcha note above);
+  added `backTo`/`backLabel` props for the "← All projects" link.
+- `src/admin/components-admin-dashboard.jsx` — sidebar's project switcher (`<select>` +
+  create/delete/set-default buttons) replaced with a read-only project-name readout; those CRUD
+  actions moved to `AdminProjectPicker`.
+
+**Status: implemented, auto-deployed (see Deployment section above), never clicked through live
+from Claude's side.** If the picker flow seems broken, do a manual click-through first — same
+lesson as the original admin redesign, twice now.
+
+## Admin UI polish: feed list, Popover, project identity (2026-08-01)
+
+Follow-up fixes to the admin dashboard redesign, prompted by direct user feedback after using it
+for real:
+- `src/admin/ui/Popover.jsx` — the Randomize-flags and "⋯" overflow-menu dropdowns now portal
+  into the nearest `.admin-shell` ancestor (not `document.body`) instead of rendering as an
+  absolutely-positioned in-tree child. Two reasons this mattered: (1) `Card`/`Table` ancestors
+  clip via `overflow: hidden`/`auto`, cutting the dropdown off when the surrounding list is
+  short; (2) the `--admin-*` design tokens (`src/admin/ui/tokens.css`) are scoped to
+  `.admin-shell` — portaling all the way to `document.body` (the first attempt) left the
+  dropdown with no background/border/color at all, since those CSS variables don't exist that
+  far up the DOM.
+- `src/admin/ui/Table.jsx` — added a `dense` variant (`Th`/`Td` accept a `dense` prop, tighter
+  padding), used only on the Feeds table; other admin tables unaffected.
+- `src/admin/ui/Card.jsx` — the header's title/subtitle wrapper div now only renders when there
+  actually is a title or subtitle. Previously an empty wrapper always rendered as a flex sibling
+  to `actions`, and `justify-content: space-between` pushed `actions` all the way to the right
+  against that empty space. The Feeds table toolbar (`actions` with no `title`) was the only
+  place in the whole admin section combining the two that way — safe to fix at the shared-Card
+  source rather than patch around it locally.
+- Feeds table: switched to `table-layout: fixed` with explicit column-width percentages so the
+  Actions column (3-4 buttons) doesn't get squeezed by auto-layout favoring Name/ID/Updated;
+  "Updated" now shows date only (full timestamp still available via `title` on hover).
+- Toolbar buttons ("Hide full list"/"All feeds…", "+ New feed", "Refresh") unified to the same
+  `Button` variant — they were a visually-inconsistent mix of `ghost` (no border) and
+  `secondary` (bordered) for equally-weighted actions.
+
+## Survey submission bugs found and fixed (2026-08-01)
+
+Traced from a real report: submitting a completed survey showed no thank-you message or
+redirect, and the CSV export had no data. Four separate bugs surfaced; three fixed in this repo,
+one needs a manual check only the user can do.
+
+1. **Code.gs: `trimSheetToContentSize_` was called but never defined** — see the Google Sheets
+   constraints note above. Silently dropped every first-ever write to a new
+   `SurveyResponses`/`Participants` sheet (backend still returned HTTP 200 with
+   `{ok:false, err:"trimSheetToContentSize_ is not defined"}`, which the client didn't check —
+   see bug 4). **User added the function themselves** during the session. **Unverified whether
+   it's been redeployed** (Deploy → Manage deployments → Edit → New version → Deploy) — check
+   this first if data is still missing in a future session.
+2. **`ThankYouOverlay` ignored the props it was called with** — see the duplicated-logic entry
+   above. Fixed in all three `ui-core-*.jsx` files.
+3. **Redirect-on-completion still doesn't fire for at least one survey — root cause
+   unconfirmed.** `finalizeStudyCompletion` (`App-facebook.jsx` ~line 2394, duplicated per app)
+   redirects only when `linkedSurvey.completion_mode === "redirect"` AND
+   `completion_redirect_url` is non-empty. The full data path (admin editor →
+   `frontendSurveyToBackend` → Code.gs `sanitizeSurveyDef_` → `normalizeSurvey`) reads correct
+   on inspection — nothing found in the code that would drop or mis-map those two fields. Since
+   the user saw `ThankYouOverlay`'s content rather than a redirect, `completion_mode` and/or
+   `completion_redirect_url` were not actually `"redirect"`/non-empty for that specific survey
+   at submit time. **Next step is for the user to open that survey in the admin Surveys editor
+   and confirm both the mode toggle and the URL field are actually set and saved** — not
+   diagnosable further from code alone without live access to that survey's saved definition.
+4. **`saveSurveyToBackend` timeout too short for large surveys** — reported as `"signal is
+   aborted without reason"` needing 3-4 retries to save. `postJson`'s default abort timeout is
+   12s (`utils-backend.js` `fetchWithTimeout`); saving a survey fans out to a chunked definition
+   write plus a `linkSurveyToFeed_` call per linked feed × app on the Code.gs side, which grows
+   with survey size/linked-feed count and can exceed 12s — the save often completes server-side
+   after the client already gave up (all the writes involved are upserts, so the repeated
+   retries this produced were wasteful but not harmful). Bumped `saveSurveyToBackend`'s timeout
+   specifically to 45s; left every other `postJson` call at the 12s default.
+
+## Survey editor: question card layout (2026-08-01)
+
+`components-admin-surveys-editor.jsx` `QuestionCard`: the header used to be a 3-column CSS grid
+(question-text editor | type dropdown | actions) — since the rich-text editor needs real height,
+the whole row (including the type dropdown and action icons, which don't need that height) got
+forced tall with wasted space. Now it's two stacked rows: Type + Actions on a compact top row,
+the question-text editor full-width below.
+
+The "collapsed" state used to only hide the fields *below* the header — the full rich-text
+editor and type dropdown still rendered at full height either way, so collapsing barely saved
+space. Added `CollapsedQuestionRow`, a genuine one-line summary (chevron, drag handle, `Q#`,
+type badge, required dot, truncated plain-text preview, reorder/copy/delete), styled to match
+the existing compact rows in the study-outline panel (`OutlineRow`) rather than inventing new
+visual language.
+
+## Post editor redesign (2026-08-01)
+
+`components-admin-editor-{facebook,instagram,amazon}.jsx` + their `components-admin-media-*.jsx`
+`MediaFieldset`s went from a flat, unstructured stack of `<h4 className="section-title">` +
+`<fieldset className="fieldset">` pairs (no dedicated `label`/`.row`/`.checkbox` CSS existed for
+them at all — they were relying on browser defaults) to collapsible card sections, matching the
+admin dashboard's own visual language.
+
+New shared file **`src/admin/components-admin-editor-ui.jsx`** exports the primitives used by all
+three editors: `EditorSection` (collapsible card — reuses the `.section-collapse` /
+`.section-collapse-inner` / `.section-chev` CSS that already existed identically in all three
+stylesheets but, before this, had no JSX anywhere actually using it), `Field` (label-above-control,
+single control only — implicit label association), `Group` (same look as `Field` but a `<div>`
+root, for radio/checkbox groups where nesting a `<label>` would be invalid HTML), `RadioGroup`,
+`CheckRow`, and `PreviewPane` (the sticky live-preview column, now a consistent "device frame" look
+across all three apps). It re-exports `Toggle` from `src/admin/ui/` so boolean fields (badge,
+show-bio, verified-purchase, etc.) are a real switch instead of a `<select>` with `"true"/"false"`
+string options.
+
+**Zero CSS file changes were needed.** The outer `.editor-grid`/`.editor-form`/`.editor-preview`/
+`.preview-zoom` grid (responsive collapse at 980px, sticky preview) was reused as-is — those
+classes are exclusive to the three post editors, so was safe to keep unchanged. Section cards reuse
+the existing `.card` class. Field width is just flexbox: `Field`/`Group` are `flex-direction:
+column`, and flex's default `align-items: stretch` makes the `input`/`select`/`textarea` child fill
+the width with no extra CSS.
+
+Sections default open/closed based on whether they hold "core" content (Basics, Post Media,
+Reactions & Metrics — always open) vs. optional features that are only worth surfacing when
+actually configured (Profile Photo opens if avatar mode isn't "random", Bio/Ad/Intervention open
+only if actually enabled/non-`"none"`) — so editing an existing post that already uses one of these
+features never hides it behind a collapsed section.
+
+Every field's `value`/`onChange` handler was copied verbatim from the old markup — only the
+surrounding structure changed. Verified via diff: identical sets of `editing.*`/`ed.*` field
+references and identical `setEditing(` call counts between old and new versions of all six files
+(see git history for the exact commit). **Not click-tested live** — same sandbox dev-server
+limitation as the admin dashboard redesign above (`npm run dev` hangs here); only syntax-checked
+via the `@babel/parser` workaround. Do a manual click-through in a future session before assuming
+edge cases (e.g. the note/label intervention meta-groups sub-UI, or the Instagram carousel
+image cropper) render correctly, the same lesson as the admin dashboard and Projects→Platform→
+Dashboard flow above.
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this
   environment** (confirmed by running it directly, with a cleared `node_modules/.vite` cache,
   and via the browser-preview tooling — all hang the same way, never printing the "Local:
-  http://..." banner). Same underlying class of issue as the `npm run build` problem below
+  http://..." banner; reconfirmed 2026-08-01, several attempts across a long session, no
+  change). This is purely a limitation of Claude's sandbox — the external pipeline that builds
+  and deploys `main` to production (see "Deployment" section up top) clearly does not hit this,
+  since pushed changes do go live. Same underlying class of issue as the `npm run build` problem
+  below
   (macOS code-signing/Gatekeeper blocking a native binary Vite needs at startup), just now also
   blocking dev, not only build. Not caused by any app code change.
 - `npm run build` — **currently broken in this environment**: `@rollup/rollup-darwin-arm64`

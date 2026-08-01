@@ -12,6 +12,7 @@ import {
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-facebook";
 import { randomAvatarByKind } from "../avatar-utils";
+import { EditorSection, Field, Group, RadioGroup, CheckRow, PreviewPane, Toggle } from "./components-admin-editor-ui";
 
 /* ---------- gender-neutral comic avatar (64px) ---------------- */
 export function genNeutralAvatarDataUrl(size = 64) {
@@ -136,96 +137,87 @@ export function AdminPostEditor({
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const hasBio = !!editing.showBio;
+  const hasAd = (editing.adType || "none") !== "none";
+  const hasIntervention = (editing.interventionType || "none") !== "none";
+  const customAvatar = (editing.avatarMode || "random") !== "random";
+
   return (
     <div className="editor-grid">
       <div className="editor-form">
-        <h4 className="section-title">Basics</h4>
+        <EditorSection title="Basics" subtitle="Author, timestamp &amp; post text" defaultOpen>
+          <Field
+            label="Post name (for CSV)"
+            hint={
+              <>This label replaces the post ID in CSV headers (e.g., <code>{(editing.postName || "Name")}_reacted</code>).</>
+            }
+          >
+            <input
+              className="input"
+              placeholder="e.g. Vaccine Story A"
+              value={editing.postName || ""}
+              onChange={(e) => setEditing(ed => ({ ...ed, postName: e.target.value }))}
+            />
+          </Field>
 
-        {/* Post name (CSV mapping) */}
-        <label>Post name (for CSV)
-          <input
-            className="input"
-            placeholder="e.g. Vaccine Story A"
-            value={editing.postName || ""}
-            onChange={(e) => setEditing(ed => ({ ...ed, postName: e.target.value }))}
-          />
-          <div className="subtle" style={{ marginTop: 4 }}>
-            This label replaces the post ID in CSV headers (e.g., <code>{(editing.postName || "Name")}_reacted</code>).
-          </div>
-        </label>
+          <Field label="Author">
+            <input
+              className="input"
+              value={editing.author}
+              onChange={(e) => {
+                const author = e.target.value;
+                setEditing(ed => ({
+                  ...ed,
+                  author,
+                  avatarUrl:
+                    ed.avatarMode === "random" && ed.avatarRandomKind === "company"
+                      ? randomAvatarByKind("company", ed.id || author || "seed", author || "")
+                      : (ed.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : ed.avatarUrl)
+                }));
+              }}
+            />
+          </Field>
 
-        <label>Author
-          <input
-            className="input"
-            value={editing.author}
-            onChange={(e) => {
-              const author = e.target.value;
-              setEditing(ed => ({
-                ...ed,
-                author,
-                avatarUrl:
-                  ed.avatarMode === "random" && ed.avatarRandomKind === "company"
-                    ? randomAvatarByKind("company", ed.id || author || "seed", author || "")
-                    : (ed.avatarMode === "neutral" ? genNeutralAvatarDataUrl(64) : ed.avatarUrl)
-              }));
-            }}
-          />
-        </label>
-        <div className="grid-2">
-          <label>Verification badge
-            <select className="select" value={String(!!editing.badge)} onChange={(e) => setEditing({ ...editing, badge: e.target.value === "true" })}>
-              <option value="false">Off</option>
-              <option value="true">On</option>
-            </select>
-          </label>
-          <label>Time
-            <input className="input" value={editing.time} onChange={(e) => setEditing({ ...editing, time: e.target.value })} />
-            <div className="subtle" style={{ marginTop: 6 }}>
-              Leave blank to hide time.
-            </div>
-          </label>
-
-          <label className="label">Author Type</label>
-          <div className="row">
-            {["female","male","company"].map(opt => (
-              <label key={opt} style={{ marginRight: 12 }}>
-                <input
-                  type="radio"
-                  name={`authorType-${editing.id}`}
-                  value={opt}
-                  checked={(editing.authorType || "female") === opt}
-                  onChange={e => setEditing(ed => ({ ...ed, authorType: e.target.value }))}
-                />
-                <span style={{ marginLeft: 6, textTransform: "capitalize" }}>{opt}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Topic (used for image-by-topic randomization, exports with the post) */}
-        <label>Topic
-          <input
-            className="input"
-            placeholder='e.g. "climate_change" or "education"'
-            value={editing.topic || ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              setEditing(ed => ({ ...ed, topic: v }));
-            }}
-          />
-          <div className="subtle" style={{ marginTop: 6 }}>
-            Saved with the post and included in feed JSON. The media randomizer can use this to pick images from your S3 topic folder.
-          </div>
-        </label>
-
-        <label>Post text
-          <textarea className="textarea" rows={5} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
-        </label>
-
-        <h4 className="section-title">Profile Photo</h4>
-        <fieldset className="fieldset">
           <div className="grid-2">
-            <label>Mode
+            <Toggle
+              label="Verification badge"
+              checked={!!editing.badge}
+              onChange={(v) => setEditing({ ...editing, badge: v })}
+            />
+            <Field label="Time" hint="Leave blank to hide time.">
+              <input className="input" value={editing.time} onChange={(e) => setEditing({ ...editing, time: e.target.value })} />
+            </Field>
+          </div>
+
+          <Group label="Author Type">
+            <RadioGroup
+              name={`authorType-${editing.id}`}
+              value={editing.authorType || "female"}
+              onChange={(v) => setEditing(ed => ({ ...ed, authorType: v }))}
+              options={[{ value: "female" }, { value: "male" }, { value: "company" }]}
+            />
+          </Group>
+
+          <Field
+            label="Topic"
+            hint="Saved with the post and included in feed JSON. The media randomizer can use this to pick images from your S3 topic folder."
+          >
+            <input
+              className="input"
+              placeholder='e.g. "climate_change" or "education"'
+              value={editing.topic || ""}
+              onChange={(e) => setEditing(ed => ({ ...ed, topic: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Post text">
+            <textarea className="textarea" rows={5} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
+          </Field>
+        </EditorSection>
+
+        <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" defaultOpen={customAvatar}>
+          <div className="grid-2">
+            <Field label="Mode">
               <select
                 className="select"
                 value={editing.avatarMode}
@@ -248,14 +240,14 @@ export function AdminPostEditor({
                 <option value="upload">Upload image</option>
                 <option value="url">Direct URL</option>
               </select>
-            </label>
+            </Field>
             <div className="avatar-preview">
               <div className="avatar"><img className="avatar-img" alt="" src={editing.avatarUrl || pravatar(8)} /></div>
             </div>
           </div>
 
           {editing.avatarMode === "random" && (
-            <label>Random type
+            <Field label="Random type">
               <select
                 className="select"
                 value={editing.avatarRandomKind || "any"}
@@ -270,16 +262,16 @@ export function AdminPostEditor({
                 <option value="male">Male</option>
                 <option value="company">Company logo</option>
               </select>
-            </label>
+            </Field>
           )}
 
           {editing.avatarMode === "url" && (
-            <label>Avatar URL
+            <Field label="Avatar URL">
               <input className="input" value={editing.avatarUrl || ""} onChange={(e) => setEditing({ ...editing, avatarUrl: e.target.value })} />
-            </label>
+            </Field>
           )}
           {editing.avatarMode === "upload" && (
-            <label>Upload avatar
+            <Field label="Upload avatar">
               <input
                 type="file"
                 accept="image/*"
@@ -326,38 +318,29 @@ export function AdminPostEditor({
                   }
                 }}
               />
-            </label>
+            </Field>
           )}
-        </fieldset>
+        </EditorSection>
 
-        <h4 className="section-title">Facebook Profile / Bio</h4>
-        <fieldset className="fieldset">
-          <label>Enable profile preview
-            <select
-              className="select"
-              value={String(!!editing.showBio)}
-              onChange={(e) => {
-                const enabled = e.target.value === "true";
-                setEditing((ed) => ({
-                  ...ed,
-                  showBio: enabled,
-                  bio_posts: Number.isFinite(Number(ed.bio_posts)) ? Number(ed.bio_posts) : 0,
-                  bio_followers: Number.isFinite(Number(ed.bio_followers)) ? Number(ed.bio_followers) : 0,
-                  bio_following: Number.isFinite(Number(ed.bio_following)) ? Number(ed.bio_following) : 0,
-                }));
-              }}
-            >
-              <option value="false">Off</option>
-              <option value="true">On</option>
-            </select>
-            <div className="subtle" style={{ marginTop: 6 }}>
-              When enabled, participants can open a Facebook-style profile preview by clicking or hovering over the author name/avatar. The interaction is saved as <code>bio_opened</code> and URL clicks as <code>bio_url_clicked</code>.
-            </div>
-          </label>
+        <EditorSection title="Facebook Profile / Bio" subtitle="Optional profile preview on click/hover" defaultOpen={hasBio} badge={hasBio ? "On" : null}>
+          <Toggle
+            label="Enable profile preview"
+            hint="Participants can open a Facebook-style profile preview by clicking or hovering over the author name/avatar. Recorded as bio_opened and bio_url_clicked."
+            checked={!!editing.showBio}
+            onChange={(enabled) => {
+              setEditing((ed) => ({
+                ...ed,
+                showBio: enabled,
+                bio_posts: Number.isFinite(Number(ed.bio_posts)) ? Number(ed.bio_posts) : 0,
+                bio_followers: Number.isFinite(Number(ed.bio_followers)) ? Number(ed.bio_followers) : 0,
+                bio_following: Number.isFinite(Number(ed.bio_following)) ? Number(ed.bio_following) : 0,
+              }));
+            }}
+          />
 
           {editing.showBio && (
             <>
-              <label>Bio / About text
+              <Field label="Bio / About text">
                 <textarea
                   className="textarea"
                   rows={4}
@@ -365,22 +348,22 @@ export function AdminPostEditor({
                   value={editing.bio_text || ""}
                   onChange={(e) => setEditing((ed) => ({ ...ed, bio_text: e.target.value }))}
                 />
-              </label>
+              </Field>
 
-              <label>Profile / website URL
+              <Field
+                label="Profile / website URL"
+                hint="The feed does not navigate participants away; it records the click and shows the same study message used elsewhere."
+              >
                 <input
                   className="input"
                   placeholder="https://example.com"
                   value={editing.bio_url || ""}
                   onChange={(e) => setEditing((ed) => ({ ...ed, bio_url: e.target.value }))}
                 />
-                <div className="subtle" style={{ marginTop: 6 }}>
-                  The feed does not navigate participants away; it records the click and shows the same study message used elsewhere.
-                </div>
-              </label>
+              </Field>
 
               <div className="grid-3">
-                <label>Posts
+                <Field label="Posts">
                   <input
                     className="input"
                     type="number"
@@ -394,8 +377,8 @@ export function AdminPostEditor({
                       setEditing((ed) => ({ ...ed, bio_posts: Number.isFinite(v) ? v : 0 }));
                     }}
                   />
-                </label>
-                <label>Followers
+                </Field>
+                <Field label="Followers">
                   <input
                     className="input"
                     type="number"
@@ -409,8 +392,8 @@ export function AdminPostEditor({
                       setEditing((ed) => ({ ...ed, bio_followers: Number.isFinite(v) ? v : 0 }));
                     }}
                   />
-                </label>
-                <label>Following
+                </Field>
+                <Field label="Following">
                   <input
                     className="input"
                     type="number"
@@ -424,11 +407,11 @@ export function AdminPostEditor({
                       setEditing((ed) => ({ ...ed, bio_following: Number.isFinite(v) ? v : 0 }));
                     }}
                   />
-                </label>
+                </Field>
               </div>
             </>
           )}
-        </fieldset>
+        </EditorSection>
 
         {/* ----------------------- MEDIA (already modular) ----------------------- */}
         <MediaFieldset
@@ -441,9 +424,8 @@ export function AdminPostEditor({
           setUploadingPoster={setUploadingPoster}
         />
 
-        <h4 className="section-title">Link preview / Ad</h4>
-        <fieldset className="fieldset">
-          <label>Post type
+        <EditorSection title="Link preview / Ad" subtitle="Sponsored ad or news link card" defaultOpen={hasAd} badge={hasAd ? (editing.adType === "ad" ? "Ad" : "News") : null}>
+          <Field label="Post type">
             <select
               className="select"
               value={editing.adType || "none"}
@@ -464,363 +446,346 @@ export function AdminPostEditor({
               <option value="ad">Sponsored ad</option>
               <option value="news">News link preview</option>
             </select>
-          </label>
+          </Field>
 
           {editing.adType === "ad" && (
             <>
-              <label>Domain / URL
+              <Field label="Domain / URL">
                 <input className="input" value={editing.adDomain || ""} onChange={(e) => setEditing({ ...editing, adDomain: e.target.value })} placeholder="www.example.com" />
-              </label>
-              <label>Headline
+              </Field>
+              <Field label="Headline">
                 <input className="input" value={editing.adHeadline || ""} onChange={(e) => setEditing({ ...editing, adHeadline: e.target.value })} placeholder="Free Shipping" />
-              </label>
-              <label>Subheadline
+              </Field>
+              <Field label="Subheadline">
                 <input className="input" value={editing.adSubheadline || ""} onChange={(e) => setEditing({ ...editing, adSubheadline: e.target.value })} placeholder="Product sub copy here" />
-              </label>
-              <label>Destination URL
+              </Field>
+              <Field label="Destination URL">
                 <input className="input" value={editing.adUrl || ""} onChange={(e) => setEditing({ ...editing, adUrl: e.target.value })} placeholder="https://www.example.com" />
-              </label>
-              <label>Button Text
+              </Field>
+              <Field label="Button Text">
                 <input className="input" value={editing.adButtonText || ""} onChange={(e) => setEditing({ ...editing, adButtonText: e.target.value })} placeholder="Shop now" />
-              </label>
+              </Field>
             </>
           )}
 
           {editing.adType === "news" && (
             <>
-              <div className="subtle" style={{ marginBottom: 8 }}>
+              <div className="subtle">
                 A news post uses the uploaded/selected image as the preview image. Clicking the image or grey preview banner records <code>news_clicked</code> and shows an “Action noted” message instead of opening the website.
               </div>
-              <label>News source / domain
+              <Field label="News source / domain">
                 <input className="input" value={editing.newsDomain || ""} onChange={(e) => setEditing({ ...editing, newsDomain: e.target.value })} placeholder="example.com" />
-              </label>
-              <label>News headline
+              </Field>
+              <Field label="News headline">
                 <input className="input" value={editing.newsHeadline || ""} onChange={(e) => setEditing({ ...editing, newsHeadline: e.target.value })} placeholder="Headline shown below the image" />
-              </label>
-              <label>Short preview text
+              </Field>
+              <Field label="Short preview text">
                 <input className="input" value={editing.newsDescription || ""} onChange={(e) => setEditing({ ...editing, newsDescription: e.target.value })} placeholder="Optional short summary" />
-              </label>
-              <label>Destination URL / tracked link
+              </Field>
+              <Field label="Destination URL / tracked link">
                 <input className="input" value={editing.newsUrl || ""} onChange={(e) => setEditing({ ...editing, newsUrl: e.target.value })} placeholder="https://www.example.com/story" />
-              </label>
+              </Field>
             </>
           )}
-        </fieldset>
+        </EditorSection>
 
-       <h4 className="section-title">Intervention</h4>
-<fieldset className="fieldset">
-  <label>Type
-    <select
-      className="select"
-      value={editing.interventionType || "none"}
-      onChange={(e) => {
-        const nextType = e.target.value;
+        <EditorSection title="Intervention" subtitle="False-info label or context note" defaultOpen={hasIntervention} badge={hasIntervention ? (editing.interventionType === "note" ? "Note" : "Label") : null}>
+          <Field label="Type">
+            <select
+              className="select"
+              value={editing.interventionType || "none"}
+              onChange={(e) => {
+                const nextType = e.target.value;
 
-        setEditing((ed) => {
-          // If switching to note, ensure noteText exists (but don't force meta/groups)
-          if (nextType === "note") {
-            return {
-              ...ed,
-              interventionType: nextType,
-              noteText: ed.noteText ?? "",
-              noteMetaEnabled: !!ed.noteMetaEnabled,
-              noteReaderGroups: Array.isArray(ed.noteReaderGroups) ? ed.noteReaderGroups : [],
-              noteReaderGroup2Enabled: !!ed.noteReaderGroup2Enabled,
-            };
-          }
-          return { ...ed, interventionType: nextType };
-        });
-      }}
-    >
-      <option value="none">None</option>
-      <option value="label">False info label</option>
-      <option value="note">Context note</option>
-    </select>
-  </label>
+                setEditing((ed) => {
+                  // If switching to note, ensure noteText exists (but don't force meta/groups)
+                  if (nextType === "note") {
+                    return {
+                      ...ed,
+                      interventionType: nextType,
+                      noteText: ed.noteText ?? "",
+                      noteMetaEnabled: !!ed.noteMetaEnabled,
+                      noteReaderGroups: Array.isArray(ed.noteReaderGroups) ? ed.noteReaderGroups : [],
+                      noteReaderGroup2Enabled: !!ed.noteReaderGroup2Enabled,
+                    };
+                  }
+                  return { ...ed, interventionType: nextType };
+                });
+              }}
+            >
+              <option value="none">None</option>
+              <option value="label">False info label</option>
+              <option value="note">Context note</option>
+            </select>
+          </Field>
 
-  {editing.interventionType === "note" && (
-    <>
-      <label>Note text
-        <textarea
-          className="textarea"
-          rows={6}
-          value={editing.noteText || ""}
-          onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
-          placeholder={
-            "Write the context note.\n\nYou can use blank lines. URLs like https://... will be clickable in the feed."
-          }
-        />
-        <div className="subtle" style={{ marginTop: 6 }}>
-          Tip: Add blank lines for readability. URLs will render as clickable links in the feed.
-        </div>
-      </label>
-
-      {/* Toggle meta tooltip */}
-      <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-        <input
-          type="checkbox"
-          checked={!!editing.noteMetaEnabled}
-          onChange={(e) => {
-            const on = e.target.checked;
-            setEditing((ed) => {
-              // When enabling, ensure at least group 1 exists
-              const groups = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
-              if (on && groups.length === 0) groups.push({ type: "", size: "" });
-
-              return {
-                ...ed,
-                noteMetaEnabled: on,
-                noteReaderGroups: on ? groups : [],
-                noteReaderGroup2Enabled: on ? !!ed.noteReaderGroup2Enabled : false,
-              };
-            });
-          }}
-        />
-        <span>Add contributor info tooltip (optional)</span>
-      </label>
-
-      {/* Meta groups */}
-      {editing.noteMetaEnabled && (() => {
-        const groups = Array.isArray(editing.noteReaderGroups) ? editing.noteReaderGroups : [];
-        const g0 = groups[0] || { type: "", size: "" };
-        const g1 = groups[1] || { type: "", size: "" };
-        const hasSecond = !!editing.noteReaderGroup2Enabled;
-
-        const setGroup = (idx, patch) => {
-          setEditing((ed) => {
-            const prev = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
-            while (prev.length < 2) prev.push({ type: "", size: "" });
-            prev[idx] = { ...prev[idx], ...patch };
-            // If second group is disabled, keep only first group in storage
-            return {
-              ...ed,
-              noteReaderGroups: ed.noteReaderGroup2Enabled ? prev : [prev[0]],
-            };
-          });
-        };
-
-        return (
-          <>
-            <div className="grid-2" style={{ marginTop: 8 }}>
-              <label>Group 1 type
-                <input
-                  className="input"
-                  value={g0.type}
-                  onChange={(e) => setGroup(0, { type: e.target.value })}
-                  placeholder='e.g., "Community readers"'
+          {editing.interventionType === "note" && (
+            <>
+              <Field
+                label="Note text"
+                hint="Tip: Add blank lines for readability. URLs will render as clickable links in the feed."
+              >
+                <textarea
+                  className="textarea"
+                  rows={6}
+                  value={editing.noteText || ""}
+                  onChange={(e) => setEditing((ed) => ({ ...ed, noteText: e.target.value }))}
+                  placeholder={
+                    "Write the context note.\n\nYou can use blank lines. URLs like https://... will be clickable in the feed."
+                  }
                 />
-              </label>
+              </Field>
 
-              <label>Group 1 size
-                <input
-                  className="input"
-                  value={g0.size}
-                  onChange={(e) => setGroup(0, { size: e.target.value })}
-                  placeholder='e.g., "Several" or "Many"'
-                />
-              </label>
-            </div>
-
-            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
-              <input
-                type="checkbox"
-                checked={!!editing.noteReaderGroup2Enabled}
+              <CheckRow
+                checked={!!editing.noteMetaEnabled}
                 onChange={(e) => {
                   const on = e.target.checked;
                   setEditing((ed) => {
-                    const prev = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
-                    while (prev.length < 2) prev.push({ type: "", size: "" });
+                    // When enabling, ensure at least group 1 exists
+                    const groups = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
+                    if (on && groups.length === 0) groups.push({ type: "", size: "" });
+
                     return {
                       ...ed,
-                      noteReaderGroup2Enabled: on,
-                      noteReaderGroups: on ? prev : [prev[0]],
+                      noteMetaEnabled: on,
+                      noteReaderGroups: on ? groups : [],
+                      noteReaderGroup2Enabled: on ? !!ed.noteReaderGroup2Enabled : false,
                     };
                   });
                 }}
-              />
-              <span>Add second contributor group</span>
-            </label>
+              >
+                Add contributor info tooltip (optional)
+              </CheckRow>
 
-            {hasSecond && (
-              <div className="grid-2" style={{ marginTop: 8 }}>
-                <label>Group 2 type
-                  <input
-                    className="input"
-                    value={g1.type}
-                    onChange={(e) => setGroup(1, { type: e.target.value })}
-                    placeholder='e.g., "Subject-matter experts"'
-                  />
-                </label>
+              {editing.noteMetaEnabled && (() => {
+                const groups = Array.isArray(editing.noteReaderGroups) ? editing.noteReaderGroups : [];
+                const g0 = groups[0] || { type: "", size: "" };
+                const g1 = groups[1] || { type: "", size: "" };
+                const hasSecond = !!editing.noteReaderGroup2Enabled;
 
-                <label>Group 2 size
-                  <input
-                    className="input"
-                    value={g1.size}
-                    onChange={(e) => setGroup(1, { size: e.target.value })}
-                    placeholder='e.g., "A few"'
-                  />
-                </label>
-              </div>
-            )}
+                const setGroup = (idx, patch) => {
+                  setEditing((ed) => {
+                    const prev = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
+                    while (prev.length < 2) prev.push({ type: "", size: "" });
+                    prev[idx] = { ...prev[idx], ...patch };
+                    // If second group is disabled, keep only first group in storage
+                    return {
+                      ...ed,
+                      noteReaderGroups: ed.noteReaderGroup2Enabled ? prev : [prev[0]],
+                    };
+                  });
+                };
 
-            <div className="subtle" style={{ marginTop: 6 }}>
-              This tooltip can show one or two contributor groups and their approximate sizes.
-            </div>
-          </>
-        );
-      })()}
-    </>
-  )}
+                return (
+                  <Group label="Contributor groups" hint="This tooltip can show one or two contributor groups and their approximate sizes.">
+                    <div className="grid-2">
+                      <Field label="Group 1 type">
+                        <input
+                          className="input"
+                          value={g0.type}
+                          onChange={(e) => setGroup(0, { type: e.target.value })}
+                          placeholder='e.g., "Community readers"'
+                        />
+                      </Field>
 
-  {editing.interventionType === "label" && (
-  <>
-    <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
-      <input
-        type="checkbox"
-        checked={!!editing.noteMetaEnabled}
-        onChange={(e) => {
-          const on = e.target.checked;
-          setEditing((ed) => ({
-            ...ed,
-            noteMetaEnabled: on,
-            noteReaderGroups: on
-              ? (Array.isArray(ed.noteReaderGroups)
-                  ? ed.noteReaderGroups
-                  : [{ type: "", size: "" }])
-              : [],
-            noteReaderGroup2Enabled: false
-          }));
-        }}
-      />
-      <span>Add “Type” and “Size” info tooltip</span>
-    </label>
+                      <Field label="Group 1 size">
+                        <input
+                          className="input"
+                          value={g0.size}
+                          onChange={(e) => setGroup(0, { size: e.target.value })}
+                          placeholder='e.g., "Several" or "Many"'
+                        />
+                      </Field>
+                    </div>
 
-    {editing.noteMetaEnabled && (() => {
-      const groups = Array.isArray(editing.noteReaderGroups)
-        ? editing.noteReaderGroups
-        : [];
+                    <CheckRow
+                      checked={!!editing.noteReaderGroup2Enabled}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setEditing((ed) => {
+                          const prev = Array.isArray(ed.noteReaderGroups) ? [...ed.noteReaderGroups] : [];
+                          while (prev.length < 2) prev.push({ type: "", size: "" });
+                          return {
+                            ...ed,
+                            noteReaderGroup2Enabled: on,
+                            noteReaderGroups: on ? prev : [prev[0]],
+                          };
+                        });
+                      }}
+                    >
+                      Add second contributor group
+                    </CheckRow>
 
-      const g0 = groups[0] || { type: "", size: "" };
-      const g1 = groups[1] || { type: "", size: "" };
+                    {hasSecond && (
+                      <div className="grid-2">
+                        <Field label="Group 2 type">
+                          <input
+                            className="input"
+                            value={g1.type}
+                            onChange={(e) => setGroup(1, { type: e.target.value })}
+                            placeholder='e.g., "Subject-matter experts"'
+                          />
+                        </Field>
 
-      const setGroup = (idx, patch) => {
-        setEditing((ed) => {
-          const prev = Array.isArray(ed.noteReaderGroups)
-            ? [...ed.noteReaderGroups]
-            : [];
-
-          while (prev.length < 2) prev.push({ type: "", size: "" });
-          prev[idx] = { ...prev[idx], ...patch };
-
-          return { ...ed, noteReaderGroups: prev };
-        });
-      };
-
-      return (
-        <>
-          <div className="grid-2" style={{ marginTop: 8 }}>
-            <label>Group 1 type
-              <input
-                className="input"
-                value={g0.type}
-                onChange={(e) => setGroup(0, { type: e.target.value })}
-                placeholder='e.g., "Community readers"'
-              />
-            </label>
-
-            <label>Group 1 size
-              <input
-                className="input"
-                value={g0.size}
-                onChange={(e) => setGroup(0, { size: e.target.value })}
-                placeholder='e.g., "Several"'
-              />
-            </label>
-          </div>
-
-          <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
-            <input
-              type="checkbox"
-              checked={!!editing.noteReaderGroup2Enabled}
-              onChange={(e) => {
-                const on = e.target.checked;
-                setEditing((ed) => ({
-                  ...ed,
-                  noteReaderGroup2Enabled: on,
-                  noteReaderGroups: on
-                    ? (Array.isArray(ed.noteReaderGroups)
-                        ? ed.noteReaderGroups
-                        : [{ type: "", size: "" }, { type: "", size: "" }])
-                    : [g0],
-                }));
-              }}
-            />
-            <span>Add second reader group</span>
-          </label>
-
-          {editing.noteReaderGroup2Enabled && (
-            <div className="grid-2" style={{ marginTop: 8 }}>
-              <label>Group 2 type
-                <input
-                  className="input"
-                  value={g1.type}
-                  onChange={(e) => setGroup(1, { type: e.target.value })}
-                  placeholder='e.g., "Subject-matter experts"'
-                />
-              </label>
-
-              <label>Group 2 size
-                <input
-                  className="input"
-                  value={g1.size}
-                  onChange={(e) => setGroup(1, { size: e.target.value })}
-                  placeholder='e.g., "A few"'
-                />
-              </label>
-            </div>
+                        <Field label="Group 2 size">
+                          <input
+                            className="input"
+                            value={g1.size}
+                            onChange={(e) => setGroup(1, { size: e.target.value })}
+                            placeholder='e.g., "A few"'
+                          />
+                        </Field>
+                      </div>
+                    )}
+                  </Group>
+                );
+              })()}
+            </>
           )}
-        </>
-      );
-    })()}
-  </>
-)}
-</fieldset>
 
-        <h4 className="section-title">Reactions & Metrics</h4>
-        <fieldset className="fieldset">
-          <label>Show reactions
-            <select className="select" value={String(!!editing.showReactions)} onChange={(e) => setEditing({ ...editing, showReactions: e.target.value === "true" })}>
-              <option value="false">Hide</option>
-              <option value="true">Show</option>
-            </select>
-          </label>
+          {editing.interventionType === "label" && (
+            <>
+              <CheckRow
+                checked={!!editing.noteMetaEnabled}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setEditing((ed) => ({
+                    ...ed,
+                    noteMetaEnabled: on,
+                    noteReaderGroups: on
+                      ? (Array.isArray(ed.noteReaderGroups)
+                          ? ed.noteReaderGroups
+                          : [{ type: "", size: "" }])
+                      : [],
+                    noteReaderGroup2Enabled: false
+                  }));
+                }}
+              >
+                Add “Type” and “Size” info tooltip
+              </CheckRow>
 
-          <div className="subtle">Display these reactions</div>
-          <div className="rx-pills">
-            {Object.keys(REACTION_META).map((key) => {
-              const checked = (editing.selectedReactions || []).includes(key);
-              return (
-                <label key={key} className={`pill ${checked ? "active" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => {
-                      const prev = new Set(editing.selectedReactions || []);
-                      e.target.checked ? prev.add(key) : prev.delete(key);
-                      setEditing({ ...editing, selectedReactions: Array.from(prev) });
-                    }}
-                  />
-                  <span className="emoji">{REACTION_META[key].emoji}</span>
-                  <span>{REACTION_META[key].label}</span>
-                </label>
-              );
-            })}
-          </div>
+              {editing.noteMetaEnabled && (() => {
+                const groups = Array.isArray(editing.noteReaderGroups)
+                  ? editing.noteReaderGroups
+                  : [];
+
+                const g0 = groups[0] || { type: "", size: "" };
+                const g1 = groups[1] || { type: "", size: "" };
+
+                const setGroup = (idx, patch) => {
+                  setEditing((ed) => {
+                    const prev = Array.isArray(ed.noteReaderGroups)
+                      ? [...ed.noteReaderGroups]
+                      : [];
+
+                    while (prev.length < 2) prev.push({ type: "", size: "" });
+                    prev[idx] = { ...prev[idx], ...patch };
+
+                    return { ...ed, noteReaderGroups: prev };
+                  });
+                };
+
+                return (
+                  <Group label="Reader groups">
+                    <div className="grid-2">
+                      <Field label="Group 1 type">
+                        <input
+                          className="input"
+                          value={g0.type}
+                          onChange={(e) => setGroup(0, { type: e.target.value })}
+                          placeholder='e.g., "Community readers"'
+                        />
+                      </Field>
+
+                      <Field label="Group 1 size">
+                        <input
+                          className="input"
+                          value={g0.size}
+                          onChange={(e) => setGroup(0, { size: e.target.value })}
+                          placeholder='e.g., "Several"'
+                        />
+                      </Field>
+                    </div>
+
+                    <CheckRow
+                      checked={!!editing.noteReaderGroup2Enabled}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setEditing((ed) => ({
+                          ...ed,
+                          noteReaderGroup2Enabled: on,
+                          noteReaderGroups: on
+                            ? (Array.isArray(ed.noteReaderGroups)
+                                ? ed.noteReaderGroups
+                                : [{ type: "", size: "" }, { type: "", size: "" }])
+                            : [g0],
+                        }));
+                      }}
+                    >
+                      Add second reader group
+                    </CheckRow>
+
+                    {editing.noteReaderGroup2Enabled && (
+                      <div className="grid-2">
+                        <Field label="Group 2 type">
+                          <input
+                            className="input"
+                            value={g1.type}
+                            onChange={(e) => setGroup(1, { type: e.target.value })}
+                            placeholder='e.g., "Subject-matter experts"'
+                          />
+                        </Field>
+
+                        <Field label="Group 2 size">
+                          <input
+                            className="input"
+                            value={g1.size}
+                            onChange={(e) => setGroup(1, { size: e.target.value })}
+                            placeholder='e.g., "A few"'
+                          />
+                        </Field>
+                      </div>
+                    )}
+                  </Group>
+                );
+              })()}
+            </>
+          )}
+        </EditorSection>
+
+        <EditorSection title="Reactions & Metrics" subtitle="Reaction counts, comments, shares" defaultOpen>
+          <Toggle
+            label="Show reactions"
+            checked={!!editing.showReactions}
+            onChange={(v) => setEditing({ ...editing, showReactions: v })}
+          />
+
+          <Group label="Display these reactions">
+            <div className="rx-pills">
+              {Object.keys(REACTION_META).map((key) => {
+                const checked = (editing.selectedReactions || []).includes(key);
+                return (
+                  <label key={key} className={`pill ${checked ? "active" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const prev = new Set(editing.selectedReactions || []);
+                        e.target.checked ? prev.add(key) : prev.delete(key);
+                        setEditing({ ...editing, selectedReactions: Array.from(prev) });
+                      }}
+                    />
+                    <span className="emoji">{REACTION_META[key].emoji}</span>
+                    <span>{REACTION_META[key].label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </Group>
 
           <div className="grid-3">
             {Object.keys(REACTION_META).map((key) => (
-              <label key={key}>
-                {REACTION_META[key].label}
+              <Field key={key} label={REACTION_META[key].label}>
                 <input
                   className="input"
                   type="number" min="0" inputMode="numeric" placeholder="0"
@@ -831,12 +796,12 @@ export function AdminPostEditor({
                     setEditing((ed) => ({ ...ed, reactions: { ...(ed.reactions || {}), [key]: v } }));
                   }}
                 />
-              </label>
+              </Field>
             ))}
           </div>
 
           <div className="grid-2">
-            <label>Comments
+            <Field label="Comments">
               <input
                 className="input"
                 type="number"
@@ -850,8 +815,8 @@ export function AdminPostEditor({
                   setEditing((ed) => ({ ...ed, metrics: { ...(ed.metrics || {}), comments: v } }));
                 }}
               />
-            </label>
-            <label>Shares
+            </Field>
+            <Field label="Shares">
               <input
                 className="input"
                 type="number"
@@ -865,37 +830,34 @@ export function AdminPostEditor({
                   setEditing((ed) => ({ ...ed, metrics: { ...(ed.metrics || {}), shares: v } }));
                 }}
               />
-            </label>
+            </Field>
           </div>
-        </fieldset>
+        </EditorSection>
       </div>
 
-      <aside className="editor-preview">
-        <div className="preview-head">Live preview</div>
-        <div className="preview-zoom" style={{ pointerEvents: "auto" }}>
-          <PostCard
-            key={editing.id || "preview"}
-            post={{
-              ...editing,
-              avatarUrl:
-                editing.avatarMode === "neutral"
-                  ? genNeutralAvatarDataUrl(64)
-                  : (editing.avatarMode === "random" && !editing.avatarUrl
-                    ? randomAvatarByKind(editing.avatarRandomKind || "any", editing.id || editing.author || "seed", editing.author || "", randomAvatarUrl)
-                    : editing.avatarUrl),
-              image:
-                editing.imageMode === "random"
-                  ? (editing.image || randomSVG("Image"))
-                  : editing.imageMode === "none"
-                    ? null
-                    : editing.image,
-            }}
-            registerViewRef={() => () => {}}
-            onAction={(a, m) => console.debug("preview action:", a, m)}
-            respectShowReactions={true}
-          />
-        </div>
-      </aside>
+      <PreviewPane platformLabel="Facebook">
+        <PostCard
+          key={editing.id || "preview"}
+          post={{
+            ...editing,
+            avatarUrl:
+              editing.avatarMode === "neutral"
+                ? genNeutralAvatarDataUrl(64)
+                : (editing.avatarMode === "random" && !editing.avatarUrl
+                  ? randomAvatarByKind(editing.avatarRandomKind || "any", editing.id || editing.author || "seed", editing.author || "", randomAvatarUrl)
+                  : editing.avatarUrl),
+            image:
+              editing.imageMode === "random"
+                ? (editing.image || randomSVG("Image"))
+                : editing.imageMode === "none"
+                  ? null
+                  : editing.image,
+          }}
+          registerViewRef={() => () => {}}
+          onAction={(a, m) => console.debug("preview action:", a, m)}
+          respectShowReactions={true}
+        />
+      </PreviewPane>
     </div>
   );
 }

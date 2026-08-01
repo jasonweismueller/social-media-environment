@@ -3,6 +3,7 @@ import React from "react";
 import { uid } from "../utils";
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-amazon";
+import { EditorSection, Field, Toggle, PreviewPane } from "./components-admin-editor-ui";
 
 /* ----------------------------------------------------------------------------
    Amazon Reviews admin editor
@@ -96,17 +97,6 @@ function setBoth(setEditing, a, b, value) {
   setEditing((ed) => ({ ...ed, [a]: value, [b]: value }));
 }
 
-function BoolSelect({ label, value, onChange }) {
-  return (
-    <label>{label}
-      <select className="select" value={String(!!value)} onChange={(e) => onChange(e.target.value === "true")}>
-        <option value="true">On</option>
-        <option value="false">Off</option>
-      </select>
-    </label>
-  );
-}
-
 export function AdminPostEditor({
   editing,
   setEditing,
@@ -122,148 +112,150 @@ export function AdminPostEditor({
   const rating = Number(editing.rating ?? editing.stars ?? 5) || 5;
 
   return (
-    <div className="editor-grid amz-editor-grid">
-      <div className="editor-form amz-editor-form">
-        <h4 className="section-title">Review identity</h4>
+    <div className="editor-grid">
+      <div className="editor-form">
+        <EditorSection title="Review identity" subtitle="Reviewer, rating, title &amp; body" defaultOpen>
+          <Field
+            label="Review name (for CSV)"
+            hint="Used as the readable review label in exported columns where your existing export code uses post names."
+          >
+            <input
+              className="input"
+              placeholder="e.g. Review_A"
+              value={editing.postName || editing.name || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEditing((ed) => ({ ...ed, postName: v, name: v }));
+              }}
+            />
+          </Field>
 
-        <label>Review name (for CSV)
-          <input
-            className="input"
-            placeholder="e.g. Review_A"
-            value={editing.postName || editing.name || ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              setEditing((ed) => ({ ...ed, postName: v, name: v }));
-            }}
-          />
-          <div className="subtle" style={{ marginTop: 4 }}>
-            Used as the readable review label in exported columns where your existing export code uses post names.
+          <div className="grid-2">
+            <Field label="Reviewer name">
+              <input
+                className="input"
+                value={reviewer}
+                placeholder="Amazon Customer"
+                onChange={(e) => setBoth(setEditing, "reviewer", "author", e.target.value)}
+              />
+            </Field>
+
+            <Field label="Star rating">
+              <select
+                className="select"
+                value={String(rating)}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setEditing((ed) => ({ ...ed, rating: v, stars: v }));
+                }}
+              >
+                <option value="5">5 stars</option>
+                <option value="4">4 stars</option>
+                <option value="3">3 stars</option>
+                <option value="2">2 stars</option>
+                <option value="1">1 star</option>
+              </select>
+            </Field>
           </div>
-        </label>
 
-        <div className="grid-2">
-          <label>Reviewer name
+          <Field label="Review title">
             <input
               className="input"
-              value={reviewer}
-              placeholder="Amazon Customer"
-              onChange={(e) => setBoth(setEditing, "reviewer", "author", e.target.value)}
+              value={reviewTitle}
+              placeholder="e.g. Good value for the price"
+              onChange={(e) => setBoth(setEditing, "review_title", "title", e.target.value)}
             />
-          </label>
+          </Field>
 
-          <label>Star rating
-            <select
-              className="select"
-              value={String(rating)}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setEditing((ed) => ({ ...ed, rating: v, stars: v }));
-              }}
-            >
-              <option value="5">5 stars</option>
-              <option value="4">4 stars</option>
-              <option value="3">3 stars</option>
-              <option value="2">2 stars</option>
-              <option value="1">1 star</option>
-            </select>
-          </label>
-        </div>
+          <Field label="Review text">
+            <textarea
+              className="textarea"
+              rows={8}
+              value={reviewText}
+              placeholder="Write the review body participants will see..."
+              onChange={(e) => setBoth(setEditing, "review_text", "text", e.target.value)}
+            />
+          </Field>
+        </EditorSection>
 
-        <label>Review title
-          <input
-            className="input"
-            value={reviewTitle}
-            placeholder="e.g. Good value for the price"
-            onChange={(e) => setBoth(setEditing, "review_title", "title", e.target.value)}
-          />
-        </label>
+        <EditorSection title="Review metadata" subtitle="Verified badge, helpful count, date &amp; variant" defaultOpen>
+          <div className="grid-2">
+            <Toggle
+              label="Verified purchase"
+              checked={editing.verified_purchase !== false}
+              onChange={(v) => setField(setEditing, "verified_purchase", v)}
+            />
+            <Field label="Helpful count">
+              <input
+                className="input"
+                type="number"
+                min="0"
+                value={Number(editing.helpful_count ?? editing.helpful ?? 0)}
+                onChange={(e) => {
+                  const v = Math.max(0, Number(e.target.value || 0));
+                  setEditing((ed) => ({ ...ed, helpful_count: v, helpful: v }));
+                }}
+              />
+            </Field>
+          </div>
 
-        <label>Review text
-          <textarea
-            className="textarea"
-            rows={8}
-            value={reviewText}
-            placeholder="Write the review body participants will see..."
-            onChange={(e) => setBoth(setEditing, "review_text", "text", e.target.value)}
-          />
-        </label>
-
-        <h4 className="section-title">Amazon review metadata</h4>
-        <div className="grid-2">
-          <BoolSelect
-            label="Verified purchase"
-            value={editing.verified_purchase !== false}
-            onChange={(v) => setField(setEditing, "verified_purchase", v)}
-          />
-          <label>Helpful count
+          <Field label="Review date/location line">
             <input
               className="input"
-              type="number"
-              min="0"
-              value={Number(editing.helpful_count ?? editing.helpful ?? 0)}
-              onChange={(e) => {
-                const v = Math.max(0, Number(e.target.value || 0));
-                setEditing((ed) => ({ ...ed, helpful_count: v, helpful: v }));
-              }}
+              value={editing.review_date || editing.time || ""}
+              placeholder="Reviewed in the United States on January 1, 2025"
+              onChange={(e) => setBoth(setEditing, "review_date", "time", e.target.value)}
             />
-          </label>
-        </div>
+          </Field>
 
-        <label>Review date/location line
-          <input
-            className="input"
-            value={editing.review_date || editing.time || ""}
-            placeholder="Reviewed in the United States on January 1, 2025"
-            onChange={(e) => setBoth(setEditing, "review_date", "time", e.target.value)}
-          />
-        </label>
-
-        <label>Product variant / style line
-          <input
-            className="input"
-            value={editing.product_variant || ""}
-            placeholder="Color: Black"
-            onChange={(e) => setField(setEditing, "product_variant", e.target.value)}
-          />
-        </label>
-
-        <label>Topic / condition label
-          <input
-            className="input"
-            value={editing.topic || ""}
-            placeholder="e.g. misinformation_review"
-            onChange={(e) => setField(setEditing, "topic", e.target.value)}
-          />
-        </label>
-
-        <h4 className="section-title">Participant actions</h4>
-        <div className="grid-2">
-          <BoolSelect
-            label="Helpful button"
-            value={editing.helpful_enabled !== false}
-            onChange={(v) => setField(setEditing, "helpful_enabled", v)}
-          />
-          <BoolSelect
-            label="Report button"
-            value={editing.report_enabled !== false}
-            onChange={(v) => setField(setEditing, "report_enabled", v)}
-          />
-          <BoolSelect
-            label="Read more"
-            value={editing.read_more_enabled !== false}
-            onChange={(v) => setField(setEditing, "read_more_enabled", v)}
-          />
-          <label>Collapsed lines
+          <Field label="Product variant / style line">
             <input
               className="input"
-              type="number"
-              min="2"
-              max="12"
-              value={Number(editing.collapsed_lines ?? 5)}
-              onChange={(e) => setField(setEditing, "collapsed_lines", Math.max(2, Number(e.target.value || 5)))}
+              value={editing.product_variant || ""}
+              placeholder="Color: Black"
+              onChange={(e) => setField(setEditing, "product_variant", e.target.value)}
             />
-          </label>
-        </div>
+          </Field>
+
+          <Field label="Topic / condition label">
+            <input
+              className="input"
+              value={editing.topic || ""}
+              placeholder="e.g. misinformation_review"
+              onChange={(e) => setField(setEditing, "topic", e.target.value)}
+            />
+          </Field>
+        </EditorSection>
+
+        <EditorSection title="Participant actions" subtitle="Helpful/report buttons &amp; read-more truncation" defaultOpen>
+          <div className="grid-2">
+            <Toggle
+              label="Helpful button"
+              checked={editing.helpful_enabled !== false}
+              onChange={(v) => setField(setEditing, "helpful_enabled", v)}
+            />
+            <Toggle
+              label="Report button"
+              checked={editing.report_enabled !== false}
+              onChange={(v) => setField(setEditing, "report_enabled", v)}
+            />
+            <Toggle
+              label="Read more"
+              checked={editing.read_more_enabled !== false}
+              onChange={(v) => setField(setEditing, "read_more_enabled", v)}
+            />
+            <Field label="Collapsed lines">
+              <input
+                className="input"
+                type="number"
+                min="2"
+                max="12"
+                value={Number(editing.collapsed_lines ?? 5)}
+                onChange={(e) => setField(setEditing, "collapsed_lines", Math.max(2, Number(e.target.value || 5)))}
+              />
+            </Field>
+          </div>
+        </EditorSection>
 
         <MediaFieldset
           editing={editing}
@@ -276,28 +268,25 @@ export function AdminPostEditor({
         />
       </div>
 
-      <div className="editor-preview amz-editor-preview">
-        <div className="preview-head">Amazon review preview</div>
-        <div className="preview-zoom" style={{ transform: "scale(.92)", transformOrigin: "top left" }}>
-          <PostCard
-            post={{
-              ...editing,
-              reviewer,
-              author: reviewer,
-              review_title: reviewTitle,
-              title: reviewTitle,
-              review_text: reviewText,
-              text: reviewText,
-              rating,
-              stars: rating,
-            }}
-            state={{ helpful: false, reported: false }}
-            onHelpful={() => {}}
-            onReport={() => {}}
-            onVisible={() => {}}
-          />
-        </div>
-      </div>
+      <PreviewPane platformLabel="Amazon" zoom={0.92}>
+        <PostCard
+          post={{
+            ...editing,
+            reviewer,
+            author: reviewer,
+            review_title: reviewTitle,
+            title: reviewTitle,
+            review_text: reviewText,
+            text: reviewText,
+            rating,
+            stars: rating,
+          }}
+          state={{ helpful: false, reported: false }}
+          onHelpful={() => {}}
+          onReport={() => {}}
+          onVisible={() => {}}
+        />
+      </PreviewPane>
     </div>
   );
 }

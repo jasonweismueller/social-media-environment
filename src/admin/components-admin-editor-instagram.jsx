@@ -10,6 +10,7 @@ import {
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-instagram";
 import { randomAvatarByKind } from "../avatar-utils";
+import { EditorSection, Field, Group, RadioGroup, PreviewPane, Toggle } from "./components-admin-editor-ui";
 
 /* ---------------- Avatar (neutral) ---------------- */
 export function genNeutralAvatarDataUrl(size = 64) {
@@ -86,120 +87,93 @@ export function AdminPostEditor({
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const customAvatar = (editing.avatarMode || "random") !== "random";
+  const hasAd = (editing.adType || "none") !== "none";
+  const hasBio = !!editing.showBio;
+
   return (
     <div className="editor-grid">
       <div className="editor-form">
-        <h4 className="section-title">Basics</h4>
-
-        {/* Post name (for CSV mapping) */}
-        <label>Post name (for CSV)
-          <input
-            className="input"
-            placeholder="e.g. Lifestyle Post A"
-            value={editing.postName || ""}
-            onChange={(e) =>
-              setEditing((ed) => ({ ...ed, postName: e.target.value }))
-            }
-          />
-          <div className="subtle" style={{ marginTop: 4 }}>
-            Used in CSV export headers (e.g. <code>{(editing.postName || "Name")}_liked</code>).
-          </div>
-        </label>
-
-        <label>Author
-          <input
-            className="input"
-            value={editing.author}
-            onChange={(e) => {
-              const author = e.target.value;
-              setEditing((ed) => ({
-                ...ed,
-                author,
-                avatarUrl:
-                  ed.avatarMode === "neutral"
-                    ? genNeutralAvatarDataUrl(64)
-                    : ed.avatarUrl,
-              }));
-            }}
-          />
-        </label>
-
-        <div className="grid-2">
-          <label>Verification badge
-  <select
-    className="select"
-    value={editing.badge ? "true" : "false"}
-    onChange={(e) => {
-      const isTrue = e.target.value === "true";
-      setEditing((ed) => ({ ...ed, badge: isTrue }));
-    }}
-  >
-    <option value="false">Off</option>
-    <option value="true">On</option>
-  </select>
-</label>
-          <label>Time
+        <EditorSection title="Basics" subtitle="Author, timestamp &amp; caption" defaultOpen>
+          <Field
+            label="Post name (for CSV)"
+            hint={<>Used in CSV export headers (e.g. <code>{(editing.postName || "Name")}_liked</code>).</>}
+          >
             <input
               className="input"
-              value={editing.time}
-              onChange={(e) =>
-                setEditing({ ...editing, time: e.target.value })
-              }
+              placeholder="e.g. Lifestyle Post A"
+              value={editing.postName || ""}
+              onChange={(e) => setEditing((ed) => ({ ...ed, postName: e.target.value }))}
             />
-          </label>
-        </div>
+          </Field>
 
-        {/* Author Type (female / male / company) */}
-        <label className="label">Author Type</label>
-        <div className="row">
-          {["female", "male", "company"].map((opt) => (
-            <label key={opt} style={{ marginRight: 12 }}>
-              <input
-                type="radio"
-                name={`authorType-${editing.id}`}
-                value={opt}
-                checked={(editing.authorType || "female") === opt}
-                onChange={(e) =>
-                  setEditing((ed) => ({ ...ed, authorType: e.target.value }))
-                }
-              />
-              <span style={{ marginLeft: 6, textTransform: "capitalize" }}>
-                {opt}
-              </span>
-            </label>
-          ))}
-        </div>
+          <Field label="Author">
+            <input
+              className="input"
+              value={editing.author}
+              onChange={(e) => {
+                const author = e.target.value;
+                setEditing((ed) => ({
+                  ...ed,
+                  author,
+                  avatarUrl:
+                    ed.avatarMode === "neutral"
+                      ? genNeutralAvatarDataUrl(64)
+                      : ed.avatarUrl,
+                }));
+              }}
+            />
+          </Field>
 
-        {/* Topic (for image pool randomization) */}
-        <label>Topic
-          <input
-            className="input"
-            placeholder='e.g. "travel" or "fitness"'
-            value={editing.topic || ""}
-            onChange={(e) =>
-              setEditing((ed) => ({ ...ed, topic: e.target.value }))
-            }
-          />
-          <div className="subtle" style={{ marginTop: 6 }}>
-            Used to randomize images from S3 by topic and exported in feed JSON.
-          </div>
-        </label>
-
-        <label>Post text
-          <textarea
-            className="textarea"
-            rows={4}
-            value={editing.text}
-            onChange={(e) =>
-              setEditing({ ...editing, text: e.target.value })
-            }
-          />
-        </label>
-
-        <h4 className="section-title">Profile Photo</h4>
-        <fieldset className="fieldset">
           <div className="grid-2">
-            <label>Mode
+            <Toggle
+              label="Verification badge"
+              checked={!!editing.badge}
+              onChange={(v) => setEditing((ed) => ({ ...ed, badge: v }))}
+            />
+            <Field label="Time">
+              <input
+                className="input"
+                value={editing.time}
+                onChange={(e) => setEditing({ ...editing, time: e.target.value })}
+              />
+            </Field>
+          </div>
+
+          <Group label="Author Type">
+            <RadioGroup
+              name={`authorType-${editing.id}`}
+              value={editing.authorType || "female"}
+              onChange={(v) => setEditing((ed) => ({ ...ed, authorType: v }))}
+              options={[{ value: "female" }, { value: "male" }, { value: "company" }]}
+            />
+          </Group>
+
+          <Field
+            label="Topic"
+            hint="Used to randomize images from S3 by topic and exported in feed JSON."
+          >
+            <input
+              className="input"
+              placeholder='e.g. "travel" or "fitness"'
+              value={editing.topic || ""}
+              onChange={(e) => setEditing((ed) => ({ ...ed, topic: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Post text">
+            <textarea
+              className="textarea"
+              rows={4}
+              value={editing.text}
+              onChange={(e) => setEditing({ ...editing, text: e.target.value })}
+            />
+          </Field>
+        </EditorSection>
+
+        <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" defaultOpen={customAvatar}>
+          <div className="grid-2">
+            <Field label="Mode">
               <select
                 className="select"
                 value={editing.avatarMode}
@@ -227,7 +201,7 @@ export function AdminPostEditor({
                 <option value="upload">Upload</option>
                 <option value="url">Direct URL</option>
               </select>
-            </label>
+            </Field>
             <div className="avatar-preview">
               <div className="avatar">
                 <img
@@ -240,19 +214,17 @@ export function AdminPostEditor({
           </div>
 
           {editing.avatarMode === "url" && (
-            <label>Avatar URL
+            <Field label="Avatar URL">
               <input
                 className="input"
                 value={editing.avatarUrl || ""}
-                onChange={(e) =>
-                  setEditing({ ...editing, avatarUrl: e.target.value })
-                }
+                onChange={(e) => setEditing({ ...editing, avatarUrl: e.target.value })}
               />
-            </label>
+            </Field>
           )}
 
           {editing.avatarMode === "upload" && (
-            <label>Upload avatar
+            <Field label="Upload avatar">
               <input
                 type="file"
                 accept="image/*"
@@ -280,9 +252,9 @@ export function AdminPostEditor({
                   }
                 }}
               />
-            </label>
+            </Field>
           )}
-        </fieldset>
+        </EditorSection>
 
         <MediaFieldset
           editing={editing}
@@ -294,203 +266,172 @@ export function AdminPostEditor({
           setUploadingPoster={setUploadingPoster}
         />
 
-       <h4 className="section-title">Ad</h4>
-<fieldset className="fieldset">
-  <label>Ad type
-    <select
-      className="select"
-      value={editing.adType || "none"}
-      onChange={(e) => setEditing({ ...editing, adType: e.target.value })}
-    >
-      <option value="none">None</option>
-      <option value="ad">Sponsored Ad</option>
-      <option value="influencer">Influencer Partnership</option> {/* 👈 NEW */}
-    </select>
-  </label>
-
-  {/* Sponsored Ad (CTA type) */}
-  {editing.adType === "ad" && (
-    <>
-      <label>Call-to-Action Text
-        <input
-          className="input"
-          value={editing.adButtonText || ""}
-          onChange={(e) =>
-            setEditing({ ...editing, adButtonText: e.target.value })
-          }
-          placeholder="e.g. Learn more, Shop now"
-        />
-      </label>
-      <label>Target URL
-        <input
-          className="input"
-          value={editing.adUrl || ""}
-          onChange={(e) =>
-            setEditing({ ...editing, adUrl: e.target.value })
-          }
-          placeholder="https://example.com"
-        />
-      </label>
-      <div className="subtle" style={{ marginTop: 4 }}>
-        Clicking the call-to-action button will open this URL.
-      </div>
-    </>
-  )}
-
-  {/* Influencer Partnership (disclosure only) */}
-  {editing.adType === "influencer" && (
-    <>
-      <label>Brand partner name
-        <input
-          className="input"
-          value={editing.adPartner || ""}
-          onChange={(e) =>
-            setEditing({ ...editing, adPartner: e.target.value })
-          }
-          placeholder="e.g. Nike, Samsung"
-        />
-      </label>
-      <div className="subtle" style={{ marginTop: 4 }}>
-        Appears below the username as “Paid partnership with&nbsp;
-        <strong>{editing.adPartner || "Brand"}</strong>”.
-      </div>
-    </>
-  )}
-</fieldset>
-
-{/* ========================================================== */}
-{/*                     Author Bio Section                    */}
-{/* ========================================================== */}
-<h4 className="section-title">Author Bio</h4>
-<fieldset className="fieldset">
-
-  {/* Toggle bio on/off */}
-  <label>
-    Show Bio
-    <select
-      className="select"
-      value={editing.showBio ? "true" : "false"}
-      onChange={(e) => {
-        const v = e.target.value === "true";
-        setEditing((ed) => ({ ...ed, showBio: v }));
-      }}
-    >
-      <option value="false">No</option>
-      <option value="true">Yes</option>
-    </select>
-  </label>
-
-  {/* Only show the inputs if bio is enabled */}
-  {editing.showBio && (
-    <>
-      <div className="grid-3" style={{ marginTop: 8 }}>
-        <label>Posts
-          <input
-            className="input"
-            type="number"
-            min="0"
-            placeholder="e.g. 245"
-            value={editing.bio_posts ?? ""}
-            onChange={(e) =>
-              setEditing((ed) => ({
-                ...ed,
-                bio_posts: Number(e.target.value) || 0,
-              }))
-            }
-          />
-        </label>
-        <label>Followers
-          <input
-            className="input"
-            type="number"
-            min="0"
-            placeholder="e.g. 12,400"
-            value={editing.bio_followers ?? ""}
-            onChange={(e) =>
-              setEditing((ed) => ({
-                ...ed,
-                bio_followers: Number(e.target.value) || 0,
-              }))
-            }
-          />
-        </label>
-        <label>Following
-          <input
-            className="input"
-            type="number"
-            min="0"
-            placeholder="e.g. 421"
-            value={editing.bio_following ?? ""}
-            onChange={(e) =>
-              setEditing((ed) => ({
-                ...ed,
-                bio_following: Number(e.target.value) || 0,
-              }))
-            }
-          />
-        </label>
-      </div>
-
-      <label style={{ marginTop: 8 }}>
-        Bio text
-        <textarea
-          className="textarea"
-          rows={3}
-          placeholder="e.g. Photographer • Traveler • Coffee enthusiast"
-          value={editing.bio_text ?? ""}
-          onChange={(e) =>
-            setEditing((ed) => ({
-              ...ed,
-              bio_text: e.target.value,
-            }))
-          }
-        />
-      </label>
-
-      <label style={{ marginTop: 8 }}>
-  Bio URL (optional)
-  <input
-    className="input"
-    type="url"
-    placeholder="https://example.com"
-    value={editing.bio_url ?? ""}
-    onChange={(e) =>
-      setEditing((ed) => ({
-        ...ed,
-        bio_url: e.target.value,
-      }))
-    }
-  />
-</label>
-
-      <div className="subtle" style={{ marginTop: 4 }}>
-        Optional: If <code>randomize_bios</code> is enabled in feed settings,
-        these values will be replaced with randomized ones at render time.
-      </div>
-    </>
-  )}
-</fieldset>
-
-        <h4 className="section-title">Reactions & Metrics</h4>
-        <fieldset className="fieldset">
-          <label>Show like count
+        <EditorSection
+          title="Ad"
+          subtitle="Sponsored post or influencer partnership"
+          defaultOpen={hasAd}
+          badge={hasAd ? (editing.adType === "ad" ? "Ad" : "Partnership") : null}
+        >
+          <Field label="Ad type">
             <select
               className="select"
-              value={String(!!editing.showReactions)}
-              onChange={(e) =>
-                setEditing({
-                  ...editing,
-                  showReactions: e.target.value === "true",
-                })
+              value={editing.adType || "none"}
+              onChange={(e) => setEditing({ ...editing, adType: e.target.value })}
+            >
+              <option value="none">None</option>
+              <option value="ad">Sponsored Ad</option>
+              <option value="influencer">Influencer Partnership</option>
+            </select>
+          </Field>
+
+          {/* Sponsored Ad (CTA type) */}
+          {editing.adType === "ad" && (
+            <>
+              <Field label="Call-to-Action Text">
+                <input
+                  className="input"
+                  value={editing.adButtonText || ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, adButtonText: e.target.value })
+                  }
+                  placeholder="e.g. Learn more, Shop now"
+                />
+              </Field>
+              <Field label="Target URL" hint="Clicking the call-to-action button will open this URL.">
+                <input
+                  className="input"
+                  value={editing.adUrl || ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, adUrl: e.target.value })
+                  }
+                  placeholder="https://example.com"
+                />
+              </Field>
+            </>
+          )}
+
+          {/* Influencer Partnership (disclosure only) */}
+          {editing.adType === "influencer" && (
+            <Field
+              label="Brand partner name"
+              hint={
+                <>Appears below the username as “Paid partnership with <strong>{editing.adPartner || "Brand"}</strong>”.</>
               }
             >
-              <option value="false">Hide</option>
-              <option value="true">Show</option>
-            </select>
-          </label>
+              <input
+                className="input"
+                value={editing.adPartner || ""}
+                onChange={(e) =>
+                  setEditing({ ...editing, adPartner: e.target.value })
+                }
+                placeholder="e.g. Nike, Samsung"
+              />
+            </Field>
+          )}
+        </EditorSection>
+
+        <EditorSection title="Author Bio" subtitle="Optional profile stats & bio text" defaultOpen={hasBio} badge={hasBio ? "On" : null}>
+          <Toggle
+            label="Show Bio"
+            checked={!!editing.showBio}
+            onChange={(v) => setEditing((ed) => ({ ...ed, showBio: v }))}
+          />
+
+          {editing.showBio && (
+            <>
+              <div className="grid-3">
+                <Field label="Posts">
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 245"
+                    value={editing.bio_posts ?? ""}
+                    onChange={(e) =>
+                      setEditing((ed) => ({
+                        ...ed,
+                        bio_posts: Number(e.target.value) || 0,
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Followers">
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 12,400"
+                    value={editing.bio_followers ?? ""}
+                    onChange={(e) =>
+                      setEditing((ed) => ({
+                        ...ed,
+                        bio_followers: Number(e.target.value) || 0,
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Following">
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 421"
+                    value={editing.bio_following ?? ""}
+                    onChange={(e) =>
+                      setEditing((ed) => ({
+                        ...ed,
+                        bio_following: Number(e.target.value) || 0,
+                      }))
+                    }
+                  />
+                </Field>
+              </div>
+
+              <Field label="Bio text">
+                <textarea
+                  className="textarea"
+                  rows={3}
+                  placeholder="e.g. Photographer • Traveler • Coffee enthusiast"
+                  value={editing.bio_text ?? ""}
+                  onChange={(e) =>
+                    setEditing((ed) => ({
+                      ...ed,
+                      bio_text: e.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Bio URL (optional)"
+                hint={<>Optional: If <code>randomize_bios</code> is enabled in feed settings, these values will be replaced with randomized ones at render time.</>}
+              >
+                <input
+                  className="input"
+                  type="url"
+                  placeholder="https://example.com"
+                  value={editing.bio_url ?? ""}
+                  onChange={(e) =>
+                    setEditing((ed) => ({
+                      ...ed,
+                      bio_url: e.target.value,
+                    }))
+                  }
+                />
+              </Field>
+            </>
+          )}
+        </EditorSection>
+
+        <EditorSection title="Reactions & Metrics" subtitle="Like, comment &amp; save counts" defaultOpen>
+          <Toggle
+            label="Show like count"
+            checked={!!editing.showReactions}
+            onChange={(v) => setEditing({ ...editing, showReactions: v })}
+          />
 
           <div className="grid-3">
-            <label>Likes
+            <Field label="Likes">
               <input
                 className="input"
                 type="number"
@@ -503,8 +444,8 @@ export function AdminPostEditor({
                   })
                 }
               />
-            </label>
-            <label>Comments
+            </Field>
+            <Field label="Comments">
               <input
                 className="input"
                 type="number"
@@ -520,8 +461,8 @@ export function AdminPostEditor({
                   })
                 }
               />
-            </label>
-            <label>Saves
+            </Field>
+            <Field label="Saves">
               <input
                 className="input"
                 type="number"
@@ -537,35 +478,32 @@ export function AdminPostEditor({
                   })
                 }
               />
-            </label>
+            </Field>
           </div>
-        </fieldset>
+        </EditorSection>
       </div>
 
-      <aside className="editor-preview">
-        <div className="preview-head">Live preview</div>
-        <div className="preview-zoom admin-preview-sandbox" style={{ pointerEvents: "auto" }}>
-          <PostCard
-            key={editing.id || "preview"}
-            post={{
-              ...editing,
-              avatarUrl:
-                editing.avatarMode === "neutral"
-                  ? genNeutralAvatarDataUrl(64)
-                  : editing.avatarUrl,
-              image:
-                editing.imageMode === "random"
-                  ? editing.image || randomSVG("Image")
-                  : editing.imageMode === "none"
-                  ? null
-                  : editing.image,
-            }}
-            registerViewRef={() => () => {}}
-            onAction={(a, m) => console.debug("preview action:", a, m)}
-            respectShowReactions={true}
-          />
-        </div>
-      </aside>
+      <PreviewPane platformLabel="Instagram">
+        <PostCard
+          key={editing.id || "preview"}
+          post={{
+            ...editing,
+            avatarUrl:
+              editing.avatarMode === "neutral"
+                ? genNeutralAvatarDataUrl(64)
+                : editing.avatarUrl,
+            image:
+              editing.imageMode === "random"
+                ? editing.image || randomSVG("Image")
+                : editing.imageMode === "none"
+                ? null
+                : editing.image,
+          }}
+          registerViewRef={() => () => {}}
+          onAction={(a, m) => console.debug("preview action:", a, m)}
+          respectShowReactions={true}
+        />
+      </PreviewPane>
     </div>
   );
 }
