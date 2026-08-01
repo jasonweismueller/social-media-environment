@@ -367,6 +367,52 @@ edge cases (e.g. the note/label intervention meta-groups sub-UI, or the Instagra
 image cropper) render correctly, the same lesson as the admin dashboard and Projects→Platform→
 Dashboard flow above.
 
+## Admin sidebar nav: fixed height-stretching bug (2026-08-01)
+
+`AdminShell.jsx`'s `<nav>` (Feeds/Posts/Surveys/Participants/Users links) was `display:"grid"` with
+`flex:1` (to push the "Log out" button to the bottom of the sidebar). That combination made every
+nav row visibly oversized: a CSS grid container's implicit auto-sized rows default to
+`align-content: normal`, which computes to `stretch` when there's no override — so with `flex:1`
+making the `<nav>` itself tall, the 5 nav-item rows stretched to evenly fill all the leftover
+vertical space instead of sizing to their own content. Changed `<nav>` to
+`display:"flex", flexDirection:"column"` instead — flex items don't grow along the main
+(vertical, for a column) axis without an explicit `flex-grow`, so rows now size to content while
+`<nav>`'s own `flex:1` still pushes "Log out" to the bottom exactly as before. Also trimmed
+per-item padding from `9px 10px` to `7px 10px` per direct user feedback ("a bit tighter"). Not
+click-tested live (same sandbox limitation as elsewhere in this file) — worth a quick visual check.
+
+## Delete survey response data (2026-08-01)
+
+Added a "Delete survey data" button next to the CSV download button(s) in the Surveys admin →
+"Launch links and IDs" panel (`components-admin-surveys.jsx`, `handleDeleteSurveyData`), styled
+like the existing destructive "Reset balance" button (`#fca5a5` border / `#b91c1c` text), gated
+behind a `window.confirm` warning it's irreversible and scoped to response data only (the survey
+definition itself is untouched). Calls new `deleteSurveyResponsesOnBackend()` in
+`utils-backend.js`, which POSTs a new `delete_survey_responses` action
+(`{ app, admin_token, project_id, survey_id }`) — mirrors the existing
+`resetExperimentGroupAssignments`/`deleteSurveyOnBackend` pattern exactly.
+
+**Code.gs side: written precisely (not guessed) and handed to the user, status of paste+redeploy
+unconfirmed.** Unlike every other backend addition in this file, this one was deliberately *not*
+handed over as a best-effort guess first — getting a delete operation wrong on live spreadsheet
+data is a much worse failure mode than getting a read wrong. The user pasted their full live
+Code.gs in chat, which resolved every unknown: response rows live in sheets named
+`SurveyResponses::{project}::{feed}::{survey}` (`surveyResponsesSheetName_`, IG/AMZ-prefixed for
+those apps) — confirmed **not** one flat sheet, so a multi-feed-then-survey study can have its
+responses spread across more than one sheet, one per feed_id used. New function
+`deleteSurveyResponsesForSurvey_(ss, app, project_id, survey_id)` (added after
+`wipeSurveyResponsesForFeedSurvey_`) mirrors `readSurveyResponsesBySurvey_`'s existing
+prefix/suffix sheet-matching exactly (same app-scoping too, so it never deletes more than what the
+CSV download sitting next to the button would have included), then `ss.deleteSheet()`s each match
+inside a `LockService.getScriptLock()` — same "delete the whole sheet, not just its rows" pattern
+as `resetExperimentGroupAssignments_`/`wipeSurveyResponsesForFeedSurvey_` already use elsewhere in
+this file (safe because `ensureSheet_` trims a freshly recreated sheet, so this doesn't reintroduce
+the 26,000-cell default-size problem). Wired into `doPost`'s admin-gated switch as
+`case 'delete_survey_responses':`, `requireRole_(session, ['editor'])`, right next to
+`case 'wipe_survey_responses':`. **Next step**: confirm the user has pasted both pieces and done
+Deploy → Manage deployments → Edit → New version → Deploy — until then the frontend button calls
+an action the backend doesn't recognize yet and fails with a clear error alert (not silently).
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this

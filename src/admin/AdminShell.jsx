@@ -107,7 +107,7 @@ export function AdminShell({
           </div>
         )}
 
-        <nav style={{ display: "grid", gap: 2, flex: 1 }}>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 1, flex: 1 }}>
           {NAV_ITEMS.filter((item) => !item.ownerOnly || showUsersNav).map((item) => (
             <NavLink
               key={item.to}
@@ -116,7 +116,7 @@ export function AdminShell({
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                padding: "9px 10px",
+                padding: "7px 10px",
                 borderRadius: "var(--admin-radius-sm)",
                 fontSize: 13,
                 fontWeight: 600,

@@ -2302,6 +2302,44 @@ export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId
   }
 }
 
+/**
+ * Deletes every submitted response row for a survey (SurveyResponses sheet),
+ * without touching the survey definition itself. Use when a survey was
+ * repeatedly test-run before real participants and the admin wants a clean
+ * slate for the actual study — as opposed to deleteSurveyOnBackend, which
+ * removes the survey (questions, pages, launch links) entirely.
+ *
+ * Destructive and irreversible server-side.
+ */
+export async function deleteSurveyResponsesOnBackend({
+  projectId = getProjectId(),
+  surveyId,
+} = {}) {
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
+
+  const survey_id = String(surveyId || "").trim();
+  if (!survey_id) return { ok: false, err: "survey_id required" };
+
+  try {
+    const { res, data } = await postJson({
+      action: "delete_survey_responses",
+      app: APP,
+      admin_token,
+      project_id: projectId || undefined,
+      survey_id,
+    });
+
+    if (!res.ok || data?.ok === false) {
+      return { ok: false, err: data?.err || `HTTP ${res.status}` };
+    }
+
+    return { ok: true, deleted_count: data?.deleted_count ?? null };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
 /*
   code.gs only supports linking one feed at a time:
   - link_survey_to_feed

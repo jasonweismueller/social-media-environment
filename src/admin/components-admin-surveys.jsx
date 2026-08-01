@@ -17,6 +17,7 @@ import {
   loadSurveyFromBackend,
   saveSurveyToBackend,
   deleteSurveyOnBackend,
+  deleteSurveyResponsesOnBackend,
   linkSurveyToFeedsOnBackend,
   getLinkedFeedIdsForSurveyFromBackend,
   loadPostsFromBackend,
@@ -1317,6 +1318,7 @@ export function AdminSurveysPanel({
   const [experimentGroupCountsLoading, setExperimentGroupCountsLoading] = useState(false);
   const [resettingGroupBalance, setResettingGroupBalance] = useState(false);
   const [resetGroupBalanceError, setResetGroupBalanceError] = useState("");
+  const [deletingSurveyData, setDeletingSurveyData] = useState(false);
 
   const hasExperimentGroups =
     Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
@@ -1373,6 +1375,34 @@ export function AdminSurveysPanel({
       setResettingGroupBalance(false);
     }
   }, [survey?.survey_id, projectId, resettingGroupBalance, refreshExperimentGroupCounts]);
+
+  const handleDeleteSurveyData = useCallback(async () => {
+    if (!survey?.survey_id || deletingSurveyData) return;
+
+    const confirmed = window.confirm(
+      `Delete all submitted responses for "${survey.name || survey.survey_id}"?\n\n` +
+        "This permanently deletes every response row recorded for this survey " +
+        "(e.g. test submissions) so you can start collecting real data with a " +
+        "clean CSV. The survey itself — its questions, pages, and launch links — " +
+        "is not affected, only the collected response data. This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setDeletingSurveyData(true);
+    try {
+      const res = await deleteSurveyResponsesOnBackend({
+        projectId,
+        surveyId: survey.survey_id,
+      });
+      if (!res?.ok) {
+        alert(res?.err || "Failed to delete survey data.");
+        return;
+      }
+      alert("Survey response data deleted.");
+    } finally {
+      setDeletingSurveyData(false);
+    }
+  }, [survey?.survey_id, survey?.name, projectId, deletingSurveyData]);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {
@@ -2619,6 +2649,23 @@ export function AdminSurveysPanel({
                         {savingSurvey ? "Preparing CSV..." : "Download multi-feed CSV"}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={handleDeleteSurveyData}
+                      disabled={deletingSurveyData}
+                      title="Delete every submitted response for this survey. The survey itself is not affected."
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #fca5a5",
+                        background: "#fff",
+                        color: "#b91c1c",
+                        cursor: deletingSurveyData ? "not-allowed" : "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {deletingSurveyData ? "Deleting..." : "Delete survey data"}
+                    </button>
                   </div>
                 ) : null
               }
