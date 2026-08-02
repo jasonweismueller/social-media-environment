@@ -15,7 +15,9 @@ import {
   loadPostByIdFromBackend,
   fetchFeedFlags,
   getAvatarPool,
-  pickDeterministic
+  pickDeterministic,
+  applyPostInteractionEvent,
+  makeEmptyPostInteractionAggregate,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -407,6 +409,9 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
   flags,
   participantSeed,
   assignedAvatarUrl,
+  interactive,
+  value,
+  onChange,
 }) {
   const noopAction = useCallback(() => {}, []);
   const noopRegisterViewRef = useCallback(() => undefined, []);
@@ -421,11 +426,26 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
       }
     : (flags || {});
 
+  // Only reached when the question's "Interactivity" toggle is on — mirrors
+  // ReminderPostInner in ui-survey.jsx (desktop); see that file's comment for
+  // why this reuses applyPostInteractionEvent rather than its own logic.
+  const handleInteractiveAction = useCallback(
+    (action, meta = {}) => {
+      const next = applyPostInteractionEvent(value, {
+        action,
+        post_id: post?.id,
+        ...meta,
+      });
+      onChange?.(next);
+    },
+    [value, onChange, post?.id]
+  );
+
   return (
     <PostCard
       post={post}
-      onAction={noopAction}
-      disabled={true}
+      onAction={interactive ? handleInteractiveAction : noopAction}
+      disabled={!interactive}
       registerViewRef={noopRegisterViewRef}
       app={app}
       projectId={projectId}
@@ -443,7 +463,9 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
     prev.feedId === next.feedId &&
     prev.flags === next.flags &&
     prev.participantSeed === next.participantSeed &&
-    prev.assignedAvatarUrl === next.assignedAvatarUrl
+    prev.assignedAvatarUrl === next.assignedAvatarUrl &&
+    prev.interactive === next.interactive &&
+    prev.value === next.value
   );
 });
 
@@ -462,11 +484,19 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   feedId,
   flags,
   participantSeed,
+  value,
+  onChange,
 }) {
   const reminderFeedId = getReminderPostFeedId(question, feedId);
   const targetPostId = String(question?.post_id || "").trim();
   const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
+  const interactive = !!question?.reminder_interactive;
+  const questionId = question?.id;
+  const handleInteractiveChange = useCallback(
+    (nextValue) => onChange?.(questionId, nextValue),
+    [onChange, questionId]
+  );
 
   // Per-question editor toggle: when off, the reminder always shows the
   // original, unrandomized post (same for every participant) instead of
@@ -725,6 +755,9 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
                 flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
                 participantSeed={participantSeed}
                 assignedAvatarUrl={assignedAvatarUrl}
+                interactive={interactive}
+                value={value}
+                onChange={handleInteractiveChange}
               />
             </div>
           </div>
@@ -1070,6 +1103,8 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
           feedId={feedId}
           flags={flags}
           participantSeed={participantSeed}
+          value={value}
+          onChange={onChange}
         />
       )}
 

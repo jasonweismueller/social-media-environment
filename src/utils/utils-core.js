@@ -655,6 +655,169 @@ export function computePostDwellFromEvents(events = []) {
 
 function isoToMs(iso) { try { return new Date(iso).getTime(); } catch { return null; } }
 
+// Shared per-post interaction aggregate — used both by buildParticipantRow's
+// batch pass over the real feed's event log below, and (see ui-survey.jsx
+// PostReminderCard) by interactive post_reminder survey questions, which
+// apply one event at a time as the participant clicks, keeping the same
+// field semantics ("what does a report click mean") in exactly one place.
+export function makeEmptyPostInteractionAggregate() {
+  return {
+    reaction_type: "",
+    expandable: false,
+    expanded: false,
+    commented: false,
+    comment_texts: [],
+    shared: false,
+    share_target: "",
+    share_text: "",
+    saved: false,
+    reported_misinfo: false,
+    cta_clicked: false,
+    news_clicked: false,
+    bio_opened: false,
+    bio_url_clicked: false,
+    mention_clicked: false,
+    note_opened: false,
+    note_view_details: false,
+    note_link_clicked: false,
+    note_helpful_rated: false,
+    note_helpful_value: "",
+    review_helpful: false,
+    review_helpful_removed: false,
+    review_reported: false,
+    review_read_more: false,
+    review_read_more_ms: "",
+    review_rating: "",
+  };
+}
+
+export function applyPostInteractionEvent(prevAggregate, event) {
+  const p = { ...(prevAggregate || makeEmptyPostInteractionAggregate()) };
+  const e = event || {};
+
+  switch (e.action) {
+    case "react_pick":
+      p.reaction_type = (e.type || "").trim() || "like";
+      break;
+
+    case "react_clear":
+      if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
+        p.reaction_type = "";
+      }
+      break;
+
+    case "text_clamped":
+      p.expandable = true;
+      break;
+
+    case "expand_text":
+      p.expanded = true;
+      break;
+
+    case "comment_submit":
+      p.commented = true;
+      if (e.text) p.comment_texts = [String(e.text)];
+      break;
+
+    case "share":
+      p.shared = true;
+      break;
+
+    case "report_misinformation_click":
+      p.reported_misinfo = true;
+      break;
+
+    case "save":
+      p.saved = true;
+      break;
+
+    case "note_helpful_rate":
+      p.note_helpful_rated = true;
+      p.note_helpful_value = String(e.value || "").trim();
+      break;
+
+    case "share_target":
+      {
+        const friendList =
+          typeof e.friends === "string" && e.friends.trim()
+            ? e.friends.trim()
+            : e.friend
+            ? String(e.friend)
+            : "";
+
+        p.share_target = friendList;
+        p.share_text   = e.message ? String(e.message) : "";
+      }
+      break;
+
+    case "cta_click":
+      p.cta_clicked = true;
+      break;
+
+    case "news_link_click":
+      p.news_clicked = true;
+      break;
+
+    case "bio_open":
+      p.bio_opened = true;
+      break;
+
+    case "bio_url_click":
+      p.bio_url_clicked = true;
+      break;
+
+    case "mention_clicked":
+      p.mention_clicked = true;
+      break;
+
+    case "note_modal_open":
+      p.note_opened = true;
+      break;
+
+    case "note_view_details":
+      p.note_view_details = true;
+      break;
+
+    case "note_link_open":
+      p.note_link_clicked = true;
+      break;
+
+    case "report":
+      p.reported_misinfo = true;
+      break;
+
+    case "review_helpful":
+      p.review_helpful = true;
+      p.review_helpful_removed = false;
+      p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+      break;
+
+    case "review_helpful_removed":
+      p.review_helpful = false;
+      p.review_helpful_removed = true;
+      p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+      break;
+
+    case "review_report":
+      p.review_reported = true;
+      p.reported_misinfo = true;
+      p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+      break;
+
+    case "review_read_more":
+      p.review_read_more = true;
+      p.expanded = true;
+      p.review_read_more_ms = e.ms_since_review_render != null ? String(e.ms_since_review_render) : p.review_read_more_ms;
+      p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
+      break;
+
+    default:
+      break;
+  }
+
+  return p;
+}
+
 export function buildParticipantRow({
   session_id,
   participant_id,
@@ -688,163 +851,10 @@ export function buildParticipantRow({
   const dwellAgg = computePostDwellFromEvents(events);
 
   const per = new Map();
-  const ensure = (id) => {
-    if (!per.has(id)) {
-      per.set(id, {
-        reaction_type: "",
-        expandable: false,
-        expanded: false,
-        commented: false,
-        comment_texts: [],
-        shared: false,
-        share_target: "",
-        share_text: "",
-        saved: false,
-        reported_misinfo: false,
-        cta_clicked: false,
-        news_clicked: false,
-        bio_opened: false,
-        bio_url_clicked: false,
-        mention_clicked: false,
-        note_opened: false,
-        note_view_details: false,
-        note_link_clicked: false,
-        note_helpful_rated: false,
-        note_helpful_value: "",
-        review_helpful: false,
-        review_helpful_removed: false,
-        review_reported: false,
-        review_read_more: false,
-        review_read_more_ms: "",
-        review_rating: "",
-      });
-    }
-    return per.get(id);
-  };
-
   for (const e of events) {
-    const { action, post_id } = e || {};
+    const { post_id } = e || {};
     if (!post_id) continue;
-    const p = ensure(post_id);
-    switch (action) {
-      case "react_pick":
-        p.reaction_type = (e.type || "").trim() || "like";
-        break;
-
-      case "react_clear":
-        if (!e.type || (p.reaction_type && p.reaction_type === e.type)) {
-          p.reaction_type = "";
-        }
-        break;
-
-      case "text_clamped":
-        p.expandable = true;
-        break;
-
-      case "expand_text":
-        p.expanded = true;
-        break;
-
-      case "comment_submit":
-        p.commented = true;
-        if (e.text) p.comment_texts = [String(e.text)];
-        break;
-
-      case "share":
-        p.shared = true;
-        break;
-
-      case "report_misinformation_click":
-        p.reported_misinfo = true;
-        break;
-
-      case "save":
-        p.saved = true;
-        break;
-
-      case "note_helpful_rate":
-        p.note_helpful_rated = true;
-        p.note_helpful_value = String(e.value || "").trim();
-        break;
-
-      case "share_target":
-        {
-          const friendList =
-            typeof e.friends === "string" && e.friends.trim()
-              ? e.friends.trim()
-              : e.friend
-              ? String(e.friend)
-              : "";
-
-          p.share_target = friendList;
-          p.share_text   = e.message ? String(e.message) : "";
-        }
-        break;
-
-      case "cta_click":
-        p.cta_clicked = true;
-        break;
-
-      case "news_link_click":
-        p.news_clicked = true;
-        break;
-
-      case "bio_open":
-        p.bio_opened = true;
-        break;
-
-      case "bio_url_click":
-        p.bio_url_clicked = true;
-        break;
-
-      case "mention_clicked":
-        p.mention_clicked = true;
-        break;
-
-      case "note_modal_open":
-        p.note_opened = true;
-        break;
-
-      case "note_view_details":
-        p.note_view_details = true;
-        break;
-
-      case "note_link_open":
-        p.note_link_clicked = true;
-        break;
-
-      case "report":
-        p.reported_misinfo = true;
-        break;
-
-      case "review_helpful":
-        p.review_helpful = true;
-        p.review_helpful_removed = false;
-        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
-        break;
-
-      case "review_helpful_removed":
-        p.review_helpful = false;
-        p.review_helpful_removed = true;
-        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
-        break;
-
-      case "review_report":
-        p.review_reported = true;
-        p.reported_misinfo = true;
-        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
-        break;
-
-      case "review_read_more":
-        p.review_read_more = true;
-        p.expanded = true;
-        p.review_read_more_ms = e.ms_since_review_render != null ? String(e.ms_since_review_render) : p.review_read_more_ms;
-        p.review_rating = e.rating != null ? String(e.rating) : p.review_rating;
-        break;
-
-      default:
-        break;
-    }
+    per.set(post_id, applyPostInteractionEvent(per.get(post_id), e));
   }
 
   const tracking = getTrackingIdsFromUrl();
@@ -866,34 +876,7 @@ export function buildParticipantRow({
 
   for (const p of posts) {
     const id = p.id || "unknown";
-    const agg = per.get(id) || {
-      reaction_type: "",
-      expandable: false,
-      expanded: false,
-      commented: false,
-      comment_texts: [],
-      shared: false,
-      share_target: "",
-      share_text: "",
-      saved: false,
-      reported_misinfo: false,
-      cta_clicked: false,
-      news_clicked: false,
-      bio_opened: false,
-      bio_url_clicked: false,
-      mention_clicked: false,
-      note_opened: false,
-      note_view_details: false,
-      note_link_clicked: false,
-      note_helpful_rated: false,
-      note_helpful_value: "",
-      review_helpful: false,
-      review_helpful_removed: false,
-      review_reported: false,
-      review_read_more: false,
-      review_read_more_ms: "",
-      review_rating: "",
-    };
+    const agg = per.get(id) || makeEmptyPostInteractionAggregate();
     const reactedFlag = agg.reaction_type ? 1 : 0;
     const shareTargetClean = String(agg.share_target || "").trim();
     const hasTarget = shareTargetClean !== "";

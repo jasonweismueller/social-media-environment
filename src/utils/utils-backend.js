@@ -471,6 +471,22 @@ function normalizeSurveyAnswerScalar(value) {
   return String(value);
 }
 
+// Curated subset of the shared per-post interaction aggregate
+// (makeEmptyPostInteractionAggregate/applyPostInteractionEvent, utils-core.js)
+// exported as CSV columns for an interactive post_reminder question — not
+// the full ~20-field aggregate, just the like/comment/share/report-shaped
+// fields relevant to a reminder (plus Amazon's "helpful", always present for
+// column-schema stability regardless of which app a survey is deployed on).
+const REMINDER_INTERACTION_FIELDS = [
+  { value: "reaction_type", label: "Reaction type" },
+  { value: "commented", label: "Commented" },
+  { value: "comment_texts", label: "Comment text" },
+  { value: "shared", label: "Shared" },
+  { value: "share_target", label: "Share target" },
+  { value: "reported_misinfo", label: "Reported" },
+  { value: "review_helpful", label: "Marked helpful" },
+];
+
 function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
@@ -483,16 +499,23 @@ function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MO
       const questionType = String(q?.type || "").trim();
       if (!questionId) return;
 
-      if (
-        questionType === "info" ||
-        questionType === "page_break" ||
-        questionType === "post_reminder"
-      ) {
+      if (questionType === "info" || questionType === "page_break") {
+        return;
+      }
+
+      // Static (default) reminders have nothing to export — same as before.
+      // Interactive ones fall through and get one column per curated field
+      // below, via the exact same "row" mechanism matrix/bipolar questions
+      // already use (a fixed field list stands in for q.rows).
+      if (questionType === "post_reminder" && !q?.reminder_interactive) {
         return;
       }
 
       const questionText = String(q?.text || questionId).trim() || questionId;
-      const rows = Array.isArray(q?.rows) ? q.rows : [];
+      const rows =
+        questionType === "post_reminder"
+          ? REMINDER_INTERACTION_FIELDS
+          : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
 
       if (hasRowStructure) {

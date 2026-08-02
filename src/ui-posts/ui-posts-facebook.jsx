@@ -488,6 +488,7 @@ export function PostCard({
   const { wrapRef, inView } = useInViewAutoplay(0.6);
 
   const scheduleOpen = () => {
+    if (disabled) return;
     if (Date.now() < suppressHoverUntil.current) return;
     clearTimeout(openTimer.current);
     clearTimeout(closeTimer.current);
@@ -2014,6 +2015,7 @@ export function PostCard({
                     type="button"
                     key={key}
                     aria-label={key}
+                    disabled={disabled}
                     onClick={() => onPickReaction(key)}
                     title={key}
                   >

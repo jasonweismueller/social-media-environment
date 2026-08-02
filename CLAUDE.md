@@ -1244,6 +1244,118 @@ app-code changes required.
   pool, so blanket-resizing them wasn't in scope here and needs a case-by-case call (some may be
   intentionally high-res, e.g. a screenshot post where legibility matters).
 
+## Admin dashboard session-expiry fix + survey CSS polish (2026-08-02/03)
+
+Two small, separate fixes bundled here since neither warranted its own long section:
+
+- **Admin session "expiring soon" felt too short, and the warning was invisible.** Root
+  cause wasn't the actual Supabase JWT lifetime — it was that `touchAdminSession()`
+  (which re-syncs the dashboard's locally-tracked expiry countdown with whatever
+  session supabase-js has already silently refreshed in the background) was **only
+  ever called from a manual button click**, despite a code comment in
+  `utils-backend-supabase.js` claiming it ran "periodically." Added a real periodic
+  silent-refresh effect in `components-admin-dashboard.jsx` (every 4 minutes), so an
+  actively-open admin tab should now essentially never hit the expiry flow at all.
+  Separately, the warning
+  banner itself (`.admin-banner`) was rendered in the dashboard's normal scrollable
+  page flow — invisible once scrolled down — converted to a fixed-position top-right
+  toast in all three stylesheets (also **filled in entirely missing** from
+  `styles-instagram.css` — that banner and the expired-session modal were rendering
+  fully unstyled under `?app=ig` before this).
+- **Survey question titles now bold; post-reminder questions get a distinct tinted
+  background.** Straightforward CSS change in `ui-survey.jsx`'s
+  `SURVEY_REMINDER_POST_STYLE`-adjacent rules and all three stylesheets'
+  `.survey-question-title`/`.survey-question-post-reminder`. One real bug found along
+  the way: the Participant Information/Consent/Instructions preface
+  (`SurveyPrefaceFlow`, `ui-survey.jsx`) was reusing the exact same
+  `survey-question-title-content` class as real question titles, so bolding questions
+  also bolded the preface prose — gave the preface its own class
+  (`survey-preface-content-html`) instead.
+
+## Interactive post-reminder questions (2026-08-03)
+
+Per-question toggle on `post_reminder` survey questions: **Interactive** (like/comment/
+share/report work exactly like the real feed, tracked into the CSV export) vs
+**Static** (today's original default — fully non-interactive, no hover effects).
+Full design rationale and validated architecture:
+`~/.claude/plans/serene-herding-blossom.md`.
+
+**A real, pre-existing bug found and fixed as part of this**: "static" reminders
+weren't actually fully static. On Facebook, the Like button's reaction-flyout (the
+emoji picker) opened on hover and its emoji buttons were clickable *regardless* of the
+`disabled` prop — only the tracking call inside was gated, not the interaction itself.
+Instagram's bio-hover popover had the identical gap. Fixed both
+(`scheduleOpen`/flyout buttons in `ui-posts-facebook.jsx`, `showHover`/
+`attachBioHover` in `ui-posts-instagram.jsx`) to check `disabled`, matching every
+other actionable element in those files. This applies to *all* static reminders, not
+just ones under the new toggle — this was a real gap in the "static" default itself.
+
+**Architecture, in one sentence per piece**:
+- New `reminder_interactive` boolean field on post_reminder questions, added
+  everywhere its sibling `apply_feed_randomization` already lives (3 spots in
+  `utils-survey.js`, ~6 spots in `components-admin-surveys-editor.jsx` — confirmed via
+  grep this is *not* the page-block 4-places footgun documented elsewhere in this
+  file; it's a much smaller, question-level surface).
+- Extracted `buildParticipantRow`'s (`utils-core.js`) inline per-action `switch` (the
+  logic that turns real-feed click events into `${post_id}_reacted` etc. CSV columns)
+  into two standalone exported functions, `makeEmptyPostInteractionAggregate()` /
+  `applyPostInteractionEvent(prev, event)` — a mechanical, behavior-preserving
+  extraction (also happened to deduplicate two near-identical default-aggregate object
+  literals that already existed side by side in that file).
+- Interactive reminders reuse the **existing generic survey-answer pipeline**
+  (`value`/`onChange` — the same mechanism every matrix/choice question already uses)
+  rather than a parallel tracking system: every click computes the next aggregate via
+  the extracted reducer and calls `onChange(question.id, next)`, landing in
+  `survey_responses.responses[question.id]` exactly like any other answer.
+- **A subtle but critical fix**: `PostReminderCard`'s `memo(...)` comparator
+  (`ui-survey.jsx`) didn't compare `value` at all — without adding
+  `(prev.value === next.value || shallowEqualObject(...))` (mirroring the pattern
+  `SurveyQuestionRenderer`'s own comparator already used one level up), each click
+  would've computed off a stale closured `value`, silently dropping previously
+  recorded interactions on every subsequent click. Caught this by direct inspection
+  before writing any of the wiring code, not after a bug report.
+- CSV export (`utils-backend.js` `flattenSurveyQuestions`): turned out to need **zero
+  changes** to the actual value-readout logic (`flattenSurveyResponseRecord`) — its
+  existing generic `kind: "row"` column mechanism (already used by matrix/bipolar
+  questions) does a plain `value[row_value]` lookup and already correctly stringifies
+  booleans/joins arrays via `normalizeSurveyAnswerScalar`. Only had to declare a fixed,
+  curated 7-column set (`reaction_type`, `commented`, `comment_texts`, `shared`,
+  `share_target`, `reported_misinfo`, `review_helpful` — not the full ~20-field
+  aggregate) for interactive post_reminder questions, reusing the exact code path
+  matrix rows already exercise.
+
+**Real gap found mid-implementation, not in the original plan**: `ui-survey.jsx`
+(desktop) and `ui-survey-mobile.jsx` turned out to have their own fully independent
+`PostReminderCard`/`PostReminderCardMobile` + `ReminderPostInner`/
+`ReminderPostInnerMobile` implementations — near-byte-identical duplicates, not a
+shared component as the "Shared survey engine" section earlier in this file implies
+(that claim is about the survey engine being shared *across the three apps*, not
+about desktop vs. mobile being the same code). Both needed the identical fix. One
+difference worth remembering: `PostReminderCardMobile` uses **default** `memo()` (no
+custom comparator), so it didn't need the `value`-comparison fix the desktop version
+needed — only `ReminderPostInnerMobile` (which does have a custom comparator) did.
+
+**Verified live** end-to-end via the by-now-established disposable-test-survey
+pattern (throwaway project/feed/post/survey, local dev server, cleaned up after):
+hovering Like on the interactive question showed the real emoji flyout; clicking Love
+and submitting a comment both worked and landed correctly in
+`survey_responses.responses` (full raw aggregate, e.g. `reaction_type: "love"`,
+`comment_texts: ["Great post!"]`); the static sibling question on the same page showed
+no flyout on hover and its Like button was confirmed genuinely `disabled` at the DOM
+level; its stored response value was `null`. CSV column generation was verified live
+too, by faking a local `hasAdminSession()` flag (not a real Supabase session — see the
+"Real gap" caveat below) and calling the actual exported `loadSurveyOnlyRoster` via a
+cache-busted dynamic import in the browser console: it returned exactly the 7 curated
+`survey_q_interactive_*` columns for the interactive question and **zero** columns
+for the static one, confirming the skip-when-static logic. Could not verify actual CSV
+*row values* this way — `loadSurveyResponsesBySurveyRoster` correctly returned zero
+rows, because the local `hasAdminSession()` spoof only fools this app's own
+client-side check, not a real Supabase Auth session, so PostgREST's RLS correctly
+denied the (actually unauthenticated) request. Not a defect — just the limit of what's
+checkable without real admin credentials, which Claude should never enter. The
+response-value read-out path (`flattenSurveyResponseRecord`) itself needed no code
+changes and was confirmed correct by direct code reading instead.
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this

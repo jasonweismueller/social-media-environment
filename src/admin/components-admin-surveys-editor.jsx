@@ -500,6 +500,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     post_feed_id: String(q?.post_feed_id ?? q?.meta?.post_feed_id ?? ""),
     apply_feed_randomization:
       (q?.apply_feed_randomization ?? q?.meta?.apply_feed_randomization ?? true) !== false,
+    reminder_interactive:
+      !!(q?.reminder_interactive ?? q?.meta?.reminder_interactive ?? false),
     _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
     _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
     _showGroupVisibilityEditor: !!q?._showGroupVisibilityEditor,
@@ -767,6 +769,7 @@ export function makeBackendQuestionFromType(type, index = 0) {
     post_label: String(base?.post_label ?? ""),
     post_feed_id: String(base?.post_feed_id ?? ""),
     apply_feed_randomization: base?.apply_feed_randomization !== false,
+    reminder_interactive: !!base?.reminder_interactive,
     _showFeedVisibilityEditor: false,
     _showFeedOverridesEditor: false,
     meta: base?.meta || {},
@@ -881,12 +884,17 @@ export function buildSavedQuestion(q, index) {
       cleanQ.type === POST_REMINDER_TYPE
         ? cleanQ.apply_feed_randomization !== false
         : true,
+    reminder_interactive:
+      cleanQ.type === POST_REMINDER_TYPE
+        ? !!cleanQ.reminder_interactive
+        : false,
     meta:
       cleanQ.type === POST_REMINDER_TYPE
         ? {
             ...(cleanQ.meta || {}),
             post_feed_id: String(cleanQ.post_feed_id || ""),
             apply_feed_randomization: cleanQ.apply_feed_randomization !== false,
+            reminder_interactive: !!cleanQ.reminder_interactive,
           }
         : cleanQ.meta || {},
     randomize_options: false,
@@ -2917,6 +2925,10 @@ function QuestionCard({
                       nextType === POST_REMINDER_TYPE
                         ? q.apply_feed_randomization !== false
                         : true,
+                    reminder_interactive:
+                      nextType === POST_REMINDER_TYPE
+                        ? !!q.reminder_interactive
+                        : false,
                     _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
                     _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
                     meta: q.meta || {},
@@ -2992,7 +3004,7 @@ function QuestionCard({
       {isPostReminder && (
         <FieldBlock
           label="Post to show again"
-          hint="This will display the selected linked-feed post again in the survey as a non-interactive reminder."
+          hint="This will display the selected linked-feed post again in the survey — non-interactive by default, or interactive if turned on below."
         >
           <PostReminderEditor
             availablePosts={availablePostsForQuestion}
@@ -3028,6 +3040,33 @@ function QuestionCard({
               }
             />
             <span>Carry over the feed's randomize settings for this reminder</span>
+          </label>
+        </FieldBlock>
+      )}
+
+      {isPostReminder && (
+        <FieldBlock
+          label="Interactivity"
+          hint="On: participants can like/comment/share/report this reminder post exactly like the real feed, and those interactions are recorded as answers to this question (visible as extra columns in the CSV export). Off (default): the reminder is view-only — no hover effects, nothing clickable. Available actions depend on the platform (Amazon posts only support helpful/report)."
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!q.reminder_interactive}
+              onChange={(e) =>
+                updateQuestion(index, {
+                  reminder_interactive: e.target.checked,
+                })
+              }
+            />
+            <span>Let participants interact with this reminder post (like, comment, share, report)</span>
           </label>
         </FieldBlock>
       )}
@@ -4334,6 +4373,7 @@ export function SurveyEditor({
         post_label: String(sourceQuestion?.post_label ?? ""),
         post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
         apply_feed_randomization: sourceQuestion?.apply_feed_randomization !== false,
+        reminder_interactive: !!sourceQuestion?.reminder_interactive,
         _showFeedVisibilityEditor: !!sourceQuestion?._showFeedVisibilityEditor,
         _showFeedOverridesEditor: !!sourceQuestion?._showFeedOverridesEditor,
       };

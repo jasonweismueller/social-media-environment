@@ -509,7 +509,7 @@ const attachBioHover = (ref) => {
     ...(isMobile
       ? {
           onClick: () => {
-            if (!post.showBio) return;
+            if (disabled || !post.showBio) return;
             setBioOpen(true);
             onAction?.("bio_open", { post_id: post.id, surface: "mobile" });
           },
@@ -527,7 +527,7 @@ const hideDelayRef = useRef(null);
 const bioShownRef = useRef(false);
 
 const showHover = (el) => {
-  if (!isMobile && post.showBio) {
+  if (!isMobile && !disabled && post.showBio) {
     clearTimeout(hideDelayRef.current);
     setHoverTargetEl(el);
 
