@@ -1169,6 +1169,81 @@ clean: `ui-survey.jsx`, `App-facebook.jsx`, `App-instagram.jsx`, `App-amazon.jsx
 click-through on a survey with a `randomize_times`/`randomize_images`-enabled reminder post once
 this deploys, to confirm the flash is actually gone and not just theoretically fixed.
 
+## Avatar/topic-image assets were serving full-camera-resolution files (2026-08-02)
+
+Follow-up to the reminder-post flash fix above: even after that preload fix, the user still saw
+a visible grey-circle delay before avatars appeared. Root cause turned out to be nothing to do
+with preload timing or code at all — it was the actual asset files. The avatar pool
+(`d2bihrgvtn9bga.cloudfront.net/avatars/{female,male}/*.jpg`, backed by S3 bucket
+`my-video-feed`, us-west-1, CloudFront distribution `ERUJLWKVJDMDM`) was storing raw
+phone/camera-resolution originals — confirmed via direct fetch: `f10.jpg` was 2832×4064px/644KB,
+`f1.jpg` 5184×3456px/858KB, `m1.jpg` 4000×5688px/1.15MB — being downloaded in full just to render
+a ~40px avatar circle. The `images/<topic>/` content-image pool used by `randomize_images` (same
+bucket, 20 real topic folders identified by having an `index.json` — Airlines, Animals, Apple,
+Bottle, Cinema, Climate Change, Education, Immigration, Mental Health, Multivitamins, Packaging,
+Rain, Social Media, Starbucks, Stocks, Sunscreen, Traffic, Transport, Vaccines, Water; the
+`global` folder and every project/feed-named folder under `images/` do *not* have an
+`index.json` and are unrelated raw per-post uploads via the S3 presigned-URL signer, not part of
+this pool — left untouched) had the same problem, worse in aggregate (321MB across 194 files).
+
+**Fixed by resizing in place, not by touching any code.** Since the frontend just fetches
+whatever bytes live at each pool URL (`getAvatarPool`/`getImagePool` in `utils-core.js`), the fix
+was entirely asset-side: download → resize with macOS's built-in `sips` (no ImageMagick/sharp
+available or needed) → re-upload to the *same* S3 keys → CloudFront invalidation. No manifest or
+app-code changes required.
+- **Avatars**: `-Z 320 -s formatOptions 78` (max 320px dimension, quality 78) — chosen for a small
+  circular thumbnail; visually verified sharp at that size. Female 35MB→416KB, male 28MB→428KB
+  (~65-84x). Company avatars (`avatars/company/*.png`) were already fine (7-24KB logos) and left
+  alone.
+- **Topic images**: `-Z 1400` (quality 80) — deliberately much bigger than avatars since these
+  render as full post-width images (`--feed-max: 700px` in all three stylesheets, so 1400px
+  covers 2x/retina). 321MB→38MB (~8.4x). **Not every file was touched** — only resized when a
+  file's actual pixel dimensions exceeded 1400px; discovered via a failed first attempt that
+  blindly running `sips -Z` on an already-small file *upscales* it and can make the file bigger
+  (a 638×480/34KB test file became 1400×1053/230KB) — so the working script checks
+  `pixelWidth`/`pixelHeight` per file first and skips ones already under the target (5 of 194,
+  all in `Bottle/`, were skipped this way).
+- **Backup before touching anything**: bucket has no versioning enabled
+  (`aws s3api get-bucket-versioning` returned empty), so every original was `s3 sync`'d to
+  `avatars_originals_backup_2026-08-02/` / `images_originals_backup_2026-08-02/` in the same
+  bucket before any overwrite — that's the actual undo path if a resize ever needs reverting.
+- **CloudFront invalidation gotchas hit along the way**: (1) a single `create-invalidation` call
+  with ~19 wildcard (`/topic/*`) paths hit `TooManyInvalidationsInProgress` — CloudFront caps
+  in-progress *wildcard* invalidation paths per distribution well below that; switched to
+  invalidating the exact touched file paths instead (189 individual paths, no wildcards — also
+  more precise, since it skips `index.json` which was never touched). (2) CloudFront invalidation
+  paths need literal spaces URL-encoded (`%20`) — folder names like `Climate Change`/
+  `Social Media`/`Mental Health` failed with `InvalidArgument` until fixed. (3) macOS's default
+  `/bin/bash` is 3.2 (no `mapfile` builtin) — array-from-file needs a `while read` loop instead.
+- **One real mistake made and cleaned up**: an `aws s3 sync` download step left a spurious local
+  duplicate (`Rain5.jpg.3Afa1456`, a mangled-colon artifact — not a real original object, confirmed
+  by checking the backup, which only ever had the 5 real `Rain*.jpg` files) that got swept into
+  the same resize-everything loop and uploaded as a genuine extra S3 object. Harmless functionally
+  (the app sources its image lists from `index.json`, never from raw folder listing, so it was
+  never reachable), but deleted (`aws s3 rm`) once noticed rather than left as clutter.
+- **Execution mechanics worth remembering for next time**: this session had no AWS CLI or
+  credentials configured at first (`brew install awscli`, then the user ran `aws login`
+  themselves — SSO browser flow, landed on `arn:aws:iam::044469163119:root`, region defaulted to
+  us-east-1 but the bucket is us-west-1 so every command needs an explicit `--region us-west-1`).
+  **Live S3/CloudFront write commands (`aws s3 cp`, `create-invalidation`) are gated by Claude
+  Code's auto-mode permission classifier** and get blocked unpredictably — one `aws s3 cp` call
+  was blocked, then an identical one moments later went through when shown to the user as part of
+  demonstrating the command. Given the user's explicitly stated preference (run risky write
+  commands themselves rather than have Claude execute them silently), the working pattern that
+  actually stuck was: Claude does all the read-only prep (download, backup *is* a write but to a
+  new prefix so lower-risk, resize, verify) and writes a shell script to the scratchpad dir, hands
+  the user the exact `bash <script>` command to run themselves — except when the user explicitly
+  says "just do it", which is direct authorization to run it directly.
+- **Verified end-to-end**: fetched several live post-fix URLs directly with cache-busting
+  (`?bust=<ts>` + `cache:'no-store'`) to bypass both browser and edge cache and confirm the actual
+  current bytes being served, not a stale cached read — e.g. `mentalhealth11.jpg` now 409KB (was
+  multi-MB), `Transport3.jpg` 788KB, deleted stray file now correctly 403s.
+- **Not addressed**: the raw per-post-upload images under `images/<project>/<feed>/...` (285
+  files across all of `images/`, minus the 194 in real topic pools — includes a couple of 2.5MB
+  PNGs) — these are specific, deliberately-chosen images for specific posts, not a randomization
+  pool, so blanket-resizing them wasn't in scope here and needs a case-by-case call (some may be
+  intentionally high-res, e.g. a screenshot post where legibility matters).
+
 ## Build/dev notes
 
 - `npm run dev` — Vite dev server. **Currently hangs indefinitely at startup in this

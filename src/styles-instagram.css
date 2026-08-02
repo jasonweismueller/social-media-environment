@@ -1401,7 +1401,7 @@ body.admin-mode .nav {
   margin-bottom: 12px;
   font-size: 1rem;
   line-height: 1.45;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--ig-text);
 }
 
@@ -1413,14 +1413,14 @@ body.admin-mode .nav {
 
 .survey-question-number{
   flex: 0 0 auto;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1.45;
 }
 
 .survey-question-title-content{
   min-width: 0;
   flex: 1;
-  font-weight: 400;
+  font-weight: 700;
 }
 
 .survey-question-title-content p{
@@ -1806,6 +1806,8 @@ body.admin-mode .nav {
 
 .survey-question-post-reminder{
   overflow: visible;
+  background: linear-gradient(180deg, #eef3ff, #e6edff);
+  border-color: #c7d7fb;
 }
 
 .survey-post-reminder-block{
@@ -1814,6 +1816,7 @@ body.admin-mode .nav {
 
 .survey-post-reminder-intro{
   margin-bottom: 10px;
+  font-weight: 700;
 }
 
 .survey-post-reminder-outer{
