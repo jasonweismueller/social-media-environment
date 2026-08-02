@@ -533,6 +533,17 @@ the one most likely to have been silently failing to cache.
 
 ## Backend migration: Apps Script/Sheets → Supabase (2026-08-01 planning, Phases 1–3 done 2026-08-02, Phase 4 done + production cutover live 2026-08-02)
 
+**Quick orientation if you're picking this up fresh**: production (`studyfeed.org`) has been
+running on Supabase since 2026-08-02, and stayed live through several real post-cutover bugs found
+and fixed the same day (worst one: a primary-key design flaw that had silently deleted most of the
+app's post data — see "Real production data-completeness incident" below). Everything is fixed,
+verified against real data, and committed. Plan-level status + what's actually left (mainly Phase 7
+cleanup — GAS hasn't been decommissioned yet) is in `~/.claude/plans/gradual-migrating-codd.md`;
+this section is the detailed narrative, read in file order (chronological) for the full story. If
+you're about to say something "still works fine" post-migration, check whether that's because it
+was actually verified or because it's quietly still running on GAS unported — that assumption was
+wrong twice in this same session (`loadPostByIdFromBackend`, `linkSurveyToFeedsOnBackend`).
+
 Following the investigation above, the user asked whether Apps Script itself is the wrong
 long-term architecture now that the project has grown. Answer worked out with the user: yes —
 genuine structural ceiling, not just a bug. Beyond the 100KB CacheService limit found above, this
@@ -885,6 +896,20 @@ Phase 4 "What's ported" section above). No further known gaps.
   `loadMultiFeedParticipantSurveyRoster`) needed **zero changes** — they're pure client-side merges
   over the leaf functions above, not separate network calls.
 
+**This list predates several things ported later the same day, after production cutover — see their
+own sections below (all dated 2026-08-02, further down this file) rather than duplicating here**:
+admin user management (`adminListUsers`/`Create`/`Update`/`DeleteUser`, via the `admin-users` Edge
+Function), `wipeParticipantsOnBackend`, `getWipePolicyFromBackend`/`setWipePolicyOnBackend`
+(project-scoped, a deliberate divergence from GAS's global flag), survey-only direct-launch boot/
+definition loading (`getSurveyBootFromBackend`/`getSurveyFromBackend`, now actually called from
+survey-only mode), `loadPostByIdFromBackend` (survey post-reminder questions),
+`linkSurveyToFeedsOnBackend` ("Save feed links" button), and `setFeedFlagsOnBackend`/
+`fetchParticipantsStats` (Feeds table randomize toggles + stats columns, found during the
+full-codebase audit). **As of the full-codebase audit (2026-08-02), every backend-calling function
+in the app goes through `isSupabaseBackend()` except one confirmed-dead one**
+(`loadMergedParticipantSurveyRoster`) — treat the migration's frontend-wiring phase as complete,
+not "mostly done."
+
 ### Real bug found and fixed: `save-survey` Edge Function's feed linking was broken
 
 `supabase/functions/save-survey/index.ts` (built in Phase 2, before the feed_id-collision fix
@@ -1094,6 +1119,55 @@ tool calls and not fully understood — flag-gating is the only safety guarantee
 depend on knowing what that pipeline actually watches. Testing happens via the *user's own* local
 `npm run dev` (now confirmed working, see "Build/dev notes") rather than a deployed staging
 environment.
+
+## Survey post-reminder flash of unrandomized content, fixed (2026-08-02)
+
+User-reported: on the survey "Loading questions…" page, `post_reminder` questions would render
+correctly for a moment, then visibly flip — the avatar/post image would show grey/blank before
+popping in, and worse, for posts with `randomize_times` on, the reminder would flash the raw
+literal `"Just now"` before switching to the properly randomized `"Xh"` time a beat later.
+
+**Root cause**: `PostReminderCard` (`src/ui-core/ui-survey.jsx`) fetches its source feed's
+randomize flags itself, via `fetchFeedFlags`, in a `useEffect` that only runs once the survey page
+has already mounted — i.e. after the "Loading questions…" overlay is gone and the participant is
+already looking at the page. Until that fetch resolves, the reminder renders with
+`reminderFlags` still `null`, falling back to the outer (usually all-false) survey `flags` prop —
+so `randomize_times`/`randomize_avatars`/`randomize_images` all read as off on first paint,
+producing the raw unrandomized post fields (raw `post.time`, which commonly defaults to literally
+`"Just now"`; the unrandomized avatar/image) until the flags fetch resolves and the component
+re-renders. `preloadSurveyPostReminders` (duplicated per `App-*.jsx`, called during the loading
+overlay) already existed specifically to warm this kind of thing, but only warmed the post itself
+and its literal image fields, plus (fb/ig only) one deterministic avatar-pool pick — it never
+fetched feed flags at all, and had no equivalent preload for `randomize_images`.
+
+**Fix — cache priming only, no render-logic changes**: exported `PostReminderCard`'s two
+module-level caches (`reminderPostFetchCache`, `reminderFlagsFetchCache`) and its
+feed-id/app-resolution helpers (`getReminderPostFeedId`, `getReminderApp`) from `ui-survey.jsx`,
+then had each `App-*.jsx`'s `preloadSurveyPostReminders` populate them *before* the survey page
+ever mounts, keyed identically to how `PostReminderCard` reads them
+(`${projectId}::${feedId}` / `${projectId}::${feedId}::${postId}`) — so `PostReminderCard`'s
+`useState` initializers find already-correct data on the very first render instead of starting
+`null` and flipping later. Specifically, per reminder target: fetch+cache the feed's flags
+up front (fb/ig); only if `randomize_avatars` is actually on, preload the deterministic avatar
+pick (previously always done regardless of the flag); **new** — if `randomize_images` is on,
+compute and preload the deterministic pool image pick too (mirroring each app's own PostCard
+internal seed shape exactly — Facebook/Instagram's `[...seedParts, "image"]`), closing the one
+genuine gap where an asset was never preloaded at all, not just fetched late. Amazon has no
+time/avatar/image randomization (confirmed via grep — `ui-posts-amazon.jsx` has none of this), so
+it only got the (harmless, minor) post-cache priming for parity, not the flags/avatar/image work.
+
+Getting the cache keys to line up required reusing `getReminderPostFeedId` (not the preload
+functions' own simpler feed-id fallback chain, which omitted the `visible_in_feeds` fallback
+`PostReminderCard` also checks) and `getReminderApp` (not each app's own `APP` constant — for
+Amazon specifically, `getReminderApp()` only ever returns `"fb"`/`"ig"`, never `"amz"`, a
+pre-existing quirk of `PostReminderCard`'s app resolution unrelated to this fix and not touched
+here; using anything else would have broken cache-key parity between preload and render).
+
+**Not click-tested live** — same sandbox `npm run dev`/`build` limitation as elsewhere in this
+file; verified via the `@babel/parser` syntax-check workaround only (all four changed files parse
+clean: `ui-survey.jsx`, `App-facebook.jsx`, `App-instagram.jsx`, `App-amazon.jsx`). Worth a real
+click-through on a survey with a `randomize_times`/`randomize_images`-enabled reminder post once
+this deploys, to confirm the flash is actually gone and not just theoretically fixed.
 
 ## Build/dev notes
 

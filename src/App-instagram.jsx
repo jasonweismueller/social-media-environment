@@ -59,6 +59,10 @@ import {
   SurveyScreenMobile,
   SurveyScreen,
   SurveyPrefaceFlow,
+  reminderPostFetchCache,
+  reminderFlagsFetchCache,
+  getReminderPostFeedId,
+  getReminderApp,
 } from "./ui-core";
 
 import { AdminEntry } from "./admin/AdminEntry";
@@ -684,12 +688,11 @@ async function preloadSurveyPostReminders({
       const postId = String(
         question?.post_id ?? question?.meta?.post_id ?? ""
       ).trim();
-      const feedId = String(
-        question?.post_feed_id ??
-          question?.meta?.post_feed_id ??
-          fallbackFeedId ??
-          ""
-      ).trim();
+      // Use the exact same feed-id resolution PostReminderCard (ui-survey.jsx)
+      // uses at render time — any divergence here (e.g. the visible_in_feeds
+      // fallback it also checks) would prime the caches below under the
+      // wrong key, silently making this preload a no-op.
+      const feedId = getReminderPostFeedId(question, fallbackFeedId);
 
       if (!postId || !feedId) return;
 
@@ -715,6 +718,10 @@ async function preloadSurveyPostReminders({
 
   if (!uniqueTargets.size) return [];
 
+  const resolvedProjectId = projectId || getProjectIdUtil() || "";
+  const reminderApp = getReminderApp();
+  const runSeed = participantSeed || "survey-reminder-preview";
+
   return Promise.all(
     Array.from(uniqueTargets.values()).map(
       async ({ feedId, postId, applyFeedRandomization }) => {
@@ -725,43 +732,112 @@ async function preloadSurveyPostReminders({
           signal,
         });
 
-        if (post && !signal?.aborted) {
-          await preloadReminderPostAssets(post, signal);
+        if (!post || signal?.aborted) return post;
 
-          // When there's no stored "displayed post" snapshot to fall back
-          // on (e.g. survey_only mode, where the participant never actually
-          // viewed the feed), the Instagram PostCard (ui-posts-instagram.jsx)
-          // self-computes a real pool avatar via its own runSeed-based
-          // deterministic pick instead of trusting the post's own (often
-          // unset) avatarUrl. That pick only happens once the survey page
-          // renders the reminder, so without preloading the same pick here
-          // too, the participant sees a blank/gray avatar circle for as long
-          // as that pool-list + image fetch takes. Mirror the exact same
-          // runSeed + seed shape ui-posts-instagram.jsx uses (NOT the same
-          // formula as the Facebook app — Instagram's PostCard ignores an
-          // externally-assigned avatar prop and always computes its own).
-          if (applyFeedRandomization) {
+        // Prime the same cache PostReminderCard reads from on mount, so it
+        // skips its own "Loading post…" round trip entirely.
+        reminderPostFetchCache.set(
+          `${resolvedProjectId}::${feedId || ""}::${postId}`,
+          post
+        );
+
+        await preloadReminderPostAssets(post, signal);
+
+        if (!applyFeedRandomization || signal?.aborted) return post;
+
+        // Fetch (and cache, under the exact key PostReminderCard reads from
+        // on mount) the source feed's randomize flags up front. Without
+        // this, PostReminderCard only starts this fetch once the survey
+        // page is already visible, so the reminder first renders with
+        // unrandomized defaults (e.g. the post's raw stored time, often
+        // literally "Just now") and then visibly flips to the correctly
+        // randomized version a beat later once that fetch resolves.
+        const flagsCacheKey = `${resolvedProjectId}::${feedId || ""}`;
+        let flags = reminderFlagsFetchCache.get(flagsCacheKey);
+        if (!flags) {
+          try {
+            flags =
+              (await fetchFeedFlags({
+                app: reminderApp,
+                projectId: resolvedProjectId,
+                feedId,
+                signal,
+              })) || {};
+          } catch {
+            flags = {};
+          }
+          if (!signal?.aborted) {
+            reminderFlagsFetchCache.set(flagsCacheKey, flags);
+          }
+        }
+
+        if (signal?.aborted) return post;
+
+        // When there's no stored "displayed post" snapshot to fall back
+        // on (e.g. survey_only mode, where the participant never actually
+        // viewed the feed), the Instagram PostCard (ui-posts-instagram.jsx)
+        // self-computes a real pool avatar via its own runSeed-based
+        // deterministic pick instead of trusting the post's own (often
+        // unset) avatarUrl. That pick only happens once the survey page
+        // renders the reminder, so without preloading the same pick here
+        // too, the participant sees a blank/gray avatar circle for as long
+        // as that pool-list + image fetch takes. Mirror the exact same
+        // runSeed + seed shape ui-posts-instagram.jsx uses (NOT the same
+        // formula as the Facebook app — Instagram's PostCard ignores an
+        // externally-assigned avatar prop and always computes its own).
+        if (flags.randomize_avatars ?? flags.randomize_avatar) {
+          try {
+            const kind =
+              post.authorType === "male" || post.authorType === "company"
+                ? post.authorType
+                : "female";
+            const pool = await getAvatarPool(kind);
+            const pick = pickDeterministic(pool, [
+              runSeed || "run",
+              reminderApp || "ig",
+              resolvedProjectId || "global",
+              feedId || "",
+              String(post.id ?? postId),
+              "avatar",
+            ]);
+            if (pick && !signal?.aborted) {
+              await preloadReminderImage(pick, signal);
+            }
+          } catch {
+            // Best-effort preload only — the renderer still fetches/picks
+            // its own avatar if this fails, just without the head start.
+          }
+        }
+
+        // Same idea for the post's own content image: the Instagram
+        // PostCard computes a randomized pool image itself, in its own
+        // effect, whenever randomize_images is on — that pick was never
+        // preloaded before, so the reminder's image visibly loaded from
+        // scratch even though every *other* asset was warmed. Mirror
+        // ui-posts-instagram.jsx's exact seed shape (same seedParts as the
+        // avatar pick above, "image" suffix instead of "avatar").
+        if (
+          flags.randomize_images &&
+          post.image &&
+          post.imageMode !== "none"
+        ) {
+          const topic = String(post.topic || post.imageTopic || "").trim();
+          if (topic) {
             try {
-              const kind =
-                post.authorType === "male" || post.authorType === "company"
-                  ? post.authorType
-                  : "female";
-              const pool = await getAvatarPool(kind);
-              const runSeed = participantSeed || "survey-reminder-preview";
-              const pick = pickDeterministic(pool, [
+              const list = await getImagePool(topic);
+              const pick = pickDeterministic(list, [
                 runSeed || "run",
-                APP || "ig",
-                projectId || "global",
+                reminderApp || "ig",
+                resolvedProjectId || "global",
                 feedId || "",
                 String(post.id ?? postId),
-                "avatar",
+                "image",
               ]);
               if (pick && !signal?.aborted) {
                 await preloadReminderImage(pick, signal);
               }
             } catch {
-              // Best-effort preload only — the renderer still fetches/picks
-              // its own avatar if this fails, just without the head start.
+              // Best-effort preload only.
             }
           }
         }

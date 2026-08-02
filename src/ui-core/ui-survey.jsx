@@ -61,7 +61,15 @@ function safeLocalStorageGet_(key) {
 // navigates back to a previous survey page and returns to it later), which
 // otherwise re-shows the "Loading post..." state and adds a network round
 // trip each time.
-const reminderPostFetchCache = new Map();
+// Exported so the participant-facing App-*.jsx preload pass (which runs
+// while the "Loading questions…" overlay is up) can warm these same caches
+// ahead of time — otherwise PostReminderCard only starts fetching the post
+// and its feed's randomize flags once the survey page has already mounted
+// and become visible, which is what causes a reminder post to render with
+// stale/default values for a moment (e.g. unrandomized "Just now" time, or
+// the wrong avatar/image) before flipping to the correct randomized version
+// a beat later.
+export const reminderPostFetchCache = new Map();
 
 // Module-level cache for the source feed's randomize flags, keyed by
 // "projectId::feedId". A post_reminder question always knows which feed its
@@ -71,7 +79,7 @@ const reminderPostFetchCache = new Map();
 // all, so that `flags` stays at its all-false default). Without fetching the
 // reminder's own feed flags here, a non-snapshot reminder post renders
 // unrandomized even when its source feed has randomization enabled.
-const reminderFlagsFetchCache = new Map();
+export const reminderFlagsFetchCache = new Map();
 
 function isDisplayedPostSnapshot(post) {
   return !!(post && post.__studyfeed_displayed_snapshot);
@@ -332,7 +340,7 @@ function shallowEqualObject(a, b) {
   return true;
 }
 
-function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
+export function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
   const visibleFeedFallback = Array.isArray(question?.visible_in_feeds)
     ? question.visible_in_feeds.find((feedId) => String(feedId || "").trim())
     : "";
@@ -345,7 +353,7 @@ function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
   );
 }
 
-function getReminderApp() {
+export function getReminderApp() {
   if (typeof window === "undefined") return "fb";
   return (
     String(

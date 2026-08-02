@@ -58,6 +58,8 @@ import {
   SurveyScreenMobile,
   SurveyScreen,
   SurveyPrefaceFlow,
+  reminderPostFetchCache,
+  getReminderPostFeedId,
 } from "./ui-core";
 
 import { AdminEntry } from "./admin/AdminEntry";
@@ -712,12 +714,11 @@ async function preloadSurveyPostReminders({
       const postId = String(
         question?.post_id ?? question?.meta?.post_id ?? ""
       ).trim();
-      const feedId = String(
-        question?.post_feed_id ??
-          question?.meta?.post_feed_id ??
-          fallbackFeedId ??
-          ""
-      ).trim();
+      // Use the exact same feed-id resolution PostReminderCard (ui-survey.jsx)
+      // uses at render time — any divergence here (e.g. the visible_in_feeds
+      // fallback it also checks) would prime the cache below under the wrong
+      // key, silently making this preload a no-op.
+      const feedId = getReminderPostFeedId(question, fallbackFeedId);
 
       if (!postId || !feedId) return;
 
@@ -743,13 +744,16 @@ async function preloadSurveyPostReminders({
 
   if (!uniqueTargets.size) return [];
 
+  const resolvedProjectId = projectId || getProjectIdUtil() || "";
+
   return Promise.all(
     Array.from(uniqueTargets.values()).map(
       // The Amazon review card (ui-posts-amazon.jsx) renders reviewer
       // "avatars" as a plain letter-in-a-circle (the reviewer name's first
-      // initial) — there's no photo, no avatar pool, and nothing to
-      // randomize. applyFeedRandomization is intentionally unused here,
-      // unlike the Facebook/Instagram versions of this function.
+      // initial) — there's no photo, no avatar pool, no image/time
+      // randomization, and nothing to randomize. applyFeedRandomization is
+      // intentionally unused here, unlike the Facebook/Instagram versions
+      // of this function.
       async ({ feedId, postId }) => {
         const post = await loadPostByIdFromBackend({
           projectId,
@@ -759,6 +763,12 @@ async function preloadSurveyPostReminders({
         });
 
         if (post && !signal?.aborted) {
+          // Prime the same cache PostReminderCard reads from on mount, so
+          // it skips its own "Loading post…" round trip entirely.
+          reminderPostFetchCache.set(
+            `${resolvedProjectId}::${feedId || ""}::${postId}`,
+            post
+          );
           await preloadReminderPostAssets(post, signal);
         }
 
