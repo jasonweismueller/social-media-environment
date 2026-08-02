@@ -531,7 +531,7 @@ Not click-tested live (same sandbox dev-server limitation as elsewhere in this f
 confirming after redeploy: load the largest/most complex survey in the project first, since it's
 the one most likely to have been silently failing to cache.
 
-## Backend migration: Apps Script/Sheets → Supabase (2026-08-01 planning, Phases 1–3 done 2026-08-02, Phase 4 mostly done 2026-08-02)
+## Backend migration: Apps Script/Sheets → Supabase (2026-08-01 planning, Phases 1–3 done 2026-08-02, Phase 4 done + production cutover live 2026-08-02)
 
 Following the investigation above, the user asked whether Apps Script itself is the wrong
 long-term architecture now that the project has grown. Answer worked out with the user: yes —
@@ -548,18 +548,63 @@ ExperimentAssignments/FeedSurveys) is already relational in shape, so this is a 
 swap, not a logic rewrite. Full plan — entity-by-entity schema mapping, phase breakdown, and the
 safety approach below — is in `~/.claude/plans/gradual-migrating-codd.md`.
 
-**Status: Phases 1–3 complete and verified against real data (see `supabase/README.md`). Phase 4
-(frontend wiring) is now substantially done and tested — almost everything `utils-backend.js`
-exposes has a working Supabase counterpart, reachable only when `VITE_BACKEND=supabase`
-(default stays `gas`, so production is completely unaffected until someone deliberately flips
-it).** Real participants have been served by the unchanged Apps Script backend throughout; nothing
-about this work has touched production. **The one Phase 4 prerequisite from the previous note is
-resolved**: a real admin account (`jason.weismueller@gmail.com`, role `owner`) already existed in
-Supabase Auth from Phase 1 setup — confirmed via `supabase db query --linked` against
-`auth.users`/`profiles`, and login through it has been tested live in the browser. **Local dev
-state note**: the gitignored `.env` on this machine was left with `VITE_BACKEND=supabase` after
-this testing (not `gas`) — if a future session's `npm run dev` behaves unexpectedly like it's
-hitting Supabase, that's why; check `.env` before assuming it's still on the default.
+**Status: Phases 1–4 complete, and production has been cut over to Supabase (2026-08-02).**
+Everything `utils-backend.js` exposes now has a working Supabase counterpart. **The one Phase 4
+prerequisite from the previous note is resolved**: a real admin account
+(`jason.weismueller@gmail.com`, role `owner`) already existed in Supabase Auth from Phase 1 setup —
+confirmed via `supabase db query --linked` against `auth.users`/`profiles`, and login through it
+has been tested live in the browser. **Local dev state note**: the gitignored `.env` on this
+machine was left with `VITE_BACKEND=supabase` (not `gas`) from earlier testing — if a future
+session's `npm run dev` behaves unexpectedly like it's hitting Supabase, that's why; check `.env`
+before assuming it's still on the default.
+
+### Production cutover (2026-08-02)
+
+**Deployment mechanism, now actually confirmed** (superseding the "external, not fully understood"
+framing used throughout this file up to this point): it's GitHub Actions (`.github/workflows/
+deploy.yml`, triggers on push to `main`, `npm run build` → GitHub Pages, custom domain
+`studyfeed.org`), and the "auto-commit" part is the user's own GitHub Desktop app, not something
+that fires without a manual click there — confirmed by observing zero auto-commits happen across
+this entire session's substantial working-tree changes (admin-users, wipe-participants, wipe-policy
+— all of it sat uncommitted until the user committed 616 files via that app in one batch, git
+history showing exactly one commit `dcdefe4` for the lot). Earlier sessions' documented pattern of
+"a fresh commit per logical chunk of work, already on origin/main" was real, just apparently
+depends on that app being left open/attended; don't assume it fires unattended in a future session
+— check `git status` against what you'd expect to be committed rather than assuming.
+
+**How the actual flip works**: `VITE_BACKEND` needed to reach the GitHub Actions build environment
+somehow. The workflow has no env vars wired in and no GitHub secrets were set (`gh` isn't
+authenticated in this sandbox, ruling that path out anyway) — instead, a committed
+**`.env.production`** file at the repo root, which Vite auto-loads for `npm run build` (production
+mode) with zero workflow changes needed. Contains `VITE_BACKEND=supabase` plus the Supabase URL and
+anon/publishable key — safe to commit despite the public repo, same reasoning as `.env.example`:
+the anon key is meant to ship in the client bundle, RLS is the real gate, and the actual secret
+(`service_role`) never appears in any repo file, only in Supabase's own Edge Function secrets.
+
+**Sequenced as two deliberate commits, not one**, specifically because there's no staging
+buffer for this repo: first `dcdefe4` (all Phase 4 code — Edge Functions, migrations,
+`utils-backend-supabase.js`, etc. — genuinely inert without `.env.production`, verified by checking
+the GitHub Actions build succeeded and the live site still loaded with zero console errors *before*
+touching the actual switch), then `36824ef` (`.env.production` alone) as the real cutover, kept
+small and isolated on purpose so it's easy to point at and easy to revert (deleting that one file
+and pushing reverts to `gas` — no code changes needed, since the code already defaults to `gas`
+whenever `VITE_BACKEND` is unset).
+
+**Verified live post-deploy**: confirmed via the GitHub Actions API (repo is public, so this needed
+no auth) that the build for `36824ef` completed successfully; fetched the deployed JS directly
+(`https://studyfeed.org/assets/AdminEntry-*.js` — the shared chunk containing `utils-backend.js`)
+and confirmed the Supabase URL and anon key each appear exactly once, baked in as literals,
+proving `.env.production` was actually picked up and not silently ignored; loaded the live admin
+login page in a real browser with zero console errors. Did not log in as the real owner (credential
+entry is off-limits) — the deeper functional verification (list/create/update/delete users, wipe
+participants, wipe-on-change policy, full participant→survey submission walkthrough) had already
+been done directly against this same Supabase project earlier in the same session, before cutover,
+so this final check is confirming *deployment*, not *correctness* — that was established already.
+
+**Rollback, if ever needed**: delete `.env.production` and push (or revert commit `36824ef`) — the
+GAS backend was never touched by any of this work and should still be fully functional. No data
+migration undo is needed either way since Phase 3's migration script was one-directional and
+additive (copied GAS data into Supabase, never deleted anything from Sheets).
 
 ### What's ported (all behind `isSupabaseBackend()` checks in `utils-backend.js`)
 
