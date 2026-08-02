@@ -675,6 +675,55 @@ export async function supabaseFetchFeedFlags({ projectId, app, feedId }) {
   return data?.flags && typeof data.flags === "object" ? data.flags : {};
 }
 
+// Read-modify-write, not a blind overwrite — the admin dashboard's per-flag
+// toggle (components-admin-dashboard.jsx `toggleFlag`) only ever sends a
+// one-key patch (e.g. `{random_avatar: true}`), and feeds.flags stores the
+// canonical randomize_* shape (normalizeFlags() in migrate-from-sheets.mjs),
+// not the legacy random_* one the patch itself uses — merging with a plain
+// `{...existing, ...patch}` spread would leave both an old `randomize_avatars`
+// and a new `random_avatar` key sitting side by side, with
+// normalizeFlagsForRead's `??` silently preferring the stale canonical one.
+// FLAG_PAIRS resolves each flag's *either*-naming patch value against its
+// canonical key explicitly, and leaves every flag the patch didn't mention
+// untouched — deliberately not reusing normalizeFlagsForRead/-ForStore from
+// utils-backend.js here, since this file stays a one-directional dependency
+// of that one (see header comment), not the other way around.
+const FLAG_PAIRS = [
+  ["randomize_times", "random_time"],
+  ["randomize_avatars", "random_avatar"],
+  ["randomize_names", "random_name"],
+  ["randomize_images", "random_image"],
+  ["randomize_bios", "random_bio"],
+];
+
+export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+
+  const { data: existing, error: readErr } = await supabase
+    .from("feeds")
+    .select("flags")
+    .eq("id", composedFeedId)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message);
+
+  const merged = { ...(existing?.flags && typeof existing.flags === "object" ? existing.flags : {}) };
+  for (const [canonical, legacy] of FLAG_PAIRS) {
+    if (patch && (typeof patch[canonical] !== "undefined" || typeof patch[legacy] !== "undefined")) {
+      merged[canonical] = !!(patch[canonical] ?? patch[legacy]);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("feeds")
+    .update({ flags: merged })
+    .eq("id", composedFeedId)
+    .select("flags")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.flags;
+}
+
 /* ===================== Participant-facing survey delivery =================
  * Public reads (surveys_select_public / feed_surveys_select_public RLS —
  * no admin session involved, same as a real participant's anonymous
@@ -902,6 +951,34 @@ export async function supabaseLogSurveyResponse(args) {
   };
 
   return supabaseInsert("survey_responses", dbRow);
+}
+
+// Backs the Feeds table's Total/Submitted/Avg columns
+// (components-admin-dashboard.jsx `fetchParticipantsStats`) — computed
+// client-side over the raw rows rather than an RPC/aggregate query, same
+// tradeoff already made for loadExperimentGroupCounts elsewhere in this
+// file: per-feed participant counts are small enough that this is fine, and
+// it avoids needing a dedicated Postgres function for one admin-UI stat.
+export async function supabaseFetchParticipantsStats({ projectId, app, feedId }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const { data, error } = await supabase
+    .from("participants")
+    .select("submitted_at, ms_enter_to_submit")
+    .eq("feed_id", composedFeedId);
+  if (error) throw new Error(error.message);
+
+  const rows = data || [];
+  const submittedRows = rows.filter((r) => r.submitted_at);
+  const durations = submittedRows.map((r) => r.ms_enter_to_submit).filter((v) => Number.isFinite(v));
+
+  return {
+    total: rows.length,
+    submitted: submittedRows.length,
+    avg_ms_enter_to_submit: durations.length
+      ? durations.reduce((a, b) => a + b, 0) / durations.length
+      : null,
+  };
 }
 
 /* ===================== Participants / CSV export rosters (admin reads) ==== */

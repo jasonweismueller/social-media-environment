@@ -27,13 +27,12 @@ import {
   setProjectId as persistProjectId,
   getProjectId,
   getSurveyIdFromUrl,
-  GS_ENDPOINT,
   APP,
-  getAdminToken,
   readPostNames,
   writePostNames,
-  normalizeFlagsForStore,
-  normalizeFlagsForRead,
+  fetchFeedFlags,
+  setFeedFlagsOnBackend,
+  fetchParticipantsStats,
 } from "../utils";
 
 import { Routes, Route, Navigate } from "react-router-dom";
@@ -445,101 +444,13 @@ function exportFeedAsPdf(args) {
   }, 700);
 }
 
-/* ------------------------ Tiny admin stats fetcher --------------------------- */
-async function fetchParticipantsStats(projectId, feedId) {
-  try {
-    const admin = getAdminToken?.();
-    if (!admin || !feedId) return null;
-
-    const params = new URLSearchParams({
-      path: "participants_stats",
-      app: APP,
-      feed_id: String(feedId),
-      admin_token: admin,
-    });
-    const effPid = projectId && projectId !== "global" ? String(projectId) : "";
-    if (effPid) params.set("project_id", effPid);
-
-    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, {
-      mode: "cors",
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const json = await res.json().catch(() => null);
-    return json || null;
-  } catch {
-    return null;
-  }
-}
-
-/* ------------------------ Feed flags helpers (randomize_*) ------------------ */
-async function getFeedFlagsFromBackend({ projectId, feedId }) {
-  try {
-    if (!feedId) return { randomize_times: false };
-    const params = new URLSearchParams({
-      path: "get_feed_flags",
-      app: APP,
-      feed_id: String(feedId),
-    });
-    const effPid = projectId && projectId !== "global" ? String(projectId) : "";
-    if (effPid) params.set("project_id", effPid);
-
-    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, {
-      mode: "cors",
-      cache: "no-store",
-    });
-    const json = await res.json().catch(() => ({}));
-    const raw = json && json.flags ? json.flags : {};
-    const norm = normalizeFlagsForRead(raw);
-    return {
-      randomize_times: !!(norm.randomize_times ?? norm.random_time),
-      randomize_avatars: !!(norm.randomize_avatars ?? norm.random_avatar),
-      randomize_names: !!(norm.randomize_names ?? norm.random_name),
-      randomize_images: !!(norm.randomize_images ?? norm.random_image ?? norm.rand_images),
-      randomize_bios: !!(norm.randomize_bios ?? norm.random_bio),
-    };
-  } catch {
-    return {
-      randomize_times: false,
-      randomize_avatars: false,
-      randomize_names: false,
-      randomize_images: false,
-      randomize_bios: false,
-    };
-  }
-}
-
-async function setFeedFlagsOnBackend({ projectId, feedId, patch }) {
-  const admin = getAdminToken?.();
-  if (!admin) return { ok: false, err: "admin token missing" };
-
-  const payload = {
-    action: "set_feed_flags",
-    app: APP,
-    feed_id: String(feedId),
-    flags: normalizeFlagsForStore(patch || {}),
-    admin_token: admin,
-  };
-  if (projectId && projectId !== "global") payload.project_id = projectId;
-
-  const doPost = async (body) => {
-    const res = await fetch(GS_ENDPOINT, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=UTF-8" },
-      body: JSON.stringify(body),
-    }).catch(() => null);
-    return res ? res.json().catch(() => ({ ok: false })) : { ok: false };
-  };
-
-  let out = await doPost(payload);
-
-  if (!out?.ok && /unknown action/i.test(String(out?.err || ""))) {
-    out = await doPost({ ...payload, action: "set_flags" });
-  }
-
-  return out || { ok: false, err: "no response" };
-}
+// fetchParticipantsStats / getFeedFlagsFromBackend / setFeedFlagsOnBackend
+// used to be defined locally here, hardcoded to GAS — found and ported to
+// utils-backend.js during a full audit for unported functions, 2026-08-02
+// (see CLAUDE.md "Backend migration"). getFeedFlagsFromBackend duplicated
+// the already-ported fetchFeedFlags exactly (same normalized return shape),
+// so that one's gone entirely, not just moved — fetchFeedFlags (imported
+// above) is used directly at its one call site instead.
 
 function msToMinSec(n) {
   if (n == null) return "—";
@@ -667,7 +578,7 @@ export function AdminDashboard({
     const k = keyFor(projectId, fid);
     if (!force && (feedFlags[k]?.loaded || feedFlags[k]?.loading)) return;
     setFeedFlags((m) => ({ ...m, [k]: { ...(m[k] || {}), loading: true } }));
-    const f = await getFeedFlagsFromBackend({ projectId, feedId: fid });
+    const f = await fetchFeedFlags({ app: APP, projectId, feedId: fid });
     setFeedFlags((m) => ({ ...m, [k]: { ...f, loaded: true, loading: false } }));
   };
 

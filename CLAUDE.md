@@ -784,6 +784,58 @@ confirmed both `feed_surveys` and `definition.feed_sequence_ids` updated correct
 feed B, confirmed feed A was cleanly removed from both and feed B correctly added to both. Cleaned
 up afterward.
 
+### Full-codebase audit for hardcoded GAS calls (2026-08-02) — one more real gap found, this time inside an admin component, not `App-*.jsx`
+
+Given the pattern above kept recurring, did a systematic sweep rather than waiting for the next one
+to surface by accident: grepped the whole `src/` tree for every raw `fetch(`, `GS_ENDPOINT`,
+`GAS_PROXY_BASE`, `postJson(`, and `getJsonWithRetry(` usage outside `utils-backend.js`/
+`utils-backend-supabase.js`, plus every exported function *inside* `utils-backend.js` that talks to
+a backend at all but has no `isSupabaseBackend()` branch. Found one more real gap (beyond the two
+already fixed this session) — this time not in the `App-*.jsx` files, but three functions defined
+locally inside **`components-admin-dashboard.jsx`** itself, bypassing `utils-backend.js` entirely:
+
+- **`getFeedFlagsFromBackend`** — turned out to be a pure duplicate of the already-ported
+  `fetchFeedFlags` (identical normalized return shape), just never actually calling it. Not ported,
+  **deleted** — its one call site now calls the imported `fetchFeedFlags` directly.
+- **`setFeedFlagsOnBackend`** (every "Randomize times/avatars/names/images/bios" toggle in the
+  Feeds table) — **had no Supabase counterpart anywhere**, not even an unused one. This was
+  silently non-functional under `VITE_BACKEND=supabase`, full stop — worse than "still on GAS,"
+  since GAS's own copy of these flags would just silently drift from whatever an admin thought
+  they'd toggled. The trickiest part of porting this one: the toggle only ever sends a **single-key
+  patch** (`{random_avatar: true}`, legacy naming) meant to update one flag and leave the rest
+  alone, but `feeds.flags` stores the *canonical* `randomize_*` naming
+  (`normalizeFlags()` in `migrate-from-sheets.mjs`) — a naive `{...existing, ...patch}` merge would
+  leave both an old canonical key and a new legacy key sitting in the same object, and
+  `normalizeFlagsForRead`'s `??` fallback would silently prefer the stale canonical one, making the
+  toggle appear to do nothing. `supabaseSetFeedFlags` (`utils-backend-supabase.js`) resolves each of
+  the 5 flags against *either* naming explicitly before merging, touching only what the patch
+  actually mentions.
+- **`fetchParticipantsStats`** (the Feeds table's Total/Submitted/Avg columns) — no Supabase
+  counterpart existed; added one that computes the same three numbers over `participants` rows
+  client-side (small per-feed row counts, same tradeoff already made for
+  `loadExperimentGroupCounts` elsewhere in this file — no dedicated Postgres aggregate needed).
+
+All three ported into `utils-backend.js` proper (not left local to one component) — `getAdminToken`/
+`GS_ENDPOINT`/`normalizeFlagsForStore`/`normalizeFlagsForRead` imports removed from
+`components-admin-dashboard.jsx` entirely once nothing there needed them anymore.
+
+**Verified against real production data**: `fetchParticipantsStats('proj_7', 'feed_3')` (227 real
+participants) returned `{total: 227, submitted: 227, avg_ms_enter_to_submit: null}` — cross-checked
+the `null` average directly against the table (`count(ms_enter_to_submit)` = 0 of 227 rows) to
+confirm it's a correct reflection of real data, not a query bug. `fetchFeedFlags` on the same real
+feed returned real, non-default flag values. `setFeedFlagsOnBackend`'s merge logic
+(the single-key-patch-against-canonical-storage problem above) unit-tested in isolation with both a
+legacy-key and a canonical-key patch, confirming untouched flags survive and the patched one
+applies; the actual jsonb write mechanics separately confirmed via `supabase db query --linked`
+against disposable data. Full repo re-swept afterward for any remaining `GS_ENDPOINT`/raw-`fetch`
+usage outside `utils-backend.js` — none found; the only remaining `GS_ENDPOINT` references
+anywhere are the already-explained inert `endpoint` param on the properly-ported `fetchFeedFlags`
+(ignored whenever `isSupabaseBackend()` is true) and this file's own definition.
+
+**Audit conclusion**: as of this point, every backend-calling function in the app goes through
+`isSupabaseBackend()` except one confirmed-dead one (`loadMergedParticipantSurveyRoster`, see the
+Phase 4 "What's ported" section above). No further known gaps.
+
 ### What's ported (all behind `isSupabaseBackend()` checks in `utils-backend.js`)
 
 - **New files**: `src/utils/utils-supabase-client.js` (lazy Supabase client singleton +

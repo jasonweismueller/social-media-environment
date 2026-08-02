@@ -52,6 +52,8 @@ import {
   supabaseSetWipePolicy,
   supabaseLoadPostById,
   supabaseLinkSurveyToFeeds,
+  supabaseSetFeedFlags,
+  supabaseFetchParticipantsStats,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -1436,6 +1438,94 @@ export function normalizeFlagsForRead(flags) {
   delete out.random_bio;
 
   return out;
+}
+
+// Ported from a local, GAS-only duplicate in components-admin-dashboard.jsx
+// (found during a full audit for unported functions, 2026-08-02 — see
+// CLAUDE.md "Backend migration"). Writes a single-flag patch (e.g.
+// `{random_avatar: true}`, either naming) for one feed's randomize_* flags.
+// No pre-existing Supabase counterpart existed anywhere before this — the
+// admin dashboard's randomize toggles were silently non-functional under
+// `VITE_BACKEND=supabase`, not just still-on-GAS like the other functions
+// found in the same audit.
+export async function setFeedFlagsOnBackend({ projectId = getProjectId(), feedId, patch } = {}) {
+  if (isSupabaseBackend()) {
+    try {
+      await supabaseSetFeedFlags({ projectId, app: getApp(), feedId, patch });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, err: String(e?.message || e) };
+    }
+  }
+
+  const admin = getAdminToken();
+  if (!admin) return { ok: false, err: "admin token missing" };
+
+  const payload = {
+    action: "set_feed_flags",
+    app: APP,
+    feed_id: String(feedId),
+    flags: normalizeFlagsForStore(patch || {}),
+    admin_token: admin,
+  };
+  if (projectId && projectId !== "global") payload.project_id = projectId;
+
+  const doPost = async (body) => {
+    const res = await fetch(GS_ENDPOINT, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    return res ? res.json().catch(() => ({ ok: false })) : { ok: false };
+  };
+
+  let out = await doPost(payload);
+
+  if (!out?.ok && /unknown action/i.test(String(out?.err || ""))) {
+    out = await doPost({ ...payload, action: "set_flags" });
+  }
+
+  return out || { ok: false, err: "no response" };
+}
+
+// Ported alongside setFeedFlagsOnBackend, same audit/same source file —
+// backs the Feeds table's Total/Submitted/Avg columns.
+export async function fetchParticipantsStats(projectId, feedId) {
+  if (!feedId) return null;
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseFetchParticipantsStats({ projectId, app: getApp(), feedId });
+    } catch (e) {
+      console.warn("fetchParticipantsStats (supabase) failed:", e);
+      return null;
+    }
+  }
+
+  try {
+    const admin = getAdminToken?.();
+    if (!admin) return null;
+
+    const params = new URLSearchParams({
+      path: "participants_stats",
+      app: APP,
+      feed_id: String(feedId),
+      admin_token: admin,
+    });
+    const effPid = projectId && projectId !== "global" ? String(projectId) : "";
+    if (effPid) params.set("project_id", effPid);
+
+    const res = await fetch(`${GS_ENDPOINT}?${params.toString()}`, {
+      mode: "cors",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    return json || null;
+  } catch {
+    return null;
+  }
 }
 
 /* ====================== Admin auth (session token + role/email) ============
