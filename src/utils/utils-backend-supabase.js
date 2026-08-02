@@ -137,7 +137,11 @@ export async function supabaseListProjects() {
 // bio_text/bio_url/bio_posts/bio_followers/bio_following).
 function mapPostRowToRaw(row) {
   return {
-    id: row.id,
+    // row.id is the internal composed "<feed_id>::<post_id>" key
+    // (20260801000013_fix_post_id_collisions.sql) — the frontend always
+    // gets the bare original post_id back, same asymmetry as
+    // supabaseListFeeds returning feed_id (bare) rather than id (composed).
+    id: row.post_id,
     postName: row.post_name ?? "",
     author: row.author ?? "",
     time: row.post_time ?? "",
@@ -351,8 +355,17 @@ export async function supabaseSaveSurvey({ survey, projectId, app }) {
 // object — the shape the post editors/ui-posts-*.jsx produce and consume —
 // into a public.posts row.
 function mapRawPostToRow(raw, composedFeedId, sortOrder) {
+  const postId = String(raw.id);
   return {
-    id: String(raw.id),
+    // Composed the same way as the migration/repair scripts and
+    // 20260801000013_fix_post_id_collisions.sql — post ids are only unique
+    // within the feed they were created in (real study designs duplicate a
+    // template feed into Control/Treatment variants, keeping the shared
+    // base posts' bare ids identical across all of them), so the DB primary
+    // key must include feed_id or a later publish silently steals an
+    // earlier feed's identically-numbered post row.
+    id: `${composedFeedId}::${postId}`,
+    post_id: postId,
     feed_id: composedFeedId,
     sort_order: sortOrder,
 

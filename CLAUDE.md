@@ -657,6 +657,86 @@ survey definition/pages materialized correctly, not just the boot/preface stub),
 errors. Did not actually consent/submit — this is a real study's live data, not a throwaway test
 fixture.
 
+### Real production data-completeness incident: `posts.id` primary-key collision, found and fixed same day (2026-08-02)
+
+Minutes after the survey-only fix above, the user reported the admin dashboard showing **zero
+posts** for a real feed (`project_1`, "Feed 1 - G1 (Revised)") that clearly had posts before.
+Investigation escalated well past that one feed — this section documents the full incident since
+it's the most severe issue found in this whole migration.
+
+**Scope, once actually measured**: not one feed. **46 of 56 feeds across every single project**
+had a real, non-empty `feeds.checksum` (proof they'd genuinely been published with content in GAS)
+but **zero rows in `public.posts`**. Confirmed via a direct GAS call that the real posts still
+existed at the source (multiple full posts returned for the reported feed) — nothing was lost in
+GAS, only in the Supabase copy. Since production had already been cut over to Supabase minutes
+earlier, **any participant loading almost any feed at that moment would have seen an empty feed**.
+Confirmed with the user first that no study was actively collecting before doing anything further
+(worth re-confirming in any future incident like this — it's the deciding factor between "fix
+forward" and "roll back to GAS immediately").
+
+**Root cause: a second, undiscovered instance of the exact bug `20260801000011_fix_feed_id_collisions.sql`
+already fixed once, one level deeper.** That migration's own comment explains the shape exactly:
+real GAS-generated ids are only unique *within* whatever scope they were created in, not globally —
+true for `feed_id` (fixed in 011), and it turns out equally true for post ids
+(`"5f6ae9w22tumg95r8lj"` etc.), which are only unique *within the feed a post was created in*.
+Confirmed directly: the same post id, with identical content, appears across many genuinely
+different feeds — and even different *projects* — because these real studies are built by
+duplicating a template feed into "Control"/"Treatment 1"/"Treatment 2"/... variants, which keeps
+every shared base post's id identical across all of them. With `posts.id` as a bare `text primary
+key`, Phase 3's migration script upserted feed after feed sequentially; every subsequent feed
+sharing an id with an earlier one silently **re-pointed that row's `feed_id`** (upsert treats a
+primary-key collision as an update, not a rejected conflict), stealing it away and leaving the
+earlier feed at zero posts. This is precisely what "no posts in admin dashboard" was.
+
+**Fix — mirrors `20260801000011` exactly, one layer down, but as an in-place repair, not a
+truncate-and-redo** (that migration could safely wipe-and-redo because nothing was live yet at the
+time; this table now holds real production data, so a full wipe was never an option here):
+- **`20260801000013_fix_post_id_collisions.sql`**: added `posts.post_id` (the bare original id,
+  preserved), then recomposed `posts.id` (the actual primary key) as `"<feed_id>::<post_id>"` —
+  `feed_id` already being the composed `<project>::<app>::<feed>` key, so the combination is
+  guaranteed unique. Safe to do as a live in-place `update` because the table held only 65 rows at
+  the time (the two feeds that happened to survive Phase 3 uncollided), confirmed zero pre-existing
+  duplicate ids before running it.
+- **Every place that maps a post in either direction updated to match**, same asymmetry
+  `feeds.id`/`feeds.feed_id` already established: `mapPostRowToRaw` (read side,
+  `utils-backend-supabase.js`) now returns `post_id` as `raw.id` to the frontend, never the
+  internal composed id. `mapRawPostToRow` (write side — this is the **live path every real
+  "Save"/"Publish" in the admin dashboard goes through**, not just historical migration — fixing
+  only the historical data and leaving this unfixed would have let the exact same bug recur on the
+  next admin edit) now composes `id` the same way. `mapPost()` in
+  `supabase/scripts/migrate-from-sheets.mjs` updated identically, for any future re-run.
+- **A second, unrelated schema gap found while re-fetching the missing posts from GAS**:
+  `posts.ad_type`'s check constraint only allowed `('none', 'ad', 'news')` — Instagram's post
+  editor has a fourth real option, `"influencer"` ("Influencer Partnership",
+  `components-admin-editor-instagram.jsx`, actively rendered by
+  `ui-posts-instagram.jsx`), which the original Phase 1 schema comment's stated source
+  ("Facebook has the largest field set") never accounted for since Facebook doesn't have this
+  option at all. Fixed in `20260801000014_fix_ad_type_check.sql`. Worth remembering: the Phase 1
+  schema's field/constraint inventory was reconstructed from reading editor components, not from
+  live data — exactly the kind of gap that stays invisible until real data with real variety
+  actually flows through it, same lesson as the id-collision bug above.
+- **Data repair**: no service-role key or Edge Function needed — `path=posts`/`path=feeds` on the
+  live GAS endpoint are public, unauthenticated GETs (same ones real participants' browsers already
+  call), so a throwaway local script (not committed — one-off, scratchpad-only) re-fetched all 46
+  affected feeds' real posts directly from GAS, mapped them with the exact same fixed logic as
+  `mapPost()`, and bulk-upserted via `jsonb_to_recordset` through `supabase db query --linked -f`
+  (no Supabase client library or service-role key needed for the write side either — the CLI's own
+  authenticated connection handled it). 425 posts recovered across 45 feeds on the first pass; one
+  feed (`proj_6/fb/feed_6`) hit the same transient-GAS-500 pattern documented earlier in this file
+  and succeeded on a retry with backoff.
+
+**Verified**: post-count audit re-run across every project — 0 of 56 feeds with zero posts,
+down from 46. `select count(*), count(distinct id)` on the whole table: 490 total, 490 distinct —
+no collisions. Read path re-tested against the exact originally-reported feed through the running
+app's own `loadPostsFromBackend`: 20 posts, correct bare `id` (not the internal composed one).
+Write path (`mapRawPostToRow`) verified two ways: end-to-end through `savePostsToBackend` wasn't
+possible (the browser's admin session had expired and re-logging in wasn't available — RLS
+correctly rejected the unauthenticated write, not a bug), so instead directly replicated the exact
+row shape `mapRawPostToRow` produces via `supabase db query --linked` for two disposable feeds
+deliberately sharing a post id — both kept independent, correctly-scoped rows, confirming the fix
+holds for the exact real-world scenario (shared template posts across Control/Treatment-style
+feed variants) that caused the original incident. Cleaned up all disposable test data afterward.
+
 ### What's ported (all behind `isSupabaseBackend()` checks in `utils-backend.js`)
 
 - **New files**: `src/utils/utils-supabase-client.js` (lazy Supabase client singleton +

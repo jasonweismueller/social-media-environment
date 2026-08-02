@@ -214,8 +214,18 @@ function normalizeFlags(raw = {}) {
 }
 
 function mapPost(raw, feedId, index) {
+  const postId = String(raw.id);
   return {
-    id: String(raw.id),
+    // Composed the same way as 20260801000013_fix_post_id_collisions.sql —
+    // post ids are only unique within the feed they were created in (real
+    // study designs duplicate a template feed into Control/Treatment
+    // variants, keeping the shared base posts' bare ids identical across
+    // all of them); a bare id as the primary key let a later feed silently
+    // steal an earlier feed's identically-numbered post row on upsert. This
+    // was the actual root cause of the missing-posts incident documented in
+    // CLAUDE.md, found and fixed 2026-08-02.
+    id: `${feedId}::${postId}`,
+    post_id: postId,
     feed_id: feedId,
     sort_order: index,
 
