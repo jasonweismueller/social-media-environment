@@ -516,7 +516,7 @@ export function SurveyPrefaceFlow({
 
           <div className="survey-question">
             <div
-              className="survey-question-title-content"
+              className="survey-preface-content-html"
               dangerouslySetInnerHTML={{ __html: currentStep?.html || "" }}
             />
           </div>

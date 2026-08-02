@@ -1423,6 +1423,15 @@ body.admin-mode .nav {
   font-weight: 700;
 }
 
+/* Preface steps (Participant Information / Consent / Instructions) reuse the
+   .survey-question card shell but are prose, not a question prompt — keep
+   them at normal weight regardless of the question-title bolding above. */
+.survey-preface-content-html{
+  min-width: 0;
+  flex: 1;
+  font-weight: 400;
+}
+
 .survey-question-title-content p{
   margin: 0 0 10px;
 }
