@@ -36,6 +36,8 @@ import {
   pickDeterministic,
   getImagePool,
   getSurveyForFeedFromBackend,
+  getSurveyBootFromBackend,
+  getSurveyFromBackend,
   sendSurveyResponseToBackend,
   normalizeSurvey as normalizeFrontendSurvey,
   materializePagesFromBlocks,
@@ -191,52 +193,14 @@ function getSurveyIdFromUrl() {
   }
 }
 
-function buildBackendQueryUrl(base, params = {}) {
-  const url = new URL(base, window.location.origin);
-  Object.entries(params).forEach(([k, v]) => {
-    if (v == null || v === "") return;
-    url.searchParams.set(k, String(v));
-  });
-  return url.toString();
-}
-
-async function fetchJsonWithTimeout(url, { signal, timeoutMs = 8000 } = {}) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      mode: "cors",
-      cache: "no-store",
-      signal: signal || ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function getSurveyBootFromBackendBySurveyId(
-  surveyId,
-  { projectId = "", signal } = {}
-) {
-  if (!surveyId) return null;
-  const url = buildBackendQueryUrl(`${GS_ENDPOINT}?path=survey_boot&app=${APP}`, {
-    survey_id: surveyId,
-    project_id: projectId || undefined,
-    _ts: Date.now(),
-  });
-  try {
-    const data = await fetchJsonWithTimeout(url, { signal, timeoutMs: 8000 });
-    return data && typeof data === "object"
-      ? normalizeSurveyOnlyRuntimeBoot(data, surveyId)
-      : null;
-  } catch (e) {
-    console.warn("getSurveyBootFromBackendBySurveyId failed:", e);
-    return null;
-  }
-}
+// Survey-only direct-launch boot/definition loads used to be hardcoded GAS
+// fetches here (bypassing isSupabaseBackend() entirely — a real gap found
+// 2026-08-02, after the Supabase cutover, when a GAS transient error made a
+// survey-only link look "broken"). getSurveyBootFromBackend/
+// getSurveyFromBackend (utils-backend.js) already do exactly this, backend-
+// agnostic, and are used unmodified below — the call sites' own delivery-mode
+// normalization (see isSurveyOnlyDeliveryMode branches just below) already
+// covers what this file's old normalizeSurveyOnlyRuntimeBoot duplicated.
 
 
 
@@ -509,49 +473,6 @@ async function preloadSurveyPostReminders({
       }
     )
   );
-}
-
-function normalizeSurveyOnlyRuntimeBoot(boot, fallbackSurveyId = "") {
-  if (!boot || typeof boot !== "object") return boot;
-
-  const deliveryMode = String(boot.delivery_mode || "").trim().toLowerCase();
-  const isSurveyOnly = deliveryMode === "survey_only";
-
-  if (!isSurveyOnly) return boot;
-
-  return {
-    ...boot,
-    has_survey: !!boot.has_survey,
-    survey_id: String(boot.survey_id || fallbackSurveyId || ""),
-    trigger: "",
-    delivery_mode: "survey_only",
-    linked_feed_ids: [],
-    feed_sequence_ids: [],
-    preferred_feed_id: "",
-    pre_feed_button_label: String(boot.pre_feed_button_label || "Start survey"),
-  };
-}
-
-async function loadPublicSurveyDefinitionBySurveyId(
-  surveyId,
-  { projectId = "", signal } = {}
-) {
-  if (!surveyId) return null;
-  const url = buildBackendQueryUrl(
-    `${GS_ENDPOINT}?path=survey_definition&app=${APP}`,
-    {
-      survey_id: surveyId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    }
-  );
-  try {
-    const data = await fetchJsonWithTimeout(url, { signal, timeoutMs: 8000 });
-    return data && typeof data === "object" ? data : null;
-  } catch (e) {
-    console.warn("loadPublicSurveyDefinitionBySurveyId failed:", e);
-    return null;
-  }
 }
 
 function useIOSInputZoomFix(
@@ -1328,7 +1249,7 @@ export default function App() {
 
     try {
       if (isDirectSurveyLaunch) {
-        const boot = await getSurveyBootFromBackendBySurveyId(activeSurveyId, {
+        const boot = await getSurveyBootFromBackend(activeSurveyId, {
           projectId: projectId || undefined,
           signal: ctrl.signal,
         });
@@ -1551,9 +1472,10 @@ export default function App() {
 
     try {
       const surveyDef = isDirectSurveyLaunch
-        ? await loadPublicSurveyDefinitionBySurveyId(effectiveSurveyId, {
+        ? await getSurveyFromBackend(effectiveSurveyId, {
             projectId: projectId || undefined,
             signal: ctrl.signal,
+            force: true,
           }).catch(() => null)
         : await getSurveyForFeedFromBackend(activeFeedId, {
             projectId: projectId || undefined,

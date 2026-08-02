@@ -606,6 +606,57 @@ GAS backend was never touched by any of this work and should still be fully func
 migration undo is needed either way since Phase 3's migration script was one-directional and
 additive (copied GAS data into Supabase, never deleted anything from Sheets).
 
+### Real gap found and fixed right after cutover: survey-only launch links never routed through `isSupabaseBackend()` (2026-08-02)
+
+Minutes after the cutover above, the user reported a real survey-only launch link
+(`?survey_id=...&project=...&app=fb`, no `feed_id`) stuck on the loading skeleton in production.
+Root cause turned out to be unrelated to the cutover itself, but real and worth its own entry:
+**survey-only direct-launch boot/definition loads were never ported to Supabase at all in Phase
+4** — each `App-*.jsx` had its own local, hardcoded `getSurveyBootFromBackendBySurveyId`/
+`loadPublicSurveyDefinitionBySurveyId` pair (plus a `normalizeSurveyOnlyRuntimeBoot` helper in
+`App-facebook.jsx`/`App-amazon.jsx`, not present in `App-instagram.jsx` — a pre-existing
+inconsistency between the three, harmless since the call sites already re-derive everything it
+touched), which fetched `GS_ENDPOINT` directly and completely bypassed the `isSupabaseBackend()`
+switch every other backend call in this app goes through. This is a second instance of the
+near-duplicate-`App-*.jsx` footgun documented at the top of this file — a fix landing in one file
+and needing the same check in the other two.
+
+The reported symptom (`getSurveyBootFromBackendBySurveyId failed: Error: HTTP 500`, then a
+silently-swallowed `.catch(() => null)` leaving the UI stuck loading forever with no visible error)
+was actually a **transient GAS error**, confirmed by calling the same GAS endpoint directly
+immediately after and getting a clean `200` — so this specific incident would have resolved itself
+on a page reload regardless of the gap below. But the gap itself was real: as long as this path
+stayed hardcoded to GAS, every survey-only study would keep depending on GAS's uptime/latency
+indefinitely, even with the rest of the app now on Supabase — directly contradicting the user's
+explicit goal of "everything faster, only possible with everything Supabase."
+
+**Fixed by deleting, not reimplementing**: `utils-backend.js` already had fully backend-agnostic
+equivalents doing exactly this — `getSurveyBootFromBackend(surveyId, {projectId, signal})` and
+`getSurveyFromBackend(surveyId, {projectId, signal, force})` — built during Phase 4 but never
+actually called from anywhere in survey-only mode; the boot one was used by nothing, the definition
+one was only used via the feed-linked path (`getSurveyForFeedFromBackend`). Confirmed return-shape
+parity before swapping (both produce the same `makeEmptySurveyShell`-based normalized shape the
+feed-linked path already produces, and the call sites' own `isSurveyOnlyDeliveryMode(...)` branches
+already re-derive `trigger`/`linked_feed_ids`/`feed_sequence_ids`/`preferred_feed_id` for
+survey-only mode independently of whatever the boot response contained — so the local
+`normalizeSurveyOnlyRuntimeBoot` was fully redundant, not just replaceable). In each of the three
+`App-*.jsx` files: deleted the local `buildBackendQueryUrl`/`fetchJsonWithTimeout`/
+`getSurveyBootFromBackendBySurveyId`/`loadPublicSurveyDefinitionBySurveyId`/
+`normalizeSurveyOnlyRuntimeBoot` functions entirely (confirmed unused elsewhere first), added
+`getSurveyBootFromBackend`/`getSurveyFromBackend` to each file's import from `./utils`, and swapped
+the two call sites. `GS_ENDPOINT` itself stays imported in all three — still used elsewhere
+(non-survey-only code, e.g. debug/telemetry payloads).
+
+**Verified**: all three files parse clean (`@babel/parser`). Loaded the exact real production
+survey/project (`survey_t9919ylm52omnt277u3` / `project_1`, a live UWA-ethics-approved study) via
+`localhost:5173` in `VITE_BACKEND=supabase` mode — despite this survey's `surveys.status` being
+`"draft"` in the Supabase copy (nothing in the participant-facing path gates on `status`, confirmed
+by grep — worth a separate look at *why* it's draft there, unrelated to this fix), it loaded the
+correct real preface content, advanced through to the real Consent page (confirming the actual
+survey definition/pages materialized correctly, not just the boot/preface stub), zero console
+errors. Did not actually consent/submit — this is a real study's live data, not a throwaway test
+fixture.
+
 ### What's ported (all behind `isSupabaseBackend()` checks in `utils-backend.js`)
 
 - **New files**: `src/utils/utils-supabase-client.js` (lazy Supabase client singleton +
