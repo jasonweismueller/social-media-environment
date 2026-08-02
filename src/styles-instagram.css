@@ -1005,10 +1005,83 @@ body.admin-mode .card::before {
   padding: 1px;
   background: linear-gradient(135deg, #fa7e1e, #d62976, #962fbf, #4f5bd5);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor; 
+  -webkit-mask-composite: xor;
   mask-composite: exclude;
   opacity: .08;
   pointer-events: none;
+}
+
+/* === Admin session warning toast ===
+   Fixed to the viewport (not in the .admin-shell grid flow) so it stays
+   visible regardless of scroll position. Previously missing entirely from
+   this stylesheet (present in styles-facebook.css/styles-amazon.css only),
+   so the session-expiring banner and expired-session modal rendered
+   unstyled under ?app=ig. */
+.admin-banner {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9500;                 /* above page content, below the expired-session modal (9999) */
+  width: min(380px, calc(100vw - 32px));
+
+  border: 1px solid #fed7aa;
+  background: #fff7ed;           /* warm amber-ish */
+  color: #7c2d12;
+  border-radius: .75rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08);
+
+  padding: .85rem 1rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  animation: admin-banner-in .18s ease-out;
+}
+@keyframes admin-banner-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.admin-banner .title {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  font-weight: 700;
+}
+.admin-banner .title .subtle {
+  font-size: .9rem;
+  color: #92400e;                 /* slightly darker than body text */
+}
+.admin-banner .actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* === Admin expired-session overlay === */
+.admin-expired-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17,24,39,.7);
+  display: grid;
+  place-items: center;
+  z-index: 9999;                 /* above menus/tooltips */
+  padding: 16px;                 /* small gutter on mobile */
+}
+.admin-expired-dialog {
+  width: min(520px, 92vw);
+  background: #fff;
+  border: 1px solid var(--ig-line);
+  border-radius: .75rem;
+  box-shadow: var(--ig-shadow);
+  padding: 1.2rem;
+}
+.admin-expired-dialog h3 { margin: 0 0 .5rem 0; }
+.admin-expired-dialog .subtle { margin: 0 0 .75rem 0; }
+.admin-expired-actions {
+  display: flex;
+  gap: .5rem;
+  justify-content: flex-end;
 }
 
 /* Accent buttons get stronger IG feel */

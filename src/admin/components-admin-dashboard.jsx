@@ -696,6 +696,43 @@ export function AdminDashboard({
     return stop;
   }, []);
 
+  // Silently keep the locally-tracked expiry in sync with Supabase's own
+  // background token refresh (supabase-js auto-refreshes the access token
+  // well before it expires, but nothing previously re-read that renewed
+  // session — so the "session expiring"/"expired" UI below was firing on a
+  // schedule tied to the *original* login, regardless of how much the real
+  // session had already been silently extended underneath it). Doing this
+  // proactively, on a timer, rather than waiting for the visible warning
+  // banner to prompt a manual click, means an actively-open admin tab
+  // effectively never sees the expiry flow at all — matching how most
+  // dashboards keep a session alive for as long as it's actually in use.
+  useEffect(() => {
+    let cancelled = false;
+
+    const silentRefresh = async () => {
+      try {
+        const res = await touchAdminSession();
+        if (cancelled || !res?.ok) return;
+        const left = getAdminSecondsLeft();
+        if (left != null && left > 120) setSessExpiringSec(null);
+        setSessExpired(false);
+      } catch {
+        // Best-effort — if this fails repeatedly because the session is
+        // genuinely gone (signed out elsewhere, disabled, refresh token
+        // finally expired), the existing tick-based watch above still
+        // catches that from the last-known real expiry and surfaces the
+        // warning/expired UI normally.
+      }
+    };
+
+    silentRefresh();
+    const id = setInterval(silentRefresh, 4 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   useEffect(() => {
     if (isSaving) return;
     const left = getAdminSecondsLeft();

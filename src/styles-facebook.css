@@ -989,23 +989,34 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
   line-height: 1.2;
 }
 
-/* === Admin session warning banner === */
+/* === Admin session warning toast ===
+   Fixed to the viewport (not in the .admin-shell grid flow) so it stays
+   visible regardless of scroll position — previously this rendered as the
+   first item in the dashboard's normal document flow, which meant it was
+   invisible whenever the admin had scrolled past the top of the page. */
 .admin-banner {
-  /* base “card” look, but slim */
-  border: 1px solid var(--line);
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9500;                 /* above page content, below the expired-session modal (9999) */
+  width: min(380px, calc(100vw - 32px));
+
+  border: 1px solid #fed7aa;
   background: #fff7ed;           /* warm amber-ish */
   color: #7c2d12;
   border-radius: .75rem;
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 30px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08);
 
-  /* the padding you asked about */
-  padding: .6rem .8rem;
+  padding: .85rem 1rem;
 
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .75rem;
-  margin-bottom: 1rem;            /* space below the bar */
+  flex-direction: column;
+  gap: .6rem;
+  animation: admin-banner-in .18s ease-out;
+}
+@keyframes admin-banner-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .admin-banner .title {
   display: flex;
@@ -1021,6 +1032,7 @@ body:has(.admin-login-wrap) .nav { display: block !important; }
   display: flex;
   gap: .5rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* === Admin expired-session overlay === */
