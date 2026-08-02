@@ -531,7 +531,7 @@ Not click-tested live (same sandbox dev-server limitation as elsewhere in this f
 confirming after redeploy: load the largest/most complex survey in the project first, since it's
 the one most likely to have been silently failing to cache.
 
-## Backend migration planning: Apps Script/Sheets → Supabase (2026-08-01, planning only)
+## Backend migration: Apps Script/Sheets → Supabase (2026-08-01 planning, Phases 1–3 done 2026-08-02, Phase 4 mostly done 2026-08-02)
 
 Following the investigation above, the user asked whether Apps Script itself is the wrong
 long-term architecture now that the project has grown. Answer worked out with the user: yes —
@@ -548,9 +548,268 @@ ExperimentAssignments/FeedSurveys) is already relational in shape, so this is a 
 swap, not a logic rewrite. Full plan — entity-by-entity schema mapping, phase breakdown, and the
 safety approach below — is in `~/.claude/plans/gradual-migrating-codd.md`.
 
-**Status: planning complete, zero implementation started.** No Supabase account/project exists
-yet. Next session should start with Phase 1 (schema design), which doesn't require the account to
-exist yet — pure SQL authorship against the entity mapping already worked out in the plan file.
+**Status: Phases 1–3 complete and verified against real data (see `supabase/README.md`). Phase 4
+(frontend wiring) is now substantially done and tested — almost everything `utils-backend.js`
+exposes has a working Supabase counterpart, reachable only when `VITE_BACKEND=supabase`
+(default stays `gas`, so production is completely unaffected until someone deliberately flips
+it).** Real participants have been served by the unchanged Apps Script backend throughout; nothing
+about this work has touched production. **The one Phase 4 prerequisite from the previous note is
+resolved**: a real admin account (`jason.weismueller@gmail.com`, role `owner`) already existed in
+Supabase Auth from Phase 1 setup — confirmed via `supabase db query --linked` against
+`auth.users`/`profiles`, and login through it has been tested live in the browser. **Local dev
+state note**: the gitignored `.env` on this machine was left with `VITE_BACKEND=supabase` after
+this testing (not `gas`) — if a future session's `npm run dev` behaves unexpectedly like it's
+hitting Supabase, that's why; check `.env` before assuming it's still on the default.
+
+### What's ported (all behind `isSupabaseBackend()` checks in `utils-backend.js`)
+
+- **New files**: `src/utils/utils-supabase-client.js` (lazy Supabase client singleton +
+  `getBackendMode()`/`isSupabaseBackend()` reading `VITE_BACKEND`), `src/utils/
+  utils-backend-supabase.js` (every Supabase-specific implementation — one-directional dependency,
+  imported by `utils-backend.js`, never the other way, so there's no circular import between the
+  two). `@supabase/supabase-js` added to the main app's `package.json` (separate from `supabase/
+  scripts/package.json`'s own copy). `.env.example` (committed) documents `VITE_BACKEND`/
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`; the real `.env` is gitignored (confirmed via
+  `git check-ignore`) and never leaves the machine it's created on.
+- **Admin auth**: `adminLoginUser`/`adminLogout`/`touchAdminSession` → Supabase Auth
+  (`signInWithPassword`, session stored through the *same* `setAdminSession()`/`getAdminRole()`/
+  etc. localStorage helpers the GAS path already used, so every synchronous getter across the
+  admin UI keeps working unchanged for both backends). `adminLogin` (the GAS-only shared
+  owner-password scheme) returns an explicit "not available on Supabase" error rather than
+  guessing, since Supabase Auth has no equivalent — every account, including the owner, is its own
+  email+password user with a `profiles.role`.
+- **Projects/Feeds/Posts**: full read+write — `listProjectsFromBackend`, `createProjectOnBackend`/
+  `deleteProjectOnBackend`, `listFeedsFromBackend`, `deleteFeedOnBackend`, `loadPostsFromBackend`,
+  `savePostsToBackend` (full-replace publish; also upserts the `feeds` row itself, since
+  "+ New feed" in the admin UI is pure client-state until the first publish — there's no separate
+  create-feed backend call to intercept).
+- **Surveys**: `listSurveysFromBackend`, `loadSurveyFromBackend`, `saveSurveyToBackend` (via the
+  `save-survey` Edge Function — see the bug fix below), `deleteSurveyOnBackend`,
+  `deleteSurveyResponsesOnBackend`, `getLinkedFeedIdsForSurveyFromBackend` (replaced the GAS path's
+  N-requests-per-feed lookup with one `feed_surveys` join query).
+- **Participant-facing delivery**: `getSurveyForFeedFromBackend`/`getSurveyFromBackend`
+  (`loadPublicSurveyDefinitionForFeed`/`loadPublicSurveyDefinition` under the hood),
+  `getSurveyBootForFeedFromBackend`/`getSurveyBootFromBackend` (the lightweight preface/consent
+  summary — derived by reading the same `surveys.definition` JSONB and computing `has_preface`/
+  `preface.*` from whether the html fields are non-empty, since GAS's exact boolean logic isn't
+  readable; same *contract*, not necessarily the same algorithm).
+- **Experiment groups**: `assignExperimentGroup`/`resetExperimentGroupAssignments` call the
+  Postgres RPC functions built in Phase 1 (`assign_experiment_group`/
+  `reset_experiment_group_assignments`) directly — no Edge Function needed, these were already
+  designed to be called from the client. `loadExperimentGroupCounts` fetches `group_id` rows and
+  tallies client-side (no aggregate RPC exists; counts are small enough that this is fine).
+- **Participant submission (writes)**: `sendToSheet`/`sendSurveyResponseToBackend` insert into
+  `participants`/`survey_responses` via a direct `fetch(..., { keepalive: true })` against
+  PostgREST (not the `supabase-js` client) — this is the modern, header-capable replacement for
+  the existing `navigator.sendBeacon` pattern, which can't carry the `apikey` header PostgREST
+  requires. Both tables are public-insert via RLS; no admin session involved, matching a real
+  participant's anonymous browser.
+- **Participants/CSV export rosters**: `loadParticipantsRoster`, `loadSurveyResponsesRoster`/
+  `loadSurveyResponsesBySurveyRoster`, `loadSurveyParticipantsRoster`/`loadSurveyParticipantsStats`,
+  `fetchFeedFlags`. The higher-level roster-merge functions (`loadSurveyOnlyRoster`,
+  `loadMultiFeedParticipantSurveyRoster`) needed **zero changes** — they're pure client-side merges
+  over the leaf functions above, not separate network calls.
+
+### Real bug found and fixed: `save-survey` Edge Function's feed linking was broken
+
+`supabase/functions/save-survey/index.ts` (built in Phase 2, before the feed_id-collision fix
+below existed) inserted `feed_surveys` rows using bare feed ids (`"feed_1"`), but
+`20260801000011_fix_feed_id_collisions.sql` (a Phase 3 fix, landed later) made `feeds.id` — and
+therefore the FK `feed_surveys.feed_id` points at — a composed `<project_id>::<app>::<feed_id>`
+key. The Edge Function was never updated for that. **Any survey save that linked feeds would have
+failed with a foreign-key violation** — this had been live and broken since Phase 2, just never
+exercised until Phase 4 actually called it. Fixed by adding `app` to the request body and
+composing the key the same way everywhere else does; type-checked with `deno check` and
+redeployed via `supabase functions deploy save-survey`.
+
+### Known gap: no "default feed" concept in the Postgres schema
+
+`getDefaultFeedFromBackend`/`setDefaultFeedOnBackend` (which feed the admin dashboard opens by
+default for a project) has no column anywhere in the Phase 1–3 schema — it was never in the
+original entity inventory. Rather than add a migration for what's purely an admin-dashboard
+convenience (participants always get their feed_id from the launch link URL, never from this),
+the Supabase path falls back to the same client-local `localStorage` pattern already used for
+default *project* (`getDefaultProjectFromBackend`/`setDefaultProjectOnBackend`), scoped per
+app+project. Real difference from the GAS behavior: it won't sync across the admin's different
+browsers/machines. Worth a real column later if that turns out to matter.
+
+### How this was verified
+
+No click-through was possible for any earlier redesign in this file's history (sandbox `npm run
+dev` was broken) — this is the first Phase-4-scale piece of work where real browser verification
+happened, once the user fixed the quarantine issue (see "Build/dev notes"). Verification had two
+layers:
+1. **Disposable test data via the browser console** — created a throwaway project/feed/survey
+   (with real experiment groups), exercised every ported function including the full
+   assign-group → submit-participant → submit-response → CSV-roster pipeline, confirmed via direct
+   `supabase db query --linked` SQL, then deleted it and confirmed zero orphaned rows across all 9
+   related tables (cascade FKs did their job).
+2. **An actual UI walkthrough as a participant** — navigated to a real feed URL, reacted to a post
+   (❤️ Love), clicked Submit, answered the survey question, clicked Submit survey, landed on the
+   correct custom "Thank you" message. Confirmed in the database that the *real* interaction-
+   tracking payload (not a hand-built test payload) landed correctly — `uip1_reacted: 1,
+   uip1_reaction_type: "love"`, per-post dwell times, the full displayed-posts snapshot, all
+   matching the exact click made. This is a meaningfully stronger check than calling the backend
+   functions directly from the console, which is all that had been done before being asked to go
+   further — worth remembering for future sessions: a function returning the right shape when
+   called directly doesn't prove the real component event-handler chain calls it the same way.
+
+Also benchmarked: 5 sequential loads of the same real feed (15 posts) through each backend,
+same machine, back to back. GAS: 10.4s cold, then 1.6–2.2s steady-state. Supabase: 600ms cold,
+then 230–320ms steady-state — roughly 5–8x faster, consistent with the structural argument for
+migrating in the first place (Apps Script's no-persistent-process cold-start cost, Sheets having
+no real indexing). One sample, not a formal benchmark, but the gap is far bigger than normal
+network noise.
+
+**Found but not fixed, unrelated to this migration**: during the UI walkthrough, two console
+errors fired at the feed→survey transition — `Cannot update a component (App) while rendering a
+different component (PostCard)`. No `.jsx` file was touched anywhere in this Phase 4 session (only
+`utils-backend.js`, `utils-backend-supabase.js`, `utils-supabase-client.js`, and the Edge
+Function), so this is a pre-existing React race condition in component teardown/transition timing,
+not a regression from the backend swap — likely masked previously by GAS's much slower response
+times shifting render sequencing enough to avoid it. The flow still completed correctly. Worth a
+dedicated look in a future session; deliberately not chased down as part of this one.
+
+### Admin user management ported (2026-08-02)
+
+`adminListUsers`/`adminCreateUser`/`adminUpdateUser`/`adminDeleteUser` (`utils-backend.js`) now
+route to Supabase behind `isSupabaseBackend()`, same pattern as everything else in this section.
+This was the one item flagged as needing "a design decision before porting, not just a mechanical
+port" — Supabase Auth admin operations (create/disable/reset-password/delete) need the
+`service_role` key, which must never reach the frontend, so it's a new Edge Function
+(`supabase/functions/admin-users/index.ts`), not a direct client call, same shape as `save-survey`.
+
+- **Authorization is enforced twice, deliberately redundantly**: the frontend only shows this UI
+  to `hasAdminRole("owner")`, but the Edge Function independently re-checks the caller's
+  `profiles.role === 'owner'` server-side (via the caller's own JWT, looked up with the
+  service-role client) before doing anything — the frontend gate is UX only, not the real
+  boundary, same reasoning as `save-survey`'s editor/owner check.
+- **`action` dispatch, one function**: `{action: "list"|"create"|"update"|"delete", ...}` rather
+  than four separate functions — matches how `utils-backend-supabase.js`'s `invokeAdminUsers()`
+  wraps a single `supabase.functions.invoke("admin-users", {body: payload})` call per operation.
+- **`create` relies on the existing `handle_new_auth_user` trigger** (`20260801000002_profiles.sql`)
+  to insert the `profiles` row (defaults to role `'viewer'`) after `auth.admin.createUser()` — only
+  issues a second write when a non-default role was requested, rather than inserting the profile
+  itself and racing the trigger.
+- **`delete` refuses to let an owner delete their own account** (checked against the caller's own
+  JWT-derived email) — not a data-integrity concern (the `profiles.id → auth.users.id` FK already
+  cascades cleanly either way), purely to stop an owner from locking themselves out of user
+  management with nobody left to undo it. Deleting the auth user is sufficient; no separate
+  `profiles` delete is needed, the cascade handles it.
+- Type-checked with `deno check` and deployed via `supabase functions deploy admin-users`, same as
+  `save-survey` before it.
+
+**How this was verified — and a real testing-tool gotcha found along the way**: verified fully
+live against the production Supabase project (list/create/update/delete), using a disposable
+`+claude-verify@` subaddress of the real owner's own email as the throwaway test account (plain
+`@example.com` addresses are rejected by Supabase Auth's email validator) rather than the owner's
+real credentials, cleaned up afterward with zero rows left behind (confirmed via
+`supabase db query --linked`). Along the way, the browser-automation tool's synthetic
+ref-based/coordinate clicks landed on the right element (confirmed via `getBoundingClientRect()`)
+but silently produced **no effect at all** — no request, no error, nothing — on this specific
+panel's buttons, while calling the exact same `adminUpdateUser`/`adminListUsers` functions directly
+(via a dynamic `import()` of the running app's own `utils-backend.js` in the page console) worked
+immediately every time. Dispatching a real `button.click()` via `javascript_tool` also worked
+immediately. Conclusion: this was a limitation of the click-simulation tooling in this environment
+(React's synthetic event system not receiving whatever event type the automated click sent), not
+a bug in the app — but worth remembering for future sessions: if a click-through verification shows
+a button doing *nothing at all* (not erroring, not loading, literally inert) where the exact same
+call works when invoked directly, suspect the tooling before suspecting the code, and confirm with
+a direct `.click()` dispatch before concluding the app is broken. Also relevant: a same-origin
+navigation that only changes the URL hash (`#/admin/...` → `#/admin/dashboard/users`) is a
+same-document SPA route change, not a real page reload — it will *not* clear stale Vite HMR module
+state from edits made earlier in the same session while the tab was open. A genuine
+`location.reload()` is needed to rule that out, same lesson CLAUDE.md already had reason to note
+about dev-server behavior elsewhere in this file.
+
+### `wipeParticipantsOnBackend` ported (2026-08-02)
+
+The per-feed "Wipe" button (owner-only, `components-admin-dashboard.jsx` Feeds toolbar) now
+routes to Supabase behind `isSupabaseBackend()`. This one really was the mechanical port it looked
+like — no service-role key needed, no Edge Function: `public.participants.feed_id` is already the
+same composed `<project>::<app>::<feed>` key `feeds.id` uses, and the `participants_delete_editors`
+RLS policy (`20260801000006_participants.sql`) already allows editor/owner deletes — added
+`supabaseWipeParticipants({projectId, app, feedId})` in `utils-backend-supabase.js` (plain
+`.delete().eq("feed_id", composedFeedId)`) and wired it into `wipeParticipantsOnBackend` in
+`utils-backend.js`, same `isSupabaseBackend()`-branch-first pattern as every other ported function.
+Deliberately scoped to *only* the participants table, matching GAS's `wipe_participants` action —
+`survey_responses` for that feed's survey is untouched (that's the separate, already-ported
+"Delete survey data" feature).
+
+Verified live: inserted one disposable participant row for a throwaway project/feed/participant
+(not any real study's data), called the real `wipeParticipantsOnBackend` through the running app's
+own module in the browser console, confirmed the row was gone via `supabase db query --linked`,
+then deleted the throwaway project/feed too — zero rows left behind. Didn't repeat a full UI
+button click-through this time — the admin-users work already established that this panel's
+`onClick` handlers behave identically to calling the underlying function directly (see above), so
+that risk is already covered. **One new gotcha found while testing this**: a bare
+`import('/src/utils/utils-backend.js')` from the page console can silently resolve to a
+**pre-edit cached module instance** if that exact URL (no cache-busting query string) was already
+imported earlier in the same session — it fails silently in a way that looks like a real bug (the
+GAS fallback path runs instead, doing nothing and returning `false` with no error, since
+Supabase-mode sessions have no `admin_token`). Fix is to append a cache-busting query string
+(`?t=${Date.now()}`) on every fresh console-based verification import, not just the first one per
+file per session.
+
+### `getWipePolicyFromBackend`/`setWipePolicyOnBackend` ported — project-scoped, not global (2026-08-02)
+
+**Deliberately diverges from GAS's shape.** GAS's `wipe_policy`/`set_wipe_policy` actions are a
+single flag, global across the entire deployment, no project or feed scoping at all. Per direct
+user request, the Supabase version scopes the policy **per project** instead — a project defaults
+to off (publishing a checksum-changing feed never touches participant data unless a project
+explicitly opts in), and turning it on for one project doesn't affect any other project's feeds.
+Per-feed scoping within a project was considered and explicitly rejected by the user (would mean
+re-toggling every feed individually for a many-feed project — e.g. `proj_6` alone has 13 feeds) in
+favor of the simpler project-level toggle already surfaced in the UI.
+
+- **New column**: `projects.wipe_on_change boolean not null default false`
+  (`20260801000012_project_wipe_on_change.sql`). Applied directly via
+  `supabase db query --linked -f <file>` — same non-`db push` process every prior migration in
+  this project actually went through (confirmed via `supabase migration list --linked`: the
+  remote migration-history table is empty even though all 11 prior migrations are live, meaning
+  `db push`'s tracking was never used here — matching this file's process kept the sequence
+  consistent instead of introducing a second, incompatible apply method). Purely additive; every
+  existing project defaulted to `false`, confirmed via query post-apply.
+- **`supabaseGetWipePolicy`/`supabaseSetWipePolicy`** (`utils-backend-supabase.js`) — plain reads/
+  writes of that column, no Edge Function needed (same RLS-is-sufficient reasoning as
+  `wipeParticipantsOnBackend`).
+- **`supabasePublishPosts` now actually enforces the policy** — previously it didn't check any
+  policy at all, so publishing on Supabase never wiped participants regardless of GAS-side
+  expectations. Now reads the feed's *previous* checksum and the project's `wipe_on_change` in
+  parallel before overwriting the feed row; wipes that feed's participants only if a previous
+  checksum existed, it differs from the new one, *and* the project has opted in. A feed's first-
+  ever publish (no previous checksum) is never wiped — there's nothing to invalidate yet.
+- `getWipePolicyFromBackend`/`setWipePolicyOnBackend` (`utils-backend.js`) both gained an optional
+  `projectId` (defaulting to `getProjectId()`, same convention as every other project-scoped
+  function in this file) — additive, existing call sites in `components-admin-dashboard.jsx`
+  needed no changes.
+
+**Verified live**, all four cases, against a disposable throwaway project (not any real study),
+using the running app's own module via cache-busted console imports (`?t=${Date.now()}` — see the
+gotcha noted just above): (1) first publish never wipes, (2) policy off + checksum change → survives,
+(3) policy on + checksum change → wiped, (4) policy on + **unchanged** checksum → still survives
+(confirms it's keyed on an actual content change, not just the policy being on). Cleaned up with
+zero rows left behind afterward.
+- ~~Video upload (`uploadVideoToBackend`, still Drive-based) — not started.~~ **Wrong, corrected
+  2026-08-02**: media upload (images and video, across all three post editors) already goes
+  through AWS S3 directly from the browser — `uploadFileToS3ViaSigner`/`getPresignedPutUrl`/
+  `putToS3` in `utils-backend.js`, hitting a presigned-URL Lambda behind API Gateway
+  (`qkbi313c2i.execute-api.us-west-1.amazonaws.com`) and a CloudFront CDN (`CF_BASE`) — not GAS,
+  not Drive, and out of scope for this migration entirely (it was never Sheets-backed). Confirmed
+  by finding every real call site (`components-admin-media-facebook.jsx`,
+  `-instagram.jsx`, `components-admin-editor-{facebook,instagram}.jsx`) all use
+  `uploadFileToS3ViaSigner`. `uploadVideoToBackend` (the function this note was actually about) is
+  a **separate, dead legacy function** — zero callers anywhere in the repo, not even re-exported
+  from `src/utils/index.js` — that points at a nonexistent `localhost:4000` local dev signer and
+  was never wired to any UI. `DRIVE_RE`/`injectVideoPreload`/`primeVideoCache` (`utils-core.js`)
+  are unrelated: that's read-side backward-compat (skip preload/cache-priming for any old post
+  that still happens to have a real Google Drive video URL from before S3), not an upload path.
+  Left `uploadVideoToBackend` in place rather than deleting it unprompted — flagging as safe,
+  confirmed-unused cleanup for whenever the user wants it gone.
+- `loadMergedParticipantSurveyRoster` — confirmed **dead code** (nothing in the app calls it, per
+  the "Experiment group missing from survey CSV export" note above), so its inline GAS
+  `FEED_SURVEY_GET_URL` call was deliberately left unported rather than spending effort on
+  something unused.
 
 **Key safety decision, worth restating here since it governs how *any* future session should do
 this work**: build the new backend integration as inert code behind a feature flag that defaults
@@ -558,8 +817,8 @@ to the current GAS backend, rather than relying on git-branch isolation. The mec
 auto-commits/auto-deploys this repo (see "Deployment" section up top) is external to Claude's own
 tool calls and not fully understood — flag-gating is the only safety guarantee that doesn't
 depend on knowing what that pipeline actually watches. Testing happens via the *user's own* local
-`npm run dev` (broken only in Claude's sandbox, confirmed fine in general) rather than a deployed
-staging environment.
+`npm run dev` (now confirmed working, see "Build/dev notes") rather than a deployed staging
+environment.
 
 ## Build/dev notes
 
@@ -591,7 +850,14 @@ staging environment.
 - If the quarantine issue itself needs fixing (to get a real dev server or build working again):
   `xattr -d com.apple.quarantine ./node_modules/esbuild/bin/esbuild` (and the equivalent for
   rollup's binary under `node_modules/@rollup/`). Claude has not run this — it's a security-setting
-  change and needs to be run by the user.
+  change and needs to be run by the user. **Confirmed fixed this way, 2026-08-02**: the quarantine
+  flag turned out to be applied broadly (3,987 files under `node_modules`, not just these two), so
+  chasing individual binaries kept surfacing new "Not Opened" Gatekeeper dialogs (`fsevents.node`
+  was the next one, via chokidar/Vite's file watcher). One recursive sweep fixed it for good:
+  `xattr -dr com.apple.quarantine node_modules` — the user ran this in their own terminal and
+  `npm run dev` started cleanly afterward (`VITE v7.1.3 ready`). Still needs to be run by the user,
+  not Claude, for the same security-setting reason as above; this just documents the working fix
+  instead of the per-binary guess.
 - No test suite exists in this repo.
 
 ## Repo hygiene note: `node_modules/` is tracked in git

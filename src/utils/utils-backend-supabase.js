@@ -1,0 +1,948 @@
+// utils-backend-supabase.js
+// Phase 4 scaffolding (see CLAUDE.md "Backend migration: Apps Script/Sheets
+// -> Supabase"). Only reached when VITE_BACKEND=supabase — utils-backend.js
+// dispatches to these functions and stores the result through the same
+// localStorage-backed session helpers (setAdminSession/clearAdminSession)
+// the GAS path already uses, so every synchronous getter that already
+// exists (getAdminToken/getAdminRole/getAdminEmail/hasAdminSession) keeps
+// working unchanged for both backends.
+//
+// Deliberately returns plain {ok, ...} result objects rather than calling
+// setAdminSession itself, so this file has no dependency on
+// utils-backend.js (avoids a circular import between the two).
+import { getSupabaseClient } from "./utils-supabase-client";
+
+async function fetchAdminProfile(supabase, userId) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role, disabled, email")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) return { profile: null, err: error?.message || "No admin profile for this account" };
+  return { profile: data, err: null };
+}
+
+function ttlSecFromExpiresAt(expiresAt) {
+  const n = Number(expiresAt || 0);
+  if (!n) return null;
+  return Math.max(0, n - Math.floor(Date.now() / 1000));
+}
+
+export async function supabaseAdminSignIn(email, password) {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error || !data?.session || !data?.user) {
+      return { ok: false, err: error?.message || "Login failed" };
+    }
+
+    const { profile, err } = await fetchAdminProfile(supabase, data.user.id);
+    if (!profile) {
+      await supabase.auth.signOut();
+      return { ok: false, err };
+    }
+    if (profile.disabled) {
+      await supabase.auth.signOut();
+      return { ok: false, err: "This admin account has been disabled" };
+    }
+
+    return {
+      ok: true,
+      token: data.session.access_token,
+      ttlSec: ttlSecFromExpiresAt(data.session.expires_at),
+      role: profile.role || "viewer",
+      email: profile.email || data.user.email,
+    };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+export async function supabaseAdminSignOut() {
+  try {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+  } catch {}
+  return { ok: true };
+}
+
+// Called periodically by the dashboard's keep-alive tick (see
+// components-admin-dashboard.jsx `keepAlive`). The Supabase SDK already
+// silently rotates the access token via its own refresh token before it
+// expires; this re-reads whatever session is currently live and re-derives
+// a fresh ttlSec from it, so the locally-stored expiry (which drives the
+// "session expiring" countdown UI) doesn't fall out of sync with a token
+// the SDK already renewed underneath it.
+export async function supabaseAdminTouch() {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data?.session) {
+      return { ok: false, err: error?.message || "No active session" };
+    }
+
+    const { profile, err } = await fetchAdminProfile(supabase, data.session.user.id);
+    if (!profile) return { ok: false, err };
+    if (profile.disabled) {
+      await supabase.auth.signOut();
+      return { ok: false, err: "This admin account has been disabled" };
+    }
+
+    return {
+      ok: true,
+      token: data.session.access_token,
+      ttlSec: ttlSecFromExpiresAt(data.session.expires_at),
+      role: profile.role || "viewer",
+      email: profile.email || data.session.user.email,
+    };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+// `feeds.id` is a synthetic `<project_id>::<app>::<feed_id>` key, not the
+// bare feed_id — see supabase/README.md "Design decisions" and migration
+// 20260801000011_fix_feed_id_collisions.sql (real feed_ids like "feed_1"
+// repeat across different projects/apps, so the bare id isn't unique).
+// Every table that references a feed (posts, participants, feed_surveys)
+// stores this composed form.
+export function composeFeedId(projectId, app, feedId) {
+  return `${projectId}::${app}::${feedId}`;
+}
+
+export async function supabaseListProjects() {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, name, notes")
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row) => ({
+    project_id: row.id,
+    name: row.name,
+    notes: row.notes ?? "",
+  }));
+}
+
+// Reverses mapPost() in supabase/scripts/migrate-from-sheets.mjs field for
+// field, so a post round-trips through Supabase in exactly the raw shape
+// loadPostsFromBackend has always returned (the shape ui-posts-*.jsx and
+// the post editors consume directly — this is intentionally NOT a fresh
+// camelCase convention, it matches the historical GAS/Sheets field names
+// verbatim, including the two fields that were already snake_case there:
+// bio_text/bio_url/bio_posts/bio_followers/bio_following).
+function mapPostRowToRaw(row) {
+  return {
+    id: row.id,
+    postName: row.post_name ?? "",
+    author: row.author ?? "",
+    time: row.post_time ?? "",
+    text: row.body_text ?? "",
+    links: Array.isArray(row.links) ? row.links : [],
+
+    badge: !!row.badge,
+    authorType: row.author_type ?? "",
+    topic: row.topic ?? "",
+
+    showBio: !!row.show_bio,
+    bio_text: row.bio_text ?? "",
+    bio_url: row.bio_url ?? "",
+    bio_posts: row.bio_posts ?? null,
+    bio_followers: row.bio_followers ?? null,
+    bio_following: row.bio_following ?? null,
+
+    avatarMode: row.avatar_mode ?? "",
+    avatarRandomKind: row.avatar_random_kind ?? "",
+    avatarUrl: row.avatar_url ?? "",
+
+    imageMode: row.image_mode ?? "",
+    image: row.image ?? null,
+    images: Array.isArray(row.images) ? row.images : [],
+    imageTopic: row.image_topic ?? "",
+    videoMode: row.video_mode ?? "",
+    video: row.video ?? null,
+    videoPosterUrl: row.video_poster_url ?? "",
+    videoAutoplayMuted: !!row.video_autoplay_muted,
+    videoShowControls: row.video_show_controls !== false,
+    videoLoop: !!row.video_loop,
+    showGhostComments: !!row.show_ghost_comments,
+
+    interventionType: row.intervention_type || "none",
+    noteText: row.note_text ?? "",
+    noteMetaEnabled: !!row.note_meta_enabled,
+    noteReaderGroups: Array.isArray(row.note_reader_groups) ? row.note_reader_groups : [],
+    noteReaderGroup2Enabled: !!row.note_reader_group2_enabled,
+
+    showReactions: row.show_reactions !== false,
+    selectedReactions: Array.isArray(row.selected_reactions) ? row.selected_reactions : [],
+    reactions: row.reactions && typeof row.reactions === "object" ? row.reactions : {},
+    metrics: row.metrics && typeof row.metrics === "object" ? row.metrics : {},
+
+    adType: row.ad_type || "none",
+    adDomain: row.ad_domain ?? "",
+    adHeadline: row.ad_headline ?? "",
+    adSubheadline: row.ad_subheadline ?? "",
+    adButtonText: row.ad_button_text ?? "",
+    adUrl: row.ad_url ?? "",
+
+    newsDomain: row.news_domain ?? "",
+    newsHeadline: row.news_headline ?? "",
+    newsDescription: row.news_description ?? "",
+    newsUrl: row.news_url ?? "",
+  };
+}
+
+export async function supabaseLoadPosts({ projectId, feedId, app }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+
+  const { data, error } = await supabase
+    .from("posts")
+    .select("*")
+    .eq("feed_id", composedFeedId)
+    .order("sort_order", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map(mapPostRowToRaw);
+}
+
+export async function supabaseListFeeds({ projectId, app }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("feeds")
+    .select("feed_id, name, checksum, flags")
+    .eq("project_id", projectId)
+    .eq("app", app)
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  // flags is real jsonb here (already a parsed object via PostgREST),
+  // unlike the GAS path where it arrives as a JSON *string* — see
+  // supabase/README.md "Phase 3" for why that distinction mattered there.
+  return (data || []).map((row) => ({
+    feed_id: row.feed_id,
+    name: row.name,
+    checksum: row.checksum || "",
+    flags: row.flags && typeof row.flags === "object" ? row.flags : {},
+  }));
+}
+
+// No `default_feed` concept exists in the Phase 1-3 Postgres schema (see
+// supabase/README.md's entity inventory — it only carries what the GAS
+// Feeds/Posts/etc. sheets held, and "which feed is the admin dashboard's
+// default" was never one of them). Rather than add a migration for what is
+// purely an admin-dashboard convenience (participants always get feed_id
+// from the launch link's URL, never from this), mirror the same
+// client-local pattern already used for the default *project*
+// (getDefaultProjectFromBackend/setDefaultProjectOnBackend in
+// utils-backend.js) — scoped per app+project so it doesn't collide across
+// platforms/projects.
+const DEFAULT_FEED_KEY = (app, projectId) => `DEFAULT_FEED_ID::${app}::${projectId || "global"}`;
+
+export function supabaseGetDefaultFeedId({ app, projectId }) {
+  try {
+    return localStorage.getItem(DEFAULT_FEED_KEY(app, projectId)) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function supabaseSetDefaultFeedId({ app, projectId, feedId }) {
+  try {
+    if (feedId) localStorage.setItem(DEFAULT_FEED_KEY(app, projectId), feedId);
+    else localStorage.removeItem(DEFAULT_FEED_KEY(app, projectId));
+  } catch {}
+  return true;
+}
+
+export async function supabaseListSurveys({ projectId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("surveys")
+    .select("id, name, status")
+    .eq("project_id", projectId)
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row) => ({
+    survey_id: row.id,
+    name: row.name,
+    status: row.status,
+  }));
+}
+
+// `surveys.definition` is already the exact raw shape loadSurveyFromBackend
+// has always returned (see save-survey/index.ts's frontendSurveyToBackend —
+// it writes survey_id/name/status/pages/page_blocks/experiment_groups/etc
+// as top-level keys of that same jsonb blob), so this is a near-passthrough
+// rather than a field-by-field remap like posts needed.
+export async function supabaseLoadSurveyDefinition({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("surveys")
+    .select("id, definition")
+    .eq("id", surveyId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  return { ...(data.definition || {}), survey_id: data.definition?.survey_id || data.id };
+}
+
+// Replaces getLinkedFeedIdsForSurveyFromBackend's N-requests-per-feed GAS
+// lookup (one FEED_SURVEY_GET_URL call per candidate feed) with a single
+// query against the feed_surveys join table. feed_surveys.feed_id stores
+// the composed <project_id>::<app>::<feed_id> key (see composeFeedId
+// above), so linked ids for feeds outside this project/app are filtered
+// out by prefix before stripping it back to the bare feed_id the rest of
+// the app expects.
+export async function supabaseGetLinkedFeedIds({ surveyId, projectId, app }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.from("feed_surveys").select("feed_id").eq("survey_id", surveyId);
+
+  if (error) throw new Error(error.message);
+
+  const prefix = composeFeedId(projectId, app, "");
+  return (data || [])
+    .map((row) => row.feed_id)
+    .filter((id) => typeof id === "string" && id.startsWith(prefix))
+    .map((id) => id.slice(prefix.length));
+}
+
+// Calls the deployed save-survey Edge Function (supabase/functions/
+// save-survey) rather than a plain upsert — it does server-side
+// normalization/sanitization of the definition plus the two-table sync
+// (surveys row + feed_surveys links) in one place, same reasoning as
+// Code.gs's sanitizeSurveyDef_/handleSaveSurvey_ on the GAS side. The
+// Supabase client automatically attaches the signed-in admin's JWT as the
+// Authorization header for functions.invoke, so no admin_token-equivalent
+// needs to be passed explicitly.
+export async function supabaseSaveSurvey({ survey, projectId, app }) {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase.functions.invoke("save-survey", {
+    body: { definition: survey, project_id: projectId, app },
+  });
+
+  if (error) {
+    let msg = error.message || String(error);
+    try {
+      const body = await error.context?.json?.();
+      if (body?.err) msg = body.err;
+    } catch {}
+    return { ok: false, err: msg };
+  }
+
+  if (!data?.ok) return { ok: false, err: data?.err || "save failed" };
+
+  return { ok: true, survey_id: data.survey_id, checksum: null };
+}
+
+// Reverses mapPostRowToRaw() above (and mirrors mapPost() in
+// supabase/scripts/migrate-from-sheets.mjs), turning a raw camelCase post
+// object — the shape the post editors/ui-posts-*.jsx produce and consume —
+// into a public.posts row.
+function mapRawPostToRow(raw, composedFeedId, sortOrder) {
+  return {
+    id: String(raw.id),
+    feed_id: composedFeedId,
+    sort_order: sortOrder,
+
+    post_name: raw.postName ?? raw.name ?? null,
+    author: raw.author ?? null,
+    post_time: raw.time ?? null,
+    body_text: raw.text ?? null,
+    links: Array.isArray(raw.links) ? raw.links : [],
+
+    badge: !!raw.badge,
+    author_type: raw.authorType ?? null,
+    topic: raw.topic ?? null,
+
+    show_bio: !!raw.showBio,
+    bio_text: raw.bio_text ?? null,
+    bio_url: raw.bio_url ?? null,
+    bio_posts: Number.isFinite(raw.bio_posts) ? raw.bio_posts : null,
+    bio_followers: Number.isFinite(raw.bio_followers) ? raw.bio_followers : null,
+    bio_following: Number.isFinite(raw.bio_following) ? raw.bio_following : null,
+
+    avatar_mode: raw.avatarMode ?? null,
+    avatar_random_kind: raw.avatarRandomKind ?? null,
+    avatar_url: raw.avatarUrl ?? null,
+
+    image_mode: raw.imageMode ?? null,
+    image: raw.image ?? null,
+    images: Array.isArray(raw.images) ? raw.images : [],
+    image_topic: raw.imageTopic ?? null,
+    video_mode: raw.videoMode ?? null,
+    video: raw.video ?? null,
+    video_poster_url: raw.videoPosterUrl ?? null,
+    video_autoplay_muted: !!raw.videoAutoplayMuted,
+    video_show_controls: raw.videoShowControls !== false,
+    video_loop: !!raw.videoLoop,
+    show_ghost_comments: !!raw.showGhostComments,
+
+    intervention_type: raw.interventionType || "none",
+    note_text: raw.noteText ?? null,
+    note_meta_enabled: !!raw.noteMetaEnabled,
+    note_reader_groups: Array.isArray(raw.noteReaderGroups) ? raw.noteReaderGroups : [],
+    note_reader_group2_enabled: !!raw.noteReaderGroup2Enabled,
+
+    show_reactions: raw.showReactions !== false,
+    selected_reactions: Array.isArray(raw.selectedReactions) ? raw.selectedReactions : [],
+    reactions: raw.reactions && typeof raw.reactions === "object" ? raw.reactions : {},
+    metrics: raw.metrics && typeof raw.metrics === "object" ? raw.metrics : {},
+
+    ad_type: raw.adType || "none",
+    ad_domain: raw.adDomain ?? null,
+    ad_headline: raw.adHeadline ?? null,
+    ad_subheadline: raw.adSubheadline ?? null,
+    ad_button_text: raw.adButtonText ?? null,
+    ad_url: raw.adUrl ?? null,
+
+    news_domain: raw.newsDomain ?? null,
+    news_headline: raw.newsHeadline ?? null,
+    news_description: raw.newsDescription ?? null,
+    news_url: raw.newsUrl ?? null,
+  };
+}
+
+// Not cryptographic — this checksum only needs to (a) change whenever post
+// content changes and (b) stay stable when it doesn't, since it's used
+// purely as a client-side cache-invalidation key (getCachedPosts/
+// setCachedPosts in components-admin-dashboard.jsx) and as the "did this
+// feed change" signal behind the "publishing a checksum-changing feed
+// wipes its participants" warning. GAS computes its own opaque checksum
+// server-side; there's no need to match its algorithm, only its contract.
+function computeChecksum(value) {
+  const str = JSON.stringify(value);
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
+}
+
+// Mirrors GAS's publish_posts action: full-replace a feed's post list, and
+// implicitly create/rename the feed row if needed — "+ New feed" in
+// components-admin-dashboard.jsx only creates local React state (no
+// backend call), so the feed row genuinely may not exist yet the first
+// time this runs for a given feedId.
+//
+// Also enforces the project's "wipe on change" policy (projects.wipe_on_change,
+// 20260801000012_project_wipe_on_change.sql): reads the feed's *previous*
+// checksum before overwriting it, and if it existed and differs from the
+// new one, wipes that feed's participants — but only when the project has
+// opted in (default off). GAS's equivalent flag is global with no project
+// scoping at all; this is a deliberate divergence, not a bug, per direct
+// user request (see CLAUDE.md). A brand-new feed (no previous checksum) is
+// never wiped — there's nothing to invalidate on a first publish.
+export async function supabasePublishPosts({ posts, feedId, name, projectId, app }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const checksum = computeChecksum(posts);
+
+  const [{ data: existingFeed }, { data: project }] = await Promise.all([
+    supabase.from("feeds").select("checksum").eq("id", composedFeedId).maybeSingle(),
+    projectId
+      ? supabase.from("projects").select("wipe_on_change").eq("id", projectId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const { error: feedErr } = await supabase.from("feeds").upsert(
+    {
+      id: composedFeedId,
+      project_id: projectId,
+      app,
+      feed_id: feedId,
+      name: name || feedId,
+      checksum,
+    },
+    { onConflict: "id" }
+  );
+  if (feedErr) throw new Error(feedErr.message);
+
+  const checksumChanged = !!existingFeed?.checksum && existingFeed.checksum !== checksum;
+  if (checksumChanged && project?.wipe_on_change) {
+    const { error: wipeErr } = await supabase.from("participants").delete().eq("feed_id", composedFeedId);
+    if (wipeErr) throw new Error(wipeErr.message);
+  }
+
+  const { error: deleteErr } = await supabase.from("posts").delete().eq("feed_id", composedFeedId);
+  if (deleteErr) throw new Error(deleteErr.message);
+
+  const rows = (posts || []).map((p, i) => mapRawPostToRow(p, composedFeedId, i));
+  if (rows.length) {
+    const { error: insertErr } = await supabase.from("posts").insert(rows);
+    if (insertErr) throw new Error(insertErr.message);
+  }
+
+  return true;
+}
+
+// Project-scoped counterpart to GAS's global wipe_policy get/set actions
+// (see supabasePublishPosts above for why this diverges from global scope).
+export async function supabaseGetWipePolicy({ projectId }) {
+  if (!projectId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("wipe_on_change")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? !!data.wipe_on_change : null;
+}
+
+export async function supabaseSetWipePolicy({ projectId, wipeOnChange }) {
+  if (!projectId) throw new Error("projectId required");
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .update({ wipe_on_change: !!wipeOnChange })
+    .eq("id", projectId)
+    .select("wipe_on_change")
+    .single();
+  if (error) throw new Error(error.message);
+  return !!data.wipe_on_change;
+}
+
+export async function supabaseDeleteSurvey({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("surveys").delete().eq("id", surveyId);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function supabaseCreateProject({ projectId, name, notes }) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("projects").insert({
+    id: projectId,
+    name: name || projectId,
+    notes: notes || null,
+  });
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function supabaseDeleteProject({ projectId }) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function supabaseDeleteFeed({ projectId, app, feedId }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const { error } = await supabase.from("feeds").delete().eq("id", composedFeedId);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+// Mirrors GAS's wipe_participants action ("delete the participants sheet for
+// this feed"): a hard delete of every participants row for one feed, nothing
+// else (survey_responses is a separate table/action, not touched here).
+// participants.feed_id is the same composed <project>::<app>::<feed> key
+// feeds.id uses, so no join is needed.
+export async function supabaseWipeParticipants({ projectId, app, feedId }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const { error } = await supabase.from("participants").delete().eq("feed_id", composedFeedId);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function supabaseFetchFeedFlags({ projectId, app, feedId }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const { data, error } = await supabase.from("feeds").select("flags").eq("id", composedFeedId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.flags && typeof data.flags === "object" ? data.flags : {};
+}
+
+/* ===================== Participant-facing survey delivery =================
+ * Public reads (surveys_select_public / feed_surveys_select_public RLS —
+ * no admin session involved, same as a real participant's anonymous
+ * browser). getSurveyForFeedFromBackend/getSurveyFromBackend in
+ * utils-backend.js wrap these with the same normalization regardless of
+ * which backend answered, so these only need to return the raw shape.
+ */
+
+// One feed_id can only be linked to the survey it was included in via
+// feed_sequence_ids at save time (handleSaveSurvey_'s "link every feed"
+// behavior, mirrored by save-survey/index.ts) — first match wins, matching
+// FEED_SURVEY_GET_URL's single-link-per-feed contract on the GAS side.
+export async function supabaseGetSurveyIdForFeed({ feedId, projectId, app }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const { data, error } = await supabase
+    .from("feed_surveys")
+    .select("survey_id")
+    .eq("feed_id", composedFeedId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data?.survey_id || null;
+}
+
+// `trigger` is set by the survey editor (defaults to "after_feed_submit")
+// but frontendSurveyToBackend (supabase/functions/_shared/survey-sanitize.ts)
+// doesn't currently include it in the persisted definition — a pre-existing
+// gap in the Phase 2 port, not introduced here. Every survey in practice
+// uses the default, so this falls back the same way
+// getSurveyForFeedFromBackend's own wrapper already does downstream.
+function derivePrefaceFields(definition) {
+  const hasParticipantInfo = !!String(definition?.participant_information_html || "").trim();
+  const hasConsent = !!String(definition?.consent_text_html || "").trim();
+  const hasInstructions = !!String(definition?.instructions_html || "").trim();
+
+  return {
+    has_preface: hasParticipantInfo || hasConsent || hasInstructions,
+    preface: {
+      participant_information: hasParticipantInfo,
+      consent: hasConsent,
+      instructions: hasInstructions,
+    },
+  };
+}
+
+export async function supabaseGetSurveyBootForFeed({ feedId, projectId, app }) {
+  const surveyId = await supabaseGetSurveyIdForFeed({ feedId, projectId, app });
+  if (!surveyId) return { has_survey: false };
+
+  const definition = await supabaseLoadSurveyDefinition({ surveyId });
+  if (!definition) return { has_survey: false };
+
+  return {
+    ...definition,
+    has_survey: true,
+    preferred_feed_id: "",
+    ...derivePrefaceFields(definition),
+  };
+}
+
+export async function supabaseGetSurveyBootById({ surveyId }) {
+  const definition = await supabaseLoadSurveyDefinition({ surveyId });
+  if (!definition) return null;
+
+  return {
+    ...definition,
+    has_survey: true,
+    preferred_feed_id: "",
+    ...derivePrefaceFields(definition),
+  };
+}
+
+/* ===================== Experiment groups ==================================
+ * assign_experiment_group is grantEXECUTE'd to anon+authenticated (see
+ * migration 20260801000008) — no session required, matching participant-
+ * facing usage. reset_experiment_group_assignments checks
+ * is_admin_writer() via auth.uid() internally, so it only succeeds when
+ * called through the signed-in admin's client (which supabase.rpc already
+ * attaches automatically).
+ */
+export async function supabaseAssignExperimentGroup({ surveyId, sessionId, participantId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("assign_experiment_group", {
+    p_survey_id: surveyId,
+    p_session_id: sessionId,
+    p_participant_id: participantId || null,
+  });
+
+  if (error) throw new Error(error.message);
+  return data ? String(data) : null;
+}
+
+export async function supabaseResetExperimentGroupAssignments({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.rpc("reset_experiment_group_assignments", { p_survey_id: surveyId });
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+// experiment_assignments has no aggregate/count RPC — group counts are
+// small in practice (bounded by participant count for one survey), so this
+// just pulls the group_id column and tallies client-side rather than
+// standing up a Postgres view for one admin-panel number.
+export async function supabaseGetExperimentGroupCounts({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.from("experiment_assignments").select("group_id").eq("survey_id", surveyId);
+  if (error) throw new Error(error.message);
+
+  const counts = {};
+  let total = 0;
+  for (const row of data || []) {
+    const gid = row.group_id || "";
+    counts[gid] = (counts[gid] || 0) + 1;
+    total += 1;
+  }
+  return { counts, total };
+}
+
+/* ===================== Participant submission (writes) ====================
+ * Uses a direct keepalive fetch against PostgREST rather than the
+ * supabase-js client, mirroring the existing sendBeacon-first/fetch-fallback
+ * pattern in utils-backend.js: these calls frequently fire during page
+ * unload (participant closes the tab right after submitting), and
+ * `keepalive: true` is the modern, header-capable equivalent of
+ * navigator.sendBeacon (which can't carry the apikey header PostgREST
+ * requires). Both tables are public-insert via RLS — anon key only, no
+ * admin session involved, matching a real participant's anonymous browser.
+ */
+async function supabaseInsert(table, row) {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  const res = await fetch(`${String(url).replace(/\/+$/, "")}/rest/v1/${table}`, {
+    method: "POST",
+    keepalive: true,
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify(row),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.warn(`supabaseInsert(${table}) failed: HTTP ${res.status} ${text}`);
+  }
+
+  return res.ok;
+}
+
+export async function supabaseLogParticipant({ row, feedId, surveyId, projectId, app }) {
+  const fixedKeys = new Set([
+    "session_id", "participant_id", "prolific_pid", "prolific_session_id",
+    "session_id_ext", "prolific_study_id", "study_id", "ip_address",
+    "entered_at_iso", "entered_at", "submitted_at_iso", "submitted_at",
+    "ms_enter_to_submit", "ms_enter_to_last_interaction",
+    "feed_id", "survey_id", "feed_checksum", "project_id",
+  ]);
+
+  const extra = {};
+  for (const [k, v] of Object.entries(row || {})) {
+    if (!fixedKeys.has(k)) extra[k] = v;
+  }
+
+  const dbRow = {
+    project_id: projectId || null,
+    feed_id: feedId ? composeFeedId(projectId, app, feedId) : null,
+    survey_id: surveyId || row?.survey_id || null,
+    feed_checksum: row?.feed_checksum ?? null,
+
+    session_id: String(row?.session_id ?? row?.session_id_ext ?? ""),
+    participant_id: row?.participant_id ?? null,
+    prolific_pid: row?.prolific_pid ?? null,
+    prolific_session_id: row?.prolific_session_id ?? row?.session_id_ext ?? null,
+    prolific_study_id: row?.prolific_study_id ?? row?.study_id ?? null,
+    ip_address: row?.ip_address ?? null,
+
+    entered_at: row?.entered_at_iso || row?.entered_at || null,
+    submitted_at: row?.submitted_at_iso || row?.submitted_at || null,
+    ms_enter_to_submit: Number.isFinite(row?.ms_enter_to_submit) ? row.ms_enter_to_submit : null,
+    ms_enter_to_last_interaction: Number.isFinite(row?.ms_enter_to_last_interaction)
+      ? row.ms_enter_to_last_interaction
+      : null,
+
+    extra,
+  };
+
+  // feed_id is NOT NULL on participants — a feed-less (survey-only) entry
+  // has no row to attach to under this schema. GAS's sheet-per-feed model
+  // sidesteps this by keying the sheet itself; there's no Postgres
+  // equivalent gap-filler without a schema change, so this specific case
+  // is a known no-op rather than a silent wrong write.
+  if (!dbRow.feed_id) return false;
+
+  return supabaseInsert("participants", dbRow);
+}
+
+export async function supabaseLogSurveyResponse(args) {
+  const dbRow = {
+    survey_id: args.survey_id,
+    feed_id:
+      args.feed_id && args.feed_id !== "SURVEY_ONLY"
+        ? composeFeedId(args.project_id, args.app, args.feed_id)
+        : null,
+    project_id: args.project_id || null,
+
+    session_id: String(args.session_id || ""),
+    participant_id: args.participant_id || null,
+    experiment_group_id: args.experiment_group_id || null,
+
+    prolific_pid: args.prolific_pid || null,
+    prolific_session_id: args.prolific_session_id || null,
+    prolific_study_id: args.prolific_study_id || null,
+    ip_address: args.ip_address || null,
+
+    entered_at: args.entered_at_iso || null,
+    submitted_at: args.submitted_at_iso || new Date().toISOString(),
+    duration_ms: Number(args.duration_ms || 0) || 0,
+
+    responses: args.responses && typeof args.responses === "object" ? args.responses : {},
+  };
+
+  return supabaseInsert("survey_responses", dbRow);
+}
+
+/* ===================== Participants / CSV export rosters (admin reads) ==== */
+export async function supabaseLoadParticipantsRoster({ feedId, projectId, app }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+  const { data, error } = await supabase
+    .from("participants")
+    .select("*")
+    .eq("feed_id", composedFeedId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapParticipantRowToRaw);
+}
+
+function mapParticipantRowToRaw(row) {
+  return {
+    session_id: row.session_id ?? "",
+    participant_id: row.participant_id ?? "",
+    prolific_pid: row.prolific_pid ?? "",
+    prolific_session_id: row.prolific_session_id ?? "",
+    prolific_study_id: row.prolific_study_id ?? "",
+    ip_address: row.ip_address ?? "",
+    entered_at_iso: row.entered_at ?? "",
+    submitted_at_iso: row.submitted_at ?? "",
+    ms_enter_to_submit: row.ms_enter_to_submit ?? "",
+    ms_enter_to_last_interaction: row.ms_enter_to_last_interaction ?? "",
+    feed_checksum: row.feed_checksum ?? "",
+    survey_id: row.survey_id ?? "",
+    ...(row.extra && typeof row.extra === "object" ? row.extra : {}),
+  };
+}
+
+function mapSurveyResponseRowToRaw(row) {
+  return {
+    session_id: row.session_id ?? "",
+    participant_id: row.participant_id ?? "",
+    experiment_group_id: row.experiment_group_id ?? "",
+    prolific_pid: row.prolific_pid ?? "",
+    prolific_session_id: row.prolific_session_id ?? "",
+    prolific_study_id: row.prolific_study_id ?? "",
+    ip_address: row.ip_address ?? "",
+    entered_at_iso: row.entered_at ?? "",
+    submitted_at_iso: row.submitted_at ?? "",
+    duration_ms: row.duration_ms ?? "",
+    survey_id: row.survey_id ?? "",
+    project_id: row.project_id ?? "",
+    // feed_id is stored composed but every consumer of this roster expects
+    // the bare id (it's compared against listFeedsFromBackend's feed_id and
+    // shown in CSV columns) — strip the <project>::<app>:: prefix back off.
+    feed_id: row.feed_id ? row.feed_id.split("::").slice(2).join("::") : "SURVEY_ONLY",
+    responses: row.responses && typeof row.responses === "object" ? row.responses : {},
+    response_json: JSON.stringify(row.responses || {}),
+  };
+}
+
+export async function supabaseLoadSurveyResponsesRoster({ surveyId, feedId, projectId, app }) {
+  const supabase = getSupabaseClient();
+  let query = supabase.from("survey_responses").select("*").eq("survey_id", surveyId);
+  if (feedId) query = query.eq("feed_id", composeFeedId(projectId, app, feedId));
+  const { data, error } = await query.order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapSurveyResponseRowToRaw);
+}
+
+export async function supabaseLoadSurveyResponsesBySurveyRoster({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("survey_responses")
+    .select("*")
+    .eq("survey_id", surveyId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapSurveyResponseRowToRaw);
+}
+
+export async function supabaseLoadSurveyParticipantsRoster({ surveyId, projectId, app }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("participants")
+    .select("*")
+    .eq("survey_id", surveyId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapParticipantRowToRaw);
+}
+
+export async function supabaseLoadSurveyParticipantsStats({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { count, error } = await supabase
+    .from("participants")
+    .select("id", { count: "exact", head: true })
+    .eq("survey_id", surveyId);
+  if (error) throw new Error(error.message);
+  return { total: count || 0 };
+}
+
+export async function supabaseDeleteSurveyResponses({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("survey_responses").delete().eq("survey_id", surveyId);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+/* ======================= Admin user management ======================= */
+// Calls the deployed admin-users Edge Function (supabase/functions/admin-users)
+// rather than a plain profiles upsert — creating/disabling/deleting a Supabase
+// Auth user and resetting another user's password all require the
+// service-role key, same reasoning as supabaseSaveSurvey/save-survey above,
+// just a higher privilege bar (owner-only, enforced server-side in the
+// function itself, not just by the frontend's hasAdminRole("owner") gate).
+// functions.invoke attaches the signed-in admin's JWT automatically.
+async function invokeAdminUsers(payload) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.functions.invoke("admin-users", { body: payload });
+
+  if (error) {
+    let msg = error.message || String(error);
+    try {
+      const body = await error.context?.json?.();
+      if (body?.err) msg = body.err;
+    } catch {}
+    return { ok: false, err: msg };
+  }
+
+  if (!data?.ok) return { ok: false, err: data?.err || "request failed" };
+  return data;
+}
+
+export async function supabaseAdminListUsers() {
+  const res = await invokeAdminUsers({ action: "list" });
+  if (!res.ok) return res;
+  return { ok: true, users: Array.isArray(res.users) ? res.users : [] };
+}
+
+export async function supabaseAdminCreateUser(email, password, role = "viewer") {
+  return invokeAdminUsers({ action: "create", email, password, role });
+}
+
+export async function supabaseAdminUpdateUser({ email, role, password, disabled }) {
+  const payload = { action: "update", email };
+  if (role != null) payload.role = role;
+  if (password != null) payload.password = password;
+  if (typeof disabled === "boolean") payload.disabled = disabled;
+  return invokeAdminUsers(payload);
+}
+
+export async function supabaseAdminDeleteUser(email) {
+  return invokeAdminUsers({ action: "delete", email });
+}

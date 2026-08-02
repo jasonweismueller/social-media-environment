@@ -1,0 +1,13 @@
+{
+  "name": "fakebook-sheets-to-supabase-migration",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "One-off Phase 3 data migration: reads a duplicated study spreadsheet via its own (isolated) redeployed Apps Script web app, writes into Supabase. Not part of the main app build — run manually, separately, from this directory.",
+  "scripts": {
+    "migrate": "node migrate-from-sheets.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

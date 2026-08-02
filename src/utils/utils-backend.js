@@ -9,6 +9,48 @@ import {
   DRIVE_RE,
   CF_BASE,
 } from "./utils-core";
+import { isSupabaseBackend } from "./utils-supabase-client";
+import {
+  supabaseAdminSignIn,
+  supabaseAdminSignOut,
+  supabaseAdminTouch,
+  supabaseListProjects,
+  supabaseLoadPosts,
+  supabaseListFeeds,
+  supabaseGetDefaultFeedId,
+  supabaseSetDefaultFeedId,
+  supabaseListSurveys,
+  supabaseLoadSurveyDefinition,
+  supabaseGetLinkedFeedIds,
+  supabaseSaveSurvey,
+  supabasePublishPosts,
+  supabaseDeleteSurvey,
+  supabaseCreateProject,
+  supabaseDeleteProject,
+  supabaseDeleteFeed,
+  supabaseFetchFeedFlags,
+  supabaseGetSurveyIdForFeed,
+  supabaseGetSurveyBootForFeed,
+  supabaseGetSurveyBootById,
+  supabaseAssignExperimentGroup,
+  supabaseResetExperimentGroupAssignments,
+  supabaseGetExperimentGroupCounts,
+  supabaseLogParticipant,
+  supabaseLogSurveyResponse,
+  supabaseLoadParticipantsRoster,
+  supabaseLoadSurveyResponsesRoster,
+  supabaseLoadSurveyResponsesBySurveyRoster,
+  supabaseLoadSurveyParticipantsRoster,
+  supabaseLoadSurveyParticipantsStats,
+  supabaseDeleteSurveyResponses,
+  supabaseAdminListUsers,
+  supabaseAdminCreateUser,
+  supabaseAdminUpdateUser,
+  supabaseAdminDeleteUser,
+  supabaseWipeParticipants,
+  supabaseGetWipePolicy,
+  supabaseSetWipePolicy,
+} from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
 function msToSeconds(value) {
@@ -43,18 +85,22 @@ async function loadPublicSurveyDefinitionForFeed(
   }
 
   try {
-    const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
-      survey_id: surveyId,
-      feed_id: feedId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    });
+    const data = isSupabaseBackend()
+      ? await supabaseLoadSurveyDefinition({ surveyId })
+      : await (async () => {
+          const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
+            survey_id: surveyId,
+            feed_id: feedId,
+            project_id: projectId || undefined,
+            _ts: Date.now(),
+          });
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+          return getJsonWithRetry(
+            url,
+            { method: "GET", mode: "cors", cache: "no-store", signal },
+            { retries: 1, timeoutMs: 8000 }
+          );
+        })();
 
     if (!data || Array.isArray(data) || !data.survey_id) return null;
 
@@ -88,17 +134,21 @@ async function loadPublicSurveyDefinition(
   }
 
   try {
-    const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
-      survey_id: surveyId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    });
+    const data = isSupabaseBackend()
+      ? await supabaseLoadSurveyDefinition({ surveyId })
+      : await (async () => {
+          const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
+            survey_id: surveyId,
+            project_id: projectId || undefined,
+            _ts: Date.now(),
+          });
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+          return getJsonWithRetry(
+            url,
+            { method: "GET", mode: "cors", cache: "no-store", signal },
+            { retries: 1, timeoutMs: 8000 }
+          );
+        })();
 
     if (!data || Array.isArray(data) || !data.survey_id) return null;
 
@@ -127,6 +177,15 @@ export async function getLinkedFeedIdsForSurveyFromBackend({
   signal,
 } = {}) {
   if (!surveyId) return [];
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseGetLinkedFeedIds({ surveyId, projectId, app: getApp() });
+    } catch (e) {
+      console.warn("getLinkedFeedIdsForSurveyFromBackend (supabase) failed:", e);
+      return [];
+    }
+  }
 
   const feedList = Array.isArray(allFeeds) && allFeeds.length
     ? allFeeds
@@ -631,17 +690,21 @@ export async function getSurveyBootForFeedFromBackend(
   if (!feedId) return null;
 
   try {
-    const url = buildQueryUrl(FEED_SURVEY_BOOT_GET_URL(), {
-      feed_id: feedId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    });
+    const data = isSupabaseBackend()
+      ? await supabaseGetSurveyBootForFeed({ feedId, projectId, app: getApp() })
+      : await (async () => {
+          const url = buildQueryUrl(FEED_SURVEY_BOOT_GET_URL(), {
+            feed_id: feedId,
+            project_id: projectId || undefined,
+            _ts: Date.now(),
+          });
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+          return getJsonWithRetry(
+            url,
+            { method: "GET", mode: "cors", cache: "no-store", signal },
+            { retries: 1, timeoutMs: 8000 }
+          );
+        })();
 
     if (!data || typeof data !== "object") return null;
 
@@ -716,17 +779,21 @@ export async function getSurveyBootFromBackend(
   if (!surveyId) return null;
 
   try {
-    const url = buildQueryUrl(SURVEY_BOOT_GET_URL(), {
-      survey_id: surveyId,
-      project_id: projectId || undefined,
-      _ts: Date.now(),
-    });
+    const data = isSupabaseBackend()
+      ? await supabaseGetSurveyBootById({ surveyId })
+      : await (async () => {
+          const url = buildQueryUrl(SURVEY_BOOT_GET_URL(), {
+            survey_id: surveyId,
+            project_id: projectId || undefined,
+            _ts: Date.now(),
+          });
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+          return getJsonWithRetry(
+            url,
+            { method: "GET", mode: "cors", cache: "no-store", signal },
+            { retries: 1, timeoutMs: 8000 }
+          );
+        })();
 
     if (!data || typeof data !== "object") return null;
 
@@ -1210,6 +1277,8 @@ const participantRows = surveyResponses.map((row) => ({
 
 /* ======================= Admin User Management APIs ======================= */
 export async function adminListUsers() {
+  if (isSupabaseBackend()) return supabaseAdminListUsers();
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -1230,6 +1299,8 @@ export async function adminListUsers() {
 }
 
 export async function adminCreateUser(email, password, role = "viewer") {
+  if (isSupabaseBackend()) return supabaseAdminCreateUser(email, password, role);
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -1253,6 +1324,8 @@ export async function adminCreateUser(email, password, role = "viewer") {
 }
 
 export async function adminUpdateUser({ email, role, password, disabled }) {
+  if (isSupabaseBackend()) return supabaseAdminUpdateUser({ email, role, password, disabled });
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -1275,6 +1348,8 @@ export async function adminUpdateUser({ email, role, password, disabled }) {
 }
 
 export async function adminDeleteUser(email) {
+  if (isSupabaseBackend()) return supabaseAdminDeleteUser(email);
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -1297,6 +1372,16 @@ export async function adminDeleteUser(email) {
 
 /* ======================= Flags (backend) ======================= */
 export async function fetchFeedFlags({ app, projectId, feedId, endpoint = GS_ENDPOINT, signal } = {}) {
+  if (isSupabaseBackend()) {
+    try {
+      const raw = await supabaseFetchFeedFlags({ projectId, app: app || APP, feedId });
+      return normalizeFlagsForRead(raw);
+    } catch (e) {
+      console.warn("fetchFeedFlags (supabase) failed:", e);
+      return normalizeFlagsForRead({ random_time: false });
+    }
+  }
+
   const qp = new URLSearchParams({ path: "get_feed_flags", app: app || APP });
   if (projectId) qp.append("project_id", projectId);
   if (feedId) qp.append("feed_id", feedId);
@@ -1369,6 +1454,14 @@ export function hasAdminRole(minRole = "viewer") {
 }
 
 export async function touchAdminSession() {
+  if (isSupabaseBackend()) {
+    const res = await supabaseAdminTouch();
+    if (!res.ok) return { ok: false, err: res.err };
+
+    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email });
+    return { ok: true, ttl_s: Number(res.ttlSec || 0), role: res.role, email: res.email };
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -1522,6 +1615,19 @@ export function hasAdminSession() {
 }
 
 export async function adminLogin(password) {
+  if (isSupabaseBackend()) {
+    // Supabase Auth has no equivalent of the GAS backend's single shared
+    // owner-password login — every admin account (including the owner) is
+    // its own Supabase Auth user with an email, so this mode only makes
+    // sense against the GAS backend. Fail explicitly rather than silently
+    // misbehaving; the "Sign in as Admin" (email + password) tab is the
+    // Supabase-backed path (see adminLoginUser below).
+    return {
+      ok: false,
+      err: "Owner-password sign-in isn't available on the Supabase backend — use Sign in as Admin (email + password).",
+    };
+  }
+
   try {
     const { res, data } = await postJson({
       action: "admin_login",
@@ -1545,6 +1651,14 @@ export async function adminLogin(password) {
 }
 
 export async function adminLoginUser(email, password) {
+  if (isSupabaseBackend()) {
+    const res = await supabaseAdminSignIn(email, password);
+    if (!res.ok) return { ok: false, err: res.err };
+
+    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email });
+    return { ok: true };
+  }
+
   try {
     const { res, data } = await postJson({
       action: "admin_login_user",
@@ -1569,6 +1683,11 @@ export async function adminLoginUser(email, password) {
 }
 
 export async function adminLogout() {
+  if (isSupabaseBackend()) {
+    clearAdminSession();
+    return await supabaseAdminSignOut();
+  }
+
   const admin_token = getAdminToken();
   clearAdminSession();
 
@@ -1594,6 +1713,21 @@ export async function sendToSheet(header, row, _events, feed_id, options = {}) {
   if (!feed_id && !survey_id) {
     console.warn("sendToSheet: feed_id or survey_id required");
     return false;
+  }
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLogParticipant({
+        row,
+        feedId: feed_id || null,
+        surveyId: survey_id || null,
+        projectId: getProjectId(),
+        app: getApp(),
+      });
+    } catch (e) {
+      console.warn("sendToSheet (supabase) failed:", e);
+      return false;
+    }
   }
 
   const payload = {
@@ -1682,6 +1816,15 @@ export async function sendSurveyResponseToBackend(args = {}) {
     experiment_group_id: args.experiment_group_id || legacyRow.experiment_group_id || "",
   };
 
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLogSurveyResponse({ ...payload, app: APP });
+    } catch (e) {
+      console.warn("sendSurveyResponseToBackend (supabase) failed:", e);
+      return false;
+    }
+  }
+
   const body = JSON.stringify(payload);
 
   if (navigator.sendBeacon && body.length < 60000) {
@@ -1724,6 +1867,19 @@ export async function assignExperimentGroup({
   const survey_id = String(surveyId || "").trim();
   if (!survey_id) return null;
 
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseAssignExperimentGroup({
+        surveyId: survey_id,
+        sessionId: String(sessionId || ""),
+        participantId: String(participantId || ""),
+      });
+    } catch (e) {
+      console.warn("assignExperimentGroup (supabase) failed:", e);
+      return null;
+    }
+  }
+
   try {
     const { res, data } = await postJson({
       token: GS_TOKEN,
@@ -1745,6 +1901,15 @@ export async function assignExperimentGroup({
 
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
 export async function listFeedsFromBackend({ projectId = getProjectId(), signal } = {}) {
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseListFeeds({ projectId, app: getApp() });
+    } catch (e) {
+      console.warn("listFeedsFromBackend (supabase) failed:", e);
+      return [];
+    }
+  }
+
   try {
     const data = await getJsonWithRetry(
       buildQueryUrl(FEEDS_GET_URL(), {
@@ -1763,6 +1928,10 @@ export async function listFeedsFromBackend({ projectId = getProjectId(), signal 
 
 /* -------- default feed helpers (persisted on backend) --------------------- */
 export async function getDefaultFeedFromBackend({ projectId = getProjectId(), signal } = {}) {
+  if (isSupabaseBackend()) {
+    return supabaseGetDefaultFeedId({ app: getApp(), projectId });
+  }
+
   try {
     const data = await getJsonWithRetry(
       buildQueryUrl(DEFAULT_FEED_GET_URL(), {
@@ -1780,6 +1949,10 @@ export async function getDefaultFeedFromBackend({ projectId = getProjectId(), si
 }
 
 export async function setDefaultFeedOnBackend(feedId, { projectId = getProjectId() } = {}) {
+  if (isSupabaseBackend()) {
+    return supabaseSetDefaultFeedId({ app: getApp(), projectId, feedId });
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) {
     console.warn("setDefaultFeedOnBackend: missing admin_token");
@@ -1803,6 +1976,17 @@ export async function setDefaultFeedOnBackend(feedId, { projectId = getProjectId
 }
 
 export async function deleteFeedOnBackend(feedId, { projectId = getProjectId() } = {}) {
+  if (!hasAdminSession()) return false;
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseDeleteFeed({ projectId, app: getApp(), feedId });
+    } catch (e) {
+      console.warn("deleteFeedOnBackend (supabase) failed:", e);
+      return false;
+    }
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return false;
 
@@ -1881,19 +2065,23 @@ export async function loadPostsFromBackend(arg1, arg2) {
   }
 
   try {
-    const url = buildQueryUrl(POSTS_GET_URL(), {
-      project_id: projectId || undefined,
-      feed_id: feedId || undefined,
-      _ts: Date.now(),
-    });
+    const arr = isSupabaseBackend()
+      ? await supabaseLoadPosts({ projectId, feedId, app: getApp() })
+      : await (async () => {
+          const url = buildQueryUrl(POSTS_GET_URL(), {
+            project_id: projectId || undefined,
+            feed_id: feedId || undefined,
+            _ts: Date.now(),
+          });
 
-    const data = await getJsonWithRetry(
-      url,
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
+          const data = await getJsonWithRetry(
+            url,
+            { method: "GET", mode: "cors", cache: "no-store", signal },
+            { retries: 1, timeoutMs: 8000 }
+          );
 
-    const arr = Array.isArray(data) ? data : [];
+          return Array.isArray(data) ? data : [];
+        })();
 
     arr
       .filter((p) => p?.videoMode && p?.videoMode !== "none" && p?.video?.url && !DRIVE_RE.test(p.video.url))
@@ -1916,9 +2104,8 @@ export async function loadPostsFromBackend(arg1, arg2) {
  */
 export async function savePostsToBackend(rawPosts, ctx = {}) {
   const { feedId = null, name = null, projectId = getProjectId() } = ctx || {};
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("savePostsToBackend: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("savePostsToBackend: missing admin session");
     return false;
   }
 
@@ -1951,6 +2138,20 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     if (nm) q.name = nm;
     return q;
   });
+
+  if (isSupabaseBackend()) {
+    try {
+      await supabasePublishPosts({ posts, feedId, name, projectId, app: getApp() });
+      invalidatePostsCache(feedId, projectId);
+      return true;
+    } catch (err) {
+      console.warn("Publish failed (supabase):", err);
+      alert(`Save failed: ${String(err?.message || err)}`);
+      return false;
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   try {
     const { res } = await postJson(
@@ -2070,9 +2271,8 @@ async function rebuildSurveyRegistryOnBackend(projectId = getProjectId()) {
 }
 
 export async function listSurveysFromBackend({ projectId = getProjectId(), signal, force = false } = {}) {
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("listSurveysFromBackend: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("listSurveysFromBackend: missing admin session");
     return [];
   }
 
@@ -2080,6 +2280,19 @@ export async function listSurveysFromBackend({ projectId = getProjectId(), signa
     const cached = __getCachedSurveyList(projectId);
     if (cached) return cached;
   }
+
+  if (isSupabaseBackend()) {
+    try {
+      const arr = await supabaseListSurveys({ projectId });
+      __setCachedSurveyList(projectId, arr);
+      return arr;
+    } catch (e) {
+      console.warn("listSurveysFromBackend (supabase) failed:", e);
+      return [];
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   const fetchList = async () => {
     const url = buildQueryUrl(SURVEYS_GET_URL(), {
@@ -2119,9 +2332,8 @@ export async function loadSurveyFromBackend(
   surveyId,
   { projectId = getProjectId(), signal, force = false, returnEmptyOnFail = true } = {}
 ) {
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadSurveyFromBackend: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadSurveyFromBackend: missing admin session");
     return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
   }
   if (!surveyId) return returnEmptyOnFail ? makeEmptySurveyShell("") : null;
@@ -2130,6 +2342,29 @@ export async function loadSurveyFromBackend(
     const cached = __getCachedSurvey(surveyId, projectId);
     if (cached) return cached;
   }
+
+  if (isSupabaseBackend()) {
+    try {
+      const survey = await supabaseLoadSurveyDefinition({ surveyId });
+      if (!survey) return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
+
+      const out = {
+        ...makeEmptySurveyShell(surveyId),
+        ...survey,
+        survey_id: survey.survey_id || surveyId,
+        linked_project_id: projectId || "",
+        delivery_mode: normalizeSurveyDeliveryMode(survey.delivery_mode),
+      };
+
+      __setCachedSurvey(surveyId, projectId, out);
+      return out;
+    } catch (e) {
+      console.warn("loadSurveyFromBackend (supabase) failed:", e);
+      return returnEmptyOnFail ? makeEmptySurveyShell(surveyId) : null;
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   const fetchDefinition = async () => {
     const url = buildQueryUrl(SURVEY_DEFINITION_GET_URL(), {
@@ -2199,15 +2434,20 @@ export async function getSurveyForFeedFromBackend(
     const link =
       knownLink && knownLink.survey_id
         ? knownLink
-        : await getJsonWithRetry(
-            buildQueryUrl(FEED_SURVEY_GET_URL(), {
-              feed_id: feedId,
-              project_id: projectId || undefined,
-              _ts: Date.now(),
-            }),
-            { method: "GET", mode: "cors", cache: "no-store", signal },
-            { retries: 1, timeoutMs: 8000 }
-          );
+        : isSupabaseBackend()
+          ? await (async () => {
+              const surveyId = await supabaseGetSurveyIdForFeed({ feedId, projectId, app: getApp() });
+              return surveyId ? { survey_id: surveyId, trigger: "after_feed_submit" } : null;
+            })()
+          : await getJsonWithRetry(
+              buildQueryUrl(FEED_SURVEY_GET_URL(), {
+                feed_id: feedId,
+                project_id: projectId || undefined,
+                _ts: Date.now(),
+              }),
+              { method: "GET", mode: "cors", cache: "no-store", signal },
+              { retries: 1, timeoutMs: 8000 }
+            );
 
     if (!link || !link.survey_id) {
       __setCachedFeedSurvey(feedId, projectId, null);
@@ -2267,6 +2507,23 @@ export async function getSurveyFromBackend(
 }
 
 export async function saveSurveyToBackend(survey, { projectId = getProjectId() } = {}) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+
+  if (isSupabaseBackend()) {
+    const surveyToSave = {
+      ...survey,
+      linked_feed_ids: normalizeFeedSequenceIds(survey?.linked_feed_ids),
+      feed_sequence_ids: normalizeFeedSequenceIds(survey?.feed_sequence_ids, survey?.linked_feed_ids),
+      delivery_mode: normalizeSurveyDeliveryMode(survey?.delivery_mode),
+    };
+
+    const res = await supabaseSaveSurvey({ survey: surveyToSave, projectId, app: getApp() });
+    if (!res.ok) return res;
+
+    invalidateSurveysCache({ projectId, surveyId: res.survey_id });
+    return res;
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -2319,9 +2576,21 @@ export async function saveSurveyToBackend(survey, { projectId = getProjectId() }
 }
 
 export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId() } = {}) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!surveyId) return { ok: false, err: "survey_id required" };
+
+  if (isSupabaseBackend()) {
+    try {
+      await supabaseDeleteSurvey({ surveyId });
+      invalidateSurveysCache({ projectId, surveyId });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, err: String(e?.message || e) };
+    }
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
-  if (!surveyId) return { ok: false, err: "survey_id required" };
 
   try {
     const { res, data } = await postJson({
@@ -2356,11 +2625,22 @@ export async function deleteSurveyResponsesOnBackend({
   projectId = getProjectId(),
   surveyId,
 } = {}) {
-  const admin_token = getAdminToken();
-  if (!admin_token) return { ok: false, err: "admin auth required" };
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
 
   const survey_id = String(surveyId || "").trim();
   if (!survey_id) return { ok: false, err: "survey_id required" };
+
+  if (isSupabaseBackend()) {
+    try {
+      await supabaseDeleteSurveyResponses({ surveyId: survey_id });
+      return { ok: true, deleted_count: null };
+    } catch (e) {
+      return { ok: false, err: String(e?.message || e) };
+    }
+  }
+
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
 
   try {
     const { res, data } = await postJson({
@@ -2508,14 +2788,24 @@ export async function loadSurveyResponsesRoster(arg1, arg2) {
     opts = arg1;
   }
 
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadSurveyResponsesRoster: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadSurveyResponsesRoster: missing admin session");
     return [];
   }
 
   const projectId = opts.projectId || getProjectId();
   const feedId = opts.feedId || null;
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLoadSurveyResponsesRoster({ surveyId, feedId, projectId, app: getApp() });
+    } catch (e) {
+      console.warn("loadSurveyResponsesRoster (supabase) failed:", e);
+      return [];
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   try {
     const url = buildQueryUrl(SURVEY_RESPONSES_GET_URL(), {
@@ -2551,13 +2841,23 @@ export async function loadSurveyResponsesBySurveyRoster(arg1, arg2) {
     opts = arg1;
   }
 
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadSurveyResponsesBySurveyRoster: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadSurveyResponsesBySurveyRoster: missing admin session");
     return [];
   }
 
   const projectId = opts.projectId || getProjectId();
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLoadSurveyResponsesBySurveyRoster({ surveyId });
+    } catch (e) {
+      console.warn("loadSurveyResponsesBySurveyRoster (supabase) failed:", e);
+      return [];
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   try {
     const url = buildQueryUrl(SURVEY_RESPONSES_BY_SURVEY_GET_URL(), {
@@ -2771,13 +3071,23 @@ export async function loadParticipantsRoster(arg1, arg2) {
     opts = arg1;
   }
 
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadParticipantsRoster: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadParticipantsRoster: missing admin session");
     return [];
   }
 
   const projectId = opts.projectId || getProjectId();
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLoadParticipantsRoster({ feedId, projectId, app: getApp() });
+    } catch (e) {
+      console.warn("loadParticipantsRoster (supabase) failed:", e);
+      return [];
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   try {
     const url = buildQueryUrl(PARTICIPANTS_GET_URL(), {
@@ -2812,13 +3122,23 @@ export async function loadSurveyParticipantsRoster(arg1, arg2) {
     opts = arg1;
   }
 
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadSurveyParticipantsRoster: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadSurveyParticipantsRoster: missing admin session");
     return [];
   }
 
   const projectId = opts.projectId || getProjectId();
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLoadSurveyParticipantsRoster({ surveyId, projectId, app: getApp() });
+    } catch (e) {
+      console.warn("loadSurveyParticipantsRoster (supabase) failed:", e);
+      return [];
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   try {
     const url = buildQueryUrl(SURVEY_PARTICIPANTS_GET_URL(), {
@@ -2854,11 +3174,21 @@ export async function loadSurveyParticipantsStats(arg1, arg2) {
     opts = arg1;
   }
 
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadSurveyParticipantsStats: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadSurveyParticipantsStats: missing admin session");
     return { total: 0 };
   }
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseLoadSurveyParticipantsStats({ surveyId });
+    } catch (e) {
+      console.warn("loadSurveyParticipantsStats (supabase) failed:", e);
+      return { total: 0 };
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   const projectId = opts.projectId || getProjectId();
 
@@ -2888,14 +3218,24 @@ export async function loadExperimentGroupCounts({
   surveyId,
   signal,
 } = {}) {
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("loadExperimentGroupCounts: missing admin_token");
+  if (!hasAdminSession()) {
+    console.warn("loadExperimentGroupCounts: missing admin session");
     return { counts: {}, total: 0 };
   }
 
   const survey_id = String(surveyId || "").trim();
   if (!survey_id) return { counts: {}, total: 0 };
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseGetExperimentGroupCounts({ surveyId: survey_id });
+    } catch (e) {
+      console.warn("loadExperimentGroupCounts (supabase) failed:", e);
+      return { counts: {}, total: 0 };
+    }
+  }
+
+  const admin_token = getAdminToken();
 
   try {
     const url = buildQueryUrl(EXPERIMENT_GROUP_COUNTS_GET_URL(), {
@@ -2935,11 +3275,22 @@ export async function resetExperimentGroupAssignments({
   projectId = getProjectId(),
   surveyId,
 } = {}) {
-  const admin_token = getAdminToken();
-  if (!admin_token) return { ok: false, err: "admin auth required" };
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
 
   const survey_id = String(surveyId || "").trim();
   if (!survey_id) return { ok: false, err: "survey_id required" };
+
+  if (isSupabaseBackend()) {
+    try {
+      await supabaseResetExperimentGroupAssignments({ surveyId: survey_id });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, err: String(e?.message || e) };
+    }
+  }
+
+  const admin_token = getAdminToken();
+  if (!admin_token) return { ok: false, err: "admin auth required" };
 
   try {
     const { res, data } = await postJson({
@@ -3079,8 +3430,19 @@ export async function preloadSurveyPostRemindersFromBackend({
 }
 
 export async function wipeParticipantsOnBackend(feedId, { projectId = getProjectId() } = {}) {
+  if (!feedId) return false;
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseWipeParticipants({ projectId, app: getApp(), feedId });
+    } catch (e) {
+      console.warn("wipeParticipantsOnBackend (supabase) failed:", e);
+      return false;
+    }
+  }
+
   const admin_token = getAdminToken();
-  if (!admin_token || !feedId) return false;
+  if (!admin_token) return false;
 
   try {
     const { res, data } = await postJson(
@@ -3100,7 +3462,16 @@ export async function wipeParticipantsOnBackend(feedId, { projectId = getProject
   }
 }
 
-export async function getWipePolicyFromBackend() {
+export async function getWipePolicyFromBackend({ signal, projectId = getProjectId() } = {}) {
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseGetWipePolicy({ projectId });
+    } catch (e) {
+      console.warn("getWipePolicyFromBackend (supabase) failed:", e);
+      return null;
+    }
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return null;
 
@@ -3127,7 +3498,16 @@ export async function getWipePolicyFromBackend() {
   }
 }
 
-export async function setWipePolicyOnBackend(wipeOnChange) {
+export async function setWipePolicyOnBackend(wipeOnChange, { projectId = getProjectId() } = {}) {
+  if (isSupabaseBackend()) {
+    try {
+      const applied = await supabaseSetWipePolicy({ projectId, wipeOnChange });
+      return { ok: true, wipe_on_change: applied };
+    } catch (e) {
+      return { ok: false, err: String(e.message || e) };
+    }
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
 
@@ -3153,6 +3533,16 @@ export async function setWipePolicyOnBackend(wipeOnChange) {
 
 /* ============================ Project helpers (backend) ============================ */
 export async function listProjectsFromBackend({ signal } = {}) {
+  if (isSupabaseBackend()) {
+    try {
+      const rows = await supabaseListProjects();
+      return rows.length ? rows : [{ project_id: "global", name: "Global" }];
+    } catch (e) {
+      console.warn("listProjectsFromBackend (supabase) failed:", e);
+      return [{ project_id: "global", name: "Global" }];
+    }
+  }
+
   try {
     const data = await getJsonWithRetry(
       buildQueryUrl(PROJECTS_GET_URL(), { _ts: Date.now() }),
@@ -3184,6 +3574,17 @@ export async function setDefaultProjectOnBackend(projectId) {
 }
 
 export async function createProjectOnBackend({ projectId, name, notes } = {}) {
+  if (!hasAdminSession()) return false;
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseCreateProject({ projectId, name, notes });
+    } catch (e) {
+      console.warn("createProjectOnBackend (supabase) failed:", e);
+      return false;
+    }
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return false;
 
@@ -3204,6 +3605,17 @@ export async function createProjectOnBackend({ projectId, name, notes } = {}) {
 }
 
 export async function deleteProjectOnBackend(projectId) {
+  if (!hasAdminSession()) return false;
+
+  if (isSupabaseBackend()) {
+    try {
+      return await supabaseDeleteProject({ projectId });
+    } catch (e) {
+      console.warn("deleteProjectOnBackend (supabase) failed:", e);
+      return false;
+    }
+  }
+
   const admin_token = getAdminToken();
   if (!admin_token) return false;
 

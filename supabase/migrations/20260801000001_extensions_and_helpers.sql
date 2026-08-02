@@ -20,14 +20,24 @@ $$;
 -- `profiles.role` mirrors the current Admins-sheet role column
 -- (viewer/editor/owner, see CLAUDE.md + components-admin-users.jsx). There is
 -- no project-level scoping on admin accounts today, so these stay global.
+--
+-- LANGUAGE PLPGSQL, not SQL, and deliberately so: `profiles` isn't created
+-- until the next migration file. A `language sql` function body gets parsed
+-- and resolved against the catalog at CREATE FUNCTION time (Postgres needs
+-- to determine the query's result shape), so it would fail right here with
+-- "relation public.profiles does not exist". A plpgsql body is stored as
+-- opaque text and only resolved when actually called, long after profiles
+-- exists — so this forward reference is fine as plpgsql, not as plain sql.
 create or replace function public.current_profile_role()
 returns text
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select role from public.profiles where id = auth.uid();
+begin
+  return (select role from public.profiles where id = auth.uid());
+end;
 $$;
 
 -- editor or owner: the two roles allowed to write project/feed/post/survey
