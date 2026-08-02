@@ -50,6 +50,8 @@ import {
   supabaseWipeParticipants,
   supabaseGetWipePolicy,
   supabaseSetWipePolicy,
+  supabaseLoadPostById,
+  supabaseLinkSurveyToFeeds,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -2684,6 +2686,21 @@ export async function linkSurveyToFeedsOnBackend({
 
   const desiredFeedIds = uniqueStrings(feedIds);
 
+  if (isSupabaseBackend()) {
+    try {
+      const res = await supabaseLinkSurveyToFeeds({
+        surveyId,
+        feedIds: desiredFeedIds,
+        projectId,
+        app: getApp(),
+      });
+      invalidateSurveysCache({ projectId, surveyId });
+      return { ok: true, ...res };
+    } catch (e) {
+      return { ok: false, err: String(e?.message || e) };
+    }
+  }
+
   try {
     const surveyExists = await loadSurveyFromBackend(surveyId, {
       projectId,
@@ -3351,18 +3368,27 @@ export async function loadPostByIdFromBackend({
 
   const request = (async () => {
     try {
-      const url = buildQueryUrl(POST_BY_ID_GET_URL(), {
-        project_id: cleanProjectId || undefined,
-        feed_id: cleanFeedId,
-        post_id: cleanPostId,
-        _ts: Date.now(),
-      });
+      const data = isSupabaseBackend()
+        ? await supabaseLoadPostById({
+            projectId: cleanProjectId,
+            app: getApp(),
+            feedId: cleanFeedId,
+            postId: cleanPostId,
+          })
+        : await (async () => {
+            const url = buildQueryUrl(POST_BY_ID_GET_URL(), {
+              project_id: cleanProjectId || undefined,
+              feed_id: cleanFeedId,
+              post_id: cleanPostId,
+              _ts: Date.now(),
+            });
 
-      const data = await getJsonWithRetry(
-        url,
-        { method: "GET", mode: "cors", cache: "no-store", signal },
-        { retries: 1, timeoutMs: 8000 }
-      );
+            return getJsonWithRetry(
+              url,
+              { method: "GET", mode: "cors", cache: "no-store", signal },
+              { retries: 1, timeoutMs: 8000 }
+            );
+          })();
 
       const post = data && typeof data === "object" ? data : null;
       __postByIdCache.set(cacheKey, post);

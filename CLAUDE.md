@@ -737,6 +737,53 @@ deliberately sharing a post id — both kept independent, correctly-scoped rows,
 holds for the exact real-world scenario (shared template posts across Control/Treatment-style
 feed variants) that caused the original incident. Cleaned up all disposable test data afterward.
 
+### Two more unported functions found by asking "why does X still work?" (2026-08-02)
+
+Prompted by the user noticing survey post reminders still displayed correctly and asking why,
+given everything above — good instinct, since by this point in the day "still works" had already
+turned out twice to mean "never touched Supabase, still silently running on GAS," not "verified
+working." Audited `utils-backend.js` for every exported function that talks to a backend but has
+no `isSupabaseBackend()` branch at all. Two real hits (a third, `loadMergedParticipantSurveyRoster`,
+was already known-dead-code per the "Experiment group missing from survey CSV export" entry above;
+a fourth grep match, `invalidateSurveysCache`, was a false positive — pure local cache bookkeeping,
+no network call).
+
+- **`loadPostByIdFromBackend`** (survey `post_reminder` questions — CLAUDE.md's "Survey/posts
+  loading performance fixes" `preloadSurveyPostReminders` entry already documents the caller side
+  of this) — always called GAS's `POST_BY_ID_GET_URL` directly. Harmless today (GAS still has
+  correct data, nothing was lost there), but silently contradicted the "everything faster, only
+  possible with everything Supabase" goal stated earlier in this session.
+- **`linkSurveyToFeedsOnBackend`** ("Save feed links" button in the survey editor,
+  `components-admin-surveys.jsx`'s `handleSaveFeedLinks`) — **not just unported, actively broken**
+  under `VITE_BACKEND=supabase`: it POSTs `admin_token` to GAS's `link_survey_to_feed`/
+  `unlink_survey_from_feed` actions, but in Supabase mode `admin_token` holds a Supabase JWT, which
+  Code.gs has no way to recognize as valid. This one needed a real design decision, not a
+  mechanical swap: GAS models linking as direct per-feed link/unlink actions against a FeedSurveys
+  sheet, independent of saving the survey itself; Supabase instead derives `feed_surveys` purely
+  from `definition.feed_sequence_ids` (see `save-survey/index.ts`, Phase 2) — the join table is
+  never hand-edited anywhere else. Fixing only the join table without also updating
+  `definition.feed_sequence_ids`/`linked_feed_ids` would have created a footgun: the next plain
+  "Save survey" (which re-derives `feed_surveys` from the possibly-stale `definition` on every
+  save) would silently revert whatever "Save feed links" had just done. `supabaseLinkSurveyToFeeds`
+  (`utils-backend-supabase.js`) writes both — diffs and updates `feed_surveys` directly (not a full
+  delete+reinsert, so this stays a lightweight standalone action rather than a full survey
+  re-save/re-sanitize through the Edge Function) and syncs `definition.feed_sequence_ids`/
+  `linked_feed_ids` on the survey row to match.
+- **`supabaseLoadPostById`** added alongside — feed-scoped lookup (`feed_id` + `post_id`, the same
+  pair the new unique index from the collision fix above enforces), so it can't return the wrong
+  feed's copy of a shared post id even though the underlying bare id is no longer unique on its own.
+
+**Verified**: both files parse clean. `loadPostByIdFromBackend` tested against the real, live,
+previously-broken feed (`project_1`/`feed_1_rev`) — correct post returned with the correct bare
+id; also tested the exact disambiguation case that matters (same post id requested for two
+different real feeds sharing it, both resolved independently and correctly). `linkSurveyToFeedsOnBackend`
+couldn't be tested end-to-end for the same reason as the write-path test above (no live admin
+session available) — instead directly replicated `supabaseLinkSurveyToFeeds`'s exact operation
+sequence via `supabase db query --linked` against disposable data: linked a survey to feed A,
+confirmed both `feed_surveys` and `definition.feed_sequence_ids` updated correctly; relinked to
+feed B, confirmed feed A was cleanly removed from both and feed B correctly added to both. Cleaned
+up afterward.
+
 ### What's ported (all behind `isSupabaseBackend()` checks in `utils-backend.js`)
 
 - **New files**: `src/utils/utils-supabase-client.js` (lazy Supabase client singleton +

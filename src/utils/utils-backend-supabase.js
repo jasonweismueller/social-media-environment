@@ -200,6 +200,26 @@ function mapPostRowToRaw(row) {
   };
 }
 
+// Backs loadPostByIdFromBackend's Supabase branch (survey post_reminder
+// questions) — a single post by its bare post_id within one feed. Uses the
+// same feed_id+post_id lookup the unique index
+// (20260801000013_fix_post_id_collisions.sql) enforces, so this can't
+// return the wrong feed's copy of a shared post id.
+export async function supabaseLoadPostById({ projectId, app, feedId, postId }) {
+  const supabase = getSupabaseClient();
+  const composedFeedId = composeFeedId(projectId, app, feedId);
+
+  const { data, error } = await supabase
+    .from("posts")
+    .select("*")
+    .eq("feed_id", composedFeedId)
+    .eq("post_id", postId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data ? mapPostRowToRaw(data) : null;
+}
+
 export async function supabaseLoadPosts({ projectId, feedId, app }) {
   const supabase = getSupabaseClient();
   const composedFeedId = composeFeedId(projectId, app, feedId);
@@ -319,6 +339,80 @@ export async function supabaseGetLinkedFeedIds({ surveyId, projectId, app }) {
     .map((row) => row.feed_id)
     .filter((id) => typeof id === "string" && id.startsWith(prefix))
     .map((id) => id.slice(prefix.length));
+}
+
+// Backs linkSurveyToFeedsOnBackend's Supabase branch ("Save feed links" in
+// the survey editor — a standalone action, separate from saving the survey
+// itself). GAS models this as direct link/unlink actions against a
+// FeedSurveys sheet; Supabase instead derives feed_surveys purely from the
+// survey's own definition.feed_sequence_ids (see save-survey/index.ts) — the
+// join table is never hand-edited independently of that field anywhere
+// else. To keep this action consistent with that, and with a plain "Save
+// survey" not silently reverting it on the next save, this writes BOTH: the
+// feed_surveys rows directly (diffed, not full delete+reinsert, so this
+// stays a lightweight update rather than a full survey re-save/re-sanitize)
+// and definition.feed_sequence_ids/linked_feed_ids on the survey row itself.
+export async function supabaseLinkSurveyToFeeds({ surveyId, feedIds, projectId, app }) {
+  const supabase = getSupabaseClient();
+  const desiredFeedIds = Array.from(new Set((feedIds || []).map((f) => String(f || "").trim()).filter(Boolean)));
+  const prefix = composeFeedId(projectId, app, "");
+  const composedDesired = desiredFeedIds.map((fid) => `${prefix}${fid}`);
+
+  const { data: surveyRow, error: surveyErr } = await supabase
+    .from("surveys")
+    .select("definition")
+    .eq("id", surveyId)
+    .maybeSingle();
+  if (surveyErr) throw new Error(surveyErr.message);
+  if (!surveyRow) throw new Error("survey not found");
+
+  const { data: currentLinks, error: linksErr } = await supabase
+    .from("feed_surveys")
+    .select("feed_id")
+    .eq("survey_id", surveyId);
+  if (linksErr) throw new Error(linksErr.message);
+
+  const currentComposed = (currentLinks || [])
+    .map((r) => r.feed_id)
+    .filter((id) => typeof id === "string" && id.startsWith(prefix));
+  const currentSet = new Set(currentComposed);
+  const desiredSet = new Set(composedDesired);
+
+  const toUnlink = currentComposed.filter((id) => !desiredSet.has(id));
+  const toLink = composedDesired.filter((id) => !currentSet.has(id));
+
+  if (toUnlink.length) {
+    const { error } = await supabase
+      .from("feed_surveys")
+      .delete()
+      .eq("survey_id", surveyId)
+      .in("feed_id", toUnlink);
+    if (error) throw new Error(error.message);
+  }
+
+  if (toLink.length) {
+    const { error } = await supabase
+      .from("feed_surveys")
+      .insert(toLink.map((feed_id) => ({ feed_id, survey_id: surveyId })));
+    if (error) throw new Error(error.message);
+  }
+
+  const updatedDefinition = {
+    ...(surveyRow.definition || {}),
+    feed_sequence_ids: desiredFeedIds,
+    linked_feed_ids: desiredFeedIds,
+  };
+  const { error: updateErr } = await supabase
+    .from("surveys")
+    .update({ definition: updatedDefinition })
+    .eq("id", surveyId);
+  if (updateErr) throw new Error(updateErr.message);
+
+  return {
+    linked_feed_ids: desiredFeedIds,
+    added_feed_ids: toLink.map((id) => id.slice(prefix.length)),
+    removed_feed_ids: toUnlink.map((id) => id.slice(prefix.length)),
+  };
 }
 
 // Calls the deployed save-survey Edge Function (supabase/functions/
