@@ -354,7 +354,15 @@ export function AdminFeedsPanel({
                             <tr key={p.id}>
                               <Td>
                                 <div className="avatar">
-                                  <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
+                                  <img
+                                    className="avatar-img"
+                                    alt=""
+                                    src={p.avatarUrl || pravatar(8)}
+                                    width={40}
+                                    height={40}
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
                                 </div>
                               </Td>
                               <Td style={{ fontFamily: "monospace" }}>
