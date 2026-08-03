@@ -707,6 +707,110 @@ export function reconcileSurveyPageBlocks(survey) {
   };
 }
 
+// Shared by SurveyEditor's "Pages and questions" list and StudyOutlineModal
+// (the "Study overview" popup) — both flatten survey.pages into one list
+// with page-break marker rows in between; this maps each flat index to its
+// 1-based page number. A page-break row itself is labeled with the page
+// number that FOLLOWS it (not the one it closes), which lines up naturally
+// with rendering a block-boundary divider directly on/above that row when
+// the new page belongs to a different block.
+export function computePageNumbersForQuestions(items = []) {
+  let page = 1;
+  return (Array.isArray(items) ? items : []).map((item) => {
+    if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
+      page += 1;
+      return page;
+    }
+    return page;
+  });
+}
+
+// Returns one entry per flat item: null (no divider needed here), or
+// { block, blockIndex } when this item starts a page belonging to a
+// different block than the previous rendered page. Only meaningful once a
+// survey actually has more than one block — every survey implicitly has
+// exactly one ("All pages"/"Survey pages", from normalizeSurveyPageBlocks'
+// no-blocks-defined fallback), and showing a divider for that on every
+// single survey would be pure noise for the vast majority that never touch
+// this feature.
+export function computeBlockBoundariesForQuestions(survey, currentQuestions, pageNumbers) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const blocks = normalizeSurveyPageBlocks(survey);
+
+  if (blocks.length <= 1) {
+    return currentQuestions.map(() => null);
+  }
+
+  const pageIdToBlockIndex = new Map();
+  blocks.forEach((block, blockIndex) => {
+    block.page_ids.forEach((pageId) => pageIdToBlockIndex.set(pageId, blockIndex));
+  });
+
+  function blockIndexForPageNumber(pageNumber) {
+    const page = pages[pageNumber - 1];
+    const pageId = String(page?.id || `page_${pageNumber}`);
+    return pageIdToBlockIndex.has(pageId) ? pageIdToBlockIndex.get(pageId) : null;
+  }
+
+  let lastBlockIndex = null;
+  let lastPageNumber = null;
+
+  return currentQuestions.map((item, i) => {
+    const pageNumber = pageNumbers[i];
+    if (pageNumber === lastPageNumber) return null;
+    lastPageNumber = pageNumber;
+
+    const blockIndex = blockIndexForPageNumber(pageNumber);
+    if (blockIndex === lastBlockIndex) return null;
+    lastBlockIndex = blockIndex;
+
+    return blockIndex != null ? { block: blocks[blockIndex], blockIndex } : null;
+  });
+}
+
+function BlockBoundaryDivider({ boundary }) {
+  if (!boundary?.block) return null;
+  const { block, blockIndex } = boundary;
+  const groupCount = (block.visible_to_group_ids || []).length;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
+        margin: "18px 0 10px",
+        padding: "7px 12px",
+        borderRadius: 8,
+        background: "#eef2ff",
+        border: "1px solid #c7d2fe",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          color: "#4338ca",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Block {blockIndex + 1}
+      </span>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color: "#312e81" }}>{block.title}</span>
+      {block.randomize_pages && (
+        <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600 }}>Pages randomised</span>
+      )}
+      {groupCount > 0 && (
+        <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600 }}>
+          Visible to {groupCount} group{groupCount === 1 ? "" : "s"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function makePageBlock(index = 0) {
   return {
     id: `block_${Date.now()}_${index}`,
@@ -3914,13 +4018,40 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
 
   const applyBlocks = useCallback(
     (nextBlocks) => {
-      onSurveyChange((prev) => ({
-        ...prev,
-        page_blocks: normalizeSurveyPageBlocks({
+      onSurveyChange((prev) => {
+        const normalizedBlocks = normalizeSurveyPageBlocks({
           ...prev,
           page_blocks: nextBlocks,
-        }),
-      }));
+        });
+
+        // Block order (and page order within/across blocks) is what
+        // actually determines participant-facing page sequence
+        // (materializePagesFromBlocks in utils-survey.js iterates blocks in
+        // array order, each block's own page_ids in order) — but the
+        // "Pages and questions" editor below reads survey.pages in its own
+        // raw array order, independent of page_blocks. Without this, moving
+        // a block/page here had zero visible effect on that list, even
+        // though it silently changed the real delivery order. Every block
+        // reorder/page-move funnels through this one function, so this is
+        // the single place that needs to keep survey.pages in sync.
+        const prevPages = Array.isArray(prev.pages) ? prev.pages : [];
+        const pageById = new Map(
+          prevPages.map((page, index) => [
+            String(page?.id || `page_${index + 1}`),
+            page,
+          ])
+        );
+        const orderedPageIds = normalizedBlocks.flatMap((block) => block.page_ids);
+        const orderedPages = orderedPageIds
+          .map((pageId) => pageById.get(pageId))
+          .filter(Boolean);
+
+        return {
+          ...prev,
+          pages: orderedPages.length === prevPages.length ? orderedPages : prevPages,
+          page_blocks: normalizedBlocks,
+        };
+      });
     },
     [onSurveyChange]
   );
@@ -4162,16 +4293,15 @@ function StudyOutlineModal({
     [currentQuestions]
   );
 
-  const pageNumbers = useMemo(() => {
-    let page = 1;
-    return currentQuestions.map((item) => {
-      if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
-        page += 1;
-        return page;
-      }
-      return page;
-    });
-  }, [currentQuestions]);
+  const pageNumbers = useMemo(
+    () => computePageNumbersForQuestions(currentQuestions),
+    [currentQuestions]
+  );
+
+  const blockBoundaries = useMemo(
+    () => computeBlockBoundariesForQuestions(survey, currentQuestions, pageNumbers),
+    [survey, currentQuestions, pageNumbers]
+  );
 
   const questionCount = currentQuestions.filter(
     (item) => item?.type !== EDITOR_PAGE_BREAK_TYPE
@@ -4292,8 +4422,9 @@ function StudyOutlineModal({
               </div>
             ) : (
               currentQuestions.map((item, i) => (
+                <React.Fragment key={item._editorId || i}>
+                <BlockBoundaryDivider boundary={blockBoundaries[i]} />
                 <OutlineRow
-                key={item._editorId || i}
                 item={item}
                 flatIndex={i}
                 displayNumber={displayNumbers[i]}
@@ -4330,6 +4461,7 @@ function StudyOutlineModal({
                 onDrop={onDrop}
                 onDragEnd={onDragEnd}
                 />
+                </React.Fragment>
               ))
             )}
           </div>
@@ -4457,6 +4589,16 @@ export function SurveyEditor({
   const questionDisplayNumbers = useMemo(
     () => computeQuestionDisplayNumbers(currentQuestions),
     [currentQuestions]
+  );
+
+  const pageNumbersForBlocks = useMemo(
+    () => computePageNumbersForQuestions(currentQuestions),
+    [currentQuestions]
+  );
+
+  const blockBoundaries = useMemo(
+    () => computeBlockBoundariesForQuestions(survey, currentQuestions, pageNumbersForBlocks),
+    [survey, currentQuestions, pageNumbersForBlocks]
   );
 
   function addQuestion(type) {
@@ -4716,8 +4858,9 @@ export function SurveyEditor({
         </div>
 
         {currentQuestions.map((q, i) => (
+          <React.Fragment key={q._editorId || i}>
+          <BlockBoundaryDivider boundary={blockBoundaries[i]} />
           <div
-            key={q._editorId || i}
             ref={(el) => {
               questionNodeRefs.current[q._editorId] = el;
             }}
@@ -4754,6 +4897,7 @@ export function SurveyEditor({
               onToggleCollapsed={() => toggleQuestionCollapsed(q._editorId)}
             />
           </div>
+          </React.Fragment>
         ))}
 
         {currentQuestions.length === 0 && (

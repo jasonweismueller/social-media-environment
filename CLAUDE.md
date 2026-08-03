@@ -1998,6 +1998,58 @@ pointer above). Left untracked/uncommitted on purpose per that earlier note ("re
 don't recommit without asking") — flagging here in case this session's auto-commit sweeps it up
 anyway; delete it again or ask before keeping it tracked.
 
+## Page blocks: reordering didn't affect the questions list, and blocks were invisible there (2026-08-03)
+
+User-reported: reordering blocks (or pages within/across blocks) in the "Study overview" modal's
+Page blocks editor had no visible effect on the "Pages and questions" list, and that list showed
+no indication of block membership at all.
+
+**Root cause**: two genuinely separate data paths that happened to look related.
+`page_blocks[].page_ids` (edited by `PageBlocksEditor`) is what actually determines
+participant-facing page order — `materializePagesFromBlocks` (utils-survey.js) iterates blocks in
+array order, each block's own `page_ids` in order, completely ignoring `survey.pages`' own array
+order. But the "Pages and questions" list (both the main per-question-card editor and the Study
+overview modal's outline list) is built by `flattenSurveyPagesForEditor`, which reads
+`survey.pages` directly in **raw stored array order** — never consulting `page_blocks` at all. So
+moving a block, or a page within/across blocks, silently changed the real delivery order while the
+admin's own editing view kept showing the old, now-stale order — with zero indication a block
+structure even existed, since nothing in that list ever rendered block membership.
+
+**Fix 1 — reordering blocks now reorders `survey.pages` to match.** `PageBlocksEditor`'s
+`applyBlocks` (the single choke point every block/page-order action — `moveBlock`,
+`movePageWithinBlock`, `movePageToBlock`, `addBlock`, `deleteBlock` — already funneled through)
+now also recomputes `survey.pages` as `normalizedBlocks.flatMap(b => b.page_ids)` mapped back to
+page objects, so the "Pages and questions" list is derived from the same order that actually
+matters. Every block/page action gets this for free since they all go through `applyBlocks`;
+non-order actions (renaming a block, toggling randomize/group-visibility) are no-ops for this
+since `page_ids` doesn't change.
+
+**Fix 2 — block membership is now visible directly in the questions list.** New shared helpers
+`computePageNumbersForQuestions`/`computeBlockBoundariesForQuestions` (exported from
+`components-admin-surveys-editor.jsx`, next to the existing `normalizeSurveyPageBlocks`) and a
+`BlockBoundaryDivider` component, used by **both** the main editor's "Pages and questions" list
+and the Study overview modal's outline list (previously would have been a third near-duplicate
+implementation if built separately — written once, imported by both). A divider ("Block N: Title",
+plus "Pages randomised"/"Visible to N groups" chips when set) renders right before the first item
+of any page whose block differs from the previous page's block. **Deliberately suppressed when a
+survey has only the implicit single default block** (`normalizeSurveyPageBlocks`' own
+no-blocks-defined fallback, "All pages"/"Survey pages") — since that covers the vast majority of
+surveys that never touch this feature at all, showing a divider there on every survey would be
+pure noise for a feature almost nobody uses.
+
+**Verified**: both changed files parse clean. Since exercising this live would need clicking
+through the real admin editor (blocked by the standing no-login rule elsewhere in this file), the
+pure logic was verified instead by dynamic-importing the real
+`components-admin-surveys-editor.jsx` module in the browser console (no backend/auth involved —
+these are pure functions over a plain JS object) against a fabricated 3-page, 2-block survey with
+blocks deliberately out of the pages' raw storage order: confirmed `applyBlocks`' reorder logic
+produces exactly the block-order-matching page sequence, and confirmed
+`computeBlockBoundariesForQuestions` places dividers exactly at the two real block transitions and
+nowhere else (including correctly placing a divider on a page-break row when the page immediately
+following it starts a new block, and not before a same-block page change). Separately confirmed
+zero dividers for a plain single-block survey. **Not verified**: an actual click-through dragging
+blocks/pages in the real browser — logic-level verification only.
+
 ## One-off incident: CLAUDE.md itself got deleted mid-session (2026-08-01)
 
 During the admin dashboard redesign work, this file was found deleted from the working directory
