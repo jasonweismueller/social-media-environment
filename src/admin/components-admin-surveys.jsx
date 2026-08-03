@@ -39,7 +39,7 @@ import {
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
 
-import { Card as AdminUiCard, Tabs, Button, Badge } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, IconButton, Badge } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext } from "./AdminShell";
 
@@ -838,11 +838,12 @@ function resetSurveyIdentityForImport(sourceSurvey, { projectId } = {}) {
 function surveyListButtonStyle(isActive) {
   return {
     width: "100%",
+    boxSizing: "border-box",
     textAlign: "left",
-    padding: "12px 14px",
+    padding: "10px 12px",
     cursor: "pointer",
-    borderRadius: 12,
-    marginBottom: 8,
+    borderRadius: 10,
+    marginBottom: 6,
     background: isActive ? "#eef2ff" : "#fff",
     border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
     boxShadow: isActive
@@ -873,37 +874,34 @@ function SurveyListContent({
 }) {
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--admin-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-          Survey list
-        </div>
-        {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+      {loading && (
+        <div style={{ fontSize: 11, color: "var(--admin-muted)", marginBottom: 6 }}>Loading…</div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <input
+          type="text"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          placeholder="Filter surveys…"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            boxSizing: "border-box",
+            padding: "6px 8px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+            fontSize: 12,
+          }}
+        />
+        <IconButton size="sm" onClick={onRefreshSurveys} title="Reload survey list from backend">
+          ↻
+        </IconButton>
       </div>
 
-      <input
-        type="text"
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        placeholder="Filter by name or ID…"
-        style={{
-          width: "100%",
-          boxSizing: "border-box",
-          padding: "8px 10px",
-          borderRadius: 8,
-          border: "1px solid #d1d5db",
-          fontSize: 13,
-          marginBottom: 10,
-        }}
-      />
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <Button size="sm" variant="secondary" onClick={onCreateSurvey} style={{ flex: 1 }}>
-          + New Survey
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onRefreshSurveys} title="Reload survey list from backend">
-          Refresh
-        </Button>
-      </div>
+      <Button size="sm" variant="secondary" onClick={onCreateSurvey} style={{ width: "100%", marginBottom: 10 }}>
+        + New Survey
+      </Button>
 
       <div>
         {filteredSurveys.length === 0 ? (

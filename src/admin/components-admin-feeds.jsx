@@ -1,18 +1,19 @@
 import React, { useContext, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar } from "../utils";
-import { Card, Table, Th, Td, Toggle, Button, Badge, Tabs, RoleGate } from "./ui";
+import { Card, Table, Th, Td, Toggle, Button, IconButton, Badge, Tabs, RoleGate } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
 import { AdminTreeSlotsContext } from "./AdminShell";
 
 function feedListButtonStyle(isActive) {
   return {
     width: "100%",
+    boxSizing: "border-box",
     textAlign: "left",
-    padding: "12px 14px",
+    padding: "10px 12px",
     cursor: "pointer",
-    borderRadius: 12,
-    marginBottom: 8,
+    borderRadius: 10,
+    marginBottom: 6,
     background: isActive ? "#eef2ff" : "#fff",
     border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
     boxShadow: isActive ? "0 1px 2px rgba(79,70,229,0.10)" : "0 1px 2px rgba(0,0,0,0.03)",
@@ -53,42 +54,39 @@ function FeedListContent({
 }) {
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--admin-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
-          Feed list
-        </div>
-        {feedsLoading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+      {feedsLoading && (
+        <div style={{ fontSize: 11, color: "var(--admin-muted)", marginBottom: 6 }}>Loading…</div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <input
+          type="text"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          placeholder="Filter feeds…"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            boxSizing: "border-box",
+            padding: "6px 8px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+            fontSize: 12,
+          }}
+        />
+        <IconButton size="sm" onClick={onRefreshFeeds} title="Reload feed registry from backend">
+          ↻
+        </IconButton>
       </div>
 
-      <input
-        type="text"
-        value={filterText}
-        onChange={(e) => setFilterText(e.target.value)}
-        placeholder="Filter by name or ID…"
-        style={{
-          width: "100%",
-          boxSizing: "border-box",
-          padding: "8px 10px",
-          borderRadius: 8,
-          border: "1px solid #d1d5db",
-          fontSize: 13,
-          marginBottom: 10,
-        }}
-      />
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <RoleGate min="editor">
-          <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ flex: 1 }}>
-            + New feed
-          </Button>
-        </RoleGate>
-        <Button size="sm" variant="secondary" onClick={onRefreshFeeds} title="Reload feed registry from backend">
-          Refresh
+      <RoleGate min="editor">
+        <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ width: "100%", marginBottom: 10 }}>
+          + New feed
         </Button>
-      </div>
+      </RoleGate>
 
       <RoleGate min="owner">
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--admin-border-subtle)" }}>
           <Toggle
             label="Wipe on change"
             hint="Publishing a checksum-changing feed wipes its participants"

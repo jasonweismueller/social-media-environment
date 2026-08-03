@@ -1,4 +1,4 @@
-import React, { createContext, useState } from "react";
+import React, { createContext, useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 // Absolute paths (not relative "feeds"/"surveys") — relative NavLink targets
@@ -43,45 +43,74 @@ function navItemStyle(isActive) {
 }
 
 // One expandable section of the tree sidebar (Feeds or Surveys): a header
-// that both navigates and shows expand state, plus — only while its own
-// route is active — a scrollable slot the matching panel portals its list
-// into. Only the active section grows to fill the sidebar's remaining
-// height; the inactive one collapses to just its header line.
-function TreeSection({ to, icon, label, active, slotRef }) {
+// that navigates on click, plus — only while its own route is active — a
+// separate, independently-clickable disclosure button that shows/hides a
+// scrollable slot the matching panel portals its list into. The toggle is a
+// real sibling `<button>` next to the NavLink (not nested inside its `<a>`,
+// which would be invalid HTML and an unreliable click target) with a real
+// hit area, not just a small glyph. Only the active *and expanded* section
+// grows to fill the sidebar's remaining height; collapsed/inactive sections
+// take just their header's height.
+function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef }) {
+  const showList = active && expanded;
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        flex: active ? "1 1 auto" : "0 0 auto",
-        minHeight: active ? 0 : undefined,
+        flex: showList ? "1 1 auto" : "0 0 auto",
+        minHeight: showList ? 0 : undefined,
       }}
     >
-      <NavLink to={to} style={({ isActive }) => navItemStyle(isActive)}>
-        <span aria-hidden="true">{icon}</span>
-        <span style={{ flex: 1 }}>{label}</span>
-        <span
-          aria-hidden="true"
-          style={{
-            fontSize: 9,
-            color: "var(--admin-muted)",
-            transform: active ? "rotate(90deg)" : "none",
-            transition: "transform .15s ease",
-          }}
-        >
-          ▸
-        </span>
-      </NavLink>
-      {active && (
+      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <NavLink to={to} style={({ isActive }) => ({ ...navItemStyle(isActive), flex: 1 })}>
+          <span aria-hidden="true">{icon}</span>
+          <span style={{ flex: 1 }}>{label}</span>
+        </NavLink>
+        {active && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Hide ${label.toLowerCase()} list` : `Show ${label.toLowerCase()} list`}
+            title={expanded ? "Hide list" : "Show list"}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 26,
+              height: 26,
+              flexShrink: 0,
+              border: "none",
+              borderRadius: "var(--admin-radius-sm)",
+              background: "var(--admin-surface-alt)",
+              color: "var(--admin-muted)",
+              cursor: "pointer",
+              fontSize: 11,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                transform: expanded ? "rotate(90deg)" : "none",
+                transition: "transform .15s ease",
+              }}
+            >
+              ▸
+            </span>
+          </button>
+        )}
+      </div>
+      {showList && (
         <div
           ref={slotRef}
           style={{
             flex: "1 1 auto",
             minHeight: 0,
             overflowY: "auto",
-            marginLeft: 8,
-            paddingLeft: 14,
-            borderLeft: "1px solid var(--admin-border-subtle)",
+            marginTop: 10,
+            paddingRight: 6,
           }}
         />
       )}
@@ -113,12 +142,24 @@ export function AdminShell({
 
   const isFeedsActive = location.pathname.startsWith(FEEDS_PATH);
   const isSurveysActive = location.pathname.startsWith(SURVEYS_PATH);
+  const activeKey = isFeedsActive ? "feeds" : isSurveysActive ? "surveys" : null;
+
+  // Which section's list is currently shown, independent of which route is
+  // active — lets a user collapse the active section down to just its
+  // header (e.g. to declutter while working in the detail pane) without
+  // navigating away. Re-expands automatically whenever the active section
+  // itself changes, so navigating to Surveys after collapsing Feeds doesn't
+  // land on a Surveys section that's confusingly already collapsed too.
+  const [expandedKey, setExpandedKey] = useState(activeKey);
+  useEffect(() => {
+    setExpandedKey(activeKey);
+  }, [activeKey]);
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "280px minmax(0,1fr)",
+        gridTemplateColumns: "288px minmax(0,1fr)",
         minHeight: "100vh",
         alignItems: "start",
       }}
@@ -183,6 +224,8 @@ export function AdminShell({
             icon="🗂️"
             label="Feeds"
             active={isFeedsActive}
+            expanded={expandedKey === "feeds"}
+            onToggleExpand={() => setExpandedKey((k) => (k === "feeds" ? null : "feeds"))}
             slotRef={setFeedsSlotEl}
           />
           <TreeSection
@@ -190,6 +233,8 @@ export function AdminShell({
             icon="📋"
             label="Surveys"
             active={isSurveysActive}
+            expanded={expandedKey === "surveys"}
+            onToggleExpand={() => setExpandedKey((k) => (k === "surveys" ? null : "surveys"))}
             slotRef={setSurveysSlotEl}
           />
           {showUsersNav && (
