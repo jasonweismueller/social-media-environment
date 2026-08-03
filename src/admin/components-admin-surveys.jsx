@@ -115,25 +115,8 @@ function getStudyBaseUrl() {
   return `${origin}/`;
 }
 
-function buildFeedLaunchUrl({ projectId, feedId, app }) {
-  const params = new URLSearchParams();
-  if (feedId) params.set("feed", String(feedId));
-  if (projectId) params.set("project", String(projectId));
-  if (app) params.set("app", String(app));
-  return `${getStudyBaseUrl()}?${params.toString()}`;
-}
-
 function buildSurveyLaunchUrl({ projectId, surveyId, app }) {
   const params = new URLSearchParams();
-  if (surveyId) params.set("survey_id", String(surveyId));
-  if (projectId) params.set("project", String(projectId));
-  if (app) params.set("app", String(app));
-  return `${getStudyBaseUrl()}?${params.toString()}`;
-}
-
-function buildFeedSurveyLaunchUrl({ projectId, surveyId, feedId, app }) {
-  const params = new URLSearchParams();
-  if (feedId) params.set("feed", String(feedId));
   if (surveyId) params.set("survey_id", String(surveyId));
   if (projectId) params.set("project", String(projectId));
   if (app) params.set("app", String(app));
@@ -616,10 +599,6 @@ function normalizeCsvValue(value) {
     }
   }
   return String(value);
-}
-
-function firstLinkedFeedIdForLaunch(linkedFeedIds = []) {
-  return normalizeLinkedFeedIds(linkedFeedIds)[0] || "";
 }
 
 function hasPostReminderQuestion(surveyLike) {
@@ -2222,31 +2201,7 @@ export function AdminSurveysPanel({
     });
   }, [projectId, survey?.survey_id, studyApp]);
 
-  const selectedFeedLaunchUrl = useMemo(() => {
-    const preferredFeedId =
-      firstLinkedFeedIdForLaunch(orderedLinkedFeedIdsFromSurvey(survey)) || feedId || "";
-    if (!preferredFeedId) return "";
-    return buildFeedLaunchUrl({
-      projectId,
-      feedId: preferredFeedId,
-      app: studyApp,
-    });
-  }, [projectId, survey?.linked_feed_ids, feedId, studyApp]);
-
   const surveyOnlyLaunchUrl = surveyLaunchUrl;
-
-  const linkedFeedLaunchUrl = useMemo(() => {
-    if (!survey?.survey_id) return "";
-    const preferredFeedId =
-      firstLinkedFeedIdForLaunch(orderedLinkedFeedIdsFromSurvey(survey)) || feedId || "";
-    if (!preferredFeedId) return "";
-    return buildFeedSurveyLaunchUrl({
-      projectId,
-      surveyId: survey.survey_id,
-      feedId: preferredFeedId,
-      app: studyApp,
-    });
-  }, [projectId, survey?.survey_id, survey?.linked_feed_ids, feedId, studyApp]);
 
   const needsLinkedFeedContext = useMemo(() => {
     if (!survey) return false;
@@ -2687,8 +2642,12 @@ export function AdminSurveysPanel({
               </FieldBlock>
 
               <FieldBlock
-                label="Survey-only launch link"
-                hint="This link opens the preface and survey directly, without showing the feed first."
+                label="Survey launch link"
+                hint={
+                  deliveryMode === DELIVERY_MODE_SURVEY_ONLY
+                    ? "This link opens the preface and survey directly, without showing a feed first."
+                    : "This link shows the feed sequence determined by the survey — its default order, or the participant's experiment group's own sequence if configured — then the survey."
+                }
               >
                 <div
                   style={{
@@ -2725,48 +2684,6 @@ export function AdminSurveysPanel({
                   </button>
                 </div>
               </FieldBlock>
-
-              {deliveryMode !== DELIVERY_MODE_SURVEY_ONLY && (
-                <FieldBlock
-                  label="Feed + survey launch link"
-                  hint="This launch starts with the first linked feed. If multiple-feed mode is selected, participants continue through the remaining linked feeds before the survey."
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "stretch",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <TextInput
-                      value={linkedFeedLaunchUrl}
-                      readOnly
-                      placeholder="Link at least one feed and save the survey to generate this link"
-                    />
-                    <button
-                      type="button"
-                      disabled={!linkedFeedLaunchUrl}
-                      onClick={() =>
-                        handleCopyLaunchLink(
-                          linkedFeedLaunchUrl,
-                          "feed + survey link"
-                        )
-                      }
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #d1d5db",
-                        background: linkedFeedLaunchUrl ? "#fff" : "#f3f4f6",
-                        cursor: linkedFeedLaunchUrl ? "pointer" : "not-allowed",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {copiedLinkState === "feed + survey link" ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </FieldBlock>
-              )}
             </SectionCard>
             )}
 
