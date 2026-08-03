@@ -1509,12 +1509,16 @@ general, not just reminders — fixed at the shared source, not patched per-call
    (Instagram's reminder width was already correct — `.ig-reminder-post` hardcodes 470px matching
    its own real feed card width, confirmed via its own comment "matches feed card width".)
 3. **Double ellipsis before "See more"** (e.g. "...  ... See more"), and no way to collapse back
-   once expanded. Root cause: `.text.clamp` uses `-webkit-line-clamp: 2`, which auto-renders its
-   own native "…" when content overflows — *and* a custom `.fade-more` overlay (gradient-covered
-   "…  See more") was drawn on top trying to visually hide it, which didn't always fully cover it.
-   Fixed by adding `text-overflow: clip` to `.text.clamp` in all three stylesheets, which suppresses
-   the native ellipsis entirely, leaving only the one custom indicator — verified directly by
-   injecting the real `PostText` markup/CSS into the live page and confirming a single "…" renders.
+   once expanded. Root cause diagnosed here as `-webkit-line-clamp`'s native ellipsis not being
+   fully covered by the custom `.fade-more` overlay; **fix attempted here (`text-overflow: clip`)
+   turned out not to actually work** — see "Post text truncation: the double-ellipsis fix above
+   didn't work, real fix" (2026-08-03, later same day) for the real root cause (the browser still
+   renders the native ellipsis regardless of `text-overflow`; it was only ever *visually* masked by
+   the overlay sitting in the same bottom-right spot, which breaks whenever the clamp boundary
+   lands somewhere else, e.g. a blank line between paragraphs) and the actual fix (drop
+   `-webkit-line-clamp` entirely in favor of a plain `max-height` cap, which can't produce a native
+   ellipsis at all). The verification claim below ("confirming a single '…' renders") was real but
+   incomplete — it confirmed the fix for the specific text tested, not the underlying mechanism.
    Also added the missing **"See less"** (Facebook) / **"less"** (Instagram, matching real
    Instagram's lowercase "more"/"less") / **"Read less"** (Amazon) collapse links — none of the
    three apps had a way to re-collapse expanded text before this. New `wasClamped` state (distinct
@@ -1612,6 +1616,274 @@ lines while in the file, no behavior change). Committed as `9778139 clean up git
 this session, not part of the cleanup work above) — it's genuinely gone from disk now, not just
 gitignored. See `~/.claude/plans/steady-continuing-harbor.md` for what a future session should do
 if it needs that file back (recreate locally, don't recommit without asking).
+
+## Public-site access gate: bare `studyfeed.org` no longer falls through to a feed (2026-08-03)
+
+User request: visiting the bare domain with no launch params was landing on whatever feed happens
+to be the project default — not desired, since the site is meant to be reached only via real
+participant launch links or the admin route, not stumbled onto. First pass made the bare domain
+render blank; per direct follow-up feedback ("is a 404 style page better?" → yes), upgraded to a
+plain, generic 404 page instead, since blank is indistinguishable from "broken" and a 404 confirms
+the server responded correctly while revealing nothing about what the site actually is.
+
+**Fix is entirely in `index.html`'s inline bootstrap script — no app code touched.** Before
+importing any app bundle, checks whether the URL is a recognized entry: `#/admin...` (admin route)
+or has `feed`/`feed_id`/`survey`/`survey_id` in the query string *or* the hash query (mirrors
+`getCombinedSearchParams()` in `utils-core.js`, which real launch links can theoretically use
+either form of). If neither, no `import()` ever runs — no JS bundle loads, no backend call is
+ever made — and `#root`'s innerHTML is replaced with a static "404 / This page could not be
+found." block, styled generically (no branding, no mention of surveys/feeds/research).
+
+This is a client-side-only gate, not a real access-control boundary — anyone with a real or
+guessed launch link still reaches content exactly as before. It only stops the "wandered onto the
+bare domain" case CLAUDE.md's own screenshot-sharing risk doesn't otherwise cover.
+
+**Verified**: confirmed live in the running dev server — bare `localhost:5173` renders the 404
+block with the correct page `<title>`; a URL with `?feed=...`/`?survey=...` still loads the normal
+app. Not verified against the deployed production domain directly (this repo has no staging
+buffer — see "Deployment" section up top) — worth a quick check of `studyfeed.org/` bare vs. a
+real feed link once this ships.
+
+## Survey Participants analysis hub: correctness fixes + custom tag-based measure groups (2026-08-03)
+
+Follow-up work on the analysis hub built earlier the same day (see "Admin dashboard: Feed
+Participants + Survey Participants analysis hub" above) — this section is an *extension* of that
+page, not a rebuild. Prompted by direct user feedback after describing how they'd actually
+analyzed a real study in R.
+
+**Two correctness bugs fixed, both in `src/utils/utils-survey-analysis.js`:**
+1. **Question text showed raw HTML** (e.g. `<p><b>What is your age?</b></p>` literally on
+   screen). Question text comes straight out of the survey editor's rich-text field
+   (`normalizeRichTextHtml`), which is fine for rendering the real question but was never meant to
+   be shown as a plain compact label/chart title. New `stripHtmlToText()` helper (DOM-based
+   `textContent` extraction when `document` exists, falls back to a regex strip otherwise, since
+   this file deliberately has no React/DOM dependency per its own header comment) applied at the
+   source in `classifySurveyQuestions()` — every downstream consumer (chart titles, composite
+   labels, CSV-adjacent breakdown tables) gets clean text automatically.
+2. **Demographics with numeric-coded choices (e.g. gender 1/2/3, education level 1–5) were
+   averaged as if continuous** — showing "Mean 1.7, SD 0.6" and a histogram from 1.0–3.0 for
+   `gender` instead of a category bar chart. Root cause: `choicesAreNumeric()` (checks whether
+   every choice's stored `value` parses as a number) is the right heuristic for genuine Likert
+   *measure* items (BL/PK-style matrix rows, where averaging numeric-coded agreement scales is
+   standard practice) but wrong for demographic *category* codes, which just happen to also be
+   sequential integers. Fixed by gating `numeric` classification on `!isDemographic` for every
+   choice-based question type (`SINGLE`, `DROPDOWN`, `MATRIX_SINGLE`, `BIPOLAR`) — demographics are
+   now always `categorical` regardless of what the underlying codes look like. Only demographics
+   answered via a genuine numeric input (`SLIDER`) stay numeric — free-text (`TEXT`/`TEXTAREA`)
+   demographics were already bucketed as free-text responses, unaffected. No UI changes were
+   needed for this fix — `CategoryBarList` already existed and was already correct, it was just
+   being fed the wrong `kind`.
+
+**Demographics UI**: `DemographicsSection` changed from "render every detected demographic in a
+grid" to a single dropdown (labelled by `DEMOGRAPHIC_KIND_LABELS`) driving one chart below it, per
+direct request ("fewer visualisations, and instead have the visualisations be adaptable").
+
+**New feature: custom tag-based measure groups.** The real gap the user described: auto-detected
+composites only group items sharing one literal question-id prefix (`BL_1`/`BL_2`/`BL_3` →
+composite "BL"), but a study repeating measures across many stimuli in a 2×2-ish design (their
+real example: `MI{1..10}_EMO_BL_{1..3}`, `AI{1..10}_NOEMO_ENG_{1..3}`, etc. — misinformation vs.
+accurate info × emotional vs. not × believability vs. engagement, across 10 posts each) needs
+*cross-cutting* groups ("every BL item," "every MI+EMO+BL item") that no naming-prefix heuristic
+can discover on its own, plus occasional hand-picked exclusions (their real `PK` mediator measure
+is `mean(PK_1, PK_2, PK_4)` — deliberately skipping `PK_3`).
+
+- **Engine** (`utils-survey-analysis.js`): `tokenizeItemId(it)` splits an item's id (questionId +
+  compositeQuestionId + itemKey, deduped) on any non-alphanumeric boundary into uppercase tokens —
+  `"MI3_EMO_BL_1"` → `["MI3","EMO","BL","1"]`. `matchesTagPattern(tokens, pattern)` is a small
+  query language over those tokens: space-separated = AND, comma-separated = OR, `*` = wildcard,
+  and a bare token (no `*`) **prefix-matches** rather than requiring exact equality — necessary
+  because this naming convention fuses the post index onto the tag with no delimiter (`MI3`, not
+  `MI` + `3`), so a bare token can never literally equal `"MI"`; prefix-matching still stays
+  token-boundary-safe (matching happens per split token, not as a substring of the whole id), so
+  `"EMO"` never accidentally matches `"NOEMO"` — confirmed this distinction live against fabricated
+  data shaped exactly like the real naming scheme before writing any UI (`MI EMO BL` → 9 items,
+  `AI NOEMO ENG` → 9, `EMO`/`NOEMO` → 36 each, correctly non-overlapping). `findItemsMatchingTagPattern`/
+  `getGroupableItems` (numeric, non-demographic items only) and `buildCustomGroupComposite(groupDef,
+  dataset)` build a composite-shaped object from an explicit item-ref list, so the *existing*
+  `summarizeComposite`/`computeCompositeScores` (mean/SD/median/Cronbach's α) work on custom groups
+  completely unchanged — no new stats code needed. `computeGroupComparison` gained an optional
+  third argument (`customGroupComposites`) so between-experiment-group ANOVA/t-tests run against
+  custom groups too, not just auto-detected ones.
+- **UI** (`components-admin-participants-survey.jsx`): new "Custom measure groups" panel above
+  Measures. `GroupEditor` — name + pattern fields, live match preview as a checkbox list (so a
+  bulk pattern match like `PK` can then have `PK_3` individually unchecked before saving). Editing
+  an existing group reconstructs which items were manually included/excluded relative to what its
+  saved `pattern` alone would currently match (`overrides` Map, seeded once on open from the diff
+  between the saved `itemKeys` and a fresh pattern-match) — so re-opening a group to tweak its
+  pattern doesn't silently un-exclude something like `PK_3` that was deliberately dropped earlier.
+  Saved groups render through the same `CompositeMeasureBlock` auto-detected composites already
+  use (now accepts an optional `actions` slot for Edit/Delete). **Persisted in this browser's
+  `localStorage` only**, keyed per survey id (`admin_custom_measure_groups::{app}::{project}::{survey}`)
+  — reappears every time this survey's analysis is reopened on this machine, but does not sync to
+  other admins/browsers; flagged as a real tradeoff, not silently chosen, since a backend-synced
+  version would need new Code.gs/Supabase work this session didn't do.
+- Auto-detected composites are unchanged and still the default for simple surveys — the
+  "Auto-detected measures" card just collapses by default once custom groups exist (seeded once
+  from `customGroups.length === 0` via `useState`, not a controlled `open` prop, specifically so a
+  manual toggle survives later re-renders instead of snapping back — caught this exact bug by
+  reasoning through it before verifying, not from a bug report).
+
+**Verified**: engine functions (`tokenizeItemId`, `matchesTagPattern`, `findItemsMatchingTagPattern`,
+`buildCustomGroupComposite`, `summarizeComposite`) tested live against the running dev server with
+fabricated data shaped exactly like the real MI/AI×EMO/NOEMO×BL/ENG naming scheme, including the
+exact `PK_1,PK_2,PK_4`-excluding-`PK_3` exclusion workflow end to end — all matched expected counts
+and computed means correctly. Component files parse clean and load through Vite's real module
+graph with no errors. **Not click-tested** — same admin-login limitation noted throughout this
+file (credentials off-limits); the actual pattern-input → checkbox-refine → save interaction has
+not been exercised by a real click. Given real analysis will be run against this, worth trying on
+one real survey (ideally this exact one, since the user has the R script's output to sanity-check
+against) before trusting it for a real writeup.
+
+## Post text truncation: the double-ellipsis fix above didn't work, real fix (2026-08-03)
+
+Reported again by the user with a real post: a two-paragraph post (blank line between sentences)
+showed a lone "…" alone on the second line, disconnected from the "… See more" indicator at the
+bottom-right. This is the exact bug "Post rendering fixes" (above, earlier the same day) claimed
+to have fixed via `text-overflow: clip` on `.text.clamp`. It hadn't been.
+
+**Root cause, actually confirmed this time by reproducing it in an isolated sandboxed page (not
+just reasoning about CSS)**: `text-overflow: clip` does not suppress `-webkit-line-clamp`'s
+built-in multi-line ellipsis in the current browser engine — it never did. The earlier fix
+*looked* like it worked because the native ellipsis and the custom `.fade-more` overlay both
+normally land in the same bottom-right spot, visually merging into what reads as one indicator.
+Blank lines between paragraphs break that coincidence: the blank line becomes the visually-clamped
+last line, and the native ellipsis renders alone at the *start* of that empty line — nowhere near
+the overlay, so both become visible. **This means every clamped post likely still had two ellipses
+rendering all along, just invisibly overlapping in the common case** — not a regression, a latent
+bug the earlier fix never actually closed. Instagram's caption-row CSS
+(`.ig-caption-row .text.clamp`) had its own, different workaround for the same underlying problem
+— it hid the *custom* dots (`display:none!important`) and relied on the native ellipsis alone —
+which has the identical failure mode in the same blank-line case, confirmed by reproducing it too
+before touching any code.
+
+**Fix**: replaced `display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+overflow:hidden; text-overflow:clip` with a plain `overflow:hidden; max-height:3em` cap (`3em` =
+2 lines at this codebase's consistent `line-height:1.5`) in `styles-facebook.css` and
+`styles-instagram.css` (both the base `.text.clamp` rule and the two `.ig-caption-row`-scoped
+variants, including the `max-width:700px` media-query copy). No `-webkit-line-clamp` at all means
+no mechanism exists to generate a native ellipsis in the first place — nothing to suppress or
+mask. Added `display:block` to Instagram's rules specifically, since `PostText` there renders as
+inline `<span>`s (Facebook's is a real `<p>`, block by default already) and `max-height` has no
+effect on non-replaced inline elements. Also removed Instagram's now-unnecessary
+`.ig-caption-row .fade-more .dots{display:none!important}` — its own "…" now renders again,
+matching Facebook's `… See more` instead of the previous `… more` (no dots).
+**`styles-amazon.css` still has the old `.text.clamp` rule** but it's genuinely dead — Amazon's
+`ReadMoreText` (`ui-posts-amazon.jsx`) is character-count-based, never uses the `.text`/`.clamp`
+classes at all, confirmed via grep — left untouched, not a live bug.
+
+**Verified far more rigorously than the earlier attempt**: built an isolated `<iframe>` sandbox
+(to rule out any cross-contamination from the app's own global stylesheet or leftover state from
+earlier test iterations — caught and cleaned up exactly that contamination once mid-session),
+injected the *real* CSS fetched live from the running dev server (not a hand-typed copy) for both
+`styles-facebook.css` and `styles-instagram.css`, at large font size for pixel-level clarity, and
+confirmed visually: **before** the fix, the exact reported case renders `tomorrow."…` with a native
+ellipsis mid-line and a second `… See more` at the end; **after**, exactly one `… See more` and
+nothing else, for both the two-sentence-wraps-naturally case and the exact blank-line case from
+the report. Not verified inside the actual running participant feed UI with a real post (would
+need a live post with this exact paragraph-break shape) — worth a quick look on the real site once
+this deploys.
+
+## Experiment groups can now route feed(s) sequences, not just survey content (2026-08-03)
+
+User request: for `feed_then_survey`/`multi_feed_then_survey` studies, let different experiment
+groups see different feed sequences — e.g. Group A gets Feed 1 → Feed 3, Group B gets Feed 2 →
+Feed 4 — while participants still use one plain survey link (not a specific feed's link), group
+assignment stays round-robin exactly as before, and the CSV should reflect whichever sequence each
+participant actually went through. Previously, `experiment_groups` only ever gated survey
+*content* (`visible_to_group_ids`) — completely independent of which feed(s) a participant saw.
+
+**Investigated before writing any code** (a research agent mapped the existing experiment-group
+and feed-sequence architecture end to end before any design decisions were made — findings folded
+directly into this section rather than a separate plan file) and found the hard part was already
+solved: `assignExperimentGroup`
+(frontend `utils-backend.js`, Supabase RPC `assign_experiment_group` in
+`20260801000008_experiment_assignments.sql`) is keyed *only* on `survey_id` + `session_id` — no
+`feed_id` involved anywhere in that call chain, and it already fires from `ensureSurveyLoaded`
+*before* the feed sequence is ever shown to the participant (well before the
+participant-information/consent screens even render). So "assign group first, route to that
+group's feed sequence, keep it round-robin" fit the existing architecture with zero changes needed
+to the assignment mechanism itself.
+
+**Real scope-limiting discovery**: `App-instagram.jsx` has **no multi-feed-sequence support of any
+kind** today — no `feedSequenceIds` state beyond a single feed, no `effectiveFeedSequenceIds`, no
+"Submit Feed N & Continue to Feed N+1" UI, nothing — confirmed via exhaustive grep, zero matches.
+`App-facebook.jsx` and `App-amazon.jsx` are identical for this entire feature (verified via diff).
+Presented this to the user directly before building anything; **decision: Facebook + Amazon only**
+for this feature. Instagram is unaffected either way — single-feed-then-survey still works there
+exactly as before, it just can't do group-varied multi-feed sequences (a pre-existing gap, not
+something this work introduced or was asked to fix).
+
+**Data model — `experiment_groups[i].feed_sequence_ids: string[]`, empty = unchanged behavior.**
+Added to the group object shape in **five separate places** (this is the same "known duplicated
+logic" footgun CLAUDE.md's own "Known duplicated logic" section warns about, now confirmed to
+apply to `experiment_groups` too, not just page-blocks) — missing any one would have silently
+stripped the field on some save/load path:
+1. `src/utils/utils-survey.js` — `makeExperimentGroup`, `normalizeExperimentGroups`,
+   `frontendExperimentGroupsToBackend` (the shared, canonical implementation).
+2. `src/admin/components-admin-surveys-editor.jsx` — its own **separately-implemented**
+   `makeExperimentGroup(index)` (different signature — takes a bare index, not an overrides
+   object; same "same name, different function" trap as `normalizeSurveyPageBlocks` elsewhere in
+   this file) and `normalizeSurveyExperimentGroups(survey)`.
+3. `supabase/functions/_shared/survey-sanitize.ts` — its own independent re-implementation of
+   `normalizeExperimentGroups`/`frontendExperimentGroupsToBackend` (TypeScript, used by the
+   `save-survey` Edge Function). **Deployed** (`supabase functions deploy save-survey`) — without
+   this, every survey save through the admin editor would have silently dropped the new field.
+4. No Code.gs change made or handed off — GAS isn't live in production (see "Backend migration"
+   section), so this feature is Supabase-only for now. Say so explicitly if GAS rollback parity
+   ever matters; not done here.
+5. No Postgres migration needed — `experiment_groups` lives inside `surveys.definition` JSONB, and
+   `assign_experiment_group` only ever reads/returns a bare `group_id` string, never inspects a
+   group's other fields — so it needed zero changes despite being central to this feature.
+
+**Admin UI** (`components-admin-surveys-editor.jsx`, `ExperimentGroupsEditor`): each group now has
+an expandable "Feed sequence" row (only shown when the survey has linked feeds at all) —
+checkbox-per-feed + ↑/↓ reorder, deliberately mirroring the *existing* survey-level feed picker's
+interaction pattern (`components-admin-surveys.jsx`'s "Feed Setup" tab) rather than inventing a
+new one. Picks from the survey's own already-linked feeds (`linkedFeeds` prop, threaded down from
+`SurveyEditor`), not the full project feed list — keeps the invariant that every feed any group
+might route to is still part of the survey's own `linked_feed_ids`, so existing feed-scoped
+machinery (post-reminder-question available-posts filtering, the "Feed Setup" summary banner)
+keeps working unchanged. Leaving a group's sequence empty falls back to the survey's own default
+sequence — fully backward-compatible with every existing survey using groups today.
+
+**Frontend routing** (`App-facebook.jsx`, `App-amazon.jsx`, `ensureSurveyLoaded` — identical logic
+in both, Amazon's group-assignment block had to be *reordered* first since it originally ran
+*after* the feed-sequence computation instead of before, unlike Facebook's existing order): once
+`assignedGroupId` is known, looks up that group's `feed_sequence_ids`; if non-empty **and** the
+participant arrived via a plain survey link (`isDirectSurveyLaunch`, not an explicit `?feed_id=`
+URL — an explicit feed link always wins, same precedent as the existing survey_only-linked-feed
+fix), bakes it into `normalizedSurveyBase.linked_feed_ids`/`feed_sequence_ids` *before*
+`normalizedSurvey` is built — not just into local React state. **This distinction mattered and was
+caught before shipping**: `effectiveFeedSequenceIds` (the memo everything downstream reads — "next
+feed" UI, the sequence recorded on submission) prioritizes `linkedSurvey.feed_sequence_ids` ahead
+of any local state, so an earlier version of this fix that only called `setFeedSequenceIds(...)`
+would have computed the right value and then had it silently ignored by every consumer. `startBoot`
+still makes an initial guess from the survey's default sequence before the group is known
+(unavoidable — group assignment is async) and rewrites the URL to match; `ensureSurveyLoaded` corrects
+both `activeFeedId` and the URL (`setFeedIdInUrl(..., {replace:true})`) once the group-specific
+sequence is known, before the participant ever sees a feed (this correction races the
+participant-information/consent screens, not the feed render itself, so there's no visible flash).
+
+**CSV**: no changes needed anywhere. `loadMultiFeedParticipantSurveyRoster` already builds its
+per-feed columns (`feed1_feed_id`, `feed2_feed_id`, ...) and `feed_sequence_ids` summary column
+from each participant's *actual* logged feed visits, not from static survey config — so once
+routing genuinely varies by group, the export reflects it with zero export-side changes.
+
+**Verified live against the real production Supabase project** (not guessed): created a disposable
+survey with Group A → feed B and Group B → feed A — deliberately *inverted* relative to the
+survey's own default sequence order, so a false pass via coincidental overlap was impossible.
+Loaded the plain survey link twice with fresh sessions (no cache-clearing needed —
+`sessionIdRef` is a fresh in-memory `uid()` per mount, not persisted) and confirmed the URL
+corrected to `feed=zzt_feedB` then `feed=zzt_feedA`, alternating exactly with the round-robin
+assignments recorded in `experiment_assignments` (`gA` then `gB`). Cleaned up with zero rows left
+behind (`projects`/`feeds`/`surveys`/`experiment_assignments`/`experiment_group_counters`, all
+scoped to a `zzclaudetest_` prefix). All touched files parse clean and the admin editor loads
+through Vite's real module graph with no errors. **Not verified**: the "no group override
+configured" fallback path wasn't independently re-tested live this session (only verified by code
+reading — the `nextFirstFeedId !== activeFeedId` no-op check means it should be a byte-for-byte
+no-op versus the pre-existing, already-exercised code path), and no full visual click-through with
+real posts/content was done (same admin-login limitation as elsewhere in this file) — only the
+routing decision itself (which feed gets chosen) was verified, not a full participant walkthrough.
 
 ## One-off incident: CLAUDE.md itself got deleted mid-session (2026-08-01)
 
