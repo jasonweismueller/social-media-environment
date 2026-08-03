@@ -33,7 +33,7 @@ import {
   fetchParticipantsStats,
 } from "../utils";
 
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import "./ui/tokens.css";
 import { Modal, LoadingOverlay } from "../ui-core";
@@ -482,6 +482,7 @@ export function AdminDashboard({
   onLogout,
 }) {
   const pidForBackend = (pid) => (pid && pid !== "global" ? pid : undefined);
+  const location = useLocation();
 
   const [sessExpiringSec, setSessExpiringSec] = useState(null);
   const [sessExpired, setSessExpired] = useState(false);
@@ -1427,75 +1428,83 @@ export function AdminDashboard({
             </div>
           }
         >
+          {/* Feeds/Surveys are rendered here as persistent siblings, not as
+              <Route element>s below — a <Route> unmounts its element on
+              every navigation away, which for AdminSurveysPanel (owns its
+              own survey-list/selection state, unlike AdminFeedsPanel whose
+              data lives up here) meant a full state wipe + re-fetch of the
+              survey list on every single visit to the Surveys tab, even
+              seconds after the last one. Keeping both mounted at all times
+              and just toggling visibility means a re-visit is instant,
+              matching Feeds (whose instant-ness already came from its data
+              living in this parent, not from anything Route-related).
+              <Routes> below still owns the actual path matching — the
+              "feeds"/"surveys" entries render nothing themselves, they only
+              exist so those paths match instead of falling through to the
+              wildcard redirect. */}
+          <div style={{ display: location.pathname.startsWith("/admin/dashboard/feeds") ? "block" : "none" }}>
+            <AdminFeedsPanel
+              projectId={projectId}
+              feeds={feeds}
+              feedsLoading={feedsLoading}
+              selectedFeedId={feedId}
+              selectedFeedName={feedName}
+              defaultFeedId={defaultFeedId}
+              feedStats={feedStats}
+              feedFlags={feedFlags}
+              flagKinds={FLAG_KINDS}
+              allSavingKeys={ALL_SAVING_KEYS}
+              readFlagValue={readFlagValue}
+              wipeOnChange={wipeOnChange}
+              updatingWipe={updatingWipe}
+              isSaving={isSaving}
+              posts={posts}
+              postNames={postNames}
+              randomize={randomize}
+              contentUnitLabel={CONTENT_UNIT_LABEL}
+              contentUnitLabelPlural={CONTENT_UNIT_LABEL_PLURAL}
+              onSelectFeed={selectFeed}
+              onCreateFeed={createNewFeed}
+              onCopyFeed={copyFeed}
+              onRefreshFeeds={loadFeeds}
+              onLoadStats={loadStatsFor}
+              onLoadFlags={loadFlagsFor}
+              onToggleFlag={toggleFlag}
+              onSetDefaultFeed={handleSetDefaultFeed}
+              onDeleteFeed={handleDeleteFeed}
+              onSetWipePolicy={handleSetWipePolicy}
+              onCopyParticipantLink={handleCopyParticipantLink}
+              onSaveFeed={handleSaveFeed}
+              onSetRandomize={setRandomize}
+              onRefreshPosts={handleRefreshPosts}
+              onExportPostsJson={handleExportPostsJson}
+              onExportFeedPdf={handleExportFeedPdf}
+              onImportPostsJson={handleImportPostsJson}
+              onOpenNewPost={openNew}
+              onEditPost={openEdit}
+              onRenamePost={handleRenamePost}
+              onRemovePost={removePost}
+              onLogout={onLogout}
+            />
+          </div>
+
+          <div style={{ display: location.pathname.startsWith("/admin/dashboard/surveys") ? "block" : "none" }}>
+            <PageHeader
+              title="Surveys"
+              subtitle="Create post-feed surveys and link one survey to one or more feeds in this project."
+            />
+            <AdminSurveysPanel
+              projectId={projectId}
+              feedId={feedId}
+              feeds={feeds}
+              loadFeedPosts={loadFeedPostsForSurveys}
+            />
+          </div>
+
           <Routes>
             <Route index element={<Navigate to="/admin/dashboard/feeds" replace />} />
-
-            <Route
-              path="feeds"
-              element={
-                <AdminFeedsPanel
-                  projectId={projectId}
-                  feeds={feeds}
-                  feedsLoading={feedsLoading}
-                  selectedFeedId={feedId}
-                  selectedFeedName={feedName}
-                  defaultFeedId={defaultFeedId}
-                  feedStats={feedStats}
-                  feedFlags={feedFlags}
-                  flagKinds={FLAG_KINDS}
-                  allSavingKeys={ALL_SAVING_KEYS}
-                  readFlagValue={readFlagValue}
-                  wipeOnChange={wipeOnChange}
-                  updatingWipe={updatingWipe}
-                  isSaving={isSaving}
-                  posts={posts}
-                  postNames={postNames}
-                  randomize={randomize}
-                  contentUnitLabel={CONTENT_UNIT_LABEL}
-                  contentUnitLabelPlural={CONTENT_UNIT_LABEL_PLURAL}
-                  onSelectFeed={selectFeed}
-                  onCreateFeed={createNewFeed}
-                  onCopyFeed={copyFeed}
-                  onRefreshFeeds={loadFeeds}
-                  onLoadStats={loadStatsFor}
-                  onLoadFlags={loadFlagsFor}
-                  onToggleFlag={toggleFlag}
-                  onSetDefaultFeed={handleSetDefaultFeed}
-                  onDeleteFeed={handleDeleteFeed}
-                  onSetWipePolicy={handleSetWipePolicy}
-                  onCopyParticipantLink={handleCopyParticipantLink}
-                  onSaveFeed={handleSaveFeed}
-                  onSetRandomize={setRandomize}
-                  onRefreshPosts={handleRefreshPosts}
-                  onExportPostsJson={handleExportPostsJson}
-                  onExportFeedPdf={handleExportFeedPdf}
-                  onImportPostsJson={handleImportPostsJson}
-                  onOpenNewPost={openNew}
-                  onEditPost={openEdit}
-                  onRenamePost={handleRenamePost}
-                  onRemovePost={removePost}
-                  onLogout={onLogout}
-                />
-              }
-            />
-
-            <Route
-              path="surveys"
-              element={
-                <>
-                  <PageHeader
-                    title="Surveys"
-                    subtitle="Create post-feed surveys and link one survey to one or more feeds in this project."
-                  />
-                  <AdminSurveysPanel
-                    projectId={projectId}
-                    feedId={feedId}
-                    feeds={feeds}
-                    loadFeedPosts={loadFeedPostsForSurveys}
-                  />
-                </>
-              }
-            />
+            <Route path="feeds" element={null} />
+            <Route path="surveys" element={null} />
 
             {/* Old top-level Posts/Participants routes are now tabs nested
                 under a selected feed/survey (AdminFeedsPanel / AdminSurveysPanel) —

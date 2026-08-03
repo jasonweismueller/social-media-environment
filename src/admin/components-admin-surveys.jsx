@@ -1456,6 +1456,14 @@ export function AdminSurveysPanel({
       setFeeds(safeFeedList);
       setLoading(false);
 
+      // Auto-select the first survey, same as the Feeds list defaulting to
+      // its first/default feed — this only runs once per project (loadAll
+      // is only re-triggered by a projectId change, see the effect below),
+      // not on every visit to the Surveys tab.
+      if (safeSurveyList[0]?.survey_id) {
+        handleSelectSurvey(safeSurveyList[0].survey_id);
+      }
+
       safeSurveyList.forEach((s) => {
         if (!s?.survey_id) return;
         loadSurveyFromBackend(s.survey_id, { projectId })
