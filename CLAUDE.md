@@ -1398,12 +1398,220 @@ changes and was confirmed correct by direct code reading instead.
 
 ## Repo hygiene note: `node_modules/` is tracked in git
 
-`.gitignore` does not exclude `node_modules/` — roughly 3,500 files under it are committed to
+**Resolved 2026-08-03** — see "Repo hygiene / GitHub security cleanup" below for the full fix
+(node_modules, plus several other unnecessary tracked directories found along the way). Leaving
+this note in place as a pointer rather than deleting it, since it's what originally flagged the
+issue.
+
+~~`.gitignore` does not exclude `node_modules/` — roughly 3,500 files under it are committed to
 this repo. This means routine cache-clearing commands like `rm -rf node_modules/.vite` (a normal,
 harmless thing to do when debugging a stuck dev server — the cache regenerates automatically)
 show up as real, committable file changes instead of being invisible/ignored like in a normal
 JS repo. Worth fixing (`git rm -r --cached node_modules && echo node_modules >> .gitignore`) at
-some point, but that's a repo-hygiene call for the user to make, not something to do unprompted.
+some point, but that's a repo-hygiene call for the user to make, not something to do unprompted.~~
+
+## Admin dashboard: Feed Participants + Survey Participants analysis hub (2026-08-03)
+
+Complete rework of the old single "Participants" nav item/page (`ParticipantsPanel` in
+`components-admin-parts.jsx`, ~950 lines), split into two dedicated pages per direct user request
+("I want two separate participant pages... especially for the survey participant page, I want it
+to be like an analysis hub"). Session ran mostly in auto mode overnight — see
+`~/.claude/plans/steady-continuing-harbor.md` for what's verified vs not.
+
+**Root cause found and fixed, not just a redesign**: for an ordinary single-feed-then-survey study
+(the most common delivery mode), survey response data was **never shown anywhere in the admin
+UI** — `loadSurveyOnlyRoster` (`utils-backend.js`) filtered `surveyResponses` down to only rows
+with `feed_id === "SURVEY_ONLY"` unless the survey's own `delivery_mode` was literally
+`"survey_only"`, silently dropping every real feed-then-survey response. This also broke the
+existing "Download survey CSV" button in the Surveys admin page (same function, same bug) for any
+non-survey-only study. Fixed by removing the filter entirely — `loadSurveyResponsesBySurveyRoster`
+already scopes strictly by `survey_id`, so no extra feed_id filtering was ever a valid idea for
+"give me this survey's responses."
+
+**New files**:
+- `src/admin/components-admin-participants-feed.jsx` (renamed from `components-admin-parts.jsx`,
+  `git mv`'d to preserve history) — `FeedParticipantsPage`. Same well-tested simulate/CSV engine as
+  before, but trimmed of all survey-merge branches (`hasMultiFeedSequence`, survey-only-panel path)
+  since it's feed-only now; gained its own `PageHeader` (was previously assembled inline in
+  `components-admin-dashboard.jsx`'s route element) plus two new charts using data that was already
+  being computed but never visualized: **submissions-over-time** and **engagement-by-post**
+  (reacted/commented/shared % per post), both plain-div bar charts, no new dependency.
+- `src/admin/components-admin-participants-survey.jsx` — `SurveyParticipantsPage`, the new
+  analysis hub. Survey picker (remembers last pick per project in localStorage) drives everything
+  purely off `survey_id` via `loadSurveyFromBackend` + `loadSurveyResponsesBySurveyRoster` — no
+  delivery-mode branching needed, which is *why* it doesn't have the bug above. Renders:
+  - **Demographics** — auto-detected via keyword match on question id/text (age, gender, income,
+    education, ethnicity, employment, marital, nationality...); numeric → mean/SD/median/histogram,
+    categorical → counts/% bar list.
+  - **Measures** — auto-detects composite (multi-item) scales two ways: matrix questions (a matrix
+    question with id "BL" and rows BL_1/BL_2/BL_3 becomes one composite) and standalone
+    same-prefix questions (three separate slider/single-choice questions literally named BL_1,
+    BL_2, BL_3). Each composite gets mean/SD/median/range/**Cronbach's alpha**/histogram plus a
+    collapsible item-level breakdown. Standalone (non-composite) numeric and categorical questions
+    get their own cards; free-text questions get a collapsible response list (first 100).
+  - **Group comparison** — when `survey.experiment_groups.length >= 2`: every measure/composite
+    gets per-group mean±SD±N with a **Welch's t-test** (2 groups) or **one-way ANOVA** (3+);
+    categorical variables get a **chi-square test**. All computed from scratch in
+    `src/utils/utils-survey-analysis.js` (log-gamma / regularized incomplete beta / regularized
+    incomplete gamma — standard Numerical-Recipes-style approximations, no new dependency). This is
+    the single biggest new file, ~550 lines, fully exported via `src/utils/index.js`.
+  - Raw response list + "Download Survey CSV" (reuses the now-fixed `loadSurveyOnlyRoster`).
+- `src/utils/utils-survey-analysis.js` — the stats/classification engine backing all of the above;
+  pure functions, no React/backend knowledge, operates on a normalized survey definition + raw
+  `survey_responses` rows.
+
+**Modified**: `utils-backend.js` (the `loadSurveyOnlyRoster` fix above, plus `flattenSurveyQuestions`/
+`flattenSurveyResponseRecord` changed from module-private to `export`ed so the analysis engine could
+reuse them instead of reimplementing column-key logic — this is *not* the page-block/experiment-group
+4-places footgun documented elsewhere in this file, just two small pure helpers). `AdminShell.jsx`
+nav: one "Participants" item → "Feed Participants" (👥) + "Survey Participants" (📊), routed at
+`/admin/dashboard/participants/{feed,survey}` (old `/participants` path redirects to `/feed`).
+`components-admin-dashboard.jsx`: removed the now-dead `participantsCount`/`showAllParticipants`/
+`participantsRefreshKey` state and the old inline `ParticipantsPanel` route block (~90 lines →
+~30), since both new pages are fully self-contained (own `PageHeader`, own data fetching, own
+owner-gated "Wipe" button on the feed page).
+
+**Verified**: all changed/new files parse clean (`@babel/parser`). The sandbox's `npm run dev` (see
+"Build/dev notes") turned out to already be running from an earlier point in the session — used it
+for real verification this time, not just syntax-checking: fresh browser tab, zero console errors,
+every changed/new module (including both new participant page files and the analysis engine) loaded
+with a real `200`, confirming the whole module graph resolves and evaluates correctly. **Did not log
+in** — the admin login form had credentials already populated (browser autofill, not typed by
+Claude) and submitting them was refused on principle (never enter/submit credentials, even
+pre-filled ones not typed by Claude). So the actual rendered content of both new pages, and a real
+click-through, is unverified — see the plan file's "What's NOT verified yet" section.
+
+## Post rendering fixes: static-reminder hover, reminder width, "See more"/"See less" (2026-08-03)
+
+Three bugs reported directly by the user after using the interactive-post-reminder feature (see
+"Interactive post-reminder questions" above) for real. All three turned out to affect posts in
+general, not just reminders — fixed at the shared source, not patched per-call-site.
+
+1. **Static reminder Like/Comment/Share/"..." still greyed on hover.** `.action:hover` and
+   `.dots:hover` in all three stylesheets (`styles-facebook.css`, `styles-instagram.css`,
+   `styles-amazon.css`) had no `:not(:disabled)` guard, so the hover background applied regardless
+   of the real `disabled` attribute on those `<button>`s — other buttons in the same codebase
+   (`.amz-helpful-btn`, `.survey-nav-btn`, etc.) already used the correct `:hover:not(:disabled)`
+   pattern; `.action`/`.dots` were just missed. Fixed in all three stylesheets, plus added an
+   explicit `:disabled{cursor:default}` override. Verified by injecting the real markup/CSS into
+   the live running page and checking `document.styleSheets` directly for the parsed rule text
+   (browser-automation synthetic `hover` events don't reliably trigger real CSS `:hover` matching
+   in this environment — same caveat as the click-simulation gotcha already documented under
+   "Admin user management ported" above — so this file-content check was the reliable verification
+   path, not a screenshot).
+2. **Reminder post wider than the real feed post.** Found in *four* separate hardcoded spots (a
+   footgun on its own): `ui-survey.jsx`, `ui-survey-mobile.jsx` (desktop/mobile reminder each have
+   their own independent implementation, see "Interactive post-reminder questions" above),
+   `styles-facebook.css`, and `styles-amazon.css` all independently hardcoded
+   `max-width: min(760px, 100%)` for `.fb-reminder-post .survey-post-reminder-frame`, while the
+   real feed is capped at `--feed-max: 700px`. Fixed all four to reference
+   `var(--feed-max, 700px)` instead of a hardcoded literal, so they can't drift out of sync again.
+   (Instagram's reminder width was already correct — `.ig-reminder-post` hardcodes 470px matching
+   its own real feed card width, confirmed via its own comment "matches feed card width".)
+3. **Double ellipsis before "See more"** (e.g. "...  ... See more"), and no way to collapse back
+   once expanded. Root cause: `.text.clamp` uses `-webkit-line-clamp: 2`, which auto-renders its
+   own native "…" when content overflows — *and* a custom `.fade-more` overlay (gradient-covered
+   "…  See more") was drawn on top trying to visually hide it, which didn't always fully cover it.
+   Fixed by adding `text-overflow: clip` to `.text.clamp` in all three stylesheets, which suppresses
+   the native ellipsis entirely, leaving only the one custom indicator — verified directly by
+   injecting the real `PostText` markup/CSS into the live page and confirming a single "…" renders.
+   Also added the missing **"See less"** (Facebook) / **"less"** (Instagram, matching real
+   Instagram's lowercase "more"/"less") / **"Read less"** (Amazon) collapse links — none of the
+   three apps had a way to re-collapse expanded text before this. New `wasClamped` state (distinct
+   from `needsClamp`, which flips back to `false` once expanded since the box is no longer visually
+   clamped) tracks "this text was truncated at least once" so the collapse link knows when to show.
+   `onCollapse` wired through `PostText` (`ui-core-facebook.jsx`, `ui-core-instagram.jsx`) and
+   Amazon's separately-implemented `ReadMoreText` (`ui-posts-amazon.jsx` — character-count based,
+   not line-clamp based, so it never had the double-ellipsis bug, but still lacked "Read less").
+   `onCollapse` fires a `collapse_text`/`review_read_more{expanded:false}` tracking action
+   symmetric with the existing `expand_text`/`review_read_more{expanded:true}`.
+
+Since `PostReminderCard`/`ReminderPostInner` render the real `PostCard` component internally, the
+"See more"/"See less" fix applies to reminder posts automatically — no reminder-specific change
+needed for that part, only for the width/hover bugs which live in reminder-specific CSS.
+
+**Verified**: all changed files parse clean. Live-verified via the running dev server as described
+above (synthetic DOM injection + direct stylesheet inspection) — not verified via an actual click
+on a real rendered post's "See more" button (see plan file).
+
+## Feed linked to a `survey_only` survey: feed URL was redirecting to the survey (2026-08-03)
+
+User-reported: "if a feed is linked to a survey-only survey, accessing the feed through the feed
+URL should lead me to the feed, not the survey." Root cause: `isSurveyOnlyMode` (the single flag
+`requiresFeedStage` and therefore the entire routing tree in each `App-*.jsx` keys off — confirmed
+by grep, used in ~15 places per file) was derived purely from the *linked survey's own*
+`delivery_mode`, with no regard for how the participant actually arrived. So a feed accidentally
+linked to a survey whose `delivery_mode` is `"survey_only"` would skip straight to the survey even
+when opened via the feed's own `?feed_id=` URL — "survey_only" is meant to describe the survey's
+own direct launch link (`?survey_id=`) behavior, not to hijack every feed linked to it.
+
+**Fix**: `isSurveyOnlyMode` now also requires `isDirectSurveyLaunch` (arrived via `?survey_id=`,
+not `?feed_id=`) — reordered `isDirectSurveyLaunch`'s declaration earlier in each file so it could
+be referenced. Applied identically to all three `App-*.jsx` files (this is the near-duplicate-
+`App-*.jsx` footgun documented at the top of this file — checked all three from the start rather
+than fixing Facebook and finding the same bug reported again later for IG/Amazon). Feed URLs now
+always show the feed and follow normal `feed_then_survey` routing regardless of what the linked
+survey's `delivery_mode` claims; only a survey's own direct link can trigger survey-only behavior.
+
+**Verified**: all three files parse clean, live dev server picked up the change with zero console
+errors. **Not verified against a real feed+survey_only-survey combination** — would need either a
+real project with that specific (mis)configuration or one deliberately created via admin, plus
+login. See plan file.
+
+## Repo hygiene / GitHub security cleanup (2026-08-03)
+
+Prompted by the user asking two things directly: "how do we remove unnecessary files... from my
+GitHub" and "does my GitHub really need to be public? I'm concerned about security." Investigated
+rather than guessed — checked actual repo visibility via the public GitHub API (`curl
+api.github.com/repos/...` — no auth needed since the repo was public, which itself is a valid way
+to confirm visibility without `gh` being authenticated), and scanned every tracked file *and full
+git history* (`git log --all -p` piped through pattern grep) for leaked AWS keys, Supabase
+`service_role` keys, etc. **No real secrets found leaked anywhere, past or present** — the only
+hits were the AWS SDK's own library code (committed as part of `backend/node_modules`, see below)
+matching field names like `aws_secret_access_key`, and CLAUDE.md's own prose *about* `service_role`
+never being exposed. One real (but low-stakes, and *not* fixed by repo privacy) finding: `GS_TOKEN`
+is hardcoded in `utils-backend.js` — it's a real shared secret for the GAS backend, but it's
+already shipped in cleartext in the built JS bundle to every site visitor regardless of whether the
+GitHub repo is public, so making the repo private wouldn't actually hide it. Noted, not changed.
+
+**Repo visibility decision (made with the user, not unilaterally)**: stays **public**. The real
+constraint driving this: the deploy workflow (`.github/workflows/deploy.yml`, `actions/deploy-
+pages@v4`) publishes to `studyfeed.org` via GitHub Pages, and GitHub Pages only works on **private**
+repos with GitHub Pro/Team/Enterprise — the Free plan requires the repo to be public for Pages to
+work at all, independent of which deploy mechanism (branch- or Action-based) is used. Presented
+three options (stay public + clean up / go private + Pro ~$4/mo / go private + move hosting to
+somewhere that supports private-repo static deploys for free, e.g. Cloudflare Pages) and the user
+chose to stay public.
+
+**Unnecessary tracked files found and untracked** (`git rm --cached`, not deleted from disk, not a
+history rewrite — offered a full `git filter-repo` history purge too, declined since no real secret
+was found and repo *size* wasn't the concern):
+- **`backend/`** (132MB!) — a local-only Express + AWS-SDK S3-upload signer
+  (`backend/server.js`), confirmed **zero references anywhere in the actual app** (grepped for
+  `localhost:4000`/`backend/server`/`uploadVideoToBackend` — the last of these was already flagged
+  as dead/unused in the "Backend migration" section above; this is that same dead function's local
+  dev counterpart). Included its own fully-committed `node_modules/` (AWS SDK + deps). Root
+  `package.json` has no workspace reference to it — fully orphaned. Left on disk, gitignored going
+  forward.
+- **`node_modules/`** (root, 83MB, 4,135 files) — the issue already flagged in the now-resolved
+  "node_modules is tracked" note above.
+- **`docs/`** — a *stale* build output (older file hashes than `dist/`), almost certainly a
+  leftover from before the GitHub Actions workflow existed (an earlier "serve Pages from /docs"
+  deploy method). Not what's actually being served now.
+- **`dist/`** — current build output; also shouldn't be committed, the CI workflow rebuilds it
+  fresh from source on every deploy.
+- **`supabase/.temp/`** — the Supabase CLI's own local session cache (project ref, postgres
+  version, pooler URL, etc.), auto-regenerated by `supabase` CLI commands, genuinely introduced as
+  a side effect of the Supabase migration work.
+- **8 `.DS_Store` files** scattered through the repo.
+
+`.gitignore` updated accordingly (also de-duplicated pre-existing duplicate `.env`/`CLAUDE.md`
+lines while in the file, no behavior change). Committed as `9778139 clean up github repo`
+(11,799 files changed) and confirmed pushed to `origin/main`. **The user separately deleted
+`.claude/launch.json` from the repo right after** (`2f545db Delete .claude directory`, done outside
+this session, not part of the cleanup work above) — it's genuinely gone from disk now, not just
+gitignored. See `~/.claude/plans/steady-continuing-harbor.md` for what a future session should do
+if it needs that file back (recreate locally, don't recommit without asking).
 
 ## One-off incident: CLAUDE.md itself got deleted mid-session (2026-08-01)
 

@@ -29,19 +29,51 @@
   const params = new URLSearchParams(window.location.search);
   const app = (params.get("app") || "facebook").toLowerCase();
 
-  const entryMap = {
-    facebook: () => import("./src/main-facebook.jsx"),
-    fb: () => import("./src/main-facebook.jsx"),
+  // Only load the app bundle for a recognized entry: a real participant
+  // launch link (?feed=/?feed_id=/?survey=/?survey_id=) or the admin route
+  // (#/admin...). Anyone who just stumbles onto the bare domain gets a blank
+  // page instead of falling through to whatever feed happens to be default.
+  const hash = window.location.hash || "";
+  const hashQuery = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+  const hashParams = new URLSearchParams(hashQuery);
+  const getParam = (key) => params.get(key) || hashParams.get(key);
 
-    instagram: () => import("./src/main-instagram.jsx"),
-    ig: () => import("./src/main-instagram.jsx"),
+  const isAdminRoute = hash.replace(/^#/, "").split("?")[0].startsWith("/admin");
+  const hasLaunchParams = !!(
+    getParam("feed") || getParam("feed_id") ||
+    getParam("survey") || getParam("survey_id")
+  );
 
-    amazon: () => import("./src/main-amazon.jsx"),
-    amz: () => import("./src/main-amazon.jsx"),
-    reviews: () => import("./src/main-amazon.jsx"),
-  };
+  if (isAdminRoute || hasLaunchParams) {
+    const entryMap = {
+      facebook: () => import("./src/main-facebook.jsx"),
+      fb: () => import("./src/main-facebook.jsx"),
 
-  (entryMap[app] || entryMap.facebook)();
+      instagram: () => import("./src/main-instagram.jsx"),
+      ig: () => import("./src/main-instagram.jsx"),
+
+      amazon: () => import("./src/main-amazon.jsx"),
+      amz: () => import("./src/main-amazon.jsx"),
+      reviews: () => import("./src/main-amazon.jsx"),
+    };
+
+    (entryMap[app] || entryMap.facebook)();
+  } else {
+    document.title = "404 Not Found";
+    document.getElementById("root").innerHTML = `
+      <div style="
+        display:flex; align-items:center; justify-content:center;
+        min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,
+        'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#444;
+        text-align:center; padding:24px; box-sizing:border-box;
+      ">
+        <div>
+          <h1 style="font-size:22px; font-weight:600; margin:0 0 8px;">404</h1>
+          <p style="font-size:15px; margin:0; color:#777;">This page could not be found.</p>
+        </div>
+      </div>
+    `;
+  }
 </script>
   </body>
 </html>
