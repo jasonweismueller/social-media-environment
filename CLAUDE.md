@@ -2170,3 +2170,244 @@ the time, so nothing was lost). Cause unknown — happened in the same window as
 dev` attempts and one `rm -rf node_modules/.vite`, but no causal link was established. Mentioning
 this so that if a repo file mysteriously vanishes again, it's known to have happened once before
 and `git checkout HEAD -- <file>` is the fix if the file was committed.
+
+## Admin dashboard: merged tree-sidebar navigation + toolbar cleanup (2026-08-03)
+
+Follow-up to "Admin dashboard UX/UI overhaul" above, prompted directly by the user: "the survey
+list design isn't exactly the same as the [feed] list design... there is not much space for any
+of the pages because 40% are taken up by the navigation + survey or feed list." Ran through
+several rounds of direct visual feedback the same day — plan file
+`~/.claude/plans/tender-whistling-otter.md` has a pointer to this section at its top; treat this
+section as the current design, that file's §3 (Feeds list column) as superseded history.
+
+### Round 1: merged nav + list into one sidebar
+
+Explored three options with the user (collapsible list panel, icon-only nav rail, merged tree
+sidebar) before building — chose the merged tree sidebar: instead of a 240px nav column *and* a
+separate 280px list column (520px of fixed chrome before any content), `AdminShell.jsx` now owns
+a single ~280-288px sidebar where "Feeds" and "Surveys" are expandable tree sections. Clicking one
+navigates there and shows its list inline, right under the header — no separate list column at all.
+
+**Mechanism**: `AdminFeedsPanel`/`AdminSurveysPanel` don't get their list-owning state moved
+anywhere — `AdminSurveysPanel` in particular owns a large, self-contained ~3000-line state machine
+that would have been risky to partially lift into `AdminDashboard` just for this. Instead, a new
+`AdminTreeSlotsContext` (exported from `AdminShell.jsx`) exposes the sidebar's slot DOM nodes;
+each panel portals its own list-rendering JSX (`FeedListContent`/`SurveyListContent`, extracted
+from what used to be inline in the return statement) into the matching slot via `createPortal`.
+Same portal-into-`.admin-shell` rationale as `src/admin/ui/Popover.jsx`. Only *where* the list JSX
+renders changed; who owns the data behind it didn't.
+
+**A real, non-obvious Vite dev-server gotcha hit while verifying this, worth remembering for any
+future console-based verification in this repo**: Vite rewrites every relative import in
+transformed source to include a per-file cache-busting timestamp query
+(`from "/src/admin/AdminShell.jsx?t=1785753640960"`), computed consistently for *all* importers of
+that target file. A manual browser-console `import('/src/admin/AdminShell.jsx')` (bare, no
+timestamp) is a **different URL** to the browser's ES module registry than the timestamped one the
+real app's modules resolve to internally — meaning `AdminTreeSlotsContext` (a `createContext()`
+result) becomes two structurally-different objects, and `useContext` silently reads the *default*
+value instead of the real Provider's value, with zero console errors. This produced several
+convincing-looking false negatives before being diagnosed. **Fix for future verification**: fetch
+the already-transformed source of one file, regex out the exact timestamped URL it uses for a
+relative import (`` const url = (await fetch(path).then(r=>r.text())).match(/from "(\/src\/...\?t=\d+)"/)[1] ``),
+and import *that* URL directly — guarantees the same module instance the real app graph uses.
+Also: the browser's ES module cache is permanent per page load per exact URL string — reusing the
+same tab across many test iterations without reloading silently serves stale pre-edit module
+instances; when in doubt, reload the page first.
+
+**A real, already-authenticated admin session was found in the shared dev browser mid-session** —
+not something this session logged into (no credentials were entered, ever). Confirmed by
+`get_page_text` unexpectedly showing real project names (`Community Notes Paper`, `Misinformation
+Prebunking Paper`, etc.) instead of the login form. Backed out immediately (navigated away,
+cleaned up test DOM nodes) without clicking anything beyond that one accidental read — no data was
+viewed beyond project *names* on the picker screen, nothing was created/edited/deleted. Worth
+flagging to the user in a future session: this shared browser profile appears to retain a valid
+Supabase session across page loads/reloads, so a future session could stumble into the same
+real-data exposure risk without intending to authenticate at all.
+
+### Round 2: cleanup, per direct user feedback on the round-1 result
+
+Several concrete complaints, each fixed:
+- **Real CSS bug, not just clutter**: `feedListButtonStyle`/`surveyListButtonStyle` used
+  `width: 100%` plus padding with no `box-sizing: border-box`, so every row rendered ~28px wider
+  than its container — visually colliding with the sidebar's scrollbar. Added `box-sizing:
+  border-box` to both.
+- **Collapse toggle folded into the section button itself** (`components-admin-feeds.jsx`/
+  `AdminShell.jsx`'s `TreeSection`) — round 1 had a separate small chevron button next to the nav
+  link, which the user couldn't reliably click. Now the "Feeds"/"Surveys" `NavLink` itself handles
+  both jobs: clicking it navigates there if not already active, or toggles its own list
+  open/closed if already active (`e.preventDefault()` + a manual toggle callback instead of
+  letting the click re-navigate to the same route). `expandedKey` state resets to match whichever
+  section is active whenever the route changes, so collapsing Feeds then navigating to Surveys
+  doesn't leave Surveys confusingly pre-collapsed too.
+- **Removed entirely, per direct request**: the filter/search input on both lists, the
+  "Updated <date>" second line on feed rows, and the "draft" badge on survey rows.
+- **"Wipe on change" relocated, not removed** — moved from the Feeds list-column toolbar into a
+  new "Danger zone" section on each feed's own Settings tab (`components-admin-feeds.jsx`),
+  alongside "Delete feed". Still the same project-scoped backend call
+  (`getWipePolicyFromBackend`/`setWipePolicyOnBackend` take no `feedId`) — it just reads oddly as
+  "project-wide policy shown while looking at one feed," a tradeoff accepted since there was no
+  other natural home for it once the dedicated list-column toolbar was gone.
+- **Logout moved from an awkward full-width button at the very bottom of a now much-shorter nav**
+  to a small ⏻ icon next to the project title at the top of the sidebar.
+- **New feature: "Copy feed"** (`components-admin-dashboard.jsx`'s `copyFeed`, mirroring the
+  existing `createNewFeed` exactly) — prompts for a new feed ID/name, duplicates the
+  currently-loaded feed's `posts` array and CSV post-names map into it, adds it to the local feed
+  list. Like `createNewFeed`, it's pure client-state until "Save" is clicked, no new backend call.
+  **Copied posts deliberately keep their original bare post ids** — this is the exact
+  Control/Treatment-variant-from-a-shared-template pattern the `posts.id` composite-key migration
+  (see "Backend migration" section above) was built to support, not an oversight.
+- **Toolbar decluttering, both panels**: Feeds' Posts-tab toolbar had "Export JSON"/"Export Feed
+  PDF"/"Import JSON" moved into a new "Import / export" card in Settings, renamed to "Export
+  Feed"/"Export PDF"/"Import Feed"; the per-post-row actions dropped the "Rename" button entirely
+  (redundant with the "Post name" field already in the post editor's Basics section) and replaced
+  "Edit"/"Delete" text buttons with icon buttons. Surveys' top toolbar had "Import"/"Export
+  JSON"/"Copy" moved into the Setup tab's "Survey details" card header (renamed "Import
+  Survey"/"Export Survey"), and "Ethics Word"/"Ethics PDF" moved into the Launch & completion tab
+  — the top toolbar now only shows the survey name, feed/page counts, and the delete icon.
+  Instagram's Media-column post-type indicator ("🎬 video"/"🖼️ image") dropped the emoji, since the
+  Actions column already has real icons and the pairing read as noisy.
+
+**Verified**: all touched files parse clean (`@babel/parser`). Given the real-admin-session
+discovery above, verification leaned harder than usual on rendering the actual production
+components (not mocks) with fabricated data through the real dev server, via the timestamped-URL
+technique described above — confirmed end-to-end: the folded collapse toggle expands/collapses
+without navigating, the logout icon fires `onLogout`, "Copy feed" fires `onCopyFeed` and the
+Settings tab shows the renamed Import/Export/PDF buttons and the relocated Wipe-on-change toggle,
+and the Media column renders plain "image"/"video" text. **Not verified**: an actual click-through
+in the live admin panel by a real logged-in user — still off-limits per this file's standing rule,
+and now doubly worth being careful about given the stray authenticated session noted above.
+
+**Status at end of session**: `git log` shows this round's work already auto-committed and pushed
+to `origin/main` (commits `cba513e`, `10cd5db`, `68f93a0`, `89d8bb0` — "rebuild navigation and list
+structure" through "button cleanups") — confirmed via `git status`/`git rev-parse HEAD` vs
+`origin/main` matching at end of session, no manual commit/push performed by Claude.
+
+## Instagram: carousel arrows, per-image captions, repost button, reminder text fixes (2026-08-03)
+
+Four rounds of direct, mostly-unrelated Instagram feedback the same day, handled as one thread
+since they touch the same core files (`ui-posts-instagram.jsx`, `ui-core/ui-ig-carousel.jsx`).
+
+### Carousel arrows: style, then real/last-slide visibility
+
+First pass (style only): the desktop carousel's prev/next buttons (`.igcar-arrow`,
+`src/styles-instagram.css`) were plain dark circles with **no chevron glyph inside them at all** —
+just an empty `background: rgba(0,0,0,.45)` button, confirmed by reading the CSS (no
+`::before`/`::after`, no child content in the JSX). Fixed to a light `rgba(255,255,255,.9)` circle
+with a real inline SVG chevron (`stroke="currentColor"`, dark grey) inside each button
+(`src/ui-core/ui-ig-carousel.jsx`), matching real Instagram's look.
+
+Second pass, from a screenshot of a real Instagram post: the **first slide shouldn't show a left
+(previous) arrow at all**, and symmetrically the last slide shouldn't show a right (next) one —
+round 1 always rendered both whenever there was more than one image. Fixed by conditionally
+rendering each arrow (`idx > 0` for left, `idx < items.length - 1` for right) instead of gating
+both on a single `hasMany` flag.
+
+### Removed the "less" collapse link from Instagram captions only
+
+Per direct request: Instagram's "... more" truncation link should stay, but there should be no way
+back to collapsed ("less") — unlike Facebook and Amazon, which keep their own collapse links
+unchanged. Removed the `wasClamped`-gated "less" `<button>` and the now-dead `wasClamped` state
+from `PostText` in `src/ui-core/ui-core-instagram.jsx` only; `ui-core-facebook.jsx`'s "See less"
+and Amazon's `ReadMoreText` "Read less" are untouched.
+
+### New feature: per-image carousel captions
+
+Each image in an Instagram carousel can now carry its own `caption`, shown instead of the post's
+own caption while that specific image is in view, falling back to the post's caption for any slide
+that doesn't have one set.
+
+- **`src/ui-core/ui-ig-carousel.jsx`**: `IGCarousel` gained an optional `onIndexChange(idx)`
+  callback (fires from a `useEffect` watching its existing internal `idx` state) — lets the parent
+  react to slide changes without needing to own/control the carousel's index itself.
+- **`src/ui-posts/ui-posts-instagram.jsx`**: `PostCard` tracks `carouselIdx` (must be declared
+  *before* `imgs`/`hasCarousel`/the caption-selection logic that reads it — a real "cannot access
+  before initialization" bug was hit and fixed here, see Verification below) and computes
+  `captionText = imgs[carouselIdx]?.caption?.trim() ? imgs[carouselIdx].caption : text`, used
+  everywhere the caption row previously used the raw `text` prop. Swiping resets `expanded` to
+  `false` (a long caption expanded on one slide shouldn't stay expanded, and thus unclamped, after
+  swiping to a different slide with a different caption).
+- **`src/admin/components-admin-media-instagram.jsx`**: `CarouselEditor` gained a "Caption for
+  image N" text field next to the existing focal-point cropper, writing `caption` onto the
+  selected image object. **No backend change needed** — confirmed `images` round-trips as an
+  opaque JSON array on both read and write (`mapPostRowToRaw`/`mapRawPostToRow` in
+  `utils-backend-supabase.js` just do `Array.isArray(row.images) ? row.images : []`, no
+  per-field reconstruction), so a new sub-field can't be silently stripped the way CLAUDE.md's
+  other "N places to update" footguns work.
+
+### New feature: Instagram repost button, tracked/analysable like like/comment/share
+
+Real Instagram now has a repost button between Comment and Share; the user wants the same button,
+tracked and analysable the same way as the existing engagement measures.
+
+- **UI** (`ui-posts-instagram.jsx`): new `RepostIcon` (a repeat/cycle glyph, turns `#00c853` green
+  when active — matches the retweet-style green convention other apps use for this), a `reposted`
+  toggle state, `toggleRepost` firing `onAction("repost"/"unrepost", {post_id})` exactly like
+  `toggleSave` does for Save. Positioned between the Comment and Share buttons in the actions row.
+- **Tracking is deliberately sticky (once-true), not a live toggle** — `utils-core.js`'s
+  `makeEmptyPostInteractionAggregate()`/`applyPostInteractionEvent()` gained a `reposted` field
+  with only a `case "repost": p.reposted = true;`, **no** `"unrepost"` case, matching how
+  `saved`/`shared`/`commented` already behave (the aggregate answers "did this happen at least
+  once," not "final on/off state" — only `reaction_type` is a true toggle, because it's a
+  type-selector, not a plain boolean). The raw event log still records "unrepost" when a
+  participant un-reposts (full fidelity), same as "unsave" already does for Save; it's just not
+  specially summarized. (Caught and reverted an earlier mistake here: an `"unsave"` case doesn't
+  currently exist either, and one was briefly and wrongly added as part of this work before being
+  removed — would have silently changed existing Save-tracking behavior no one asked to change.)
+- **CSV/analysis parity — added `_reposted`/`"reposted"` everywhere the equivalent `_saved` field
+  already appears, all IG-gated the same way**, since this codebase's "N places to update"
+  duplicated-field-list footgun applies here too:
+  `buildParticipantRow` (`utils-core.js`, the main per-post CSV columns),
+  `REMINDER_INTERACTION_FIELDS` (`utils-backend.js`, the curated columns for an *interactive*
+  post_reminder question), `IG_ONLY` + `parsePostMetricKey` + `normalizeRowsForCsv`'s `BOOL_SUFFIX`
+  regex + `isRelevantPostMetricForExport` (`components-admin-participants-feed.jsx`, the Feed
+  Participants engagement page), and `POST_METRIC_SUFFIXES_FOR_LABELS`
+  (`components-admin-surveys.jsx`, multi-feed CSV header labels). Deliberately **not** added to
+  `ENGAGEMENT_SERIES` (the Reacted/Commented/Shared % bar chart in
+  `components-admin-participants-feed.jsx`) — `_saved`, the closest existing IG-only precedent,
+  isn't in that chart either, so leaving Reposted out too matches the established convention of
+  keeping that specific chart to universal (all-app) metrics only.
+- Interactive post_reminder questions pick up repost tracking **for free, no extra wiring** —
+  confirmed `PostReminderCard`'s `handleInteractiveAction` (`ui-survey.jsx`) is fully generic, just
+  forwarding whatever `onAction(action, meta)` the real `PostCard` fires into the same
+  `applyPostInteractionEvent` reducer used everywhere else.
+
+### Non-interactive post reminders: show full text, no "more"/"less" at all, on every app — **uncommitted at end of session**
+
+Separate, later request: static (non-interactive) `post_reminder` questions should show the
+complete caption/review text always, on Facebook/Instagram/Amazon alike — no clamp, no "more," no
+"less." Interactive reminders and the real feed are unaffected (both should keep behaving exactly
+like the live feed, which is the whole point of "interactive").
+
+- New `alwaysExpandText` prop on `PostCard` in all three `ui-posts-*.jsx` files. Facebook/Instagram
+  (DOM-measurement-based clamp): forcing the internal `expanded` state permanently `true` means
+  the `clamp` CSS class never applies, so the clamp-detection effect never finds real overflow in
+  the first place — both "more" and "less" disappear as a natural consequence, no extra logic
+  needed. **Amazon needed one more line**: its clamp (`ReadMoreText`) is purely
+  character-count-based (`text.length > 520`), independent of `expanded` — forcing `expanded` true
+  alone would still have left "Read less" rendering, since `needsClamp` doesn't care about
+  `expanded`. Fixed by also forcing `needsClamp` to `false` when `alwaysExpanded` is set.
+- **`ui-survey.jsx`** (desktop) and **`ui-survey-mobile.jsx`** (mobile) — both `PostReminderCard`
+  variants now pass `alwaysExpandText={!interactive}` to the real `PostCard` they render,
+  alongside the existing `disabled={!interactive}`. Same near-duplicate-file footgun as the rest of
+  this reminder machinery — checked both from the start rather than fixing one and finding the
+  same gap reported for the other later.
+- **This round's five files were still uncommitted when the session ended** (`git status`:
+  `ui-survey.jsx`, `ui-survey-mobile.jsx`, `ui-posts-amazon.jsx`, `ui-posts-facebook.jsx`,
+  `ui-posts-instagram.jsx` all modified) — unlike every other change in this section, which `git
+  log`/`git rev-parse` confirmed already auto-committed and pushed to `origin/main` (`100b232 implement
+  new carousel function`, `777b276 add repost functionality`). If a future session finds these
+  still uncommitted, that's expected — nothing was lost, just not yet swept up by whatever this
+  session's auto-commit trigger is (see "Deployment" section's caveat that this depends on the
+  user's own GitHub Desktop app being open/attended).
+
+**Verified, all four rounds**: every touched file parses clean (`@babel/parser`). All functional
+behavior verified by rendering the real `PostCard`/`IGCarousel` components (not mocks) with
+fabricated post data through the actual dev server — confirmed live: arrow visibility flips
+correctly across first/middle/last slide; per-image captions swap correctly on navigation
+(including the no-caption-set fallback case) with zero console errors after fixing the
+initialization-order bug; the repost button renders in the correct position, toggles color/label,
+and a hand-built event stream through the real `buildParticipantRow` produced the expected
+`p1_reposted: 1` CSV column; static-reminder mode shows full text with zero "more"/"less" controls
+on all three apps while normal mode still clamps as before. **Not verified**: real click-through
+inside an actual survey preview/live feed — same standing limitation as everywhere else in this
+file (no admin login, no way to drive a real participant session end-to-end from here).

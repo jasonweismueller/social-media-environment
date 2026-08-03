@@ -37,7 +37,16 @@ function keyFor(pid, fid) {
 // wipe-on-change toggle, the feed rows themselves) — portaled into
 // AdminShell's Feeds slot instead of rendering in the main content column,
 // see AdminTreeSlotsContext in ./AdminShell for why.
-function FeedListContent({ feeds, feedsLoading, onCreateFeed, selectedFeedId, defaultFeedId, onSelectFeed }) {
+function FeedListContent({
+  feeds,
+  feedsLoading,
+  onCreateFeed,
+  selectedFeedId,
+  defaultFeedId,
+  onSelectFeed,
+  onSaveFeed,
+  isSaving,
+}) {
   return (
     <div>
       {feedsLoading && (
@@ -71,6 +80,11 @@ function FeedListContent({ feeds, feedsLoading, onCreateFeed, selectedFeedId, de
       )}
 
       <RoleGate min="editor">
+        {selectedFeedId && (
+          <Button size="sm" onClick={onSaveFeed} disabled={isSaving} style={{ width: "100%", marginTop: 10 }}>
+            {isSaving ? "Saving…" : "Save changes"}
+          </Button>
+        )}
         <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ width: "100%", marginTop: 6 }}>
           + New feed
         </Button>
@@ -107,7 +121,6 @@ export function AdminFeedsPanel({
   isSaving,
   posts,
   postNames,
-  showAllPosts,
   randomize,
   contentUnitLabel,
   contentUnitLabelPlural,
@@ -123,7 +136,6 @@ export function AdminFeedsPanel({
   onSetWipePolicy,
   onCopyParticipantLink,
   onSaveFeed,
-  onSetShowAllPosts,
   onSetRandomize,
   onRefreshPosts,
   onExportPostsJson,
@@ -171,6 +183,8 @@ export function AdminFeedsPanel({
             selectedFeedId={selectedFeedId}
             defaultFeedId={defaultFeedId}
             onSelectFeed={onSelectFeed}
+            onSaveFeed={onSaveFeed}
+            isSaving={isSaving}
           />,
           feedsSlot
         )}
@@ -208,40 +222,26 @@ export function AdminFeedsPanel({
 
             {activeFeedTab === "posts" && (
               <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <IconButton size="sm" onClick={onRefreshPosts} title={`Refresh ${contentUnitLabelPlural.toLowerCase()} from backend`}>
+                    🔄
+                  </IconButton>
                   <RoleGate min="editor">
-                    <Button size="sm" onClick={onSaveFeed} disabled={isSaving}>
-                      {isSaving ? "Saving…" : "Save"}
+                    <Button size="sm" variant="secondary" onClick={onOpenRandomPost} title={`Generate a synthetic ${contentUnitLabel.toLowerCase()}`}>
+                      🎲 Random {contentUnitLabel}
                     </Button>
-                  </RoleGate>
-                  <Button size="sm" variant="secondary" onClick={onRefreshPosts} title="Reload posts for this feed from backend">
-                    Refresh {contentUnitLabelPlural}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => onSetShowAllPosts((s) => !s)}
-                    title={showAllPosts ? "Show only the first 5 posts" : "Show all posts"}
-                  >
-                    {showAllPosts ? "Show first 5" : `Show all (${posts.length})`}
-                  </Button>
-                  <RoleGate min="editor">
-                    <Toggle label="Randomize order" checked={!!randomize} onChange={onSetRandomize} />
-                    <Button size="sm" onClick={onOpenRandomPost} title="Generate a synthetic post">
-                      + Random {contentUnitLabel}
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={onOpenNewPost}>
-                      + Add {contentUnitLabel}
-                    </Button>
-                    <Button
+                    <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
+                      ➕
+                    </IconButton>
+                    <IconButton
                       size="sm"
-                      variant="danger"
                       onClick={onClearFeed}
                       disabled={!posts.length}
-                      title="Delete all posts from this feed"
+                      title="Clear feed (delete all posts)"
+                      style={{ color: "var(--admin-danger-ink, #b91c1c)", marginLeft: "auto" }}
                     >
-                      Clear Feed
-                    </Button>
+                      🗑️
+                    </IconButton>
                   </RoleGate>
                 </div>
 
@@ -264,7 +264,7 @@ export function AdminFeedsPanel({
                         </tr>
                       </thead>
                       <tbody>
-                        {(showAllPosts ? posts : posts.slice(0, 5)).map((p) => (
+                        {posts.map((p) => (
                           <tr key={p.id}>
                             <Td>
                               <div className="avatar">
@@ -272,7 +272,7 @@ export function AdminFeedsPanel({
                               </div>
                             </Td>
                             <Td style={{ fontFamily: "monospace" }}>
-                              {postNames[p.id] || <span className="subtle">—</span>}
+                              {(p.postName || p.name || postNames[p.id] || "").trim() || <span className="subtle">—</span>}
                             </Td>
                             <Td style={{ fontWeight: 600 }}>
                               {p.author || <span className="subtle">—</span>}
@@ -282,7 +282,7 @@ export function AdminFeedsPanel({
                               {p.text || <span className="subtle">—</span>}
                             </Td>
                             <Td>
-                              <span className="subtle">{p.time ? p.time : "—"}</span>
+                              {p.time ? p.time : <span className="subtle">—</span>}
                             </Td>
                             <Td>
                               {p.videoMode !== "none" ? "video" : p.imageMode !== "none" ? "image" : <span className="subtle">none</span>}
@@ -367,6 +367,14 @@ export function AdminFeedsPanel({
                     )}
                   </div>
                 </Card>
+
+                <RoleGate min="editor">
+                  <Card title="Post order" subtitle="Shuffles the order posts are shown in, this session">
+                    <div style={{ maxWidth: 320 }}>
+                      <Toggle label="Randomize order" checked={!!randomize} onChange={onSetRandomize} />
+                    </div>
+                  </Card>
+                </RoleGate>
 
                 <RoleGate min="editor">
                   <Card title="Randomize" subtitle="Per-feed participant-facing randomization flags">

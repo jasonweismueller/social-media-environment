@@ -496,7 +496,6 @@ export function AdminDashboard({
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAllPosts, setShowAllPosts] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
   const [postNames, setPostNames] = useState({});
@@ -1470,7 +1469,6 @@ export function AdminDashboard({
                   isSaving={isSaving}
                   posts={posts}
                   postNames={postNames}
-                  showAllPosts={showAllPosts}
                   randomize={randomize}
                   contentUnitLabel={CONTENT_UNIT_LABEL}
                   contentUnitLabelPlural={CONTENT_UNIT_LABEL_PLURAL}
@@ -1486,7 +1484,6 @@ export function AdminDashboard({
                   onSetWipePolicy={handleSetWipePolicy}
                   onCopyParticipantLink={handleCopyParticipantLink}
                   onSaveFeed={handleSaveFeed}
-                  onSetShowAllPosts={setShowAllPosts}
                   onSetRandomize={setRandomize}
                   onRefreshPosts={handleRefreshPosts}
                   onExportPostsJson={handleExportPostsJson}
