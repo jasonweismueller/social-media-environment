@@ -342,14 +342,24 @@ function CarouselEditor({ images, setImages, feedId, isNew }) {
 
       {/* cropper for selected */}
       {current?.url ? (
-        <ImageCropper
-          src={current.url}
-          alt={current.alt || ""}
-          focalX={toNum(current.focalX, 50)}
-          focalY={toNum(current.focalY, 50)}
-          zoom={toNum(current.zoom, 1)}
-          onChange={({ focalX, focalY, zoom }) => replaceAt(safeSel, { ...current, focalX, focalY, zoom })}
-        />
+        <>
+          <ImageCropper
+            src={current.url}
+            alt={current.alt || ""}
+            focalX={toNum(current.focalX, 50)}
+            focalY={toNum(current.focalY, 50)}
+            zoom={toNum(current.zoom, 1)}
+            onChange={({ focalX, focalY, zoom }) => replaceAt(safeSel, { ...current, focalX, focalY, zoom })}
+          />
+          <Field label={`Caption for image ${safeSel + 1}`} hint="Optional — shown instead of the post's own caption while this image is in view. Leave blank to use the post caption.">
+            <input
+              className="input"
+              value={current.caption || ""}
+              onChange={(e) => replaceAt(safeSel, { ...current, caption: e.target.value })}
+              placeholder="Caption for this image…"
+            />
+          </Field>
+        </>
       ) : (
         <div className="subtle">Select a thumbnail to edit focal point.</div>
       )}

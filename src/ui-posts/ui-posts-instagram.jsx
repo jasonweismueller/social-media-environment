@@ -433,6 +433,18 @@ const zoom = displayImageObj?.zoom ?? 1;
   const imgs = Array.isArray(images) ? images : [];
   const hasCarousel = imageMode === "multi" && imgs.length > 1;
   const isMobile = useIsMobile(700);
+
+  // Which carousel slide is currently shown — drives per-image captions
+  // (each carousel image can carry its own `caption`, set in the admin
+  // editor's CarouselEditor). Declared here (before first use below) rather
+  // than alongside `expanded` further down, which is textually after this.
+  const [carouselIdx, setCarouselIdx] = useState(0);
+
+  // Per-image carousel captions: if the currently-shown slide has its own
+  // caption set, show that instead of the post's own `text` — falls back to
+  // `text` for slides that don't have one, and for non-carousel posts.
+  const activeSlideCaption = hasCarousel ? imgs[carouselIdx]?.caption : null;
+  const captionText = activeSlideCaption?.trim() ? activeSlideCaption : text;
 // ---- Time randomization (label) ----
 const timeLabel = useMemo(() => {
   const shouldShow = showTime === false ? false : true;
@@ -490,6 +502,13 @@ const timeLabel = useMemo(() => {
 
   // caption expand state
   const [expanded, setExpanded] = useState(false);
+
+  // Collapse any expanded caption on carousel slide change, so a long
+  // caption expanded on one slide doesn't stay expanded (and thus unclamped)
+  // when swiped to a different slide with a different caption.
+  useEffect(() => {
+    setExpanded(false);
+  }, [carouselIdx]);
 
   const [menuOpenMobile, setMenuOpenMobile] = useState(false);
   const [menuOpenDesktop, setMenuOpenDesktop] = useState(false);
@@ -903,7 +922,7 @@ const displayBio = useMemo(() => {
   }}
 />
             ) : hasCarousel ? (
-              <IGCarousel items={imgs} />
+              <IGCarousel items={imgs} onIndexChange={setCarouselIdx} />
             ) : imageMode === "multi" && imgs.length === 1 ? (
               <img
                 src={imgs[0].url}
@@ -1095,8 +1114,10 @@ const displayBio = useMemo(() => {
   </div>
 )}
 
-    {/* Caption with IG PostText (username floats for first line) */}
-{text?.trim() && (
+    {/* Caption with IG PostText (username floats for first line) —
+        `captionText` is the active carousel slide's own caption when set,
+        falling back to the post's own `text` otherwise. */}
+{captionText?.trim() && (
   <div className="ig-caption-row">
     <PostText
   prefix={
@@ -1105,7 +1126,7 @@ const displayBio = useMemo(() => {
       {post.badge && VerifiedBadge}
     </span>
   }
-  text={text}
+  text={captionText}
   expanded={expanded}
 onExpand={() => {
   setExpanded(true);

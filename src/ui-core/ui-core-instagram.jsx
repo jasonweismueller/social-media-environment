@@ -180,10 +180,9 @@ export function SkeletonFeed() {
 }
 
 /* --------------------------- Caption clamping ------------------------------ */
-export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onAction, prefix, postId }) {
+export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, postId }) {
   const pRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
-  const [wasClamped, setWasClamped] = React.useState(false);
   const sentClampRef = React.useRef(false);
 
   function linkifyMentions(str = "") {
@@ -201,7 +200,6 @@ export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onActi
       setNeedsClamp(clamped);
       if (clamped && !sentClampRef.current) {
         sentClampRef.current = true;
-        setWasClamped(true);
         onClamp?.();
       }
     };
@@ -279,19 +277,6 @@ export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onActi
             more
           </button>
         </span>
-      )}
-      {expanded && wasClamped && (
-        <button
-          type="button"
-          className="see-more see-less"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onCollapse?.();
-          }}
-        >
-          less
-        </button>
       )}
     </span>
   );

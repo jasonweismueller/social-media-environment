@@ -1,10 +1,17 @@
 // components-ui-ig-carousel.jsx
 import React from "react";
 
-export function IGCarousel({ items = [] }) {
+export function IGCarousel({ items = [], onIndexChange }) {
   const [idx, setIdx] = React.useState(0);
   const wrap = React.useRef(null);
   const hasMany = items.length > 1;
+
+  // Lets callers (e.g. per-image captions) react to slide changes without
+  // needing to own/control the slide index themselves.
+  React.useEffect(() => {
+    onIndexChange?.(idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx]);
 
   // Swipe (with axis-lock)
   React.useEffect(() => {
@@ -133,8 +140,16 @@ export function IGCarousel({ items = [] }) {
       {idx + 1} / {items.length}
     </div>
 
-    <button className="igcar-arrow left"  onClick={() => setIdx(i => Math.max(0, i-1))} aria-label="Previous" />
-    <button className="igcar-arrow right" onClick={() => setIdx(i => Math.min(items.length-1, i+1))} aria-label="Next" />
+    <button className="igcar-arrow left" onClick={() => setIdx(i => Math.max(0, i-1))} aria-label="Previous">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+    <button className="igcar-arrow right" onClick={() => setIdx(i => Math.min(items.length-1, i+1))} aria-label="Next">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
     <div className="igcar-dots">
       {items.map((_, i) => (
         <button key={i} className={`dot ${i===idx?"on":""}`} onClick={() => setIdx(i)} aria-label={`Slide ${i+1}`} />

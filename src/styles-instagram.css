@@ -714,10 +714,16 @@ body.admin-mode .ig-topbar { display:none !important; }
 .igcar-track{ display:flex; width:100%; height:100%; transition: transform .22s ease-in-out; will-change: transform; }
 .igcar-slide{ flex:0 0 100%; height:100%; position:relative; }
 .igcar-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; -webkit-user-drag: none; user-drag: none; }
-.igcar-arrow{ position:absolute; top:50%; transform: translateY(-50%); width:32px; height:32px; border-radius:999px; border:none; background:rgba(0,0,0,.45); cursor:pointer; z-index:3; }
+.igcar-arrow{
+  position:absolute; top:50%; transform: translateY(-50%);
+  width:32px; height:32px; border-radius:999px; border:none;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(255,255,255,.9); box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  color:#4b4b4b; cursor:pointer; z-index:3;
+}
 .igcar-arrow.left{ left:8px; }
 .igcar-arrow.right{ right:8px; }
-.igcar-arrow:hover{ background:rgba(0,0,0,.65); }
+.igcar-arrow:hover{ background:#fff; }
 @media (max-width:700px){ .igcar-arrow{ display:none !important; } }
 .igcar-dots{ position:absolute; left:0; right:0; bottom:8px; display:flex; gap:6px; justify-content:center; z-index:3; }
 .igcar-dots .dot{ width:6px; height:6px; border-radius:999px; border:0; padding:0; background:rgba(255,255,255,.5); cursor:pointer; }
