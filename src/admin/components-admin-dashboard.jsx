@@ -955,6 +955,35 @@ export function AdminDashboard({
     });
   };
 
+  // Duplicates the currently-selected feed's posts into a new feed, the same
+  // way real studies build Control/Treatment variants from a shared template
+  // (see the posts.id migration notes — sharing bare post ids across feeds
+  // is an intentional, supported pattern, not an edge case, so the copied
+  // posts deliberately keep their original ids). Like `createNewFeed`, the
+  // new feed is pure local editor state until "Save" is clicked — no
+  // separate backend call needed.
+  const copyFeed = () => {
+    if (!feedId) return;
+    const id = prompt("New feed ID (letters/numbers/underscores):", `${feedId}_copy`);
+    if (!id) return;
+    if (feeds.some((f) => String(f.feed_id) === String(id))) {
+      alert("A feed with that ID already exists.");
+      return;
+    }
+    const name =
+      prompt("Optional feed name (shown in admin):", `${feedName || feedId} (Copy)`) || id;
+
+    const copiedPosts = JSON.parse(JSON.stringify(posts));
+    const copiedPostNames = { ...postNames };
+
+    setFeedId(id);
+    setFeedName(name);
+    setPosts(copiedPosts);
+    setPostNames(copiedPostNames);
+    setFeeds((prev) => [{ feed_id: id, name, checksum: "", updated_at: "" }, ...prev]);
+    writePostNames(projectId, id, copiedPostNames);
+  };
+
   const openNew = () => {
     setIsNew(true);
     const avatarRandomKind = "any";
@@ -1447,6 +1476,7 @@ export function AdminDashboard({
                   contentUnitLabelPlural={CONTENT_UNIT_LABEL_PLURAL}
                   onSelectFeed={selectFeed}
                   onCreateFeed={createNewFeed}
+                  onCopyFeed={copyFeed}
                   onRefreshFeeds={loadFeeds}
                   onLoadStats={loadStatsFor}
                   onLoadFlags={loadFlagsFor}

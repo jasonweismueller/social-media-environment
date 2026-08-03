@@ -113,6 +113,7 @@ export function AdminFeedsPanel({
   contentUnitLabelPlural,
   onSelectFeed,
   onCreateFeed,
+  onCopyFeed,
   onRefreshFeeds,
   onLoadStats,
   onLoadFlags,
@@ -284,7 +285,7 @@ export function AdminFeedsPanel({
                               <span className="subtle">{p.time ? p.time : "—"}</span>
                             </Td>
                             <Td>
-                              {p.videoMode !== "none" ? "🎬 video" : p.imageMode !== "none" ? "🖼️ image" : <span className="subtle">none</span>}
+                              {p.videoMode !== "none" ? "video" : p.imageMode !== "none" ? "image" : <span className="subtle">none</span>}
                             </Td>
                             <Td>
                               <div style={{ display: "flex", gap: 4 }}>
@@ -331,9 +332,12 @@ export function AdminFeedsPanel({
                       <span style={{ fontFamily: "monospace" }}>{selectedFeedId}</span>
                     </div>
                     <RoleGate min="editor">
-                      <div>
+                      <div style={{ display: "flex", gap: 8 }}>
                         <Button size="sm" variant="secondary" onClick={() => onSetDefaultFeed(selectedFeedId)} disabled={isDefault}>
                           {isDefault ? "Already default" : "Make default"}
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={onCopyFeed} title="Duplicate this feed's posts into a new feed">
+                          Copy feed
                         </Button>
                       </div>
                     </RoleGate>
@@ -391,7 +395,7 @@ export function AdminFeedsPanel({
                   <Card title="Import / export" subtitle="Back up or move this feed's posts">
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                       <Button size="sm" variant="secondary" onClick={onExportPostsJson} title="Export current posts as JSON">
-                        Export JSON
+                        Export Feed
                       </Button>
                       <Button
                         size="sm"
@@ -400,10 +404,10 @@ export function AdminFeedsPanel({
                         disabled={!selectedFeedId || !posts?.length}
                         title="Export this feed as a printable PDF using the rendered post layout"
                       >
-                        Export Feed PDF
+                        Export PDF
                       </Button>
                       <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
-                        Import JSON
+                        Import Feed
                         <input
                           type="file"
                           accept="application/json"

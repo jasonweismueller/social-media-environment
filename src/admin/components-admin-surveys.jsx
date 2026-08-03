@@ -2384,10 +2384,10 @@ export function AdminSurveysPanel({
               right={
                 <div style={{ display: "flex", gap: 6 }}>
                   <Button size="sm" variant="secondary" onClick={() => importFileRef.current?.click()}>
-                    Import
+                    Import Survey
                   </Button>
                   <Button size="sm" variant="secondary" onClick={handleExportSurvey}>
-                    Export JSON
+                    Export Survey
                   </Button>
                   <Button size="sm" variant="secondary" onClick={handleCopySurvey}>
                     Copy
