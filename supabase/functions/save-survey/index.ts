@@ -24,7 +24,12 @@
 // the writes run against the same connection rather than a second
 // round-trip through PostgREST.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pinned to an exact version (not the floating @2) because esm.sh's
+// currently-resolved latest 2.x (2.112.0) has a broken denonext build for
+// one of its own sub-dependencies (@supabase/auth-js) as of this deploy —
+// confirmed via direct curl, unrelated to anything in this function. Safe
+// to bump back to a floating range once that's fixed upstream.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.111.0";
 import { corsHeaders, handlePreflight, jsonResponse } from "../_shared/cors.ts";
 import { frontendSurveyToBackend, normalizeSurvey } from "../_shared/survey-sanitize.ts";
 
@@ -91,6 +96,20 @@ Deno.serve(async (req: Request) => {
   const projectId = String(body?.project_id || normalized.linked_project_id || "").trim() || null;
   const app = String(body?.app || "fb").trim();
 
+  // experiment_groups moved to its own table (migration
+  // 20260801000015_experiment_groups_and_custom_measure_groups_tables.sql) —
+  // it's the sole source of truth now (assign_experiment_group reads it
+  // directly), so it's dropped from the stored jsonb rather than kept as a
+  // second, driftable copy. supabaseLoadSurveyDefinition merges it back onto
+  // the returned object from the table on every read, so nothing downstream
+  // of a load ever sees the gap.
+  const experimentGroups: Array<{ id: string; name: string; feed_sequence_ids: string[] }> = Array.isArray(
+    definition.experiment_groups
+  )
+    ? definition.experiment_groups
+    : [];
+  const { experiment_groups: _droppedExperimentGroups, ...storedDefinition } = definition;
+
   const { data: savedSurvey, error: saveErr } = await admin
     .from("surveys")
     .upsert(
@@ -102,7 +121,7 @@ Deno.serve(async (req: Request) => {
         version: normalized.version,
         completion_mode: normalized.completion_mode,
         completion_redirect_url: normalized.completion_redirect_url,
-        definition,
+        definition: storedDefinition,
       },
       { onConflict: "id" }
     )
@@ -111,6 +130,29 @@ Deno.serve(async (req: Request) => {
 
   if (saveErr) {
     return jsonResponse({ ok: false, err: saveErr.message }, { status: 500 });
+  }
+
+  // Sync experiment_groups the same way feed_surveys is synced just below
+  // (delete + reinsert — this function isn't called concurrently for the
+  // same survey in practice).
+  const { error: ungroupErr } = await admin.from("experiment_groups").delete().eq("survey_id", normalized.survey_id);
+  if (ungroupErr) {
+    return jsonResponse({ ok: false, err: ungroupErr.message }, { status: 500 });
+  }
+
+  if (experimentGroups.length) {
+    const { error: groupErr } = await admin.from("experiment_groups").insert(
+      experimentGroups.map((group, index) => ({
+        survey_id: normalized.survey_id,
+        id: group.id,
+        name: group.name,
+        feed_sequence_ids: Array.isArray(group.feed_sequence_ids) ? group.feed_sequence_ids : [],
+        sort_order: index,
+      }))
+    );
+    if (groupErr) {
+      return jsonResponse({ ok: false, err: groupErr.message }, { status: 500 });
+    }
   }
 
   // Re-derive feed_surveys links from feed_sequence_ids, matching

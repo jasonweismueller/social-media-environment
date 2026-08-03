@@ -54,6 +54,8 @@ import {
   supabaseLinkSurveyToFeeds,
   supabaseSetFeedFlags,
   supabaseFetchParticipantsStats,
+  supabaseListCustomMeasureGroups,
+  supabaseSaveCustomMeasureGroups,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -3433,6 +3435,44 @@ export async function resetExperimentGroupAssignments({
       return { ok: false, err: data?.err || `HTTP ${res.status}` };
     }
 
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+/**
+ * Custom measure groups (Survey Participants analysis hub's cross-cutting
+ * tag-pattern groups, e.g. "every BL item across all 10 stimuli" — CLAUDE.md
+ * "Survey Participants analysis hub: correctness fixes"). Supabase-only —
+ * this feature was built entirely after the GAS->Supabase cutover and has no
+ * GAS counterpart, so the fallback branch is a plain no-op rather than an
+ * admin_token-based GAS call that was never wired up anywhere.
+ */
+export async function loadCustomMeasureGroups({ surveyId, projectId = getProjectId() } = {}) {
+  if (!hasAdminSession()) return [];
+  const survey_id = String(surveyId || "").trim();
+  if (!survey_id) return [];
+
+  if (!isSupabaseBackend()) return [];
+
+  try {
+    return await supabaseListCustomMeasureGroups({ surveyId: survey_id });
+  } catch (e) {
+    console.warn("loadCustomMeasureGroups failed:", e);
+    return [];
+  }
+}
+
+export async function saveCustomMeasureGroups(surveyId, groups, { projectId = getProjectId() } = {}) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  const survey_id = String(surveyId || "").trim();
+  if (!survey_id) return { ok: false, err: "survey_id required" };
+
+  if (!isSupabaseBackend()) return { ok: false, err: "custom measure groups require the Supabase backend" };
+
+  try {
+    await supabaseSaveCustomMeasureGroups({ surveyId: survey_id, groups: Array.isArray(groups) ? groups : [] });
     return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };

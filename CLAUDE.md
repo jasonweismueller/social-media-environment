@@ -1885,6 +1885,119 @@ no-op versus the pre-existing, already-exercised code path), and no full visual 
 real posts/content was done (same admin-login limitation as elsewhere in this file) — only the
 routing decision itself (which feed gets chosen) was verified, not a full participant walkthrough.
 
+## Supabase restructuring: experiment_groups + custom_measure_groups pulled out of jsonb (2026-08-03)
+
+Prompted by a direct question ("does it make sense to disentangle survey def from the database
+into real tables?"). Recommendation given and followed: don't normalize the survey definition
+tree itself (pages/page_blocks/questions — a fundamentally document-shaped, frequently-reshaped
+editable tree; splitting it into tables would trade "add a jsonb key" for schema migrations, and
+wouldn't fix the "N places to update" duplicated-reconciliation-logic footgun documented
+elsewhere in this file, just move it into SQL joins). Two things *were* genuinely relational
+already and got pulled out: **experiment group definitions** (already had a real neighbor table,
+`experiment_assignments`) and **custom measure groups** (a real gap — localStorage-only,
+never synced across browsers/admins, per the "Survey Participants analysis hub" entry above).
+
+**Before touching anything**: confirmed two real, currently-live surveys already have
+experiment_groups with real participant assignments — "Prebunk Paper Study 1 - Main" (32
+assignments) and "Prebunk Paper Study 2" (2 assignments) — and confirmed with the user that
+neither was actively collecting at the time, same "ask before touching live-assignment data"
+precedent as the posts.id incident above.
+
+**New migration `20260801000015_experiment_groups_and_custom_measure_groups_tables.sql`**:
+- `experiment_groups` table (`survey_id` FK, `id`, `name`, `feed_sequence_ids text[]`,
+  `sort_order`) — backfilled from every existing survey's
+  `definition->'experiment_groups'` in the same migration, immediately before
+  `assign_experiment_group` is switched over to read from the new table (no window where a
+  live survey's groups exist in one place but not the other). RLS mirrors `feed_surveys`
+  exactly: public select (participants read it indirectly via `supabaseLoadSurveyDefinition`,
+  the same anon-key client that already reads `surveys.definition`), editor/owner write.
+- `custom_measure_groups` table (`id` PK, `survey_id` FK, `name`, `pattern`, `item_keys text[]`,
+  `sort_order`) — greenfield, no backfill possible (the data only ever existed in individual
+  admins' browser localStorage). Admin-only RLS (no public select — nothing participant-facing
+  reads it).
+- `assign_experiment_group` RPC: same round-robin/locking logic as
+  `20260801000008_experiment_assignments.sql`, just reads `array_agg(id order by sort_order,
+  id) from experiment_groups` instead of indexing into a jsonb array. `reset_experiment_group_
+  assignments` untouched (only ever touched assignment/counter rows, never group definitions).
+
+**Deliberate design choice — the in-memory JS/TS object shape is unchanged everywhere**:
+`survey.experiment_groups` is still a plain array on the survey object in the admin editor,
+`App-facebook.jsx`/`App-amazon.jsx` routing, and `utils-survey.js`/`survey-sanitize.ts`
+validation — none of those files were touched. Only the persistence-layer adapter changed:
+`supabaseLoadSurveyDefinition` (`utils-backend-supabase.js`) now fetches `experiment_groups`
+rows alongside the `surveys` row and merges them onto the returned object (ordered by
+`sort_order`), and `save-survey/index.ts` now deletes+reinserts `experiment_groups` rows
+(same delete+reinsert idiom `feed_surveys` sync already uses just below it in the same
+function) and strips the key from the stored `definition` jsonb — the table is the sole
+source of truth now, no second driftable copy. This kept the blast radius to exactly two
+files plus the migration, instead of touching the editor UI or routing logic at all.
+
+**Custom measure groups wired in**: `utils-backend-supabase.js` gained
+`supabaseListCustomMeasureGroups`/`supabaseSaveCustomMeasureGroups` (same whole-array
+delete+reinsert idiom), `utils-backend.js` gained `loadCustomMeasureGroups`/
+`saveCustomMeasureGroups` wrappers (Supabase-only — this feature postdates the GAS cutover
+and has no GAS counterpart, so the non-Supabase branch is a plain no-op, not a dead
+`admin_token` call). `components-admin-participants-survey.jsx`'s `CustomGroupsSection`
+now persists through these instead of `localStorage.setItem` directly; the survey-load effect
+does a **one-time migration**: if the backend has zero groups for a survey but this browser's
+localStorage still has some (pre-existing data from before this table existed), they're
+pushed up to the backend automatically on next load rather than silently orphaned. A small
+inline error banner (`saveError` state in `CustomGroupsSection`) now surfaces a failed save,
+where before a `try{}catch{}`-wrapped `localStorage.setItem` could only ever silently no-op.
+
+**Edge Function deploy hit an unrelated, real esm.sh CDN issue**: `supabase functions deploy
+save-survey` failed twice with `Module not found ".../@supabase/auth-js@2.112.0/denonext/
+auth-js.mjs"` — confirmed via direct `curl` that esm.sh's currently-resolved `@supabase/
+supabase-js@2` (2.112.0) has a broken `denonext`-target build for that exact pinned
+sub-dependency version, unrelated to anything in this change (the same floating `@2` import
+is used by the already-deployed `admin-users` function). Confirmed `2.111.0` resolves cleanly
+via curl and pinned `save-survey`'s import to that exact version rather than the floating
+range, with a comment noting it's safe to float again once esm.sh's CDN catches up. Deploy
+succeeded after that; `admin-users` was left untouched since it wasn't being redeployed here,
+but its next deploy could hit the same wall until esm.sh resolves it.
+
+**Verified end-to-end**, all read-only or on disposable/cleaned-up data:
+1. Backfill correctness: row counts *and* full content (name, feed_sequence_ids) compared
+   between the jsonb source and the new table for all 18 real groups across the 3 real
+   surveys with groups — zero mismatches.
+2. `assign_experiment_group` RPC against a disposable throwaway survey (not the real Prebunk
+   surveys): round-robin gA→gB→gA across 3 sessions, retry for an already-assigned session
+   correctly returned the cached group without incrementing the counter or inserting a second
+   row. Cleaned up, zero rows left.
+3. Read-merge path through the **real running app** (not hand-rolled SQL): dynamic-imported
+   the live `utils-backend.js` in the browser console (participant-facing `getSurveyFromBackend`,
+   no admin login involved — this path is public/anon by design) against the real "Prebunk
+   Paper Study 1 - Main" survey, confirmed all 6 real groups round-trip correctly from the new
+   table through the app's own code.
+4. `save-survey`'s sync logic (delete+reinsert + definition-stripping) and
+   `supabaseSaveCustomMeasureGroups`' identical idiom: the Edge Function itself couldn't be
+   invoked live (needs a real owner JWT; login is off-limits per this file's standing rule) —
+   instead directly replicated its exact operation sequence via `supabase db query --linked`
+   against a disposable survey, including a simulated "second save" that renamed/added/removed
+   groups, confirming the resync (not just the initial insert) works, and confirmed
+   `definition ? 'experiment_groups'` is `false` after a simulated save. Re-loaded the same
+   disposable survey through the real app's `getSurveyFromBackend` afterward and got an exact
+   match to what the SQL simulation produced, then called the real `assignExperimentGroup`
+   through the real app against it — correctly assigned the two post-resync groups
+   round-robin. Cleaned up, zero rows left (`surveys`/`experiment_groups`/
+   `custom_measure_groups`/`experiment_assignments`/`experiment_group_counters`, all scoped to
+   a `zzclaudetest_` prefix).
+5. Re-confirmed after all of the above that the two real live surveys' group counts (6/6) and
+   real assignment counts (32, 2) are byte-for-byte unchanged from before this work started.
+
+**Not verified**: an actual admin-UI click-through of `save-survey` (editing/saving a real
+survey's experiment groups or adding a custom measure group through the browser) — same
+admin-login limitation as elsewhere in this file. The Edge Function's *logic* was verified by
+direct SQL replication (point 4 above) and it type-checks (`deno check`) and deploys cleanly;
+what's unverified is specifically "does clicking Save in the real browser, with a real JWT,
+produce the same result" — worth a real click-through next time there's admin access.
+
+**`.claude/launch.json` recreated locally for this session's dev-server verification** (it was
+deleted from the repo in a past session — see the Projects→Platform→Dashboard flow section's
+pointer above). Left untracked/uncommitted on purpose per that earlier note ("recreate locally,
+don't recommit without asking") — flagging here in case this session's auto-commit sweeps it up
+anyway; delete it again or ask before keeping it tracked.
+
 ## One-off incident: CLAUDE.md itself got deleted mid-session (2026-08-01)
 
 During the admin dashboard redesign work, this file was found deleted from the working directory

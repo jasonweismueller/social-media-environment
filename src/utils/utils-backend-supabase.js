@@ -304,21 +304,38 @@ export async function supabaseListSurveys({ projectId }) {
 
 // `surveys.definition` is already the exact raw shape loadSurveyFromBackend
 // has always returned (see save-survey/index.ts's frontendSurveyToBackend —
-// it writes survey_id/name/status/pages/page_blocks/experiment_groups/etc
-// as top-level keys of that same jsonb blob), so this is a near-passthrough
-// rather than a field-by-field remap like posts needed.
+// it writes survey_id/name/status/pages/page_blocks/etc as top-level keys of
+// that same jsonb blob), so this is a near-passthrough rather than a
+// field-by-field remap like posts needed — except experiment_groups, which
+// migration 20260801000015_experiment_groups_and_custom_measure_groups_tables.sql
+// moved into its own table (the sole source of truth save-survey and
+// assign_experiment_group both read/write now); merged back onto the
+// returned object here so every existing consumer of survey.experiment_groups
+// keeps working completely unchanged.
 export async function supabaseLoadSurveyDefinition({ surveyId }) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("surveys")
-    .select("id, definition")
-    .eq("id", surveyId)
-    .maybeSingle();
+  const [{ data, error }, { data: groupRows, error: groupErr }] = await Promise.all([
+    supabase.from("surveys").select("id, definition").eq("id", surveyId).maybeSingle(),
+    supabase
+      .from("experiment_groups")
+      .select("id, name, feed_sequence_ids")
+      .eq("survey_id", surveyId)
+      .order("sort_order", { ascending: true }),
+  ]);
 
   if (error) throw new Error(error.message);
+  if (groupErr) throw new Error(groupErr.message);
   if (!data) return null;
 
-  return { ...(data.definition || {}), survey_id: data.definition?.survey_id || data.id };
+  return {
+    ...(data.definition || {}),
+    survey_id: data.definition?.survey_id || data.id,
+    experiment_groups: (groupRows || []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      feed_sequence_ids: Array.isArray(row.feed_sequence_ids) ? row.feed_sequence_ids : [],
+    })),
+  };
 }
 
 // Replaces getLinkedFeedIdsForSurveyFromBackend's N-requests-per-feed GAS
@@ -842,6 +859,59 @@ export async function supabaseGetExperimentGroupCounts({ surveyId }) {
     total += 1;
   }
   return { counts, total };
+}
+
+// Custom measure groups (Survey Participants analysis hub, "custom
+// tag-based measure groups" — CLAUDE.md). Previously localStorage-only, per
+// browser, never synced across admins/machines — a real gap closed by
+// migration 20260801000015_experiment_groups_and_custom_measure_groups_tables.sql.
+// Admin-only (RLS has no public-select policy on this table, unlike
+// experiment_groups — nothing participant-facing ever reads it).
+export async function supabaseListCustomMeasureGroups({ surveyId }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("custom_measure_groups")
+    .select("id, name, pattern, item_keys")
+    .eq("survey_id", surveyId)
+    .order("sort_order", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    pattern: row.pattern || "",
+    itemKeys: Array.isArray(row.item_keys) ? row.item_keys : [],
+  }));
+}
+
+// Whole-array delete + reinsert, same lightweight-sync idiom as
+// feed_surveys/experiment_groups above — the admin analysis hub always
+// persists the full group list at once (add/edit/delete all go through the
+// same setGroups(next) call), so there's no concurrent-editor case to diff
+// against.
+export async function supabaseSaveCustomMeasureGroups({ surveyId, groups }) {
+  const supabase = getSupabaseClient();
+  const safeGroups = Array.isArray(groups) ? groups : [];
+
+  const { error: deleteErr } = await supabase.from("custom_measure_groups").delete().eq("survey_id", surveyId);
+  if (deleteErr) throw new Error(deleteErr.message);
+
+  if (safeGroups.length) {
+    const { error: insertErr } = await supabase.from("custom_measure_groups").insert(
+      safeGroups.map((group, index) => ({
+        id: group.id,
+        survey_id: surveyId,
+        name: group.name || "",
+        pattern: group.pattern || "",
+        item_keys: Array.isArray(group.itemKeys) ? group.itemKeys : [],
+        sort_order: index,
+      }))
+    );
+    if (insertErr) throw new Error(insertErr.message);
+  }
+
+  return true;
 }
 
 /* ===================== Participant submission (writes) ====================

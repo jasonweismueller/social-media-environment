@@ -28,6 +28,8 @@ import {
   findItemsMatchingTagPattern,
   buildCustomGroupComposite,
   summarizeComposite,
+  loadCustomMeasureGroups,
+  saveCustomMeasureGroups,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Button, Badge } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
@@ -96,7 +98,14 @@ const LAST_SURVEY_KEY = (projectId) => `admin_last_analysis_survey_id::${APP || 
 const CUSTOM_GROUPS_KEY = (projectId, surveyId) =>
   `admin_custom_measure_groups::${APP || "app"}::${projectId || "global"}::${surveyId}`;
 
-function loadCustomGroups(projectId, surveyId) {
+// Custom measure groups now live in Supabase (custom_measure_groups table —
+// CLAUDE.md "Survey Participants analysis hub" follow-up) so they sync
+// across browsers/admins. This localStorage reader is kept only as a
+// one-time migration source: any groups saved locally back when this
+// feature was localStorage-only get pushed up to the backend automatically
+// the first time this survey's analysis is opened with zero backend groups
+// (see the surveyId effect below) — never used for anything else.
+function loadLegacyLocalCustomGroups(projectId, surveyId) {
   if (!surveyId) return [];
   try {
     const raw = localStorage.getItem(CUSTOM_GROUPS_KEY(projectId, surveyId));
@@ -105,13 +114,6 @@ function loadCustomGroups(projectId, surveyId) {
   } catch {
     return [];
   }
-}
-
-function saveCustomGroups(projectId, surveyId, groups) {
-  if (!surveyId) return;
-  try {
-    localStorage.setItem(CUSTOM_GROUPS_KEY(projectId, surveyId), JSON.stringify(groups || []));
-  } catch {}
 }
 
 function makeGroupId() {
@@ -509,6 +511,7 @@ function GroupEditor({ dataset, initial, onSave, onCancel }) {
 
 function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }) {
   const [editorMode, setEditorMode] = useState(null); // null | "new" | groupId being edited
+  const [saveError, setSaveError] = useState("");
 
   const groupComposites = useMemo(
     () => groups.map((g) => ({ group: g, composite: buildCustomGroupComposite(g, dataset) })),
@@ -517,7 +520,10 @@ function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }
 
   const persist = (next) => {
     setGroups(next);
-    saveCustomGroups(projectId, surveyId, next);
+    setSaveError("");
+    saveCustomMeasureGroups(surveyId, next, { projectId }).then((res) => {
+      if (!res.ok) setSaveError(res.err || "Failed to save custom groups");
+    });
   };
 
   const handleSave = (groupDef) => {
@@ -548,6 +554,12 @@ function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }
         )
       }
     >
+      {saveError && (
+        <div style={{ fontSize: 12.5, color: "#b91c1c", marginBottom: 10 }}>
+          Failed to save: {saveError}
+        </div>
+      )}
+
       {editorMode === "new" && (
         <GroupEditor dataset={dataset} onSave={handleSave} onCancel={() => setEditorMode(null)} />
       )}
@@ -881,7 +893,7 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
       localStorage.setItem(LAST_SURVEY_KEY(projectId), surveyId);
     } catch {}
 
-    setCustomGroups(loadCustomGroups(projectId, surveyId));
+    setCustomGroups([]);
 
     let cancelled = false;
     setLoading(true);
@@ -891,11 +903,26 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
     Promise.all([
       loadSurveyFromBackend(surveyId, { projectId, force: true }),
       loadSurveyResponsesBySurveyRoster(surveyId, { projectId }),
+      loadCustomMeasureGroups({ surveyId, projectId }),
     ])
-      .then(([def, rows]) => {
+      .then(([def, rows, backendGroups]) => {
         if (cancelled) return;
         setSurvey(def);
         setResponseRows(Array.isArray(rows) ? rows : []);
+
+        if (backendGroups.length) {
+          setCustomGroups(backendGroups);
+        } else {
+          // One-time migration path — see loadLegacyLocalCustomGroups above.
+          const legacy = loadLegacyLocalCustomGroups(projectId, surveyId);
+          if (legacy.length) {
+            setCustomGroups(legacy);
+            saveCustomMeasureGroups(surveyId, legacy, { projectId }).then((res) => {
+              if (!res.ok) console.warn("Failed to migrate local custom measure groups to backend:", res.err);
+            });
+          }
+        }
+
         setLoading(false);
       })
       .catch((e) => {
