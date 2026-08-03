@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar } from "../utils";
 import { Card, Table, Th, Td, Toggle, Button, IconButton, Badge, Tabs, RoleGate } from "./ui";
@@ -31,6 +31,62 @@ function msToMinSec(n) {
 
 function keyFor(pid, fid) {
   return `${pid || "global"}::${fid}`;
+}
+
+// Shrinks its own font-size to whatever fits its parent cell's width,
+// instead of forcing the cell (and therefore the whole table) wider — used
+// in the posts table below, which is table-layout:fixed specifically so
+// each cell has a stable, content-independent width to measure against.
+// Only falls back to ellipsis-truncating once minFontSize still doesn't fit
+// (e.g. an extremely long, unbroken post name).
+function FitText({ children, style, minFontSize = 10, maxFontSize = 13, title }) {
+  const spanRef = useRef(null);
+  const [fontSize, setFontSize] = useState(maxFontSize);
+
+  useLayoutEffect(() => {
+    const el = spanRef.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+
+    const measure = () => {
+      const parentStyle = getComputedStyle(parent);
+      const available =
+        parent.clientWidth -
+        parseFloat(parentStyle.paddingLeft || 0) -
+        parseFloat(parentStyle.paddingRight || 0);
+      if (available <= 0) return;
+
+      el.style.fontSize = `${maxFontSize}px`;
+      const natural = el.scrollWidth;
+      if (natural > available) {
+        setFontSize(Math.max(minFontSize, Math.floor((available / natural) * maxFontSize)));
+      } else {
+        setFontSize(maxFontSize);
+      }
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, [children, maxFontSize, minFontSize]);
+
+  return (
+    <span
+      ref={spanRef}
+      title={title}
+      style={{
+        ...style,
+        fontSize,
+        display: "block",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
 // The tree-sidebar's Feeds section content (filter box, create/refresh,
@@ -89,9 +145,9 @@ function FeedListContent({
             style={{
               width: "100%",
               marginTop: 10,
-              background: "var(--admin-accent-soft)",
-              borderColor: "var(--admin-accent-border)",
-              color: "var(--admin-accent-ink)",
+              background: "#ecfdf5",
+              borderColor: "#a7f3d0",
+              color: "#047857",
             }}
           >
             {isSaving ? "Saving…" : "Save feed"}
@@ -169,7 +225,6 @@ export function AdminFeedsPanel({
   onExportFeedPdf,
   onImportPostsJson,
   onOpenNewPost,
-  onOpenRandomPost,
   onEditPost,
   onRenamePost,
   onRemovePost,
@@ -259,74 +314,92 @@ export function AdminFeedsPanel({
 
             {activeFeedTab === "posts" && (
               <>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                  <IconButton size="sm" onClick={onRefreshPosts} title={`Refresh ${contentUnitLabelPlural.toLowerCase()} from backend`}>
-                    🔄
-                  </IconButton>
-                  <RoleGate min="editor">
-                    <IconButton size="sm" onClick={onOpenRandomPost} title={`Generate a synthetic ${contentUnitLabel.toLowerCase()}`}>
-                      🎲
-                    </IconButton>
-                    <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
-                      ➕
-                    </IconButton>
-                  </RoleGate>
-                </div>
-
-                <Card>
+                <Card
+                  title={contentUnitLabelPlural}
+                  actions={
+                    <>
+                      <IconButton size="sm" onClick={onRefreshPosts} title={`Refresh ${contentUnitLabelPlural.toLowerCase()} from backend`}>
+                        🔄
+                      </IconButton>
+                      <RoleGate min="editor">
+                        <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
+                          ➕
+                        </IconButton>
+                      </RoleGate>
+                    </>
+                  }
+                >
                   {posts.length === 0 ? (
                     <div className="subtle" style={{ padding: ".5rem 0" }}>
                       No posts yet.
                     </div>
                   ) : (
-                    <Table>
+                    <Table style={{ tableLayout: "fixed" }}>
                       <thead>
                         <tr>
-                          <Th style={{ width: 36 }} />
-                          <Th>Post</Th>
-                          <Th>Author</Th>
-                          <Th style={{ minWidth: 260 }}>Text</Th>
-                          <Th>Time</Th>
-                          <Th>Media</Th>
-                          <Th style={{ width: 90 }}>Actions</Th>
+                          <Th style={{ width: "6%" }} />
+                          <Th style={{ width: "14%" }}>Post</Th>
+                          <Th style={{ width: "12%" }}>Author</Th>
+                          <Th style={{ width: "32%" }}>Text</Th>
+                          <Th style={{ width: "9%" }}>Time</Th>
+                          <Th style={{ width: "9%" }}>Media</Th>
+                          <Th style={{ width: "18%" }}>Actions</Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {posts.map((p) => (
-                          <tr key={p.id}>
-                            <Td>
-                              <div className="avatar">
-                                <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
-                              </div>
-                            </Td>
-                            <Td style={{ fontFamily: "monospace" }}>
-                              {(p.postName || p.name || postNames[p.id] || "").trim() || <span className="subtle">—</span>}
-                            </Td>
-                            <Td style={{ fontWeight: 600 }}>
-                              {p.author || <span className="subtle">—</span>}
-                              {p.badge ? " ✔" : ""}
-                            </Td>
-                            <Td style={{ maxWidth: 520, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {p.text || <span className="subtle">—</span>}
-                            </Td>
-                            <Td>
-                              {p.time ? p.time : <span className="subtle">—</span>}
-                            </Td>
-                            <Td>
-                              {p.videoMode !== "none" ? "video" : p.imageMode !== "none" ? "image" : <span className="subtle">none</span>}
-                            </Td>
-                            <Td>
-                              <div style={{ display: "flex", gap: 4 }}>
-                                <IconButton size="sm" onClick={() => onEditPost(p)} title="Edit post">
-                                  ✏️
-                                </IconButton>
-                                <IconButton size="sm" onClick={() => onRemovePost(p.id)} title="Delete post">
-                                  🗑️
-                                </IconButton>
-                              </div>
-                            </Td>
-                          </tr>
-                        ))}
+                        {posts.map((p) => {
+                          const postLabel = (p.postName || p.name || postNames[p.id] || "").trim();
+                          const authorLabel = p.author || "";
+                          return (
+                            <tr key={p.id}>
+                              <Td>
+                                <div className="avatar">
+                                  <img className="avatar-img" alt="" src={p.avatarUrl || pravatar(8)} />
+                                </div>
+                              </Td>
+                              <Td style={{ fontFamily: "monospace" }}>
+                                {postLabel ? (
+                                  <FitText title={postLabel}>{postLabel}</FitText>
+                                ) : (
+                                  <span className="subtle">—</span>
+                                )}
+                              </Td>
+                              <Td style={{ fontWeight: 600 }}>
+                                {authorLabel ? (
+                                  <FitText title={authorLabel}>
+                                    {authorLabel}
+                                    {p.badge ? " ✔" : ""}
+                                  </FitText>
+                                ) : (
+                                  <span className="subtle">—</span>
+                                )}
+                              </Td>
+                              <Td>
+                                {p.text ? (
+                                  <FitText title={p.text}>{p.text}</FitText>
+                                ) : (
+                                  <span className="subtle">—</span>
+                                )}
+                              </Td>
+                              <Td>
+                                {p.time ? p.time : <span className="subtle">—</span>}
+                              </Td>
+                              <Td>
+                                {p.videoMode !== "none" ? "video" : p.imageMode !== "none" ? "image" : <span className="subtle">none</span>}
+                              </Td>
+                              <Td>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <IconButton size="sm" onClick={() => onEditPost(p)} title="Edit post">
+                                    ✏️
+                                  </IconButton>
+                                  <IconButton size="sm" onClick={() => onRemovePost(p.id)} title="Delete post">
+                                    🗑️
+                                  </IconButton>
+                                </div>
+                              </Td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </Table>
                   )}

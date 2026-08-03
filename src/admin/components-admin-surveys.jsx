@@ -870,7 +870,9 @@ function SurveyListContent({
   onSelectSurvey,
   onSaveSurvey,
   isSaving,
+  showSaveButton,
   onDeleteSelectedSurvey,
+  showDeleteButton,
 }) {
   return (
     <div>
@@ -898,7 +900,7 @@ function SurveyListContent({
         })
       )}
 
-      {selectedSurveyId && (
+      {showSaveButton && (
         <Button
           size="sm"
           variant="secondary"
@@ -907,15 +909,15 @@ function SurveyListContent({
           style={{
             width: "100%",
             marginTop: 10,
-            background: "var(--admin-accent-soft)",
-            borderColor: "var(--admin-accent-border)",
-            color: "var(--admin-accent-ink)",
+            background: "#ecfdf5",
+            borderColor: "#a7f3d0",
+            color: "#047857",
           }}
         >
           {isSaving ? "Saving…" : "Save survey"}
         </Button>
       )}
-      {selectedSurveyId && (
+      {showDeleteButton && (
         <Button
           size="sm"
           variant="secondary"
@@ -2246,7 +2248,9 @@ export function AdminSurveysPanel({
             onSelectSurvey={handleSelectSurvey}
             onSaveSurvey={handleSaveSurvey}
             isSaving={savingSurvey}
+            showSaveButton={!!survey}
             onDeleteSelectedSurvey={handleDeleteSurvey}
+            showDeleteButton={!!survey?.survey_id}
           />,
           surveysSlot
         )}

@@ -184,6 +184,29 @@ export function AdminPostEditor({
     <div className="editor-grid">
       <div className="editor-form">
         <EditorSection title="Basics" subtitle="Author, timestamp &amp; post text">
+          {isNew && (
+            <button
+              type="button"
+              onClick={() => setEditing((ed) => ({ ...makeRandomPost(), id: ed.id }))}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 12px",
+                marginBottom: 14,
+                borderRadius: 8,
+                border: "1px solid #c7d2fe",
+                background: "#eef2ff",
+                color: "#4f46e5",
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              🎲 Fill with random content
+            </button>
+          )}
+
           <Field
             label="Post name (for CSV)"
             hint={

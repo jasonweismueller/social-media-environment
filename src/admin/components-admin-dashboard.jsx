@@ -45,15 +45,11 @@ import { AdminShell } from "./AdminShell";
 import { PageHeader, Badge, RoleGate } from "./ui";
 
 // Dynamically choose correct editor (FB or IG)
-import {
-  genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB,
-  makeRandomPost as makeRandomPostFB,
-} from "./components-admin-editor-facebook";
+import { genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
 import {
   genNeutralAvatarDataUrl as genNeutralAvatarDataUrlAMZ,
-  makeRandomPost as makeRandomPostAMZ,
   AdminPostEditor as AdminPostEditorAMZ,
 } from "./components-admin-editor-amazon";
 
@@ -64,7 +60,6 @@ const app = (
   "fb"
 ).toLowerCase();
 const AdminPostEditor = app === "ig" ? AdminPostEditorIG : app === "amz" ? AdminPostEditorAMZ : AdminPostEditorFB;
-const makeRandomPost = app === "amz" ? makeRandomPostAMZ : makeRandomPostFB;
 const genNeutralAvatarDataUrl = app === "amz" ? genNeutralAvatarDataUrlAMZ : genNeutralAvatarDataUrlFB;
 const CONTENT_UNIT_LABEL = app === "amz" || app === "amazon" ? "Review" : "Post";
 const CONTENT_UNIT_LABEL_PLURAL = app === "amz" || app === "amazon" ? "Reviews" : "Posts";
@@ -1330,12 +1325,6 @@ export function AdminDashboard({
     writePostNames(projectId, feedId, map);
   };
 
-  const handleOpenRandomPost = () => {
-    const p = makeRandomPost();
-    setIsNew(true);
-    setEditing(p);
-  };
-
   return (
     <div className="admin-shell" style={{ display: "grid", gap: "1rem" }}>
       {sessExpiringSec != null && !sessExpired && (
@@ -1482,7 +1471,6 @@ export function AdminDashboard({
                   onExportFeedPdf={handleExportFeedPdf}
                   onImportPostsJson={handleImportPostsJson}
                   onOpenNewPost={openNew}
-                  onOpenRandomPost={handleOpenRandomPost}
                   onEditPost={openEdit}
                   onRenamePost={handleRenamePost}
                   onRemovePost={removePost}
