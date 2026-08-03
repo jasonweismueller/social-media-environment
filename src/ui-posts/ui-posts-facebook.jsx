@@ -661,6 +661,11 @@ export function PostCard({
     click("expand_text");
   };
 
+  const onCollapse = () => {
+    setExpanded(false);
+    click("collapse_text");
+  };
+
   const onOpenComment = () => {
     setFlyoutOpen(false);
     clearTimeout(openTimer.current);
@@ -1412,6 +1417,7 @@ export function PostCard({
           text={post.text || ""}
           expanded={expanded}
           onExpand={onExpand}
+          onCollapse={onCollapse}
           onClamp={() => click("text_clamped")}
         />
         {expanded && post.links?.length ? (

@@ -271,9 +271,10 @@ export function SkeletonFeed() {
   );
 }
 
-export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, postId }) {
+export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onAction, prefix, postId }) {
   const pRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
+  const [wasClamped, setWasClamped] = React.useState(false);
   const sentClampRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -285,6 +286,7 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
       setNeedsClamp(clamped);
       if (clamped && !sentClampRef.current) {
         sentClampRef.current = true;
+        setWasClamped(true);
         onClamp?.();
         onAction?.(prefix ? `${prefix}_text_clamped` : "text_clamped", { post_id: postId });
       }
@@ -312,6 +314,15 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
             See more
           </button>
         </div>
+      )}
+      {expanded && wasClamped && (
+        <button
+          type="button"
+          className="see-more see-less"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCollapse?.(); }}
+        >
+          See less
+        </button>
       )}
     </div>
   );

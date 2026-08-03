@@ -313,7 +313,7 @@ const SURVEY_REMINDER_POST_STYLE = `
 .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-frame,
 .survey-post-reminder-block.fb-reminder-post .survey-post-reminder-card {
   width: 100% !important;
-  max-width: min(760px, 100%) !important;
+  max-width: min(var(--feed-max, 700px), 100%) !important;
 }
 
 .survey-post-reminder-block.fb-reminder-post .post-card,

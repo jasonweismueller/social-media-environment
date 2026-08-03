@@ -91,7 +91,7 @@ function Stars({ rating = 5 }) {
   );
 }
 
-function ReadMoreText({ text, collapsedChars = 520, onExpand, disabled }) {
+function ReadMoreText({ text, collapsedChars = 520, onExpand, onCollapse, disabled }) {
   const [expanded, setExpanded] = useState(false);
   const clean = String(text || "");
   const needsClamp = clean.length > collapsedChars;
@@ -111,6 +111,19 @@ function ReadMoreText({ text, collapsedChars = 520, onExpand, disabled }) {
           }}
         >
           Read more
+        </button>
+      )}
+      {needsClamp && expanded && (
+        <button
+          type="button"
+          className="amz-read-more"
+          disabled={disabled}
+          onClick={() => {
+            setExpanded(false);
+            onCollapse?.();
+          }}
+        >
+          Read less
         </button>
       )}
     </div>
@@ -206,6 +219,7 @@ function ReviewCard({
         text={text}
         disabled={disabled}
         onExpand={() => onAction?.("review_read_more", logBase({ expanded: true }))}
+        onCollapse={() => onAction?.("review_read_more", logBase({ expanded: false }))}
       />
 
       <div className="amz-helpful-line">

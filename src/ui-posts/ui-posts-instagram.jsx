@@ -1115,6 +1115,14 @@ onExpand={() => {
     syncVideoMuteState();
   });
 }}
+  onCollapse={() => {
+    setExpanded(false);
+    onAction?.("collapse_text", { post_id: id });
+
+    requestAnimationFrame(() => {
+      syncVideoMuteState();
+    });
+  }}
   onClamp={() => onAction("text_clamped", { post_id: id })}
   onAction={onAction} 
   postId={id}
