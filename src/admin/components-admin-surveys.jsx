@@ -1446,6 +1446,18 @@ export function AdminSurveysPanel({
     setActiveEditorTab("setup");
   }, [selectedSurveyId]);
 
+  // Shows the list the moment the lightweight survey list resolves — same
+  // pattern the Feeds list already uses (listFeedsFromBackend only, no
+  // per-feed enrichment up front). The sidebar row's "N questions" count
+  // does need each survey's full definition, but nothing else here does:
+  // handleSelectSurvey already independently re-fetches the full definition
+  // (force: true) whenever a survey is actually opened, so the old eager
+  // per-survey loadSurveyFromBackend + getLinkedFeedIdsForSurveyFromBackend
+  // calls here were pure throwaway work, just to compute a label — and
+  // doing all of it (2 requests × every survey in the project) before the
+  // list could render at all was why Surveys felt slow to open compared to
+  // Feeds. Question counts now backfill per-row in the background instead
+  // of blocking the initial paint.
   async function loadAll() {
     setLoading(true);
     try {
@@ -1461,68 +1473,27 @@ export function AdminSurveysPanel({
       const safeSurveyList = Array.isArray(surveyList) ? surveyList : [];
       const safeFeedList = Array.isArray(feedList) ? feedList : [];
 
-      const enrichedSurveyList = await Promise.all(
-        safeSurveyList.map(async (s) => {
-          if (!s?.survey_id) return s;
-
-          try {
-            const [full, linkedFeedIds] = await Promise.all([
-              loadSurveyFromBackend(s.survey_id, {
-                projectId,
-                force: true,
-              }),
-              getLinkedFeedIdsForSurveyFromBackend({
-                surveyId: s.survey_id,
-                projectId,
-                allFeeds: safeFeedList,
-              }),
-            ]);
-
-            const normalizedFull = applySurveyMetaDefaults(full || {}, projectId);
-
-            const orderedFeedIds = orderedLinkedFeedIdsFromSurvey(
-              normalizedFull,
-              linkedFeedIds
-            );
-
-            return {
-              ...s,
-              ...normalizedFull,
-              linked_feed_ids: orderedFeedIds,
-              feed_sequence_ids: orderedFeedIds,
-              linked_project_id: projectId,
-              trigger: normalizedFull.trigger || "after_feed_submit",
-              delivery_mode:
-                normalizedFull.delivery_mode ||
-                (orderedFeedIds.length > 1
-                  ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
-                  : DELIVERY_MODE_FEED_THEN_SURVEY),
-              pages: normalizeSurveyPagesWithDelay(normalizedFull.pages || []),
-              page_blocks: normalizeSurveyPageBlocks(
-                normalizedFull.page_blocks,
-                normalizeSurveyPagesWithDelay(normalizedFull.pages || [])
-              ),
-            };
-          } catch {
-            return {
-              ...s,
-              linked_feed_ids: [],
-              linked_project_id: projectId,
-              trigger: "after_feed_submit",
-              delivery_mode: DELIVERY_MODE_FEED_THEN_SURVEY,
-              pages: [],
-              page_blocks: [makeDefaultPageBlock([])],
-              ...normalizeSurveyMetaFields({}),
-            };
-          }
-        })
-      );
-
-      setSurveys(enrichedSurveyList);
+      setSurveys(safeSurveyList);
       setFeeds(safeFeedList);
+      setLoading(false);
+
+      safeSurveyList.forEach((s) => {
+        if (!s?.survey_id) return;
+        loadSurveyFromBackend(s.survey_id, { projectId })
+          .then((full) => {
+            if (!full) return;
+            setSurveys((prev) =>
+              prev.map((row) =>
+                row.survey_id === s.survey_id
+                  ? { ...row, pages: full.pages, page_blocks: full.page_blocks }
+                  : row
+              )
+            );
+          })
+          .catch(() => {});
+      });
     } catch (e) {
       console.warn("Failed to load surveys:", e);
-    } finally {
       setLoading(false);
     }
   }

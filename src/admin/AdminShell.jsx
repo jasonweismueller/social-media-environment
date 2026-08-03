@@ -63,7 +63,17 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
         minHeight: showList ? 0 : undefined,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+      {/* Background/padding live on this shared row (not on the NavLink
+          alone) so the "+" and chevron read as part of the same button,
+          not a separate control floating off to the side. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          borderRadius: "var(--admin-radius-sm)",
+          background: active ? "var(--admin-accent-soft)" : "transparent",
+        }}
+      >
         <NavLink
           to={to}
           onClick={(e) => {
@@ -77,24 +87,21 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
             // AdminShell that resets expandedKey on route change expands it.
           }}
           aria-expanded={active ? expanded : undefined}
-          style={({ isActive }) => ({ ...navItemStyle(isActive), flex: 1, minWidth: 0 })}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "7px 10px",
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+            color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
+            flex: 1,
+            minWidth: 0,
+          }}
         >
           <span aria-hidden="true">{icon}</span>
           <span style={{ flex: 1 }}>{label}</span>
-          {active && (
-            <span
-              aria-hidden="true"
-              style={{
-                fontSize: 18,
-                lineHeight: 1,
-                color: "var(--admin-muted)",
-                transform: expanded ? "rotate(90deg)" : "none",
-                transition: "transform .15s ease",
-              }}
-            >
-              ▸
-            </span>
-          )}
         </NavLink>
         {onAdd && (
           <button
@@ -111,20 +118,35 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 26,
-              height: 26,
+              width: 24,
+              height: 24,
               border: "none",
               borderRadius: "var(--admin-radius-sm)",
               background: "transparent",
-              color: "var(--admin-muted)",
+              color: active ? "var(--admin-accent-ink)" : "var(--admin-muted)",
               cursor: "pointer",
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: 700,
               lineHeight: 1,
             }}
           >
             +
           </button>
+        )}
+        {active && (
+          <span
+            aria-hidden="true"
+            style={{
+              fontSize: 18,
+              lineHeight: 1,
+              color: "var(--admin-muted)",
+              marginRight: 10,
+              transform: expanded ? "rotate(90deg)" : "none",
+              transition: "transform .15s ease",
+            }}
+          >
+            ▸
+          </span>
         )}
       </div>
       {showList && (

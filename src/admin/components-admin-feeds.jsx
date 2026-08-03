@@ -268,7 +268,7 @@ export function AdminFeedsPanel({
                           <Th style={{ minWidth: 260 }}>Text</Th>
                           <Th>Time</Th>
                           <Th>Media</Th>
-                          <Th style={{ minWidth: 220 }}>Actions</Th>
+                          <Th style={{ width: 90 }}>Actions</Th>
                         </tr>
                       </thead>
                       <tbody>
