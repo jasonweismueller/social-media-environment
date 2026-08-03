@@ -487,7 +487,7 @@ const REMINDER_INTERACTION_FIELDS = [
   { value: "review_helpful", label: "Marked helpful" },
 ];
 
-function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
+export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
   const questions = [];
@@ -656,7 +656,7 @@ function buildSurveyExportColumns(
   return Array.from(seen.values());
 }
 
-function flattenSurveyResponseRecord(responseRow, surveyColumns) {
+export function flattenSurveyResponseRecord(responseRow, surveyColumns) {
   const out = {};
   const rawResponses = parseMaybeJson(
     responseRow?.response_json ?? responseRow?.responses ?? {},
@@ -1253,15 +1253,13 @@ const surveyDeliveryMode = normalizeSurveyDeliveryMode(
   surveyDefinition?.delivery_mode
 );
 
-// Older/newly-misrouted survey-only submissions can appear under a concrete
-// feed_id when a survey-only study was launched through a linked feed URL.
-// If the survey definition is survey_only, all responses for that survey are
-// conceptually survey-only responses and should be included in this export.
-const surveyResponses = (Array.isArray(allSurveyResponses) ? allSurveyResponses : [])
-  .filter((row) => {
-    if (surveyDeliveryMode === "survey_only") return true;
-    return String(row?.feed_id ?? "SURVEY_ONLY").trim() === "SURVEY_ONLY";
-  });
+// loadSurveyResponsesBySurveyRoster already scopes strictly by survey_id, so
+// every row it returns genuinely belongs to this survey regardless of which
+// feed (if any) delivered it. Every response for this survey_id belongs in
+// its export — a feed_id filter here used to silently drop every response
+// from ordinary feed_then_survey studies (the common case), which is why
+// "Download survey CSV" could come back empty/wrong for those studies.
+const surveyResponses = Array.isArray(allSurveyResponses) ? allSurveyResponses : [];
 
 const participantRows = surveyResponses.map((row) => ({
   session_id: row?.session_id ?? "",

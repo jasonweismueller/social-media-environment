@@ -9,7 +9,8 @@ const NAV_ITEMS = [
   { to: "/admin/dashboard/feeds", label: "Feeds", icon: "🗂️" },
   { to: "/admin/dashboard/posts", label: "Posts", icon: "📝" },
   { to: "/admin/dashboard/surveys", label: "Surveys", icon: "📋" },
-  { to: "/admin/dashboard/participants", label: "Participants", icon: "👥" },
+  { to: "/admin/dashboard/participants/feed", label: "Feed Participants", icon: "👥" },
+  { to: "/admin/dashboard/participants/survey", label: "Survey Participants", icon: "📊" },
   { to: "/admin/dashboard/users", label: "Users", icon: "🔐", ownerOnly: true },
 ];
 

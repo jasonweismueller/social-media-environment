@@ -1,10 +1,8 @@
-/// components-admin-parts.jsx
+/// components-admin-participants-feed.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   loadParticipantsRoster,
-  loadMultiFeedParticipantSurveyRoster,
-  loadSurveyOnlyRoster,
   summarizeRoster,
   nfCompact,
   extractPerPostFromRosterRow,
@@ -12,8 +10,14 @@ import {
   getProjectId as getProjectIdUtil,
   setProjectId as setProjectIdUtil,
   readPostNames,
-  getSurveyIdFromUrl,
+  hasAdminRole,
+  wipeParticipantsOnBackend,
 } from "../utils";
+import { PageHeader, Button } from "./ui";
+
+function RoleGate({ min = "viewer", children, elseRender = null }) {
+  return hasAdminRole(min) ? children : elseRender ?? null;
+}
 
 /* ----------------------------- helpers ----------------------------- */
 const ms = (n) => {
@@ -45,14 +49,83 @@ function selectAllOnFocus(e) {
 const isIGApp = () => String(APP || "").toLowerCase() === "ig";
 const isAmazonApp = () => String(APP || "").toLowerCase() === "amz";
 
+/* ------------------------- small inline charts ------------------------- */
+const ENGAGEMENT_SERIES = [
+  { key: "reactedPct", label: "Reacted", color: "#2563eb" },
+  { key: "commentedPct", label: "Commented", color: "#16a34a" },
+  { key: "sharedPct", label: "Shared", color: "#d97706" },
+];
 
-function normalizeFeedSequenceIds(value = []) {
-  return Array.from(
-    new Set(
-      (Array.isArray(value) ? value : [])
-        .map((x) => String(x || "").trim())
-        .filter(Boolean)
-    )
+function EngagementBarChart({ data }) {
+  if (!data?.length) return null;
+  const barMaxWidth = 220;
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 8, color: "var(--admin-muted, #6b7280)" }}>
+        {ENGAGEMENT_SERIES.map((s) => (
+          <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 8, height: 8, background: s.color, borderRadius: 2, display: "inline-block" }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+      {data.map((d) => (
+        <div key={d.id} style={{ marginBottom: 8 }}>
+          <div
+            style={{
+              fontSize: 11,
+              marginBottom: 3,
+              color: "var(--admin-muted, #6b7280)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={d.name}
+          >
+            {d.name}
+          </div>
+          {ENGAGEMENT_SERIES.map((s) => (
+            <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <div
+                style={{
+                  width: Math.max(2, (d[s.key] || 0) * barMaxWidth),
+                  height: 6,
+                  background: s.color,
+                  borderRadius: 2,
+                }}
+              />
+              <span style={{ fontSize: 10, color: "var(--admin-muted, #6b7280)" }}>
+                {Math.round((d[s.key] || 0) * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SubmissionsTimeChart({ data }) {
+  if (!data?.length) return null;
+  const max = Math.max(...data.map((d) => d.count), 1);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 56, overflowX: "auto", padding: "4px 2px" }}>
+        {data.map((d) => (
+          <div
+            key={d.day}
+            title={`${d.day}: ${d.count} submission${d.count === 1 ? "" : "s"}`}
+            style={{ width: 10, height: Math.max(2, (d.count / max) * 50), background: "var(--admin-accent, #2563eb)", borderRadius: 2, flexShrink: 0 }}
+          />
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--admin-muted, #6b7280)", marginTop: 2 }}>
+        <span>{data[0].day}</span>
+        {data.length > 1 && <span>{data[data.length - 1].day}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -1021,32 +1094,24 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
   );
 }
 
-/* --------------------------- participants panel --------------------------- */
-export function ParticipantsPanel({
+/* --------------------------- feed participants page --------------------------- */
+export function FeedParticipantsPage({
   feedId,
-  surveyId: surveyIdProp,
+  feedName,
   projectId: projectIdProp,
   posts = [],
-  compact = false,
-  limit,
-  onCountChange,
   postNamesMap,
-  feedSequenceIds = [],
+  defaultFeedId,
+  onLogout,
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
-  const surveyId = surveyIdProp ?? getSurveyIdFromUrl?.() ?? "";
   const IG = isIGApp();
   const AMZ = isAmazonApp();
-  const normalizedFeedSequenceIds = normalizeFeedSequenceIds(feedSequenceIds);
-  const hasMultiFeedSequence = !!surveyId && normalizedFeedSequenceIds.length > 1;
-  const isSurveyOnlyPanel = !feedId && !!surveyId && !hasMultiFeedSequence;
-  const includeSurveyFieldsInCsv = hasMultiFeedSequence || isSurveyOnlyPanel;
-  const sourceKey = hasMultiFeedSequence
-    ? `${surveyId}::${normalizedFeedSequenceIds.join("__")}`
-    : (feedId || surveyId || "noid");
-  const sourceLabel = hasMultiFeedSequence
-    ? `sequence ${normalizedFeedSequenceIds.join(" → ")} → survey ${surveyId}`
-    : (feedId ? `feed ${feedId}` : (surveyId ? `survey ${surveyId}` : "no source"));
+  const sourceKey = feedId || "noid";
+  // This page is always full-density (not embedded compact elsewhere like
+  // the old shared panel was) — keeping this constant lets the existing
+  // spacing/font-size ternaries below stay untouched.
+  const compact = false;
 
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -1063,7 +1128,6 @@ export function ParticipantsPanel({
   const [usingSimulated, setUsingSimulated] = useState(false);
 
   const [simMode, setSimMode] = useState("random");
-  const [surveyHeaderMode, setSurveyHeaderMode] = useState("text"); // "text" | "name"
 
   const [simConfig, setSimConfig] = useState(() => ({
     ...DEFAULT_SIM_CONFIG,
@@ -1075,7 +1139,7 @@ export function ParticipantsPanel({
   }));
 
   const abortRef = useRef(null);
-  const nameStore = postNamesMap || readPostNames(projectId, feedId || (hasMultiFeedSequence ? normalizedFeedSequenceIds[0] : surveyId) || "survey_only") || {};
+  const nameStore = postNamesMap || readPostNames(projectId, feedId || "") || {};
   const caps = useMemo(() => capabilitySummary(posts, IG), [posts, IG]);
 
   useEffect(() => {
@@ -1120,31 +1184,9 @@ export function ParticipantsPanel({
 
     try {
       const pid = pidOverride ?? projectId;
-      let data = [];
-
-      if (hasMultiFeedSequence) {
-        const merged = await loadMultiFeedParticipantSurveyRoster({
-          signal: ctrl.signal,
-          projectId: pid,
-          surveyId,
-          feedIds: normalizedFeedSequenceIds,
-          labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-        });
-        data = Array.isArray(merged?.rows) ? merged.rows : [];
-      } else if (feedId) {
-        // Feed admin panels intentionally load only the selected feed's
-        // participant/behavioural data. Survey responses are exported from the
-        // survey-level CSV, especially for multi-feed studies.
-        data = await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid });
-      } else if (surveyId) {
-        const merged = await loadSurveyOnlyRoster({
-          signal: ctrl.signal,
-          projectId: pid,
-          surveyId,
-          labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-        });
-        data = Array.isArray(merged?.rows) ? merged.rows : [];
-      }
+      const data = feedId
+        ? await loadParticipantsRoster(feedId, { signal: ctrl.signal, projectId: pid })
+        : [];
 
       if (!ctrl.signal.aborted && Array.isArray(data)) {
         setRows(data);
@@ -1168,7 +1210,7 @@ export function ParticipantsPanel({
     }
     refresh(!!cached?.rows?.length);
     return () => abortRef.current?.abort?.();
-  }, [feedId, surveyId, projectId, hasMultiFeedSequence, normalizedFeedSequenceIds.join("|")]);
+  }, [feedId, projectId]);
 
   const effectiveRows = useMemo(
     () => (usingSimulated ? (simRows || []) : (rows || [])),
@@ -1179,10 +1221,6 @@ export function ParticipantsPanel({
     computeSummaryIdle(effectiveRows);
   }, [effectiveRows]);
 
-  useEffect(() => {
-    onCountChange?.(effectiveRows?.length || 0);
-  }, [effectiveRows, onCountChange]);
-
   const sorted = useMemo(() => {
     if (!effectiveRows?.length) return [];
     const a = [...effectiveRows];
@@ -1190,10 +1228,7 @@ export function ParticipantsPanel({
     return a;
   }, [effectiveRows]);
 
-  const effectivePageSize =
-    typeof limit === "number" && limit >= 0 ? Math.min(limit, sorted.length) : pageSize;
-
-  const visible = useMemo(() => sorted.slice(0, effectivePageSize), [sorted, effectivePageSize]);
+  const visible = useMemo(() => sorted.slice(0, pageSize), [sorted, pageSize]);
 
   const avgDwellSByPost = useMemo(() => {
     const acc = new Map();
@@ -1228,7 +1263,7 @@ export function ParticipantsPanel({
   }, [effectiveRows]);
 
   const perPostList = useMemo(() => {
-    if (!showPerPost || !summary?.perPost) return [];
+    if (!summary?.perPost) return [];
     return Object.entries(summary.perPost).map(([id, agg]) => {
       const dwellAcc = avgDwellSByPost.get(id);
       const avgDwellS = dwellAcc && dwellAcc.count > 0 ? dwellAcc.sum / dwellAcc.count : null;
@@ -1248,7 +1283,36 @@ export function ParticipantsPanel({
         avgDwellS,
       };
     });
-  }, [showPerPost, summary, avgDwellSByPost, nameStore]);
+  }, [summary, avgDwellSByPost, nameStore]);
+
+  const engagementChartData = useMemo(() => {
+    const total = effectiveRows?.length || 0;
+    if (!total || !perPostList.length) return [];
+    return perPostList
+      .map((p) => ({
+        id: p.id,
+        name: p.name || p.id,
+        reactedPct: p.reacted / total,
+        commentedPct: p.commented / total,
+        sharedPct: p.shared / total,
+      }))
+      .sort((a, b) => b.reactedPct - a.reactedPct)
+      .slice(0, 12);
+  }, [perPostList, effectiveRows]);
+
+  const submissionsByDay = useMemo(() => {
+    const counts = new Map();
+    (effectiveRows || []).forEach((r) => {
+      const iso = String(r?.submitted_at_iso || "").trim();
+      if (!iso) return;
+      const day = iso.slice(0, 10);
+      if (!day) return;
+      counts.set(day, (counts.get(day) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([day, count]) => ({ day, count }));
+  }, [effectiveRows]);
 
   const padCell = compact ? ".3rem .25rem" : ".4rem .25rem";
   const fsTable = compact ? ".85rem" : ".9rem";
@@ -1279,7 +1343,7 @@ export function ParticipantsPanel({
 
   const runSimulation = () => {
     if (!posts?.length) {
-      alert("Simulation needs the current feed posts. Pass posts={posts} into ParticipantsPanel.");
+      alert("Simulation needs the current feed posts. Pass posts={posts} into FeedParticipantsPage.");
       return;
     }
 
@@ -1392,12 +1456,7 @@ function isRelevantPostMetricForExport(post, suffix, isIG) {
   return true;
 }
 
-function filterCsvKeysForCurrentFeed(
-  keys = [],
-  posts = [],
-  isIG = false,
-  { includeSurveyFields = false } = {}
-) {
+function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
   const postMap = getPostByIdMap(posts);
 
   return (Array.isArray(keys) ? keys : []).filter((key) => {
@@ -1405,7 +1464,7 @@ function filterCsvKeysForCurrentFeed(
 
     // Normal feed downloads are feed-specific. Survey columns are only kept for
     // survey-only and multi-feed study-level exports.
-    if (String(key).startsWith("survey_")) return !!includeSurveyFields;
+    if (String(key).startsWith("survey_")) return false;
 
     // always keep non-post-level participant metadata
     const parsed = parsePostMetricKey(key);
@@ -1427,30 +1486,25 @@ function filterCsvKeysForCurrentFeed(
   
 
   const downloadCsv = async () => {
-    if (!feedId && !surveyId) return;
+    if (!feedId) return;
 
     if (usingSimulated) {
       if (!effectiveRows?.length) return;
 
       const normalizedAll = normalizeRowsForCsv(effectiveRows);
       const keySet = new Set();
-normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
+      normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
 
-const allKeys = Array.from(keySet);
-const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFields: includeSurveyFieldsInCsv });
-const labels = keys.map((k) => labelForKey(k, nameStore));
+      const allKeys = Array.from(keySet);
+      const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
+      const labels = keys.map((k) => labelForKey(k, nameStore));
       const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
-        `${APP}_participants` +
-        `${projectId ? `_${projectId}` : ""}` +
-        `${hasMultiFeedSequence ? `_${normalizedFeedSequenceIds.join("_then_")}` : (feedId ? `_${feedId}` : "")}` +
-        `${!feedId && surveyId ? `_${surveyId}` : ""}` +
-        `_SIMULATED.csv`;
+      a.download = `${APP}_participants${projectId ? `_${projectId}` : ""}_${feedId}_SIMULATED.csv`;
 
       document.body.appendChild(a);
       a.click();
@@ -1463,37 +1517,8 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       setError("");
       setLoading(true);
 
-      let exportResult = null;
-
-      if (hasMultiFeedSequence) {
-        exportResult = await loadMultiFeedParticipantSurveyRoster({
-          surveyId,
-          feedIds: normalizedFeedSequenceIds,
-          projectId,
-          labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-        });
-      } else if (feedId) {
-        // Feed CSVs are intentionally feed-specific. They do not merge survey
-        // responses, because in multi-feed studies the final survey response is
-        // stored once at the study/survey level.
-        const participantRows = await loadParticipantsRoster(feedId, {
-          projectId,
-        });
-        exportResult = {
-          rows: Array.isArray(participantRows) ? participantRows : [],
-          surveyColumns: [],
-          hasMergedSurveyColumns: false,
-        };
-      } else if (surveyId) {
-        exportResult = await loadSurveyOnlyRoster({
-          surveyId,
-          projectId,
-          labelMode: surveyHeaderMode === "name" ? "variable" : "text",
-        });
-      }
-
-      const merged = exportResult || {};
-      const mergedRows = Array.isArray(merged?.rows) ? merged.rows : [];
+      const participantRows = await loadParticipantsRoster(feedId, { projectId });
+      const mergedRows = Array.isArray(participantRows) ? participantRows : [];
       if (!mergedRows.length) return;
 
       const normalizedAll = normalizeRowsForCsv(mergedRows);
@@ -1501,38 +1526,22 @@ const labels = keys.map((k) => labelForKey(k, nameStore));
       normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
 
       const allKeys = Array.from(keySet);
-const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFields: includeSurveyFieldsInCsv });
-      const surveyLabelMap = new Map(
-        (merged?.surveyColumns || []).map((col) => {
-          const label =
-            surveyHeaderMode === "name"
-              ? (col.header_name || col.column_key)
-              : (col.header_text || col.header_name || col.column_key);
-          return [col.column_key, label];
-        })
-      );
-
-      const labels = keys.map((k) => surveyLabelMap.get(k) || labelForKey(k, nameStore));
+      const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
+      const labels = keys.map((k) => labelForKey(k, nameStore));
       const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download =
-        `${APP}_participants` +
-        `${projectId ? `_${projectId}` : ""}` +
-        `${hasMultiFeedSequence ? `_${normalizedFeedSequenceIds.join("_then_")}` : (feedId ? `_${feedId}` : "")}` +
-        `${!feedId && surveyId ? `_${surveyId}` : ""}` +
-        `${includeSurveyFieldsInCsv && merged?.hasMergedSurveyColumns ? "_with_survey" : ""}` +
-        `${includeSurveyFieldsInCsv ? (surveyHeaderMode === "name" ? "_varnames" : "_questiontext") : "_feed_only"}.csv`;
+      a.download = `${APP}_participants${projectId ? `_${projectId}` : ""}_${feedId}_feed_only.csv`;
 
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("Merged CSV download failed:", e);
+      console.error("Feed CSV download failed:", e);
       setError("Failed to download CSV");
     } finally {
       setLoading(false);
@@ -1540,20 +1549,54 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
   };
 
   return (
+    <>
+      <PageHeader
+        title={`Feed Participants${Number.isFinite(effectiveRows?.length) ? ` (${effectiveRows.length})` : ""}`}
+        subtitle={
+          <>
+            <span>Feed behavioural data for </span>
+            <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
+            <span className="subtle"> · </span>
+            <code style={{ fontSize: ".9em" }}>{feedName || feedId || "no feed selected"}</code>
+            {defaultFeedId && defaultFeedId === feedId && <span className="subtle"> · default</span>}
+            {usingSimulated && <span className="subtle"> · SIMULATED</span>}
+            <span className="subtle"> — survey responses live on the Survey Participants page</span>
+          </>
+        }
+        actions={
+          <RoleGate min="owner">
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={!feedId}
+              title="Delete the participants sheet for this feed (cannot be undone)"
+              onClick={async () => {
+                if (!feedId) return;
+                const okGo = confirm(
+                  `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
+                );
+                if (!okGo) return;
+                const ok = await wipeParticipantsOnBackend(feedId, { projectId });
+                if (ok) {
+                  await refresh(false);
+                  alert("Participants wiped.");
+                } else {
+                  alert("Failed to wipe participants. Please re-login and try again.");
+                  onLogout?.();
+                }
+              }}
+            >
+              Wipe
+            </Button>
+          </RoleGate>
+        }
+      />
+
     <div className="card" style={{ padding: wrapperPad }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
         <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
-          Participants
-          {hasMultiFeedSequence ? (
-            <span className="subtle"> · {normalizedFeedSequenceIds.join(" → ")} → survey {surveyId}</span>
-          ) : (
-            <>
-              {feedId ? <span className="subtle"> · feed {feedId}</span> : null}
-              {!feedId && surveyId ? <span className="subtle"> · survey {surveyId}</span> : null}
-            </>
-          )}
+          Feed engagement
           <span className="subtle"> · {APP} · {projectId || "global"}</span>
-          {usingSimulated ? <span className="subtle"> · SIMULATED</span> : null}
         </h4>
 
         <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap", alignItems: "center" }}>
@@ -1580,24 +1623,6 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
             <option value="random">Random</option>
             <option value="controlled">Controlled</option>
           </select>
-
-          {!usingSimulated && includeSurveyFieldsInCsv && (
-            <select
-              value={surveyHeaderMode}
-              onChange={(e) => setSurveyHeaderMode(e.target.value)}
-              style={{
-                padding: compact ? ".25rem .45rem" : ".35rem .55rem",
-                border: "1px solid var(--line)",
-                borderRadius: 8,
-                fontSize: compact ? ".85rem" : ".9rem",
-                background: "var(--card, white)",
-              }}
-              title="Survey CSV column headers"
-            >
-              <option value="text">Survey headers: question text</option>
-              <option value="name">Survey headers: question name</option>
-            </select>
-          )}
 
           <IntegerField
             value={simCount}
@@ -1633,15 +1658,11 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
           <button
             className="btn"
             onClick={downloadCsv}
-            disabled={(!feedId && !surveyId) || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
+            disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
-            title={
-              includeSurveyFieldsInCsv
-                ? "Download the study-level feed + survey CSV"
-                : "Download only this feed's participant/behavioural data"
-            }
+            title="Download this feed's participant/behavioural data"
           >
-            {includeSurveyFieldsInCsv ? "Download Study CSV" : "Download Feed CSV"}
+            Download Feed CSV
           </button>
         </div>
       </div>
@@ -1781,6 +1802,20 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
         <StatCard compact={compact} title="Avg last interaction" value={ms(summary?.timing?.avgEnterToLastInteraction)} />
         <StatCard compact={compact} title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
       </div>
+
+      {submissionsByDay.length > 1 && (
+        <div style={{ marginTop: "1rem" }}>
+          <h5 style={{ margin: "0 0 .35rem", fontSize: "1rem" }}>Submissions over time</h5>
+          <SubmissionsTimeChart data={submissionsByDay} />
+        </div>
+      )}
+
+      {engagementChartData.length > 0 && (
+        <div style={{ marginTop: "1rem" }}>
+          <h5 style={{ margin: "0 0 .35rem", fontSize: "1rem" }}>Engagement by post</h5>
+          <EngagementBarChart data={engagementChartData} />
+        </div>
+      )}
 
       <div style={{ marginTop: compact ? ".6rem" : "1rem" }}>
         <button
@@ -1951,7 +1986,7 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
             </tbody>
           </table>
 
-          {typeof limit !== "number" && visible.length < sorted.length && (
+          {visible.length < sorted.length && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: ".5rem" }}>
               <button
                 className="btn"
@@ -1979,5 +2014,6 @@ const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG, { includeSurveyFiel
         submission={detailSubmission}
       />
     </div>
+    </>
   );
 }

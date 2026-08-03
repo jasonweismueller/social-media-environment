@@ -11,7 +11,6 @@ import {
   setDefaultFeedOnBackend,
   savePostsToBackend,
   loadPostsFromBackend,
-  wipeParticipantsOnBackend,
   deleteFeedOnBackend,
   getWipePolicyFromBackend,
   setWipePolicyOnBackend,
@@ -26,7 +25,6 @@ import {
   getDefaultProjectFromBackend,
   setProjectId as persistProjectId,
   getProjectId,
-  getSurveyIdFromUrl,
   APP,
   readPostNames,
   writePostNames,
@@ -39,7 +37,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 
 import "./ui/tokens.css";
 import { Modal, LoadingOverlay } from "../ui-core";
-import { ParticipantsPanel } from "./components-admin-parts";
+import { FeedParticipantsPage } from "./components-admin-participants-feed";
+import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminUsersPanel } from "./components-admin-users";
 import { AdminSurveysPanel } from "./components-admin-surveys";
 import { randomAvatarByKind } from "../avatar-utils";
@@ -500,7 +499,6 @@ export function AdminDashboard({
   const [touching, setTouching] = useState(false);
   const [editing, setEditing] = useState(null);
   const [isNew, setIsNew] = useState(false);
-  const [participantsRefreshKey, setParticipantsRefreshKey] = useState(0);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -509,7 +507,6 @@ export function AdminDashboard({
   const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
   const [postNames, setPostNames] = useState({});
-  const [participantsCount, setParticipantsCount] = useState(null);
   const [booting, setBooting] = useState(true);
 
   // projects
@@ -528,10 +525,6 @@ export function AdminDashboard({
   const [defaultProjectId, setDefaultProjectId] = useState(null);
   const projectsAbortRef = useRef(null);
 
-  // Section visibility is now route-driven (see AdminShell's nested Routes
-  // below) instead of these accordion collapse booleans.
-  const [showAllParticipants, setShowAllParticipants] = useState(false);
-
   // global wipe policy
   const [wipeOnChange, setWipeOnChange] = useState(null);
   const [updatingWipe, setUpdatingWipe] = useState(false);
@@ -539,7 +532,6 @@ export function AdminDashboard({
   // feeds
   const [feeds, setFeeds] = useState([]);
   const [feedId, setFeedId] = useState("");
-  const surveyId = getSurveyIdFromUrl();
   const [feedName, setFeedName] = useState("");
   const [feedsLoading, setFeedsLoading] = useState(false);
   const [feedsError, setFeedsError] = useState("");
@@ -1629,74 +1621,28 @@ export function AdminDashboard({
 
             <Route
               path="participants"
-              element={
-                <>
-                  <PageHeader
-                    title={`Participants${Number.isFinite(participantsCount) ? ` (${participantsCount})` : ""}`}
-                    subtitle={
-                      <>
-                        <span>Live snapshot for </span>
-                        <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
-                        <span className="subtle"> · </span>
-                        <code style={{ fontSize: ".9em" }}>{feedId || "—"}</code>
-                        {defaultFeedId === feedId && <span className="subtle"> · default</span>}
-                      </>
-                    }
-                    actions={
-                      <>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setShowAllParticipants((s) => !s)}
-                          title={
-                            showAllParticipants
-                              ? "Show only the first 5 participants"
-                              : "Show all participants"
-                          }
-                        >
-                          {showAllParticipants ? "Show first 5" : "Show all"}
-                        </Button>
+              element={<Navigate to="/admin/dashboard/participants/feed" replace />}
+            />
 
-                        <RoleGate min="owner">
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            title="Delete the participants sheet for this feed (cannot be undone)"
-                            onClick={async () => {
-                              if (!feedId) return;
-                              const okGo = confirm(
-                                `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
-                              );
-                              if (!okGo) return;
-                              const ok = await wipeParticipantsOnBackend(feedId);
-                              if (ok) {
-                                setParticipantsRefreshKey((k) => k + 1);
-                                alert("Participants wiped.");
-                              } else {
-                                alert("Failed to wipe participants. Please re-login and try again.");
-                                onLogout?.();
-                              }
-                            }}
-                          >
-                            Wipe
-                          </Button>
-                        </RoleGate>
-                      </>
-                    }
-                  />
-                  <ParticipantsPanel
-                    key={`pp::${projectId}::${feedId || "nofeed"}::${surveyId || "nosurvey"}::${participantsRefreshKey}`}
-                    projectId={projectId}
-                    feedId={feedId}
-                    surveyId={surveyId}
-                    postNamesMap={postNames}
-                    posts={posts}
-                    compact
-                    limit={showAllParticipants ? undefined : 5}
-                    onCountChange={setParticipantsCount}
-                  />
-                </>
+            <Route
+              path="participants/feed"
+              element={
+                <FeedParticipantsPage
+                  key={`fpp::${projectId}::${feedId || "nofeed"}`}
+                  projectId={projectId}
+                  feedId={feedId}
+                  feedName={feedName}
+                  defaultFeedId={defaultFeedId}
+                  postNamesMap={postNames}
+                  posts={posts}
+                  onLogout={onLogout}
+                />
               }
+            />
+
+            <Route
+              path="participants/survey"
+              element={<SurveyParticipantsPage key={`spp::${projectId}`} projectId={projectId} />}
             />
 
             <Route
