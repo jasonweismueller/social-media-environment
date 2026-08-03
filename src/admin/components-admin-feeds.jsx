@@ -37,101 +37,44 @@ function keyFor(pid, fid) {
 // wipe-on-change toggle, the feed rows themselves) — portaled into
 // AdminShell's Feeds slot instead of rendering in the main content column,
 // see AdminTreeSlotsContext in ./AdminShell for why.
-function FeedListContent({
-  feeds,
-  filteredFeeds,
-  feedsLoading,
-  filterText,
-  setFilterText,
-  onCreateFeed,
-  onRefreshFeeds,
-  wipeOnChange,
-  updatingWipe,
-  onSetWipePolicy,
-  selectedFeedId,
-  defaultFeedId,
-  onSelectFeed,
-}) {
+function FeedListContent({ feeds, feedsLoading, onCreateFeed, selectedFeedId, defaultFeedId, onSelectFeed }) {
   return (
     <div>
       {feedsLoading && (
         <div style={{ fontSize: 11, color: "var(--admin-muted)", marginBottom: 6 }}>Loading…</div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <input
-          type="text"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          placeholder="Filter feeds…"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            boxSizing: "border-box",
-            padding: "6px 8px",
-            borderRadius: 8,
-            border: "1px solid #d1d5db",
-            fontSize: 12,
-          }}
-        />
-        <IconButton size="sm" onClick={onRefreshFeeds} title="Reload feed registry from backend">
-          ↻
-        </IconButton>
-      </div>
+      {feeds.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>No feeds yet.</div>
+      ) : (
+        feeds.map((f) => {
+          const isActive = selectedFeedId === f.feed_id;
+          const rowIsDefault = f.feed_id === defaultFeedId;
+          return (
+            <button
+              key={f.feed_id}
+              type="button"
+              onClick={() => onSelectFeed(f.feed_id)}
+              style={feedListButtonStyle(isActive)}
+            >
+              <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
+                {f.name || f.feed_id}
+                {rowIsDefault && (
+                  <Badge tone="accent" style={{ marginLeft: 6 }}>
+                    default
+                  </Badge>
+                )}
+              </div>
+            </button>
+          );
+        })
+      )}
 
       <RoleGate min="editor">
-        <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ width: "100%", marginBottom: 10 }}>
+        <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ width: "100%", marginTop: 6 }}>
           + New feed
         </Button>
       </RoleGate>
-
-      <RoleGate min="owner">
-        <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid var(--admin-border-subtle)" }}>
-          <Toggle
-            label="Wipe on change"
-            hint="Publishing a checksum-changing feed wipes its participants"
-            checked={!!wipeOnChange}
-            busy={updatingWipe}
-            disabled={wipeOnChange === null}
-            onChange={onSetWipePolicy}
-          />
-        </div>
-      </RoleGate>
-
-      <div>
-        {filteredFeeds.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>
-            {feeds.length === 0
-              ? 'No feeds yet. Click "+ New feed" to create one.'
-              : "No feeds match this filter."}
-          </div>
-        ) : (
-          filteredFeeds.map((f) => {
-            const isActive = selectedFeedId === f.feed_id;
-            const rowIsDefault = f.feed_id === defaultFeedId;
-            return (
-              <button
-                key={f.feed_id}
-                type="button"
-                onClick={() => onSelectFeed(f.feed_id)}
-                style={feedListButtonStyle(isActive)}
-              >
-                <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827", marginBottom: 4 }}>
-                  {f.name || f.feed_id}
-                  {rowIsDefault && (
-                    <Badge tone="accent" style={{ marginLeft: 6 }}>
-                      default
-                    </Badge>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  Updated {f.updated_at ? new Date(f.updated_at).toLocaleDateString() : "—"}
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
     </div>
   );
 }
@@ -193,7 +136,6 @@ export function AdminFeedsPanel({
   onClearFeed,
   onLogout,
 }) {
-  const [filterText, setFilterText] = useState("");
   const [activeFeedTab, setActiveFeedTab] = useState("posts");
 
   // Reset to the Posts tab whenever a different feed is selected — mirrors
@@ -209,13 +151,6 @@ export function AdminFeedsPanel({
     if (selectedFeedId && activeFeedTab === "settings") onLoadFlags(selectedFeedId);
   }, [selectedFeedId, activeFeedTab, onLoadFlags]);
 
-  const filteredFeeds = filterText.trim()
-    ? feeds.filter((f) => {
-        const q = filterText.trim().toLowerCase();
-        return (f.name || "").toLowerCase().includes(q) || (f.feed_id || "").toLowerCase().includes(q);
-      })
-    : feeds;
-
   const rowKey = keyFor(projectId, selectedFeedId);
   const ff = feedFlags[rowKey] || {};
   const stats = feedStats[rowKey];
@@ -230,15 +165,8 @@ export function AdminFeedsPanel({
         createPortal(
           <FeedListContent
             feeds={feeds}
-            filteredFeeds={filteredFeeds}
             feedsLoading={feedsLoading}
-            filterText={filterText}
-            setFilterText={setFilterText}
             onCreateFeed={onCreateFeed}
-            onRefreshFeeds={onRefreshFeeds}
-            wipeOnChange={wipeOnChange}
-            updatingWipe={updatingWipe}
-            onSetWipePolicy={onSetWipePolicy}
             selectedFeedId={selectedFeedId}
             defaultFeedId={defaultFeedId}
             onSelectFeed={onSelectFeed}
@@ -288,31 +216,6 @@ export function AdminFeedsPanel({
                   <Button size="sm" variant="secondary" onClick={onRefreshPosts} title="Reload posts for this feed from backend">
                     Refresh {contentUnitLabelPlural}
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={onExportPostsJson} title="Export current posts as JSON">
-                    Export JSON
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={onExportFeedPdf}
-                    disabled={!selectedFeedId || !posts?.length}
-                    title="Export this feed as a printable PDF using the rendered post layout"
-                  >
-                    Export Feed PDF
-                  </Button>
-                  <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
-                    Import JSON
-                    <input
-                      type="file"
-                      accept="application/json"
-                      style={{ display: "none" }}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        await onImportPostsJson(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -384,21 +287,13 @@ export function AdminFeedsPanel({
                               {p.videoMode !== "none" ? "🎬 video" : p.imageMode !== "none" ? "🖼️ image" : <span className="subtle">none</span>}
                             </Td>
                             <Td>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <Button size="sm" onClick={() => onEditPost(p)}>
-                                  Edit
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  title="Rename this post for CSV columns"
-                                  onClick={() => onRenamePost(p.id)}
-                                >
-                                  Rename
-                                </Button>
-                                <Button size="sm" variant="danger" onClick={() => onRemovePost(p.id)}>
-                                  Delete
-                                </Button>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <IconButton size="sm" onClick={() => onEditPost(p)} title="Edit post">
+                                  ✏️
+                                </IconButton>
+                                <IconButton size="sm" onClick={() => onRemovePost(p.id)} title="Delete post">
+                                  🗑️
+                                </IconButton>
                               </div>
                             </Td>
                           </tr>
@@ -492,8 +387,50 @@ export function AdminFeedsPanel({
                   </Button>
                 </Card>
 
+                <RoleGate min="editor">
+                  <Card title="Import / export" subtitle="Back up or move this feed's posts">
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <Button size="sm" variant="secondary" onClick={onExportPostsJson} title="Export current posts as JSON">
+                        Export JSON
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={onExportFeedPdf}
+                        disabled={!selectedFeedId || !posts?.length}
+                        title="Export this feed as a printable PDF using the rendered post layout"
+                      >
+                        Export Feed PDF
+                      </Button>
+                      <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
+                        Import JSON
+                        <input
+                          type="file"
+                          accept="application/json"
+                          style={{ display: "none" }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            await onImportPostsJson(file);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </Card>
+                </RoleGate>
+
                 <RoleGate min="owner">
                   <Card title="Danger zone">
+                    <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--admin-border-subtle)" }}>
+                      <Toggle
+                        label="Wipe on change"
+                        hint="Publishing a checksum-changing feed wipes its participants"
+                        checked={!!wipeOnChange}
+                        busy={updatingWipe}
+                        disabled={wipeOnChange === null}
+                        onChange={onSetWipePolicy}
+                      />
+                    </div>
                     <Button
                       size="sm"
                       variant="danger"

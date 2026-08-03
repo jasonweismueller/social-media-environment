@@ -42,15 +42,12 @@ function navItemStyle(isActive) {
   };
 }
 
-// One expandable section of the tree sidebar (Feeds or Surveys): a header
-// that navigates on click, plus — only while its own route is active — a
-// separate, independently-clickable disclosure button that shows/hides a
-// scrollable slot the matching panel portals its list into. The toggle is a
-// real sibling `<button>` next to the NavLink (not nested inside its `<a>`,
-// which would be invalid HTML and an unreliable click target) with a real
-// hit area, not just a small glyph. Only the active *and expanded* section
-// grows to fill the sidebar's remaining height; collapsed/inactive sections
-// take just their header's height.
+// One expandable section of the tree sidebar (Feeds or Surveys): a single
+// button that both navigates (when not already the active section) and
+// toggles its own list open/closed (when it already is) — no separate
+// disclosure control. Only the active *and expanded* section grows to fill
+// the sidebar's remaining height; collapsed/inactive sections take just
+// their header's height.
 function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef }) {
   const showList = active && expanded;
   return (
@@ -62,46 +59,37 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
         minHeight: showList ? 0 : undefined,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <NavLink to={to} style={({ isActive }) => ({ ...navItemStyle(isActive), flex: 1 })}>
-          <span aria-hidden="true">{icon}</span>
-          <span style={{ flex: 1 }}>{label}</span>
-        </NavLink>
+      <NavLink
+        to={to}
+        onClick={(e) => {
+          if (active) {
+            // Already here — this click can only mean "toggle the list",
+            // since re-navigating to the same route would be a no-op anyway.
+            e.preventDefault();
+            onToggleExpand();
+          }
+          // Otherwise let the normal Link navigation happen; the effect in
+          // AdminShell that resets expandedKey on route change expands it.
+        }}
+        aria-expanded={active ? expanded : undefined}
+        style={({ isActive }) => navItemStyle(isActive)}
+      >
+        <span aria-hidden="true">{icon}</span>
+        <span style={{ flex: 1 }}>{label}</span>
         {active && (
-          <button
-            type="button"
-            onClick={onToggleExpand}
-            aria-expanded={expanded}
-            aria-label={expanded ? `Hide ${label.toLowerCase()} list` : `Show ${label.toLowerCase()} list`}
-            title={expanded ? "Hide list" : "Show list"}
+          <span
+            aria-hidden="true"
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 26,
-              height: 26,
-              flexShrink: 0,
-              border: "none",
-              borderRadius: "var(--admin-radius-sm)",
-              background: "var(--admin-surface-alt)",
+              fontSize: 10,
               color: "var(--admin-muted)",
-              cursor: "pointer",
-              fontSize: 11,
+              transform: expanded ? "rotate(90deg)" : "none",
+              transition: "transform .15s ease",
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                display: "inline-block",
-                transform: expanded ? "rotate(90deg)" : "none",
-                transition: "transform .15s ease",
-              }}
-            >
-              ▸
-            </span>
-          </button>
+            ▸
+          </span>
         )}
-      </div>
+      </NavLink>
       {showList && (
         <div
           ref={slotRef}
@@ -177,30 +165,56 @@ export function AdminShell({
           padding: "16px 12px",
         }}
       >
-        <div style={{ padding: "4px 8px 16px", flex: "0 0 auto" }}>
-          {backTo && (
-            <Link
-              to={backTo}
-              style={{
-                display: "inline-block",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "var(--admin-muted)",
-                textDecoration: "none",
-                marginBottom: 8,
-              }}
-            >
-              {backLabel}
-            </Link>
-          )}
-          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
-            {title}
-          </div>
-          {subtitle && (
-            <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 3 }}>
-              {subtitle}
+        <div style={{ padding: "4px 8px 16px", flex: "0 0 auto", display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {backTo && (
+              <Link
+                to={backTo}
+                style={{
+                  display: "inline-block",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "var(--admin-muted)",
+                  textDecoration: "none",
+                  marginBottom: 8,
+                }}
+              >
+                {backLabel}
+              </Link>
+            )}
+            <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
+              {title}
             </div>
-          )}
+            {subtitle && (
+              <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 3 }}>
+                {subtitle}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onLogout}
+            title="Log out"
+            aria-label="Log out"
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 26,
+              height: 26,
+              marginTop: 2,
+              border: "none",
+              borderRadius: "var(--admin-radius-sm)",
+              background: "transparent",
+              color: "var(--admin-danger-ink, #b91c1c)",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            ⏻
+          </button>
         </div>
 
         {projectSwitcher && (
@@ -247,27 +261,6 @@ export function AdminShell({
             </NavLink>
           )}
         </nav>
-
-        <button
-          type="button"
-          onClick={onLogout}
-          title="Sign out of the admin session"
-          style={{
-            flex: "0 0 auto",
-            marginTop: 12,
-            padding: "9px 10px",
-            borderRadius: "var(--admin-radius-sm)",
-            border: "1px solid var(--admin-border-subtle)",
-            background: "var(--admin-surface)",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--admin-muted)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          Log out
-        </button>
       </aside>
 
       <main style={{ padding: "24px 28px", minWidth: 0 }}>

@@ -39,7 +39,7 @@ import {
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
 
-import { Card as AdminUiCard, Tabs, Button, IconButton, Badge } from "./ui";
+import { Card as AdminUiCard, Tabs, Button } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext } from "./AdminShell";
 
@@ -861,87 +861,39 @@ function surveyListButtonStyle(isActive) {
 // share one visual language instead of the survey list being the odd one
 // out (no filter, no refresh button, a standalone primary-blue "+ New
 // Survey" button).
-function SurveyListContent({
-  surveys,
-  filteredSurveys,
-  loading,
-  filterText,
-  setFilterText,
-  onCreateSurvey,
-  onRefreshSurveys,
-  selectedSurveyId,
-  onSelectSurvey,
-}) {
+function SurveyListContent({ surveys, loading, onCreateSurvey, selectedSurveyId, onSelectSurvey }) {
   return (
     <div>
       {loading && (
         <div style={{ fontSize: 11, color: "var(--admin-muted)", marginBottom: 6 }}>Loading…</div>
       )}
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <input
-          type="text"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          placeholder="Filter surveys…"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            boxSizing: "border-box",
-            padding: "6px 8px",
-            borderRadius: 8,
-            border: "1px solid #d1d5db",
-            fontSize: 12,
-          }}
-        />
-        <IconButton size="sm" onClick={onRefreshSurveys} title="Reload survey list from backend">
-          ↻
-        </IconButton>
-      </div>
+      {surveys.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>No surveys yet.</div>
+      ) : (
+        surveys.map((s) => {
+          const isActive = selectedSurveyId === s.survey_id;
+          return (
+            <button
+              key={s.survey_id}
+              type="button"
+              onClick={() => onSelectSurvey(s.survey_id)}
+              style={surveyListButtonStyle(isActive)}
+            >
+              <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827", marginBottom: 4 }}>
+                {s.name || s.survey_id}
+              </div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                {surveyQuestionCount(s || {})} questions
+              </div>
+            </button>
+          );
+        })
+      )}
 
-      <Button size="sm" variant="secondary" onClick={onCreateSurvey} style={{ width: "100%", marginBottom: 10 }}>
+      <Button size="sm" variant="secondary" onClick={onCreateSurvey} style={{ width: "100%", marginTop: 6 }}>
         + New Survey
       </Button>
-
-      <div>
-        {filteredSurveys.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>
-            {surveys.length === 0
-              ? 'No surveys yet. Click "+ New Survey" to create one.'
-              : "No surveys match this filter."}
-          </div>
-        ) : (
-          filteredSurveys.map((s) => {
-            const isActive = selectedSurveyId === s.survey_id;
-            return (
-              <button
-                key={s.survey_id}
-                type="button"
-                onClick={() => onSelectSurvey(s.survey_id)}
-                style={surveyListButtonStyle(isActive)}
-              >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: isActive ? "#3730a3" : "#111827",
-                    marginBottom: 4,
-                  }}
-                >
-                  {s.name || s.survey_id}
-                  {s.status === "draft" && (
-                    <Badge tone="neutral" style={{ marginLeft: 6 }}>
-                      draft
-                    </Badge>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {surveyQuestionCount(s || {})} questions
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
     </div>
   );
 }
@@ -1396,7 +1348,6 @@ export function AdminSurveysPanel({
   const [resettingGroupBalance, setResettingGroupBalance] = useState(false);
   const [resetGroupBalanceError, setResetGroupBalanceError] = useState("");
   const [deletingSurveyData, setDeletingSurveyData] = useState(false);
-  const [surveyFilterText, setSurveyFilterText] = useState("");
 
   const { surveysSlot } = useContext(AdminTreeSlotsContext);
 
@@ -2330,28 +2281,14 @@ export function AdminSurveysPanel({
     return () => clearTimeout(timer);
   }, [copiedLinkState]);
 
-  const filteredSurveys = surveyFilterText.trim()
-    ? surveys.filter((s) => {
-        const q = surveyFilterText.trim().toLowerCase();
-        return (
-          (s.name || "").toLowerCase().includes(q) ||
-          (s.survey_id || "").toLowerCase().includes(q)
-        );
-      })
-    : surveys;
-
   return (
     <>
       {surveysSlot &&
         createPortal(
           <SurveyListContent
             surveys={surveys}
-            filteredSurveys={filteredSurveys}
             loading={loading}
-            filterText={surveyFilterText}
-            setFilterText={setSurveyFilterText}
             onCreateSurvey={handleCreateSurvey}
-            onRefreshSurveys={loadAll}
             selectedSurveyId={selectedSurveyId}
             onSelectSurvey={handleSelectSurvey}
           />,
@@ -2396,83 +2333,6 @@ export function AdminSurveysPanel({
                   onChange={handleImportSurveyFile}
                   style={{ display: "none" }}
                 />
-
-                <button
-                  type="button"
-                  onClick={() => importFileRef.current?.click()}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  Import
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopySurvey}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  Copy
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportSurvey}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  Export JSON
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportSurveyEthicsWord}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                  title="Download a Word-compatible ethics/protocol document showing the participant-facing survey content."
-                >
-                  Ethics Word
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportSurveyEthicsPdf}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                  title="Open a printable version that can be saved as PDF from the print dialog."
-                >
-                  Ethics PDF
-                </button>
 
                 {!!survey?.survey_id && (
                   <IconOnlyButton
@@ -2519,7 +2379,22 @@ export function AdminSurveysPanel({
             />
 
             {activeEditorTab === "setup" && (
-            <SectionCard title="Survey details">
+            <SectionCard
+              title="Survey details"
+              right={
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Button size="sm" variant="secondary" onClick={() => importFileRef.current?.click()}>
+                    Import
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={handleExportSurvey}>
+                    Export JSON
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={handleCopySurvey}>
+                    Copy
+                  </Button>
+                </div>
+              }
+            >
               <FieldBlock label="Survey name">
                 <TextInput
                   value={survey.name}
@@ -2693,6 +2568,25 @@ export function AdminSurveysPanel({
                   >
                     {copiedLinkState === "survey-only link" ? "Copied" : "Copy"}
                   </button>
+                </div>
+              </FieldBlock>
+
+              <FieldBlock
+                label="Ethics protocol export"
+                hint="A participant-facing document of this survey's content, formatted for ethics applications."
+              >
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button size="sm" variant="secondary" onClick={handleExportSurveyEthicsWord}>
+                    Ethics Word
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleExportSurveyEthicsPdf}
+                    title="Open a printable version that can be saved as PDF from the print dialog."
+                  >
+                    Ethics PDF
+                  </Button>
                 </div>
               </FieldBlock>
             </SectionCard>
