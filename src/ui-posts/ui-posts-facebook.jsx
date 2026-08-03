@@ -233,10 +233,18 @@ export function PostCard({
   assignedAvatarUrl,
   participantSeed,
   onDisplayedPostSnapshot,
+  // Forces the caption to always render in full, with no "See more"/"See
+  // less" at all — used for non-interactive (static) post_reminder survey
+  // questions, which show a frozen snapshot of the post rather than a live
+  // interactive card. Leaves the real feed and interactive reminders (which
+  // should behave exactly like the real feed) untouched, since neither
+  // passes this prop.
+  alwaysExpandText = false,
 }) {
   const [reportAck, setReportAck] = useState(false);
   const [linkAck, setLinkAck] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expandedState, setExpanded] = useState(false);
+  const expanded = alwaysExpandText || expandedState;
   const [showComment, setShowComment] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [commentText, setCommentText] = useState("");

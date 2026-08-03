@@ -280,7 +280,11 @@ export function PostCard({
   projectId,
   feedId,
   runSeed,
-  flags
+  flags,
+  // Forces the caption to always render in full, with no "more" at all —
+  // used for non-interactive (static) post_reminder survey questions. The
+  // real feed and interactive reminders don't pass this, so are unaffected.
+  alwaysExpandText = false,
 }) {
   const {
   id, author = "", avatarUrl = "", text = "", image, imageMode, images,
@@ -513,7 +517,8 @@ const timeLabel = useMemo(() => {
   const [reposted, setReposted] = useState(false);
 
   // caption expand state
-  const [expanded, setExpanded] = useState(false);
+  const [expandedState, setExpanded] = useState(false);
+  const expanded = alwaysExpandText || expandedState;
 
   // Collapse any expanded caption on carousel slide change, so a long
   // caption expanded on one slide doesn't stay expanded (and thus unclamped)

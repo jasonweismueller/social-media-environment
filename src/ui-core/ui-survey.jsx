@@ -781,6 +781,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
       post={post}
       onAction={interactive ? handleInteractiveAction : noopAction}
       disabled={!interactive}
+      alwaysExpandText={!interactive}
       registerViewRef={noopRegisterViewRef}
       app={app}
       projectId={projectId}

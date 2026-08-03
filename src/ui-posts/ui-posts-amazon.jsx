@@ -91,10 +91,16 @@ function Stars({ rating = 5 }) {
   );
 }
 
-function ReadMoreText({ text, collapsedChars = 520, onExpand, onCollapse, disabled }) {
-  const [expanded, setExpanded] = useState(false);
+function ReadMoreText({ text, collapsedChars = 520, onExpand, onCollapse, disabled, alwaysExpanded = false }) {
+  const [expandedState, setExpanded] = useState(false);
+  const expanded = alwaysExpanded || expandedState;
   const clean = String(text || "");
-  const needsClamp = clean.length > collapsedChars;
+  // When forced always-expanded, treat as never needing a clamp at all —
+  // unlike Facebook/Instagram's DOM-measured clamp, this one is purely
+  // character-count based, so it wouldn't naturally clear itself just from
+  // `expanded` being forced true (`needsClamp` doesn't depend on `expanded`
+  // here), and "Read less" would otherwise still render.
+  const needsClamp = !alwaysExpanded && clean.length > collapsedChars;
   const shown = !needsClamp || expanded ? clean : `${clean.slice(0, collapsedChars).trimEnd()}…`;
 
   return (
@@ -139,6 +145,7 @@ function ReviewCard({
   feedId,
   participantSeed,
   onDisplayedPostSnapshot,
+  alwaysExpandText = false,
 }) {
   const id = getReviewId(review);
   const author = getReviewAuthor(review);
@@ -220,6 +227,7 @@ function ReviewCard({
         disabled={disabled}
         onExpand={() => onAction?.("review_read_more", logBase({ expanded: true }))}
         onCollapse={() => onAction?.("review_read_more", logBase({ expanded: false }))}
+        alwaysExpanded={alwaysExpandText}
       />
 
       <div className="amz-helpful-line">
@@ -296,6 +304,11 @@ export function PostCard({
   feedId,
   participantSeed,
   onDisplayedPostSnapshot,
+  // Forces the review text to always render in full, with no "Read more"/
+  // "Read less" at all — used for non-interactive (static) post_reminder
+  // survey questions. The real feed and interactive reminders don't pass
+  // this, so are unaffected.
+  alwaysExpandText = false,
 }) {
   const normalizedReview = review || post || {};
 
@@ -324,6 +337,7 @@ export function PostCard({
       feedId={feedId}
       participantSeed={participantSeed}
       onDisplayedPostSnapshot={onDisplayedPostSnapshot}
+      alwaysExpandText={alwaysExpandText}
     />
   );
 }
