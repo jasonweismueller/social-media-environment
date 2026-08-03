@@ -941,11 +941,18 @@ export default function App() {
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
+  const isDirectSurveyLaunch = !onAdmin && !!String(activeSurveyId || "").trim();
+
+  // A feed accidentally linked to a delivery_mode:"survey_only" survey should
+  // still show the feed when reached via the feed's own URL — "survey_only"
+  // only means "skip the feed" for the survey's own direct launch link, not
+  // for every feed that happens to be linked to it.
   const isSurveyOnlyMode =
-    !!surveyBoot?.has_survey && isSurveyOnlyDeliveryMode(surveyBoot?.delivery_mode);
+    isDirectSurveyLaunch &&
+    !!surveyBoot?.has_survey &&
+    isSurveyOnlyDeliveryMode(surveyBoot?.delivery_mode);
 
   const requiresFeedStage = !isSurveyOnlyMode;
-  const isDirectSurveyLaunch = !onAdmin && !!String(activeSurveyId || "").trim();
   const effectiveSurveyId = String(activeSurveyId || surveyBoot?.survey_id || "").trim();
 
   const effectiveFeedSequenceIds = useMemo(() => {
