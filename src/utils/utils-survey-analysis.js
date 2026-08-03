@@ -361,6 +361,32 @@ function detectDemographicKind(idAndText) {
   return null;
 }
 
+/**
+ * Question text comes straight out of the rich-text editor (normalizeRichTextHtml
+ * in the survey editor), e.g. "<p><b>What is your age?</b></p>" — fine for
+ * rendering the real question, but this analysis hub only ever shows question
+ * text as a compact label/chart title, so it needs to be plain text.
+ */
+function stripHtmlToText(html) {
+  const s = String(html ?? "");
+  if (!s) return "";
+  if (typeof document !== "undefined") {
+    const div = document.createElement("div");
+    div.innerHTML = s;
+    return (div.textContent || div.innerText || "").replace(/\s+/g, " ").trim();
+  }
+  return s
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function choicesAreNumeric(choices) {
   const vals = (choices || [])
     .map((c) => c?.value)
@@ -392,13 +418,14 @@ export function classifySurveyQuestions(survey) {
         return;
       }
 
-      const demographicKind = detectDemographicKind(`${q.id} ${q.text || ""}`);
+      const plainText = stripHtmlToText(q.text) || q.id;
+      const demographicKind = detectDemographicKind(`${q.id} ${plainText}`);
       const isDemographic = !!demographicKind;
 
       const pushItem = (extra) =>
         out.push({
           questionId: q.id,
-          questionText: q.text || q.id,
+          questionText: plainText,
           questionType: type,
           pageIndex,
           qIndex,
@@ -413,7 +440,7 @@ export function classifySurveyQuestions(survey) {
         case SURVEY_QUESTION_TYPES.SLIDER:
           pushItem({
             itemKey: q.id,
-            itemLabel: q.text || q.id,
+            itemLabel: plainText,
             kind: "numeric",
             min: q.min,
             max: q.max,
@@ -421,7 +448,12 @@ export function classifySurveyQuestions(survey) {
           break;
 
         case SURVEY_QUESTION_TYPES.BIPOLAR: {
-          const numeric = choicesAreNumeric(q.columns);
+          // Choice-coded values (1..5, etc.) are a meaningful ordinal scale
+          // for genuine measure items (Likert-style), but for a demographic
+          // question they're just category codes (e.g. gender 1/2/3) —
+          // averaging them would be meaningless, so demographics always stay
+          // categorical regardless of what the underlying codes look like.
+          const numeric = !isDemographic && choicesAreNumeric(q.columns);
           (q.rows || []).forEach((row) => {
             pushItem({
               itemKey: row.value,
@@ -436,7 +468,7 @@ export function classifySurveyQuestions(survey) {
         }
 
         case SURVEY_QUESTION_TYPES.MATRIX_SINGLE: {
-          const numeric = choicesAreNumeric(q.columns);
+          const numeric = !isDemographic && choicesAreNumeric(q.columns);
           (q.rows || []).forEach((row) => {
             pushItem({
               itemKey: row.value,
@@ -466,10 +498,10 @@ export function classifySurveyQuestions(survey) {
 
         case SURVEY_QUESTION_TYPES.SINGLE:
         case SURVEY_QUESTION_TYPES.DROPDOWN: {
-          const numeric = choicesAreNumeric(q.choices);
+          const numeric = !isDemographic && choicesAreNumeric(q.choices);
           pushItem({
             itemKey: q.id,
-            itemLabel: q.text || q.id,
+            itemLabel: plainText,
             kind: numeric ? "numeric" : "categorical",
             choices: q.choices,
           });
@@ -479,7 +511,7 @@ export function classifySurveyQuestions(survey) {
         case SURVEY_QUESTION_TYPES.MULTI:
           pushItem({
             itemKey: q.id,
-            itemLabel: q.text || q.id,
+            itemLabel: plainText,
             kind: "multi",
             choices: q.choices,
           });
@@ -487,7 +519,7 @@ export function classifySurveyQuestions(survey) {
 
         case SURVEY_QUESTION_TYPES.TEXT:
         case SURVEY_QUESTION_TYPES.TEXTAREA:
-          pushItem({ itemKey: q.id, itemLabel: q.text || q.id, kind: "text" });
+          pushItem({ itemKey: q.id, itemLabel: plainText, kind: "text" });
           break;
 
         default:
@@ -558,6 +590,87 @@ function absorbedItemKeySet(composites) {
   const set = new Set();
   composites.forEach((c) => c.items.forEach((it) => set.add(`${it.questionId}::${it.itemKey}`)));
   return set;
+}
+
+/* =========================
+   Custom (tag-based) measure groups
+   ========================= */
+
+export function itemRefKey(it) {
+  return `${it.questionId}::${it.itemKey}`;
+}
+
+/**
+ * Every underscore/non-alphanumeric-delimited token that identifies this item
+ * — e.g. a raw item "MI3_EMO_BL_1" (whether that's the questionId itself, or
+ * a matrix row value under a compositeQuestionId) tokenizes to
+ * ["MI3","EMO","BL","1"]. Pulls tokens from questionId, compositeQuestionId,
+ * and itemKey together (deduped) so it doesn't matter which field actually
+ * carries the naming convention.
+ */
+export function tokenizeItemId(it) {
+  const parts = [it?.questionId, it?.compositeQuestionId, it?.itemKey]
+    .filter((v) => v != null)
+    .map(String);
+  const tokens = parts.join("_").toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  return Array.from(new Set(tokens));
+}
+
+function tokenMatches(token, patternToken) {
+  if (patternToken.includes("*")) {
+    const re = new RegExp(
+      "^" + patternToken.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$"
+    );
+    return re.test(token);
+  }
+  // Bare tokens (no "*") prefix-match rather than requiring exact equality —
+  // naming conventions like "MI1_EMO_BL_1" fuse the post index straight onto
+  // the tag with no delimiter, so a token never literally equals "MI" on its
+  // own; typing "MI" should still mean "MI1, MI2, MI3, ...". This stays
+  // token-boundary-safe (matching happens per split token, not as a raw
+  // substring of the whole id) so "EMO" still never matches "NOEMO".
+  return token.startsWith(patternToken);
+}
+
+/**
+ * Tag-query language for grouping items across a whole survey's naming
+ * convention (e.g. "MI EMO BL" -> every item whose id tokenizes to include
+ * MI*, EMO, and BL all at once). Space-separated tokens are AND'd together;
+ * comma-separated clauses are OR'd; "*" wildcards within a token. Matching is
+ * against whole tokens (not substrings), so "EMO" never accidentally matches
+ * "NOEMO" — they're different tokens once split on "_".
+ */
+export function matchesTagPattern(tokens, pattern) {
+  const clauses = String(pattern || "")
+    .toUpperCase()
+    .split(",")
+    .map((c) => c.trim().split(/\s+/).filter(Boolean))
+    .filter((c) => c.length);
+  if (!clauses.length) return false;
+  return clauses.some((andTokens) =>
+    andTokens.every((pt) => tokens.some((t) => tokenMatches(t, pt)))
+  );
+}
+
+/**
+ * Numeric, non-demographic items eligible to go into a custom group — the
+ * same universe the auto-detected composites/standalone-numeric list draws
+ * from, just not pre-grouped.
+ */
+export function getGroupableItems(dataset) {
+  return (dataset?.items || []).filter((it) => it.kind === "numeric" && !it.isDemographic);
+}
+
+export function findItemsMatchingTagPattern(dataset, pattern) {
+  if (!String(pattern || "").trim()) return [];
+  return getGroupableItems(dataset).filter((it) => matchesTagPattern(tokenizeItemId(it), pattern));
+}
+
+/** Builds a composite-shaped object (same shape buildComposites produces) from an explicit item-ref list, so summarizeComposite/computeCompositeScores work unchanged on custom groups. */
+export function buildCustomGroupComposite(groupDef, dataset) {
+  const byKey = new Map((dataset?.items || []).map((it) => [itemRefKey(it), it]));
+  const items = (groupDef?.itemKeys || []).map((k) => byKey.get(k)).filter(Boolean);
+  return { id: groupDef.id, label: groupDef.name || groupDef.id, source: "custom", items };
 }
 
 /* =========================
@@ -740,7 +853,7 @@ export function computeMeasuresSummary(dataset) {
   return { composites, standaloneNumeric, standaloneCategorical, textItems };
 }
 
-export function computeGroupComparison(dataset, experimentGroups) {
+export function computeGroupComparison(dataset, experimentGroups, customGroupComposites = []) {
   const groups = Array.isArray(experimentGroups) ? experimentGroups : [];
   if (groups.length < 2) return null;
 
@@ -751,6 +864,11 @@ export function computeGroupComparison(dataset, experimentGroups) {
   });
 
   const numericTargets = [
+    ...(customGroupComposites || []).map((c) => ({
+      key: `custom:${c.id}`,
+      label: c.label,
+      get: (rws) => computeCompositeScores(c, rws).filter((v) => v != null),
+    })),
     ...dataset.composites.map((c) => ({
       key: `composite:${c.id}`,
       label: c.label,

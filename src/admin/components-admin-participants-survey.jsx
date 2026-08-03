@@ -24,6 +24,10 @@ import {
   getRawItemValue,
   histogramBins,
   formatPValue,
+  itemRefKey,
+  findItemsMatchingTagPattern,
+  buildCustomGroupComposite,
+  summarizeComposite,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Button, Badge } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
@@ -89,6 +93,30 @@ function triggerCsvDownload(filename, csv) {
 }
 
 const LAST_SURVEY_KEY = (projectId) => `admin_last_analysis_survey_id::${APP || "app"}::${projectId || "global"}`;
+const CUSTOM_GROUPS_KEY = (projectId, surveyId) =>
+  `admin_custom_measure_groups::${APP || "app"}::${projectId || "global"}::${surveyId}`;
+
+function loadCustomGroups(projectId, surveyId) {
+  if (!surveyId) return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_GROUPS_KEY(projectId, surveyId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomGroups(projectId, surveyId, groups) {
+  if (!surveyId) return;
+  try {
+    localStorage.setItem(CUSTOM_GROUPS_KEY(projectId, surveyId), JSON.stringify(groups || []));
+  } catch {}
+}
+
+function makeGroupId() {
+  return `grp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 /* ----------------------------- mini charts ----------------------------- */
 
@@ -168,56 +196,92 @@ const DEMOGRAPHIC_KIND_LABELS = {
 };
 
 function DemographicsSection({ dataset, demographics }) {
+  const options = useMemo(
+    () => demographics.map(({ item }) => `${item.questionId}::${item.itemKey}`),
+    [demographics]
+  );
+  const [selectedKey, setSelectedKey] = useState(options[0] || "");
+
+  useEffect(() => {
+    if (!options.includes(selectedKey)) setSelectedKey(options[0] || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.join("|")]);
+
+  const selected = demographics.find(({ item }) => `${item.questionId}::${item.itemKey}` === selectedKey);
+
   return (
     <Card
       title="Demographics"
       subtitle="Auto-detected from question ids/text (age, gender, income, education, ethnicity, employment, ...)."
+      actions={
+        demographics.length > 0 && (
+          <select
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid var(--admin-border, #d1d5db)",
+              fontSize: 13,
+              maxWidth: 260,
+            }}
+          >
+            {demographics.map(({ item }) => (
+              <option key={`${item.questionId}::${item.itemKey}`} value={`${item.questionId}::${item.itemKey}`}>
+                {DEMOGRAPHIC_KIND_LABELS[item.demographicKind] || item.questionText}
+              </option>
+            ))}
+          </select>
+        )
+      }
     >
       {demographics.length === 0 ? (
         <div className="subtle" style={{ fontSize: 13 }}>
           No demographic questions detected in this survey. Question ids/text like AGE, GENDER, INCOME,
           EDUCATION, ETHNICITY, EMPLOYMENT, MARITAL, NATIONALITY are picked up automatically.
         </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
-          {demographics.map(({ item, summary }) => (
-            <div key={`${item.questionId}::${item.itemKey}`}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{item.questionText}</div>
-                <Badge tone="neutral">{DEMOGRAPHIC_KIND_LABELS[item.demographicKind] || item.demographicKind}</Badge>
-                <span style={{ fontSize: 11, color: "var(--admin-muted)" }}>
-                  N = {summary.nAnswered}/{summary.nTotal}
-                </span>
-              </div>
+      ) : !selected ? null : (
+        (({ item, summary }) => (
+          <div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{item.questionText}</div>
+              <Badge tone="neutral">{DEMOGRAPHIC_KIND_LABELS[item.demographicKind] || item.demographicKind}</Badge>
+              <span style={{ fontSize: 11, color: "var(--admin-muted)" }}>
+                N = {summary.nAnswered}/{summary.nTotal}
+              </span>
+            </div>
 
-              {summary.kind === "numeric" ? (
-                <>
-                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, marginBottom: 6 }}>
-                    <span>Mean <strong>{fmtNum(summary.mean)}</strong></span>
-                    <span>SD <strong>{fmtNum(summary.sd)}</strong></span>
-                    <span>Median <strong>{fmtNum(summary.median)}</strong></span>
-                    <span>Range <strong>{summary.min ?? "—"}–{summary.max ?? "—"}</strong></span>
-                  </div>
-                  {summary.n > 1 && (
+            {summary.kind === "numeric" ? (
+              <>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, marginBottom: 6 }}>
+                  <span>Mean <strong>{fmtNum(summary.mean)}</strong></span>
+                  <span>SD <strong>{fmtNum(summary.sd)}</strong></span>
+                  <span>Median <strong>{fmtNum(summary.median)}</strong></span>
+                  <span>Range <strong>{summary.min ?? "—"}–{summary.max ?? "—"}</strong></span>
+                </div>
+                {summary.n > 1 && (
+                  <div style={{ maxWidth: 360 }}>
                     <MiniHistogram
                       nums={dataset.rows.map((r) => Number(getRawItemValue(r.responses, item))).filter((v) => Number.isFinite(v))}
                     />
-                  )}
-                </>
-              ) : summary.kind === "text" ? (
-                <div className="subtle" style={{ fontSize: 12 }}>{summary.nAnswered} free-text response(s).</div>
-              ) : (
-                <CategoryBarList options={summary.options} />
-              )}
-            </div>
-          ))}
-        </div>
+                  </div>
+                )}
+              </>
+            ) : summary.kind === "text" ? (
+              <div className="subtle" style={{ fontSize: 12 }}>{summary.nAnswered} free-text response(s).</div>
+            ) : (
+              <div style={{ maxWidth: 420 }}>
+                <CategoryBarList options={summary.options} maxWidth={260} />
+              </div>
+            )}
+          </div>
+        ))(selected)
       )}
     </Card>
   );
 }
 
-function CompositeMeasureBlock({ dataset, composite, summary }) {
+function CompositeMeasureBlock({ dataset, composite, summary, actions }) {
   const scores = useMemo(
     () => computeCompositeScores(composite, dataset.rows).filter((v) => v != null),
     [composite, dataset.rows]
@@ -228,9 +292,12 @@ function CompositeMeasureBlock({ dataset, composite, summary }) {
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "baseline" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{composite.label}</div>
-          <Badge tone="accent">composite · {composite.items.length} items</Badge>
+          <Badge tone="accent">{composite.source === "custom" ? "custom group" : "composite"} · {composite.items.length} items</Badge>
         </div>
-        <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>N = {summary.nAnswered}/{summary.nTotal}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>N = {summary.nAnswered}/{summary.nTotal}</div>
+          {actions}
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 6, fontSize: 12.5 }}>
@@ -267,7 +334,7 @@ function CompositeMeasureBlock({ dataset, composite, summary }) {
             {composite.items.map((it) => {
               const s = summarizeItem(it, dataset.rows);
               return (
-                <tr key={it.itemKey}>
+                <tr key={`${it.questionId}::${it.itemKey}`}>
                   <Td>{it.itemLabel}</Td>
                   <Td>{s.nAnswered}</Td>
                   <Td>{fmtNum(s.mean)}</Td>
@@ -279,6 +346,250 @@ function CompositeMeasureBlock({ dataset, composite, summary }) {
         </Table>
       </details>
     </div>
+  );
+}
+
+const inputStyle = {
+  padding: "6px 9px",
+  borderRadius: 6,
+  border: "1px solid var(--admin-border, #d1d5db)",
+  fontSize: 13,
+};
+
+/**
+ * Add/edit form for a custom tag-matched measure group. `initial` (when
+ * editing) carries {name, pattern, itemKeys} — the *saved* item selection,
+ * which can differ from what `pattern` alone would currently match (e.g. an
+ * item the researcher manually excluded, like dropping PK_3 from a PK
+ * mediator scale). That gap is reconstructed once on open as `overrides`, so
+ * manual exclusions survive even as the pattern text is tweaked further.
+ */
+function GroupEditor({ dataset, initial, onSave, onCancel }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [pattern, setPattern] = useState(initial?.pattern || "");
+  const [overrides, setOverrides] = useState(() => {
+    if (!initial) return new Map();
+    const initialMatched = new Set(
+      findItemsMatchingTagPattern(dataset, initial.pattern || "").map(itemRefKey)
+    );
+    const savedKeys = new Set(initial.itemKeys || []);
+    const diff = new Map();
+    const allKeys = new Set([...initialMatched, ...savedKeys]);
+    allKeys.forEach((k) => {
+      const saved = savedKeys.has(k);
+      if (saved !== initialMatched.has(k)) diff.set(k, saved);
+    });
+    return diff;
+  });
+
+  const byKey = useMemo(() => new Map(dataset.items.map((it) => [itemRefKey(it), it])), [dataset.items]);
+
+  const matched = useMemo(() => findItemsMatchingTagPattern(dataset, pattern), [dataset, pattern]);
+  const matchedKeys = useMemo(() => new Set(matched.map(itemRefKey)), [matched]);
+
+  const displayKeys = useMemo(() => {
+    const keys = new Set([...matchedKeys, ...overrides.keys()]);
+    return Array.from(keys)
+      .filter((k) => byKey.has(k))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [matchedKeys, overrides, byKey]);
+
+  const isChecked = (key) => (overrides.has(key) ? overrides.get(key) : matchedKeys.has(key));
+  const toggle = (key) => {
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(key, !isChecked(key));
+      return next;
+    });
+  };
+
+  const selectedKeys = displayKeys.filter((k) => isChecked(k));
+  const canSave = name.trim() && selectedKeys.length >= 1;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--admin-border, #d1d5db)",
+        borderRadius: 8,
+        padding: 14,
+        marginBottom: 16,
+        background: "var(--admin-surface-subtle, rgba(0,0,0,0.02))",
+      }}
+    >
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ flex: "1 1 200px" }}>
+          <div style={{ fontSize: 11.5, color: "var(--admin-muted)", marginBottom: 3 }}>Group name</div>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. MI_EMO_BL_AVG"
+            style={{ ...inputStyle, width: "100%" }}
+          />
+        </div>
+        <div style={{ flex: "2 1 320px" }}>
+          <div style={{ fontSize: 11.5, color: "var(--admin-muted)", marginBottom: 3 }}>
+            Match tags — space = AND, comma = OR, * = wildcard (e.g. "MI EMO BL")
+          </div>
+          <input
+            value={pattern}
+            onChange={(e) => setPattern(e.target.value)}
+            placeholder="e.g. MI EMO BL"
+            style={{ ...inputStyle, width: "100%", fontFamily: "monospace" }}
+          />
+        </div>
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--admin-muted)", marginBottom: 6 }}>
+        {matched.length} item{matched.length === 1 ? "" : "s"} match this pattern
+        {selectedKeys.length !== matched.length ? ` · ${selectedKeys.length} selected` : ""}. Uncheck any to exclude
+        them from this group.
+      </div>
+
+      {displayKeys.length > 0 && (
+        <div
+          style={{
+            maxHeight: 220,
+            overflowY: "auto",
+            border: "1px solid var(--admin-border-subtle)",
+            borderRadius: 6,
+            padding: "4px 8px",
+            marginBottom: 10,
+            background: "var(--admin-surface)",
+          }}
+        >
+          {displayKeys.map((key) => {
+            const it = byKey.get(key);
+            // For matrix/bipolar rows, questionId is shared by every row in
+            // that question — itemKey (the row's own id) is what actually
+            // distinguishes them, so lead with that instead.
+            const primary = it.isComposite ? it.itemKey : it.questionId;
+            return (
+              <label
+                key={key}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12.5, cursor: "pointer" }}
+              >
+                <input type="checkbox" checked={isChecked(key)} onChange={() => toggle(key)} />
+                <span style={{ fontFamily: "monospace" }}>{primary}</span>
+                {it.isComposite && it.itemLabel && it.itemLabel !== primary && (
+                  <span style={{ color: "var(--admin-muted)" }}>({it.itemLabel})</span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button
+          size="sm"
+          disabled={!canSave}
+          onClick={() =>
+            onSave({
+              id: initial?.id || makeGroupId(),
+              name: name.trim(),
+              pattern,
+              itemKeys: selectedKeys,
+            })
+          }
+        >
+          {initial ? "Save changes" : "Add group"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        {overrides.size > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => setOverrides(new Map())}>
+            Reset exclusions
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }) {
+  const [editorMode, setEditorMode] = useState(null); // null | "new" | groupId being edited
+
+  const groupComposites = useMemo(
+    () => groups.map((g) => ({ group: g, composite: buildCustomGroupComposite(g, dataset) })),
+    [groups, dataset]
+  );
+
+  const persist = (next) => {
+    setGroups(next);
+    saveCustomGroups(projectId, surveyId, next);
+  };
+
+  const handleSave = (groupDef) => {
+    const exists = groups.some((g) => g.id === groupDef.id);
+    const next = exists ? groups.map((g) => (g.id === groupDef.id ? groupDef : g)) : [...groups, groupDef];
+    persist(next);
+    setEditorMode(null);
+  };
+
+  const handleDelete = (id) => {
+    if (!confirm("Remove this custom group? This only removes the grouping, not any response data.")) return;
+    persist(groups.filter((g) => g.id !== id));
+  };
+
+  const editingGroup = typeof editorMode === "string" && editorMode !== "new"
+    ? groups.find((g) => g.id === editorMode)
+    : null;
+
+  return (
+    <Card
+      title="Custom measure groups"
+      subtitle="Group any items across the whole survey by shared naming tags — e.g. every BL item, or just MI + EMO + BL together — instead of relying only on auto-detected per-question composites."
+      actions={
+        !editorMode && (
+          <Button size="sm" onClick={() => setEditorMode("new")}>
+            + New group
+          </Button>
+        )
+      }
+    >
+      {editorMode === "new" && (
+        <GroupEditor dataset={dataset} onSave={handleSave} onCancel={() => setEditorMode(null)} />
+      )}
+
+      {groupComposites.length === 0 && !editorMode && (
+        <div className="subtle" style={{ fontSize: 13 }}>
+          No custom groups yet. Useful when a survey repeats measures across many stimuli (e.g. BL/PK on
+          20 posts across 4 conditions) and you want condition-level or overall averages, not one chart per item.
+        </div>
+      )}
+
+      {groupComposites.map(({ group, composite }) =>
+        editingGroup?.id === group.id ? (
+          <GroupEditor
+            key={group.id}
+            dataset={dataset}
+            initial={group}
+            onSave={handleSave}
+            onCancel={() => setEditorMode(null)}
+          />
+        ) : (
+          <CompositeMeasureBlock
+            key={group.id}
+            dataset={dataset}
+            composite={composite}
+            summary={summarizeComposite(composite, dataset.rows)}
+            actions={
+              !editorMode && (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => setEditorMode(group.id)}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => handleDelete(group.id)}>
+                    Delete
+                  </Button>
+                </>
+              )
+            }
+          />
+        )
+      )}
+    </Card>
   );
 }
 
@@ -315,22 +626,38 @@ function TextResponsesBlock({ dataset, items }) {
   );
 }
 
-function MeasuresSection({ dataset, measures }) {
+function MeasuresSection({ dataset, measures, defaultOpen = true }) {
+  // Seeded once from defaultOpen, then fully user-controlled — otherwise a
+  // sibling re-render (e.g. adding a custom group elsewhere on the page)
+  // would re-evaluate defaultOpen and snap this back shut/open, fighting a
+  // manual toggle.
+  const [open, setOpen] = useState(defaultOpen);
+
   const hasAny =
     measures.composites.length ||
     measures.standaloneNumeric.length ||
     measures.standaloneCategorical.length ||
     measures.textItems.length;
 
+  const totalCount =
+    measures.composites.length +
+    measures.standaloneNumeric.length +
+    measures.standaloneCategorical.length +
+    measures.textItems.length;
+
   return (
     <Card
-      title="Measures"
+      title="Auto-detected measures"
       subtitle="Composite scales (auto-detected from matrix questions or ID_1/ID_2/ID_3-style groups), single-item measures, and other question responses."
     >
       {!hasAny ? (
         <div className="subtle" style={{ fontSize: 13 }}>No non-demographic questions detected in this survey.</div>
       ) : (
-        <>
+        <details open={open} onToggle={(e) => setOpen(e.target.open)}>
+          <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "var(--admin-muted)", marginBottom: 10 }}>
+            {totalCount} auto-detected item{totalCount === 1 ? "" : "s"}
+          </summary>
+          <div style={{ marginTop: 10 }}>
           {measures.composites.map(({ composite, summary }) => (
             <CompositeMeasureBlock key={composite.id} dataset={dataset} composite={composite} summary={summary} />
           ))}
@@ -370,7 +697,8 @@ function MeasuresSection({ dataset, measures }) {
           ))}
 
           {measures.textItems.length > 0 && <TextResponsesBlock dataset={dataset} items={measures.textItems} />}
-        </>
+          </div>
+        </details>
       )}
     </Card>
   );
@@ -517,6 +845,7 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [pageSize, setPageSize] = useState(25);
+  const [customGroups, setCustomGroups] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -544,12 +873,15 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
     if (!surveyId) {
       setSurvey(null);
       setResponseRows([]);
+      setCustomGroups([]);
       return;
     }
 
     try {
       localStorage.setItem(LAST_SURVEY_KEY(projectId), surveyId);
     } catch {}
+
+    setCustomGroups(loadCustomGroups(projectId, surveyId));
 
     let cancelled = false;
     setLoading(true);
@@ -585,9 +917,13 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
 
   const demographics = useMemo(() => (dataset ? computeDemographicsSummary(dataset) : []), [dataset]);
   const measures = useMemo(() => (dataset ? computeMeasuresSummary(dataset) : null), [dataset]);
+  const customGroupComposites = useMemo(
+    () => (dataset ? customGroups.map((g) => buildCustomGroupComposite(g, dataset)) : []),
+    [dataset, customGroups]
+  );
   const groupComparison = useMemo(
-    () => (dataset ? computeGroupComparison(dataset, survey?.experiment_groups) : null),
-    [dataset, survey]
+    () => (dataset ? computeGroupComparison(dataset, survey?.experiment_groups, customGroupComposites) : null),
+    [dataset, survey, customGroupComposites]
   );
 
   const topStats = useMemo(() => {
@@ -735,7 +1071,16 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <DemographicsSection dataset={dataset} demographics={demographics} />
-            {measures && <MeasuresSection dataset={dataset} measures={measures} />}
+            <CustomGroupsSection
+              dataset={dataset}
+              projectId={projectId}
+              surveyId={surveyId}
+              groups={customGroups}
+              setGroups={setCustomGroups}
+            />
+            {measures && (
+              <MeasuresSection dataset={dataset} measures={measures} defaultOpen={customGroups.length === 0} />
+            )}
             <GroupComparisonSection comparison={groupComparison} />
             <ResponsesSection
               dataset={dataset}
