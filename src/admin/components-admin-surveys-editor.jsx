@@ -4141,6 +4141,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
 function StudyOutlineModal({
   survey,
   onSurveyChange,
+  linkedFeeds,
   currentQuestions,
   moveQuestion,
   updateQuestion,
@@ -4782,6 +4783,7 @@ export function SurveyEditor({
         <StudyOutlineModal
           survey={survey}
           onSurveyChange={onSurveyChange}
+          linkedFeeds={orderedLinkedFeeds}
           currentQuestions={currentQuestions}
           moveQuestion={moveQuestion}
           updateQuestion={updateQuestion}
