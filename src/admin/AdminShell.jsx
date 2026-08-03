@@ -51,14 +51,7 @@ function navItemStyle(isActive) {
 function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef }) {
   const showList = active && expanded;
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        flex: showList ? "1 1 auto" : "0 0 auto",
-        minHeight: showList ? 0 : undefined,
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
       <NavLink
         to={to}
         onClick={(e) => {
@@ -80,7 +73,8 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
           <span
             aria-hidden="true"
             style={{
-              fontSize: 10,
+              fontSize: 18,
+              lineHeight: 1,
               color: "var(--admin-muted)",
               transform: expanded ? "rotate(90deg)" : "none",
               transition: "transform .15s ease",
@@ -91,11 +85,14 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
         )}
       </NavLink>
       {showList && (
+        // Sized to its own content (not stretched to fill the sidebar) so
+        // Surveys/Users below don't get pushed down by empty leftover space
+        // when the list is short — capped + scrollable so a long list still
+        // can't push them off-screen.
         <div
           ref={slotRef}
           style={{
-            flex: "1 1 auto",
-            minHeight: 0,
+            maxHeight: "45vh",
             overflowY: "auto",
             marginTop: 10,
             paddingRight: 6,

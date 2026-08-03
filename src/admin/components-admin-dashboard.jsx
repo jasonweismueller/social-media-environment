@@ -1122,14 +1122,6 @@ export function AdminDashboard({
     setEditing(null);
   };
 
-  const clearFeed = () => {
-    if (!posts.length) return;
-    if (!confirm("Delete ALL posts from this feed? This cannot be undone.")) return;
-    setPosts([]);
-    setPostNames({});
-    writePostNames(projectId, feedId, {});
-  };
-
   // Extracted from the old flat Feeds-table row actions / Posts-page toolbar
   // for the AdminFeedsPanel master-detail conversion — same logic, just
   // named and passed down as props instead of inline JSX closures.
@@ -1494,7 +1486,6 @@ export function AdminDashboard({
                   onEditPost={openEdit}
                   onRenamePost={handleRenamePost}
                   onRemovePost={removePost}
-                  onClearFeed={clearFeed}
                   onLogout={onLogout}
                 />
               }

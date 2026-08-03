@@ -46,6 +46,7 @@ function FeedListContent({
   onSelectFeed,
   onSaveFeed,
   isSaving,
+  onDeleteSelectedFeed,
 }) {
   return (
     <div>
@@ -82,13 +83,42 @@ function FeedListContent({
       <RoleGate min="editor">
         {selectedFeedId && (
           <Button size="sm" onClick={onSaveFeed} disabled={isSaving} style={{ width: "100%", marginTop: 10 }}>
-            {isSaving ? "Saving…" : "Save changes"}
+            {isSaving ? "Saving…" : "Save feed"}
           </Button>
         )}
-        <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ width: "100%", marginTop: 6 }}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onCreateFeed}
+          style={{
+            width: "100%",
+            marginTop: 6,
+            background: "var(--admin-accent-soft)",
+            borderColor: "var(--admin-accent-border)",
+            color: "var(--admin-accent-ink)",
+          }}
+        >
           + New feed
         </Button>
       </RoleGate>
+      {selectedFeedId && (
+        <RoleGate min="owner">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onDeleteSelectedFeed}
+            style={{
+              width: "100%",
+              marginTop: 6,
+              background: "var(--admin-danger-soft)",
+              borderColor: "var(--admin-danger-border)",
+              color: "var(--admin-danger-ink)",
+            }}
+          >
+            Delete feed
+          </Button>
+        </RoleGate>
+      )}
     </div>
   );
 }
@@ -146,7 +176,6 @@ export function AdminFeedsPanel({
   onEditPost,
   onRenamePost,
   onRemovePost,
-  onClearFeed,
   onLogout,
 }) {
   const [activeFeedTab, setActiveFeedTab] = useState("posts");
@@ -172,6 +201,10 @@ export function AdminFeedsPanel({
 
   const { feedsSlot } = useContext(AdminTreeSlotsContext);
 
+  const handleDeleteSelectedFeed = () => {
+    onDeleteFeed(feeds.find((f) => f.feed_id === selectedFeedId) || { feed_id: selectedFeedId, name: selectedFeedName });
+  };
+
   return (
     <>
       {feedsSlot &&
@@ -185,6 +218,7 @@ export function AdminFeedsPanel({
             onSelectFeed={onSelectFeed}
             onSaveFeed={onSaveFeed}
             isSaving={isSaving}
+            onDeleteSelectedFeed={handleDeleteSelectedFeed}
           />,
           feedsSlot
         )}
@@ -227,20 +261,11 @@ export function AdminFeedsPanel({
                     🔄
                   </IconButton>
                   <RoleGate min="editor">
-                    <Button size="sm" variant="secondary" onClick={onOpenRandomPost} title={`Generate a synthetic ${contentUnitLabel.toLowerCase()}`}>
-                      🎲 Random {contentUnitLabel}
-                    </Button>
+                    <IconButton size="sm" onClick={onOpenRandomPost} title={`Generate a synthetic ${contentUnitLabel.toLowerCase()}`}>
+                      🎲
+                    </IconButton>
                     <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
                       ➕
-                    </IconButton>
-                    <IconButton
-                      size="sm"
-                      onClick={onClearFeed}
-                      disabled={!posts.length}
-                      title="Clear feed (delete all posts)"
-                      style={{ color: "var(--admin-danger-ink, #b91c1c)", marginLeft: "auto" }}
-                    >
-                      🗑️
                     </IconButton>
                   </RoleGate>
                 </div>
@@ -431,25 +456,18 @@ export function AdminFeedsPanel({
                   </Card>
                 </RoleGate>
 
+                {/* "Delete feed" itself now lives in the sidebar, next to Save
+                    feed / + New feed — see FeedListContent above. */}
                 <RoleGate min="owner">
                   <Card title="Danger zone">
-                    <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--admin-border-subtle)" }}>
-                      <Toggle
-                        label="Wipe on change"
-                        hint="Publishing a checksum-changing feed wipes its participants"
-                        checked={!!wipeOnChange}
-                        busy={updatingWipe}
-                        disabled={wipeOnChange === null}
-                        onChange={onSetWipePolicy}
-                      />
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => onDeleteFeed(feeds.find((f) => f.feed_id === selectedFeedId) || { feed_id: selectedFeedId, name: selectedFeedName })}
-                    >
-                      Delete feed
-                    </Button>
+                    <Toggle
+                      label="Wipe on change"
+                      hint="Publishing a checksum-changing feed wipes its participants"
+                      checked={!!wipeOnChange}
+                      busy={updatingWipe}
+                      disabled={wipeOnChange === null}
+                      onChange={onSetWipePolicy}
+                    />
                   </Card>
                 </RoleGate>
               </div>
