@@ -7,10 +7,7 @@ import { Link, NavLink } from "react-router-dom";
 // path instead of replacing it.
 const NAV_ITEMS = [
   { to: "/admin/dashboard/feeds", label: "Feeds", icon: "🗂️" },
-  { to: "/admin/dashboard/posts", label: "Posts", icon: "📝" },
   { to: "/admin/dashboard/surveys", label: "Surveys", icon: "📋" },
-  { to: "/admin/dashboard/participants/feed", label: "Feed Participants", icon: "👥" },
-  { to: "/admin/dashboard/participants/survey", label: "Survey Participants", icon: "📊" },
   { to: "/admin/dashboard/users", label: "Users", icon: "🔐", ownerOnly: true },
 ];
 
@@ -26,7 +23,6 @@ export function AdminShell({
   backTo,
   backLabel = "← All projects",
   projectSwitcher,
-  feedSwitcher,
   showUsersNav = true,
   children,
 }) {
@@ -91,20 +87,6 @@ export function AdminShell({
             }}
           >
             {projectSwitcher}
-          </div>
-        )}
-
-        {feedSwitcher && (
-          <div
-            style={{
-              padding: "10px 8px",
-              marginBottom: 12,
-              borderRadius: "var(--admin-radius-md)",
-              background: "var(--admin-surface-alt)",
-              border: "1px solid var(--admin-border-subtle)",
-            }}
-          >
-            {feedSwitcher}
           </div>
         )}
 

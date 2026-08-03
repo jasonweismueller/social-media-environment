@@ -7,3 +7,5 @@ export { PageHeader } from "./PageHeader";
 export { Table, Th, Td, Tr } from "./Table";
 export { Popover } from "./Popover";
 export { OverflowMenu } from "./OverflowMenu";
+export { Tabs } from "./Tabs";
+export { RoleGate } from "./RoleGate";

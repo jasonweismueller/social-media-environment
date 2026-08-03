@@ -844,12 +844,24 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
 
 /* ----------------------------- main page ----------------------------- */
 
-export function SurveyParticipantsPage({ projectId: projectIdProp }) {
+export function SurveyParticipantsPage({
+  projectId: projectIdProp,
+  surveyId: controlledSurveyId,
+  onSurveyIdChange,
+  embed = false,
+}) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
 
+  // When nested as a tab inside AdminSurveysPanel, the survey is already
+  // selected by the parent — this page just renders analysis for it,
+  // skipping its own survey-list fetch/picker and "remembered survey"
+  // localStorage bookkeeping (both only make sense for the standalone route).
+  const controlled = controlledSurveyId !== undefined && controlledSurveyId !== null;
   const [surveys, setSurveys] = useState([]);
-  const [loadingSurveys, setLoadingSurveys] = useState(true);
-  const [surveyId, setSurveyId] = useState("");
+  const [loadingSurveys, setLoadingSurveys] = useState(!controlled);
+  const [uncontrolledSurveyId, setUncontrolledSurveyId] = useState("");
+  const surveyId = controlled ? controlledSurveyId : uncontrolledSurveyId;
+  const setSurveyId = (id) => (controlled ? onSurveyIdChange?.(id) : setUncontrolledSurveyId(id));
 
   const [survey, setSurvey] = useState(null);
   const [responseRows, setResponseRows] = useState([]);
@@ -860,6 +872,11 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
   const [customGroups, setCustomGroups] = useState([]);
 
   useEffect(() => {
+    if (controlled) {
+      setLoadingSurveys(false);
+      return;
+    }
+
     let cancelled = false;
     setLoadingSurveys(true);
     listSurveysFromBackend({ projectId, force: true }).then((list) => {
@@ -879,7 +896,7 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, controlled]);
 
   useEffect(() => {
     if (!surveyId) {
@@ -889,9 +906,11 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
       return;
     }
 
-    try {
-      localStorage.setItem(LAST_SURVEY_KEY(projectId), surveyId);
-    } catch {}
+    if (!controlled) {
+      try {
+        localStorage.setItem(LAST_SURVEY_KEY(projectId), surveyId);
+      } catch {}
+    }
 
     setCustomGroups([]);
 
@@ -935,7 +954,7 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
     return () => {
       cancelled = true;
     };
-  }, [surveyId, projectId]);
+  }, [surveyId, projectId, controlled]);
 
   const dataset = useMemo(() => {
     if (!survey) return null;
@@ -1025,44 +1044,55 @@ export function SurveyParticipantsPage({ projectId: projectIdProp }) {
 
   return (
     <>
-      <PageHeader
-        title="Survey Participants"
-        subtitle={
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span>Analysis hub for </span>
-            <select
-              value={surveyId}
-              onChange={(e) => setSurveyId(e.target.value)}
-              disabled={loadingSurveys || !surveys.length}
-              style={{
-                padding: "4px 8px",
-                borderRadius: 6,
-                border: "1px solid var(--admin-border, #d1d5db)",
-                fontSize: 13,
-                maxWidth: 320,
-              }}
-            >
-              {!surveys.length && <option value="">{loadingSurveys ? "Loading surveys…" : "No surveys yet"}</option>}
-              {surveys.map((s) => (
-                <option key={s.survey_id} value={s.survey_id}>
-                  {s.name || s.survey_id}
-                </option>
-              ))}
-            </select>
-            <span className="subtle"> · {APP} · {projectId || "global"}</span>
-          </div>
-        }
-        actions={
-          <>
-            <Button size="sm" onClick={refresh} disabled={!surveyId || loading}>
-              Refresh
-            </Button>
-            <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
-              Download Survey CSV
-            </Button>
-          </>
-        }
-      />
+      {!embed ? (
+        <PageHeader
+          title="Survey Participants"
+          subtitle={
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span>Analysis hub for </span>
+              <select
+                value={surveyId}
+                onChange={(e) => setSurveyId(e.target.value)}
+                disabled={loadingSurveys || !surveys.length}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  border: "1px solid var(--admin-border, #d1d5db)",
+                  fontSize: 13,
+                  maxWidth: 320,
+                }}
+              >
+                {!surveys.length && <option value="">{loadingSurveys ? "Loading surveys…" : "No surveys yet"}</option>}
+                {surveys.map((s) => (
+                  <option key={s.survey_id} value={s.survey_id}>
+                    {s.name || s.survey_id}
+                  </option>
+                ))}
+              </select>
+              <span className="subtle"> · {APP} · {projectId || "global"}</span>
+            </div>
+          }
+          actions={
+            <>
+              <Button size="sm" onClick={refresh} disabled={!surveyId || loading}>
+                Refresh
+              </Button>
+              <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
+                Download Survey CSV
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 14 }}>
+          <Button size="sm" onClick={refresh} disabled={!surveyId || loading}>
+            Refresh
+          </Button>
+          <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
+            Download Survey CSV
+          </Button>
+        </div>
+      )}
 
       {error && <div style={{ color: "crimson", fontSize: 13, marginBottom: 12 }}>{error}</div>}
 

@@ -811,6 +811,46 @@ function BlockBoundaryDivider({ boundary }) {
   );
 }
 
+// Shared by the Study overview modal's search/filter box — matches on
+// question id, plain-text question content (HTML-stripped, same helper the
+// collapsed-row preview already uses), or type label. Page-break rows always
+// pass through so the filtered list keeps its structural page markers rather
+// than collapsing pages together.
+export function matchesQuestionFilter(item, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  if (item?.type === EDITOR_PAGE_BREAK_TYPE) return true;
+
+  const haystack = [
+    item?.id,
+    stripHtmlForEmptyCheck(item?.text || ""),
+    QUESTION_TYPE_LABELS[item?.type] || item?.type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(q);
+}
+
+// Shared by SurveyEditor's main question list and StudyOutlineModal's
+// outline list — a question id used more than once in the same survey is a
+// real problem (visible_in_feeds/feed_overrides/visible_to_group_ids/CSV
+// columns all key off it), but nothing previously warned about it unless
+// the id happened to be auto-generated via Copy.
+export function computeDuplicateQuestionIds(questions) {
+  const counts = new Map();
+  (Array.isArray(questions) ? questions : []).forEach((q) => {
+    if (q?.type === EDITOR_PAGE_BREAK_TYPE) return;
+    const id = String(q?.id || "").trim();
+    if (!id) return;
+    counts.set(id, (counts.get(id) || 0) + 1);
+  });
+  return new Set(
+    [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id)
+  );
+}
+
 function makePageBlock(index = 0) {
   return {
     id: `block_${Date.now()}_${index}`,
@@ -2641,6 +2681,7 @@ function CollapsedQuestionRow({
   displayNumber,
   totalQuestions,
   type,
+  isDuplicateId = false,
   moveQuestion,
   removeQuestion,
   duplicateQuestion,
@@ -2698,10 +2739,15 @@ function CollapsedQuestionRow({
       )}
 
       <span
-        title={`Question ID: ${q.id || ""}`}
+        title={
+          isDuplicateId
+            ? `⚠ Another question already uses this ID: ${q.id || ""}`
+            : `Question ID: ${q.id || ""}`
+        }
         style={{
           fontSize: 10,
-          color: "#c1c7d0",
+          color: isDuplicateId ? "#dc2626" : "#c1c7d0",
+          fontWeight: isDuplicateId ? 700 : 400,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           flex: "0 0 auto",
           whiteSpace: "nowrap",
@@ -2813,6 +2859,7 @@ function QuestionCard({
   index,
   displayNumber,
   totalQuestions,
+  isDuplicateId = false,
   linkedFeeds,
   linkedFeedPostsMap,
   experimentGroups,
@@ -2985,6 +3032,7 @@ function QuestionCard({
           displayNumber={displayNumber}
           totalQuestions={totalQuestions}
           type={type}
+          isDuplicateId={isDuplicateId}
           moveQuestion={moveQuestion}
           removeQuestion={removeQuestion}
           duplicateQuestion={duplicateQuestion}
@@ -3113,7 +3161,13 @@ function QuestionCard({
             updateQuestion(index, nextQuestion);
           }}
           placeholder="e.g. AUTH"
+          style={isDuplicateId ? { borderColor: "#dc2626" } : undefined}
         />
+        {isDuplicateId && (
+          <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4, fontWeight: 600 }}>
+            ⚠ Another question already uses this ID.
+          </div>
+        )}
       </FieldBlock>
 
       {isPostReminder && (
@@ -3531,6 +3585,7 @@ function OutlineRow({
   flatIndex,
   displayNumber,
   pageNumber,
+  isDuplicateId = false,
   totalCount,
   onMoveUp,
   onMoveDown,
@@ -3665,14 +3720,19 @@ function OutlineRow({
         onChange={(e) => onIdChange(e.target.value)}
         onClick={(e) => e.stopPropagation()}
         placeholder="ID"
-        title="Question ID / variable name"
+        title={
+          isDuplicateId
+            ? "⚠ Another question already uses this ID"
+            : "Question ID / variable name"
+        }
         style={{
           width: 78,
           flex: "0 0 auto",
           height: 20,
           padding: "0 5px",
           borderRadius: 5,
-          border: "1px solid #d1d5db",
+          border: isDuplicateId ? "1px solid #dc2626" : "1px solid #d1d5db",
+          color: isDuplicateId ? "#dc2626" : undefined,
           fontSize: 10,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           boxSizing: "border-box",
@@ -3835,8 +3895,11 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
     const next = groups.filter((_, index) => index !== groupIndex);
     applyGroups(next);
 
-    // Also drop the deleted group from any block's visibility list, so a
-    // block doesn't silently reference a group id that no longer exists.
+    // Also drop the deleted group from any block's or question's visibility
+    // list, so nothing silently references a group id that no longer
+    // exists — previously only blocks got this treatment, leaving a
+    // question scoped to a deleted group permanently hidden instead of
+    // reverting to "shown to everyone" like blocks correctly do.
     if (removed) {
       onSurveyChange((prev) => {
         const nextBlocks = (Array.isArray(prev?.page_blocks) ? prev.page_blocks : []).map(
@@ -3847,7 +3910,19 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
             ),
           })
         );
-        return { ...prev, page_blocks: nextBlocks };
+
+        const nextQuestions = getQuestionList(prev).map((question) =>
+          question?.type === EDITOR_PAGE_BREAK_TYPE
+            ? question
+            : {
+                ...question,
+                visible_to_group_ids: (question.visible_to_group_ids || []).filter(
+                  (groupId) => groupId !== removed.id
+                ),
+              }
+        );
+
+        return setQuestionList({ ...prev, page_blocks: nextBlocks }, nextQuestions);
       });
     }
   }
@@ -4005,7 +4080,11 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
 }
 
 function PageBlocksEditor({ survey, onSurveyChange }) {
-  const [collapsedBlockIds, setCollapsedBlockIds] = useState(() => new Set());
+  // Inclusion = expanded (starts empty = everything collapsed), matching
+  // ExperimentGroupsEditor's expandedGroupIds convention just above — any
+  // block added later is correctly collapsed by default too, with no extra
+  // bookkeeping, unlike the previous inverted scheme this replaced.
+  const [expandedBlockIds, setExpandedBlockIds] = useState(() => new Set());
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
   const blocks = normalizeSurveyPageBlocks(survey);
   const experimentGroups = normalizeSurveyExperimentGroups(survey);
@@ -4110,8 +4189,8 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     applyBlocks(next);
   }
 
-  function toggleBlockCollapsed(blockId) {
-    setCollapsedBlockIds((current) => {
+  function toggleBlockExpanded(blockId) {
+    setExpandedBlockIds((current) => {
       const next = new Set(current);
       if (next.has(blockId)) next.delete(blockId);
       else next.add(blockId);
@@ -4147,14 +4226,14 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
 
       <div style={{ display: "grid", gap: 10 }}>
         {blocks.map((block, blockIndex) => {
-          const isCollapsed = collapsedBlockIds.has(block.id);
+          const isCollapsed = !expandedBlockIds.has(block.id);
           const pageCount = block.page_ids.length;
 
           return (
           <div key={block.id} style={{ border: "1px solid #dbe3ef", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f8fafc", borderBottom: isCollapsed ? "none" : "1px solid #e5e7eb" }}>
               <IconOnlyButton
-                onClick={() => toggleBlockCollapsed(block.id)}
+                onClick={() => toggleBlockExpanded(block.id)}
                 title={isCollapsed ? "Expand block" : "Collapse block"}
                 aria-label={isCollapsed ? `Expand block ${blockIndex + 1}` : `Collapse block ${blockIndex + 1}`}
               >
@@ -4303,6 +4382,13 @@ function StudyOutlineModal({
     [survey, currentQuestions, pageNumbers]
   );
 
+  const duplicateQuestionIds = useMemo(
+    () => computeDuplicateQuestionIds(currentQuestions),
+    [currentQuestions]
+  );
+
+  const [outlineFilter, setOutlineFilter] = useState("");
+
   const questionCount = currentQuestions.filter(
     (item) => item?.type !== EDITOR_PAGE_BREAK_TYPE
   ).length;
@@ -4416,12 +4502,33 @@ function StudyOutlineModal({
               Pages and questions
             </div>
 
+            {currentQuestions.length > 0 && (
+              <input
+                type="text"
+                value={outlineFilter}
+                onChange={(e) => setOutlineFilter(e.target.value)}
+                placeholder="Filter by question ID, text, or type…"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  height: 34,
+                  padding: "0 10px",
+                  marginBottom: 8,
+                  border: "1px solid #cbd5e1",
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                }}
+              />
+            )}
+
             {currentQuestions.length === 0 ? (
               <div style={{ color: "#6b7280", padding: "6px 4px" }}>
                 No questions yet.
               </div>
             ) : (
-              currentQuestions.map((item, i) => (
+              currentQuestions.map((item, i) => {
+                if (!matchesQuestionFilter(item, outlineFilter)) return null;
+                return (
                 <React.Fragment key={item._editorId || i}>
                 <BlockBoundaryDivider boundary={blockBoundaries[i]} />
                 <OutlineRow
@@ -4429,6 +4536,7 @@ function StudyOutlineModal({
                 flatIndex={i}
                 displayNumber={displayNumbers[i]}
                 pageNumber={pageNumbers[i]}
+                isDuplicateId={item?.id ? duplicateQuestionIds.has(item.id) : false}
                 totalCount={currentQuestions.length}
                 onMoveUp={() => moveQuestion(i, i - 1)}
                 onMoveDown={() => moveQuestion(i, i + 1)}
@@ -4462,7 +4570,8 @@ function StudyOutlineModal({
                 onDragEnd={onDragEnd}
                 />
                 </React.Fragment>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -4599,6 +4708,11 @@ export function SurveyEditor({
   const blockBoundaries = useMemo(
     () => computeBlockBoundariesForQuestions(survey, currentQuestions, pageNumbersForBlocks),
     [survey, currentQuestions, pageNumbersForBlocks]
+  );
+
+  const duplicateQuestionIds = useMemo(
+    () => computeDuplicateQuestionIds(currentQuestions),
+    [currentQuestions]
   );
 
   function addQuestion(type) {
@@ -4879,6 +4993,7 @@ export function SurveyEditor({
               index={i}
               displayNumber={questionDisplayNumbers[i]}
               totalQuestions={currentQuestions.length}
+              isDuplicateId={q?.id ? duplicateQuestionIds.has(q.id) : false}
               linkedFeeds={orderedLinkedFeeds}
               linkedFeedPostsMap={linkedFeedPostsMap}
               experimentGroups={experimentGroups}

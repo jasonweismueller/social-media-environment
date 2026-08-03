@@ -2050,6 +2050,104 @@ following it starts a new block, and not before a same-block page change). Separ
 zero dividers for a plain single-block survey. **Not verified**: an actual click-through dragging
 blocks/pages in the real browser — logic-level verification only.
 
+## Admin dashboard UX/UI overhaul: nested navigation + questions editor polish (2026-08-03)
+
+Prompted directly: "shouldn't Feed Participants/Survey Participants be subpoints of Feeds/Surveys?"
+plus "much room for improvement... especially within questions." Full plan (context, decisions,
+verification approach): `~/.claude/plans/tender-whistling-otter.md`. Two Explore agents mapped the
+existing nav/routing and the questions editor's structure/gaps before any code was written; a Plan
+agent then produced the file-by-file design this section describes.
+
+**Nav restructure.** Surveys already had the shape the user wanted — `AdminSurveysPanel`
+(`components-admin-surveys.jsx`) is a master-detail split (list left, tabbed detail right:
+Setup/Pre-feed/Questions/Launch) — it was just missing a Participants tab. Feeds did not: it was a
+flat table, with Posts and Feed Participants as separate top-level pages implicitly operating on
+whichever feed was "loaded" via a `feedSwitcher` dropdown in the sidebar.
+
+- **New `src/admin/ui/Tabs.jsx`** — extracted verbatim from the `role="tablist"` block that used to
+  be hand-rolled inline in `components-admin-surveys.jsx`. Also promoted `RoleGate` (previously a
+  private helper in `components-admin-dashboard.jsx`) to `src/admin/ui/RoleGate.jsx` — the new
+  Feeds panel needed it too.
+- **`SurveyParticipantsPage`** (`components-admin-participants-survey.jsx`) gained optional
+  `surveyId`/`onSurveyIdChange`/`embed` props. When controlled (passed a `surveyId`), it skips its
+  own survey-list fetch and "remembered survey" `localStorage` bookkeeping, and swaps its
+  `PageHeader`+picker for a compact Refresh/Download-CSV toolbar row. `AdminSurveysPanel` now has a
+  5th tab, "Participants", rendering it embedded and scoped to whichever survey is already
+  selected — no re-picking. The "Save Survey" footer button is hidden on this tab.
+- **New file `src/admin/components-admin-feeds.jsx`** (`AdminFeedsPanel`) — the Feeds equivalent of
+  `AdminSurveysPanel`'s layout: a filterable feed list on the left (the old `showAllFeeds` toggle
+  is gone, replaced by a plain client-side name/id filter always over the full list), a tabbed
+  detail pane on the right once a feed is selected (**Posts** — today's Posts page content, plus
+  the Save button now unambiguous since there's exactly one selected feed; **Participants** —
+  `FeedParticipantsPage`, already fully props-driven so it needed zero internal changes;
+  **Settings** — identity, make-default, participant stats, the 5 randomize toggles shown directly
+  instead of cramped in a `Popover`, copy-participant-link, delete). All backend-fetch/caching
+  logic (checksum-aware post caching, S3 snapshotting) stayed in `AdminDashboard`
+  (`components-admin-dashboard.jsx`) — too entangled to safely relocate — with ~10 previously
+  inline JSX handlers (`handleSaveFeed`, `handleDeleteFeed`, `handleSetDefaultFeed`,
+  `handleCopyParticipantLink`, `handleSetWipePolicy`, `handleRefreshPosts`,
+  `handleExportPostsJson`, `handleExportFeedPdf`, `handleImportPostsJson`, `handleRenamePost`,
+  `handleOpenRandomPost`) extracted into named functions and passed down as props. **One
+  confirmed, deliberate behavior change**: the old Feeds table let you "Save" the current editor's
+  posts into a *different* feed than the one loaded (a cross-save escape hatch, with a
+  `confirm()` guard) — dropped, since it's ambiguous in a one-feed-at-a-time view; Save now always
+  targets the selected feed only.
+- **Sidebar nav** (`AdminShell.jsx`) collapsed from 6 items (Feeds/Posts/Surveys/Feed
+  Participants/Survey Participants/Users) to 3 (Feeds/Surveys/Users); the `feedSwitcher` sidebar
+  dropdown was deleted outright (not repurposed) since Feeds itself is now the picker. Old routes
+  (`posts`, `participants`, `participants/feed`, `participants/survey`) became explicit
+  `<Navigate>` redirects to `feeds`/`surveys` rather than relying only on the wildcard, so stale
+  bookmarks land somewhere sensible.
+
+**Questions editor polish** (`components-admin-surveys-editor.jsx`, all additive/corrective, no
+data-model restructuring):
+- **Search/filter** — new input above "Pages and questions" in the Study overview modal (the one
+  place both a compact list and that framing already live). New exported `matchesQuestionFilter(item,
+  query)` matches on id/text(HTML-stripped via the existing `stripHtmlForEmptyCheck`)/type,
+  page-break rows always pass through for structural context. Implemented as a render-skip
+  (`if (!matchesQuestionFilter(...)) return null` inside the existing `.map`), deliberately **not**
+  a pre-filter of the array — `flatIndex`/`onMoveUp`/`onDuplicate`/etc. are all keyed on the true
+  index into the underlying data, and pre-filtering would have silently corrupted every one of
+  them.
+- **Duplicate-question-id warning** — new exported `computeDuplicateQuestionIds(questions)`
+  (a `Set` of ids used more than once, page-break rows excluded). Previously only the
+  auto-generated Copy path avoided id collisions; a manually-typed duplicate id had zero warning,
+  despite `visible_in_feeds`/`feed_overrides`/`visible_to_group_ids`/CSV columns all keying off it.
+  Wired into `QuestionCard`/`CollapsedQuestionRow` (main editor) and `OutlineRow` (Study overview
+  modal) — red border/text plus a tooltip and, in the expanded card, an inline warning line.
+- **Group-visibility orphan cleanup for questions** — `ExperimentGroupsEditor.deleteGroup` already
+  stripped a deleted group's id from every block's `visible_to_group_ids`; extended the same
+  function (using the already-exported `getQuestionList`/`setQuestionList`) to also strip it from
+  every question's `visible_to_group_ids`. This only *removes* entries from an already-existing
+  field — no new stored shape — so the repo's "N places to update" duplicated-reconciliation
+  footgun documented elsewhere in this file doesn't apply here.
+- **`PageBlocksEditor` collapsed-by-default** — renamed/inverted its `collapsedBlockIds` scheme to
+  `expandedBlockIds` (inclusion = expanded, starts empty), matching the convention
+  `ExperimentGroupsEditor` already used for its own per-group panels. Any block added later is
+  correctly collapsed by default too, with no extra bookkeeping.
+
+**Not in this pass**: a `visible_if` (conditional question display) builder UI — confirmed via
+direct code search that no editor surface exists for this at all today (the field is only ever
+blindly copied through on duplicate/type-change, set/read purely at the data layer). Flagged as a
+recommended, separately-scoped follow-up — meaningfully larger surface area and risk than anything
+else in this pass.
+
+**Verified**: every touched/new file parses clean (`@babel/parser`) and the whole module graph
+loads with zero errors via cache-busted dynamic imports against the real running dev server
+(confirmed via `read_network_requests` too — every request 200s; a batch of `[vite] Failed to
+reload]` console messages seen mid-session turned out to be stale buffered history from
+transient mid-edit states, not a current problem, confirmed by checking Vite's own server-side
+logs showed nothing and by re-fetching the exact files fresh). A prop-shape audit
+(`AdminFeedsPanel`'s 44 expected props vs. what `AdminDashboard` actually passes) found zero
+mismatches. The three new pure helpers (`matchesQuestionFilter`, `computeDuplicateQuestionIds`,
+and the orphan-cleanup updater logic) were exercised directly against fabricated data via the
+browser console — no login needed, all pure functions over plain objects — and all produced
+exactly the expected output. **Not verified**: an actual click-through in the live admin panel
+(selecting a feed, saving, toggling randomize flags, viewing the new Participants tabs, dragging
+questions with the filter active) — this needs a real admin session, which stays off-limits per
+this file's standing rule. Worth a full click-through next session before trusting this is
+pixel/behavior-correct beyond what static analysis and pure-logic testing can confirm.
+
 ## One-off incident: CLAUDE.md itself got deleted mid-session (2026-08-01)
 
 During the admin dashboard redesign work, this file was found deleted from the working directory
