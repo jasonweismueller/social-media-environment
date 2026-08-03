@@ -298,6 +298,12 @@ export function makeExperimentGroup(overrides = {}) {
   return {
     id: sanitizeExperimentGroupId(safeOverrides.id, `group_${uid()}`),
     name: String(safeOverrides.name || "Group"),
+    // Optional per-group feed sequence override — empty means "use the
+    // survey's own feed_sequence_ids/linked_feed_ids", same as before this
+    // field existed. Only meaningful for feed_then_survey/
+    // multi_feed_then_survey studies reached via a direct survey link (no
+    // ?feed_id= already pinned) — see ensureSurveyLoaded in App-facebook.jsx.
+    feed_sequence_ids: uniqueStringArray(safeOverrides.feed_sequence_ids),
   };
 }
 
@@ -333,6 +339,7 @@ export function normalizeExperimentGroups(experimentGroups = []) {
       return {
         id: groupId,
         name: String(source.name || `Group ${index + 1}`),
+        feed_sequence_ids: uniqueStringArray(source.feed_sequence_ids),
       };
     }
   );
@@ -342,6 +349,7 @@ export function frontendExperimentGroupsToBackend(experimentGroups = []) {
   return normalizeExperimentGroups(experimentGroups).map((group) => ({
     id: group.id,
     name: group.name,
+    feed_sequence_ids: group.feed_sequence_ids,
   }));
 }
 

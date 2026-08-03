@@ -626,6 +626,10 @@ export function normalizeSurveyExperimentGroups(survey) {
     return {
       id: groupId,
       name: String(group.name || `Group ${index + 1}`),
+      // Empty means "use the survey's own feed_sequence_ids/linked_feed_ids"
+      // (today's behavior, unchanged) — only meaningful for feed_then_survey/
+      // multi_feed_then_survey studies reached via a direct survey link.
+      feed_sequence_ids: uniqueStringArrayLocal(group.feed_sequence_ids),
     };
   });
 }
@@ -713,10 +717,17 @@ function makePageBlock(index = 0) {
   };
 }
 
+function uniqueStringArrayLocal(arr = []) {
+  return Array.from(
+    new Set((Array.isArray(arr) ? arr : []).map((v) => String(v ?? "").trim()).filter(Boolean))
+  );
+}
+
 function makeExperimentGroup(index = 0) {
   return {
     id: `group_${Date.now()}_${index}`,
     name: `Group ${index + 1}`,
+    feed_sequence_ids: [],
   };
 }
 
@@ -3652,8 +3663,10 @@ function OutlineRow({
 }
 
 
-function ExperimentGroupsEditor({ survey, onSurveyChange }) {
+function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
   const groups = normalizeSurveyExperimentGroups(survey);
+  const [expandedGroupIds, setExpandedGroupIds] = useState(() => new Set());
+  const safeLinkedFeeds = Array.isArray(linkedFeeds) ? linkedFeeds : [];
 
   const applyGroups = useCallback(
     (nextGroups) => {
@@ -3683,6 +3696,34 @@ function ExperimentGroupsEditor({ survey, onSurveyChange }) {
 
   function addGroup() {
     applyGroups([...groups, makeExperimentGroup(groups.length)]);
+  }
+
+  function toggleGroupFeed(groupIndex, feedId) {
+    const group = groups[groupIndex];
+    const current = group.feed_sequence_ids || [];
+    const next = current.includes(feedId)
+      ? current.filter((id) => id !== feedId)
+      : [...current, feedId];
+    updateGroup(groupIndex, { feed_sequence_ids: next });
+  }
+
+  function moveGroupFeed(groupIndex, feedId, direction) {
+    const group = groups[groupIndex];
+    const current = [...(group.feed_sequence_ids || [])];
+    const from = current.indexOf(feedId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= current.length) return;
+    [current[from], current[to]] = [current[to], current[from]];
+    updateGroup(groupIndex, { feed_sequence_ids: current });
+  }
+
+  function toggleExpanded(groupId) {
+    setExpandedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
   }
 
   function deleteGroup(groupIndex) {
@@ -3734,25 +3775,125 @@ function ExperimentGroupsEditor({ survey, onSurveyChange }) {
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {groups.map((group, groupIndex) => (
-            <div
-              key={group.id}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #dbe3ef", borderRadius: 8, background: "#fff" }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 60 }}>
-                Group {groupIndex + 1}
+          {groups.map((group, groupIndex) => {
+            const feedSeq = group.feed_sequence_ids || [];
+            const isExpanded = expandedGroupIds.has(group.id);
+            const feedById = new Map(safeLinkedFeeds.map((f) => [String(f.feed_id), f]));
+            const summary = feedSeq.length
+              ? feedSeq.map((fid) => feedById.get(fid)?.name || fid).join(" → ")
+              : "Survey's default feed sequence";
+
+            return (
+              <div
+                key={group.id}
+                style={{ border: "1px solid #dbe3ef", borderRadius: 8, background: "#fff", overflow: "hidden" }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 60 }}>
+                    Group {groupIndex + 1}
+                  </div>
+                  <input
+                    value={group.name}
+                    onChange={(e) => updateGroup(groupIndex, { name: e.target.value })}
+                    placeholder={`Group ${groupIndex + 1}`}
+                    style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
+                  />
+                  <IconOnlyButton onClick={() => deleteGroup(groupIndex)} title="Delete group" danger>
+                    <TrashIcon size={12} />
+                  </IconOnlyButton>
+                </div>
+
+                {safeLinkedFeeds.length > 0 && (
+                  <div style={{ borderTop: "1px solid #eef1f6", padding: "6px 8px", background: "#fafbfc" }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(group.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "100%",
+                        background: "none",
+                        border: "none",
+                        padding: "2px 0",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        color: feedSeq.length ? "#1d4ed8" : "#6b7280",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span style={{ fontWeight: 700 }}>{isExpanded ? "▾" : "▸"} Feed sequence:</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {summary}
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                        <div style={{ fontSize: 10.5, color: "#94a3b8", marginBottom: 6 }}>
+                          Leave unchecked to use the survey's own feed sequence for this group. Only applies to
+                          participants who arrive via the plain survey link (not a specific feed's link) — group
+                          assignment still happens first, round-robin, exactly as before.
+                        </div>
+                        {safeLinkedFeeds.map((f) => {
+                          const fid = String(f.feed_id);
+                          const isChecked = feedSeq.includes(fid);
+                          const orderIndex = feedSeq.indexOf(fid);
+                          return (
+                            <div
+                              key={fid}
+                              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}
+                            >
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, minWidth: 0 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleGroupFeed(groupIndex, fid)}
+                                />
+                                {isChecked && (
+                                  <span
+                                    style={{
+                                      fontSize: 11, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff",
+                                      border: "1px solid #bfdbfe", borderRadius: 999, padding: "1px 6px",
+                                    }}
+                                  >
+                                    {orderIndex + 1}
+                                  </span>
+                                )}
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {f.name || fid}
+                                </span>
+                              </label>
+                              {isChecked && (
+                                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveGroupFeed(groupIndex, fid, -1)}
+                                    disabled={orderIndex <= 0}
+                                    style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveGroupFeed(groupIndex, fid, 1)}
+                                    disabled={orderIndex < 0 || orderIndex >= feedSeq.length - 1}
+                                    style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+                                  >
+                                    ↓
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <input
-                value={group.name}
-                onChange={(e) => updateGroup(groupIndex, { name: e.target.value })}
-                placeholder={`Group ${groupIndex + 1}`}
-                style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
-              />
-              <IconOnlyButton onClick={() => deleteGroup(groupIndex)} title="Delete group" danger>
-                <TrashIcon size={12} />
-              </IconOnlyButton>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -4122,7 +4263,7 @@ function StudyOutlineModal({
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <ExperimentGroupsEditor survey={survey} onSurveyChange={onSurveyChange} />
+          <ExperimentGroupsEditor survey={survey} onSurveyChange={onSurveyChange} linkedFeeds={linkedFeeds} />
           <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
 
           <div

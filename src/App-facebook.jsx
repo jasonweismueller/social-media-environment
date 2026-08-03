@@ -1633,13 +1633,41 @@ export default function App() {
         }
       }
 
-      const normalizedSurvey = normalizedSurveyBase
+      // A group can define its own feed_sequence_ids, overriding the
+      // survey's default sequence for whichever group a participant lands
+      // in — but only for participants who arrived via the plain survey
+      // link (no ?feed_id= already pinned); an explicit feed URL always
+      // wins, same precedent as the survey_only-linked-feed fix elsewhere
+      // in this file. Baked into normalizedSurveyBase itself (not just
+      // local state) — the same pattern the survey_only override above
+      // already uses — because effectiveFeedSequenceIds (the memo
+      // everything downstream keys off: "next feed" UI, submit-time
+      // feed_sequence_ids sent to the backend) reads linkedSurvey.
+      // feed_sequence_ids/linked_feed_ids first, ahead of any local state.
+      const assignedGroupForFeeds = assignedGroupId
+        ? experimentGroups.find((g) => String(g?.id) === assignedGroupId)
+        : null;
+      const groupFeedSequence =
+        !loadedIsSurveyOnly && isDirectSurveyLaunch
+          ? normalizeFeedSequenceIds(assignedGroupForFeeds?.feed_sequence_ids, [])
+          : [];
+
+      const normalizedSurveyForGroup =
+        groupFeedSequence.length && normalizedSurveyBase
+          ? {
+              ...normalizedSurveyBase,
+              linked_feed_ids: groupFeedSequence,
+              feed_sequence_ids: groupFeedSequence,
+            }
+          : normalizedSurveyBase;
+
+      const normalizedSurvey = normalizedSurveyForGroup
         ? {
-            ...normalizedSurveyBase,
+            ...normalizedSurveyForGroup,
             experiment_assigned_group_id: assignedGroupId,
             pages: materializePagesFromBlocks(
-              normalizedSurveyBase,
-              normalizedSurveyBase.page_blocks,
+              normalizedSurveyForGroup,
+              normalizedSurveyForGroup.page_blocks,
               {
                 participantSeed: surveyParticipantSeed,
                 randomize: true,
@@ -1659,8 +1687,20 @@ export default function App() {
         setFeedSequenceIds(normalizedSequence);
       }
 
-      if (!loadedIsSurveyOnly && isDirectSurveyLaunch && !activeFeedId && normalizedSequence.length) {
-        setActiveFeedId(String(normalizedSequence[0] || ""));
+      if (!loadedIsSurveyOnly && isDirectSurveyLaunch && normalizedSequence.length) {
+        const nextFirstFeedId = String(normalizedSequence[0] || "");
+        // startBoot already guessed a first feed from the survey's default
+        // sequence (before the group was known) and rewrote the URL to
+        // match; correct both here if the group's sequence picked a
+        // different feed. Harmless no-op otherwise (including the
+        // no-groups case, where nextFirstFeedId is exactly what startBoot
+        // already guessed).
+        if (nextFirstFeedId && nextFirstFeedId !== activeFeedId) {
+          setActiveFeedId(nextFirstFeedId);
+          try {
+            setFeedIdInUrl(nextFirstFeedId, { replace: true });
+          } catch {}
+        }
       }
 
       if (normalizedSurvey) {

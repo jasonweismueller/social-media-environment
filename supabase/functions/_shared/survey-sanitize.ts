@@ -285,7 +285,9 @@ function sanitizeExperimentGroupId(value: unknown, fallback = ""): string {
  * Ensures experiment group ids are unique and non-empty. Legacy/missing
  * names get a positional default ("Group 1", "Group 2", ...).
  */
-export function normalizeExperimentGroups(experimentGroups: unknown = []): Array<{ id: string; name: string }> {
+export function normalizeExperimentGroups(
+  experimentGroups: unknown = []
+): Array<{ id: string; name: string; feed_sequence_ids: string[] }> {
   const usedIds = new Set<string>();
 
   return (Array.isArray(experimentGroups) ? experimentGroups : []).map((rawGroup, index) => {
@@ -302,14 +304,25 @@ export function normalizeExperimentGroups(experimentGroups: unknown = []): Array
 
     usedIds.add(groupId);
 
-    return { id: groupId, name: String(source.name || `Group ${index + 1}`) };
+    return {
+      id: groupId,
+      name: String(source.name || `Group ${index + 1}`),
+      // Empty means "use the survey's own feed_sequence_ids/linked_feed_ids"
+      // — only meaningful for feed_then_survey/multi_feed_then_survey
+      // studies reached via a direct survey link (no ?feed_id= pinned).
+      feed_sequence_ids: uniqueStringArray(source.feed_sequence_ids),
+    };
   });
 }
 
 export function frontendExperimentGroupsToBackend(
   experimentGroups: unknown = []
-): Array<{ id: string; name: string }> {
-  return normalizeExperimentGroups(experimentGroups).map((group) => ({ id: group.id, name: group.name }));
+): Array<{ id: string; name: string; feed_sequence_ids: string[] }> {
+  return normalizeExperimentGroups(experimentGroups).map((group) => ({
+    id: group.id,
+    name: group.name,
+    feed_sequence_ids: group.feed_sequence_ids,
+  }));
 }
 
 /**
