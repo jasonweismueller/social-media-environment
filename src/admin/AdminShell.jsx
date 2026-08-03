@@ -25,7 +25,40 @@ const USERS_PATH = "/admin/dashboard/users";
 export const AdminTreeSlotsContext = createContext({
   feedsSlot: null,
   surveysSlot: null,
+  feedsAddSlot: null,
+  surveysAddSlot: null,
 });
+
+// The "+" button AdminFeedsPanel/AdminSurveysPanel portal into their
+// section's addSlot (see TreeSection below) — shared so both look/behave
+// identically rather than each panel hand-rolling its own.
+export function TreeAddButton({ onClick, title }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 24,
+        height: 24,
+        border: "none",
+        borderRadius: "var(--admin-radius-sm)",
+        background: "transparent",
+        color: "var(--admin-accent-ink)",
+        cursor: "pointer",
+        fontSize: 16,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}
+    >
+      +
+    </button>
+  );
+}
 
 function navItemStyle(isActive) {
   return {
@@ -45,14 +78,19 @@ function navItemStyle(isActive) {
 // One expandable section of the tree sidebar (Feeds or Surveys): a single
 // button that both navigates (when not already the active section) and
 // toggles its own list open/closed (when it already is) — no separate
-// disclosure control. The list area (when shown) sizes to its own content
-// by default — flex-shrink (not flex-grow) is what keeps Surveys/Users
-// directly below it instead of pushed to the bottom of the sidebar — and
-// only shrinks into its own internal scroll once the sidebar genuinely runs
-// out of room, so Surveys/Users are never pushed off-screen either. An
-// optional onAdd renders a "+" button next to the row (Feeds only, for
-// creating a new feed without first expanding the list).
-function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef, onAdd, addLabel }) {
+// disclosure control or chevron; clicking an already-active section to
+// open/close it is unambiguous on its own. The list area (when shown)
+// sizes to its own content by default — flex-shrink (not flex-grow) is
+// what keeps Surveys/Users directly below it instead of pushed to the
+// bottom of the sidebar — and only shrinks into its own internal scroll
+// once the sidebar genuinely runs out of room, so Surveys/Users are never
+// pushed off-screen either. addSlotRef exposes a small placeholder inside
+// the row, visible only while this section is active, that
+// AdminFeedsPanel/AdminSurveysPanel portal their own "+" button into (same
+// portal-a-DOM-slot pattern as slotRef below, just for one button instead
+// of the whole list) — so the header row's "+" is only ever present for
+// whichever section you're actually looking at.
+function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef, addSlotRef }) {
   const showList = active && expanded;
   return (
     <div
@@ -64,8 +102,8 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
       }}
     >
       {/* Background/padding live on this shared row (not on the NavLink
-          alone) so the "+" and chevron read as part of the same button,
-          not a separate control floating off to the side. */}
+          alone) so the "+" reads as part of the same button, not a
+          separate control floating off to the side. */}
       <div
         style={{
           display: "flex",
@@ -103,50 +141,11 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
           <span aria-hidden="true">{icon}</span>
           <span style={{ flex: 1 }}>{label}</span>
         </NavLink>
-        {onAdd && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onAdd();
-            }}
-            title={addLabel}
-            aria-label={addLabel}
-            style={{
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 24,
-              height: 24,
-              border: "none",
-              borderRadius: "var(--admin-radius-sm)",
-              background: "transparent",
-              color: active ? "var(--admin-accent-ink)" : "var(--admin-muted)",
-              cursor: "pointer",
-              fontSize: 16,
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            +
-          </button>
-        )}
         {active && (
           <span
-            aria-hidden="true"
-            style={{
-              fontSize: 18,
-              lineHeight: 1,
-              color: "var(--admin-muted)",
-              marginRight: 10,
-              transform: expanded ? "rotate(90deg)" : "none",
-              transition: "transform .15s ease",
-            }}
-          >
-            ▸
-          </span>
+            ref={addSlotRef}
+            style={{ flexShrink: 0, display: "flex", alignItems: "center", marginRight: 4 }}
+          />
         )}
       </div>
       {showList && (
@@ -157,7 +156,6 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
             minHeight: 0,
             overflowY: "auto",
             marginTop: 10,
-            paddingRight: 6,
           }}
         />
       )}
@@ -181,12 +179,13 @@ export function AdminShell({
   backLabel = "← All projects",
   projectSwitcher,
   showUsersNav = true,
-  onCreateFeed,
   children,
 }) {
   const location = useLocation();
   const [feedsSlotEl, setFeedsSlotEl] = useState(null);
   const [surveysSlotEl, setSurveysSlotEl] = useState(null);
+  const [feedsAddSlotEl, setFeedsAddSlotEl] = useState(null);
+  const [surveysAddSlotEl, setSurveysAddSlotEl] = useState(null);
 
   const isFeedsActive = location.pathname.startsWith(FEEDS_PATH);
   const isSurveysActive = location.pathname.startsWith(SURVEYS_PATH);
@@ -301,8 +300,7 @@ export function AdminShell({
             expanded={expandedKey === "feeds"}
             onToggleExpand={() => setExpandedKey((k) => (k === "feeds" ? null : "feeds"))}
             slotRef={setFeedsSlotEl}
-            onAdd={onCreateFeed}
-            addLabel="New feed"
+            addSlotRef={setFeedsAddSlotEl}
           />
           <TreeSection
             to={SURVEYS_PATH}
@@ -312,6 +310,7 @@ export function AdminShell({
             expanded={expandedKey === "surveys"}
             onToggleExpand={() => setExpandedKey((k) => (k === "surveys" ? null : "surveys"))}
             slotRef={setSurveysSlotEl}
+            addSlotRef={setSurveysAddSlotEl}
           />
           {showUsersNav && (
             <NavLink
@@ -327,7 +326,12 @@ export function AdminShell({
 
       <main style={{ padding: "24px 28px", minWidth: 0 }}>
         <AdminTreeSlotsContext.Provider
-          value={{ feedsSlot: feedsSlotEl, surveysSlot: surveysSlotEl }}
+          value={{
+            feedsSlot: feedsSlotEl,
+            surveysSlot: surveysSlotEl,
+            feedsAddSlot: feedsAddSlotEl,
+            surveysAddSlot: surveysAddSlotEl,
+          }}
         >
           {children}
         </AdminTreeSlotsContext.Provider>

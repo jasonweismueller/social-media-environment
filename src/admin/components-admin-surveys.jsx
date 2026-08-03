@@ -41,7 +41,7 @@ import {
 
 import { Card as AdminUiCard, Tabs, Button } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
-import { AdminTreeSlotsContext } from "./AdminShell";
+import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
 /* =========================
    Local helpers
@@ -854,15 +854,24 @@ function surveyListButtonStyle(isActive) {
   };
 }
 
-// The tree-sidebar's Surveys section content (filter box, create/refresh,
-// the survey rows themselves) — portaled into AdminShell's Surveys slot
-// instead of rendering in the main content column, see AdminTreeSlotsContext
-// in ./AdminShell. Mirrors AdminFeedsPanel's FeedListContent exactly (filter
-// input + paired secondary buttons + row style) so the two sections finally
-// share one visual language instead of the survey list being the odd one
-// out (no filter, no refresh button, a standalone primary-blue "+ New
-// Survey" button).
-function SurveyListContent({ surveys, loading, onCreateSurvey, selectedSurveyId, onSelectSurvey }) {
+// The tree-sidebar's Surveys section content (the survey rows, plus Save/
+// Delete for whichever one is selected) — portaled into AdminShell's
+// Surveys slot instead of rendering in the main content column, see
+// AdminTreeSlotsContext in ./AdminShell. Mirrors AdminFeedsPanel's
+// FeedListContent exactly (row style, Save/Delete pair below the list,
+// "+" living on the nav row itself rather than a standalone button here)
+// so the two sections share one visual language. Question count is no
+// longer shown per row — it's one click away (open the survey) and wasn't
+// worth the per-survey fetch it used to cost just to populate this list.
+function SurveyListContent({
+  surveys,
+  loading,
+  selectedSurveyId,
+  onSelectSurvey,
+  onSaveSurvey,
+  isSaving,
+  onDeleteSelectedSurvey,
+}) {
   return (
     <div>
       {loading && (
@@ -881,20 +890,47 @@ function SurveyListContent({ surveys, loading, onCreateSurvey, selectedSurveyId,
               onClick={() => onSelectSurvey(s.survey_id)}
               style={surveyListButtonStyle(isActive)}
             >
-              <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827", marginBottom: 4 }}>
+              <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
                 {s.name || s.survey_id}
-              </div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>
-                {surveyQuestionCount(s || {})} questions
               </div>
             </button>
           );
         })
       )}
 
-      <Button size="sm" variant="secondary" onClick={onCreateSurvey} style={{ width: "100%", marginTop: 6 }}>
-        + New Survey
-      </Button>
+      {selectedSurveyId && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onSaveSurvey}
+          disabled={isSaving}
+          style={{
+            width: "100%",
+            marginTop: 10,
+            background: "var(--admin-accent-soft)",
+            borderColor: "var(--admin-accent-border)",
+            color: "var(--admin-accent-ink)",
+          }}
+        >
+          {isSaving ? "Saving…" : "Save survey"}
+        </Button>
+      )}
+      {selectedSurveyId && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onDeleteSelectedSurvey}
+          style={{
+            width: "100%",
+            marginTop: 6,
+            background: "var(--admin-danger-soft)",
+            borderColor: "var(--admin-danger-border)",
+            color: "var(--admin-danger-ink)",
+          }}
+        >
+          Delete survey
+        </Button>
+      )}
     </div>
   );
 }
@@ -1247,65 +1283,6 @@ function SelectInput({ value, onChange, children, style }) {
   );
 }
 
-function TrashIcon({ size = 16 }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-      <path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6" />
-      <line x1="10" y1="11" x2="10" y2="17" />
-      <line x1="14" y1="11" x2="14" y2="17" />
-    </svg>
-  );
-}
-
-function IconOnlyButton({
-  onClick,
-  title,
-  danger = false,
-  disabled = false,
-  style = {},
-  size = 16,
-  children = null,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      style={{
-        width: 42,
-        height: 42,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 8,
-        border: `1px solid ${danger ? "#dc2626" : "#d1d5db"}`,
-        background: "#fff",
-        color: danger ? "#dc2626" : disabled ? "#9ca3af" : "#111827",
-        cursor: disabled ? "not-allowed" : "pointer",
-        padding: 0,
-        lineHeight: 1,
-        ...style,
-      }}
-    >
-      {children || <TrashIcon size={size} />}
-    </button>
-  );
-}
-
 /* =========================
    Main Component
    ========================= */
@@ -1350,7 +1327,7 @@ export function AdminSurveysPanel({
   const [resetGroupBalanceError, setResetGroupBalanceError] = useState("");
   const [deletingSurveyData, setDeletingSurveyData] = useState(false);
 
-  const { surveysSlot } = useContext(AdminTreeSlotsContext);
+  const { surveysSlot, surveysAddSlot } = useContext(AdminTreeSlotsContext);
 
   const hasExperimentGroups =
     Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
@@ -2255,14 +2232,21 @@ export function AdminSurveysPanel({
 
   return (
     <>
+      {surveysAddSlot &&
+        createPortal(
+          <TreeAddButton onClick={handleCreateSurvey} title="New survey" />,
+          surveysAddSlot
+        )}
       {surveysSlot &&
         createPortal(
           <SurveyListContent
             surveys={surveys}
             loading={loading}
-            onCreateSurvey={handleCreateSurvey}
             selectedSurveyId={selectedSurveyId}
             onSelectSurvey={handleSelectSurvey}
+            onSaveSurvey={handleSaveSurvey}
+            isSaving={savingSurvey}
+            onDeleteSelectedSurvey={handleDeleteSurvey}
           />,
           surveysSlot
         )}
@@ -2305,15 +2289,8 @@ export function AdminSurveysPanel({
                   onChange={handleImportSurveyFile}
                   style={{ display: "none" }}
                 />
-
-                {!!survey?.survey_id && (
-                  <IconOnlyButton
-                    onClick={handleDeleteSurvey}
-                    title="Delete survey"
-                    danger
-                    size={17}
-                  />
-                )}
+                {/* Delete survey now lives below the survey list in the
+                    sidebar, next to Save survey — mirrors Delete feed. */}
               </div>
             </div>
 
@@ -3120,36 +3097,8 @@ export function AdminSurveysPanel({
               <SurveyParticipantsPage projectId={projectId} surveyId={survey.survey_id} embed />
             )}
 
-            {activeEditorTab !== "participants" && (
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                justifyContent: "flex-end",
-                marginTop: 18,
-                paddingTop: 14,
-                borderTop: "1px solid #e5e7eb",
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleSaveSurvey}
-                disabled={savingSurvey}
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: 12,
-                  border: "1px solid #4f46e5",
-                  background: "#4f46e5",
-                  color: "#fff",
-                  fontWeight: 700,
-                  cursor: savingSurvey ? "not-allowed" : "pointer",
-                  boxShadow: "0 4px 10px rgba(79,70,229,0.18)",
-                }}
-              >
-                {savingSurvey ? "Saving Survey..." : "Save Survey"}
-              </button>
-            </div>
-            )}
+            {/* Save survey now lives below the survey list in the sidebar,
+                next to Delete survey — mirrors Save feed. */}
           </>
         )}
       </div>

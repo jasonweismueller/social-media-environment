@@ -1399,7 +1399,6 @@ export function AdminDashboard({
           subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
           onLogout={onLogout}
           showUsersNav={hasAdminRole("owner")}
-          onCreateFeed={hasAdminRole("editor") ? createNewFeed : undefined}
           backTo="/admin"
           backLabel="← Switch project / platform"
           projectSwitcher={
@@ -1466,6 +1465,7 @@ export function AdminDashboard({
                   contentUnitLabel={CONTENT_UNIT_LABEL}
                   contentUnitLabelPlural={CONTENT_UNIT_LABEL_PLURAL}
                   onSelectFeed={selectFeed}
+                  onCreateFeed={createNewFeed}
                   onCopyFeed={copyFeed}
                   onRefreshFeeds={loadFeeds}
                   onLoadStats={loadStatsFor}

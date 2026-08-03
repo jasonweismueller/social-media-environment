@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { pravatar } from "../utils";
 import { Card, Table, Th, Td, Toggle, Button, IconButton, Badge, Tabs, RoleGate } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
-import { AdminTreeSlotsContext } from "./AdminShell";
+import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
 function feedListButtonStyle(isActive) {
   return {
@@ -81,7 +81,19 @@ function FeedListContent({
 
       {selectedFeedId && (
         <RoleGate min="editor">
-          <Button size="sm" onClick={onSaveFeed} disabled={isSaving} style={{ width: "100%", marginTop: 10 }}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onSaveFeed}
+            disabled={isSaving}
+            style={{
+              width: "100%",
+              marginTop: 10,
+              background: "var(--admin-accent-soft)",
+              borderColor: "var(--admin-accent-border)",
+              color: "var(--admin-accent-ink)",
+            }}
+          >
             {isSaving ? "Saving…" : "Save feed"}
           </Button>
         </RoleGate>
@@ -140,6 +152,7 @@ export function AdminFeedsPanel({
   contentUnitLabel,
   contentUnitLabelPlural,
   onSelectFeed,
+  onCreateFeed,
   onCopyFeed,
   onRefreshFeeds,
   onLoadStats,
@@ -183,7 +196,7 @@ export function AdminFeedsPanel({
   const anyFlagBusy = allSavingKeys.some((k) => ff[k]);
   const isDefault = selectedFeedId === defaultFeedId;
 
-  const { feedsSlot } = useContext(AdminTreeSlotsContext);
+  const { feedsSlot, feedsAddSlot } = useContext(AdminTreeSlotsContext);
 
   const handleDeleteSelectedFeed = () => {
     onDeleteFeed(feeds.find((f) => f.feed_id === selectedFeedId) || { feed_id: selectedFeedId, name: selectedFeedName });
@@ -191,6 +204,13 @@ export function AdminFeedsPanel({
 
   return (
     <>
+      {feedsAddSlot &&
+        createPortal(
+          <RoleGate min="editor">
+            <TreeAddButton onClick={onCreateFeed} title="New feed" />
+          </RoleGate>,
+          feedsAddSlot
+        )}
       {feedsSlot &&
         createPortal(
           <FeedListContent
