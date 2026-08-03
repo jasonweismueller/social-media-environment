@@ -140,16 +140,20 @@ export function IGCarousel({ items = [], onIndexChange }) {
       {idx + 1} / {items.length}
     </div>
 
-    <button className="igcar-arrow left" onClick={() => setIdx(i => Math.max(0, i-1))} aria-label="Previous">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
-    <button className="igcar-arrow right" onClick={() => setIdx(i => Math.min(items.length-1, i+1))} aria-label="Next">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
+    {idx > 0 && (
+      <button className="igcar-arrow left" onClick={() => setIdx(i => Math.max(0, i-1))} aria-label="Previous">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    )}
+    {idx < items.length - 1 && (
+      <button className="igcar-arrow right" onClick={() => setIdx(i => Math.min(items.length-1, i+1))} aria-label="Next">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    )}
     <div className="igcar-dots">
       {items.map((_, i) => (
         <button key={i} className={`dot ${i===idx?"on":""}`} onClick={() => setIdx(i)} aria-label={`Slide ${i+1}`} />

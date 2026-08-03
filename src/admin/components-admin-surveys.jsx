@@ -169,6 +169,7 @@ const POST_METRIC_SUFFIXES_FOR_LABELS = [
   "_shared",
   "_share_target",
   "_share_text",
+  "_reposted",
   "_cta_clicked",
   "_bio_opened",
   "_bio_url_clicked",

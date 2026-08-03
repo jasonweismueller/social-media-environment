@@ -28,7 +28,7 @@ const ms = (n) => {
   return `${m}:${sec}`;
 };
 
-const IG_ONLY = ["_saved"];
+const IG_ONLY = ["_saved", "_reposted"];
 
 const FB_ONLY = [
   "_note_opened",
@@ -152,7 +152,7 @@ function makeCsvWithPrettyHeaders(rows, keys, labels) {
 
 function normalizeRowsForCsv(rows = []) {
   const BOOL_SUFFIX =
-    /(_reacted|_expandable|_expanded|_commented|_saved|_shared|_reported_misinfo|_cta_clicked|_bio_opened|_bio_url_clicked|_mention_clicked|_note_opened|_note_view_details|_note_link_clicked|_note_helpful_rated|_review_helpful|_review_helpful_removed|_review_reported|_review_read_more)$/;
+    /(_reacted|_expandable|_expanded|_commented|_saved|_shared|_reposted|_reported_misinfo|_cta_clicked|_bio_opened|_bio_url_clicked|_mention_clicked|_note_opened|_note_view_details|_note_link_clicked|_note_helpful_rated|_review_helpful|_review_helpful_removed|_review_reported|_review_read_more)$/;
 
   return rows.map((raw) => {
     const out = { ...raw };
@@ -1387,6 +1387,7 @@ function parsePostMetricKey(key = "") {
     "_shared",
     "_share_target",
     "_share_text",
+    "_reposted",
     "_cta_clicked",
     "_bio_opened",
     "_bio_url_clicked",
@@ -1435,6 +1436,7 @@ function isRelevantPostMetricForExport(post, suffix, isIG) {
 
   // ✅ IG-only
   if (suffix === "_saved") return !!isIG;
+  if (suffix === "_reposted") return !!isIG;
 
   // ✅ Feature-based filters
   if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") {

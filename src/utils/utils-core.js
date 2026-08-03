@@ -671,6 +671,7 @@ export function makeEmptyPostInteractionAggregate() {
     share_target: "",
     share_text: "",
     saved: false,
+    reposted: false,
     reported_misinfo: false,
     cta_clicked: false,
     news_clicked: false,
@@ -729,6 +730,15 @@ export function applyPostInteractionEvent(prevAggregate, event) {
 
     case "save":
       p.saved = true;
+      break;
+
+    // Sticky like `saved`/`shared`/`commented` above — the aggregate tracks
+    // "did this happen at least once," not final on/off state. The raw
+    // event log still records "unrepost" when the participant un-reposts
+    // (full fidelity), same as "unsave" already does for the Save button;
+    // it just isn't specially summarized here.
+    case "repost":
+      p.reposted = true;
       break;
 
     case "note_helpful_rate":
@@ -893,6 +903,7 @@ export function buildParticipantRow({
       : "";
 
     row[`${id}_saved`] = typeof APP !== "undefined" && APP === "ig" ? (agg.saved ? 1 : 0) : 0;
+    row[`${id}_reposted`] = typeof APP !== "undefined" && APP === "ig" ? (agg.reposted ? 1 : 0) : 0;
 
     row[`${id}_shared`] = agg.shared || hasTarget ? 1 : 0;
     row[`${id}_share_target`] = hasTarget ? shareTargetClean : "";

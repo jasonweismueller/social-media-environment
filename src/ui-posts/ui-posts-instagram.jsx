@@ -69,6 +69,16 @@ function SendIcon(props) {
     </svg>
   );
 }
+function RepostIcon({ active = false, ...props }) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
+      <polyline points="17 1 21 5 17 9" fill="none" stroke={active ? "#00c853" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" fill="none" stroke={active ? "#00c853" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="7 23 3 19 7 15" fill="none" stroke={active ? "#00c853" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" fill="none" stroke={active ? "#00c853" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function SaveIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="24" height="24" {...props}>
@@ -492,6 +502,7 @@ const timeLabel = useMemo(() => {
   const baseLikes = useMemo(() => sumReactions(reactions), [reactions]);
   const baseComments = Number(metrics?.comments || 0);
   const baseShares = Number(metrics?.shares || 0);
+  const baseReposts = Number(metrics?.reposts || 0);
   const shouldShowGhosts = baseComments > 0;
 
   const [liked, setLiked] = useState(false);
@@ -499,6 +510,7 @@ const timeLabel = useMemo(() => {
   const [shared, setShared] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveToast, setSaveToast] = useState(false);
+  const [reposted, setReposted] = useState(false);
 
   // caption expand state
   const [expanded, setExpanded] = useState(false);
@@ -589,6 +601,7 @@ return () => document.removeEventListener("pointerdown", handleTapOutside);
   const likes = baseLikes + (liked ? 1 : 0);
   const comments = baseComments + participantComments;
   const shares = baseShares + (shared ? 1 : 0);
+  const reposts = baseReposts + (reposted ? 1 : 0);
 
   const myParticipantId =
     ((typeof window !== "undefined" && (window.SESSION?.participant_id || window.PARTICIPANT_ID)) || null) ||
@@ -638,6 +651,14 @@ const doShare = () => {
   if (disabled) return;
   setShareSheetOpen(true); // ✅ open the sheet for both desktop and mobile
   onAction("share_open", {post_id: id, surface: isMobile ? "mobile" : "desktop" });
+};
+const toggleRepost = () => {
+  if (disabled) return;
+  setReposted((prev) => {
+    const next = !prev;
+    onAction(next ? "repost" : "unrepost", { post_id: id });
+    return next;
+  });
 };
   const toggleSave = () => {
     if (disabled) return;
@@ -1051,6 +1072,16 @@ const displayBio = useMemo(() => {
           >
             <CommentIcon />
             {isMobile && comments > 0 && <span style={{ fontWeight: 600, fontSize: 14 }}>{comments.toLocaleString()}</span>}
+          </button>
+
+          <button
+            aria-label={reposted ? "Remove repost" : "Repost"}
+            onClick={toggleRepost}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: reposted ? "#00c853" : "#111827" }}
+            disabled={disabled}
+          >
+            <RepostIcon active={reposted} />
+            {isMobile && reposts > 0 && <span style={{ fontWeight: 600, fontSize: 14 }}>{reposts.toLocaleString()}</span>}
           </button>
 
           <button

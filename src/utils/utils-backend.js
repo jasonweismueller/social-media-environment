@@ -485,6 +485,7 @@ const REMINDER_INTERACTION_FIELDS = [
   { value: "comment_texts", label: "Comment text" },
   { value: "shared", label: "Shared" },
   { value: "share_target", label: "Share target" },
+  { value: "reposted", label: "Reposted" },
   { value: "reported_misinfo", label: "Reported" },
   { value: "review_helpful", label: "Marked helpful" },
 ];
