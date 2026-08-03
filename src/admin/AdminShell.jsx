@@ -45,54 +45,94 @@ function navItemStyle(isActive) {
 // One expandable section of the tree sidebar (Feeds or Surveys): a single
 // button that both navigates (when not already the active section) and
 // toggles its own list open/closed (when it already is) — no separate
-// disclosure control. Only the active *and expanded* section grows to fill
-// the sidebar's remaining height; collapsed/inactive sections take just
-// their header's height.
-function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef }) {
+// disclosure control. The list area (when shown) sizes to its own content
+// by default — flex-shrink (not flex-grow) is what keeps Surveys/Users
+// directly below it instead of pushed to the bottom of the sidebar — and
+// only shrinks into its own internal scroll once the sidebar genuinely runs
+// out of room, so Surveys/Users are never pushed off-screen either. An
+// optional onAdd renders a "+" button next to the row (Feeds only, for
+// creating a new feed without first expanding the list).
+function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRef, onAdd, addLabel }) {
   const showList = active && expanded;
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
-      <NavLink
-        to={to}
-        onClick={(e) => {
-          if (active) {
-            // Already here — this click can only mean "toggle the list",
-            // since re-navigating to the same route would be a no-op anyway.
-            e.preventDefault();
-            onToggleExpand();
-          }
-          // Otherwise let the normal Link navigation happen; the effect in
-          // AdminShell that resets expandedKey on route change expands it.
-        }}
-        aria-expanded={active ? expanded : undefined}
-        style={({ isActive }) => navItemStyle(isActive)}
-      >
-        <span aria-hidden="true">{icon}</span>
-        <span style={{ flex: 1 }}>{label}</span>
-        {active && (
-          <span
-            aria-hidden="true"
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: showList ? "0 1 auto" : "0 0 auto",
+        minHeight: showList ? 0 : undefined,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <NavLink
+          to={to}
+          onClick={(e) => {
+            if (active) {
+              // Already here — this click can only mean "toggle the list",
+              // since re-navigating to the same route would be a no-op anyway.
+              e.preventDefault();
+              onToggleExpand();
+            }
+            // Otherwise let the normal Link navigation happen; the effect in
+            // AdminShell that resets expandedKey on route change expands it.
+          }}
+          aria-expanded={active ? expanded : undefined}
+          style={({ isActive }) => ({ ...navItemStyle(isActive), flex: 1, minWidth: 0 })}
+        >
+          <span aria-hidden="true">{icon}</span>
+          <span style={{ flex: 1 }}>{label}</span>
+          {active && (
+            <span
+              aria-hidden="true"
+              style={{
+                fontSize: 18,
+                lineHeight: 1,
+                color: "var(--admin-muted)",
+                transform: expanded ? "rotate(90deg)" : "none",
+                transition: "transform .15s ease",
+              }}
+            >
+              ▸
+            </span>
+          )}
+        </NavLink>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAdd();
+            }}
+            title={addLabel}
+            aria-label={addLabel}
             style={{
-              fontSize: 18,
-              lineHeight: 1,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 26,
+              height: 26,
+              border: "none",
+              borderRadius: "var(--admin-radius-sm)",
+              background: "transparent",
               color: "var(--admin-muted)",
-              transform: expanded ? "rotate(90deg)" : "none",
-              transition: "transform .15s ease",
+              cursor: "pointer",
+              fontSize: 17,
+              fontWeight: 700,
+              lineHeight: 1,
             }}
           >
-            ▸
-          </span>
+            +
+          </button>
         )}
-      </NavLink>
+      </div>
       {showList && (
-        // Sized to its own content (not stretched to fill the sidebar) so
-        // Surveys/Users below don't get pushed down by empty leftover space
-        // when the list is short — capped + scrollable so a long list still
-        // can't push them off-screen.
         <div
           ref={slotRef}
           style={{
-            maxHeight: "45vh",
+            flex: "1 1 auto",
+            minHeight: 0,
             overflowY: "auto",
             marginTop: 10,
             paddingRight: 6,
@@ -119,6 +159,7 @@ export function AdminShell({
   backLabel = "← All projects",
   projectSwitcher,
   showUsersNav = true,
+  onCreateFeed,
   children,
 }) {
   const location = useLocation();
@@ -238,6 +279,8 @@ export function AdminShell({
             expanded={expandedKey === "feeds"}
             onToggleExpand={() => setExpandedKey((k) => (k === "feeds" ? null : "feeds"))}
             slotRef={setFeedsSlotEl}
+            onAdd={onCreateFeed}
+            addLabel="New feed"
           />
           <TreeSection
             to={SURVEYS_PATH}

@@ -40,7 +40,6 @@ function keyFor(pid, fid) {
 function FeedListContent({
   feeds,
   feedsLoading,
-  onCreateFeed,
   selectedFeedId,
   defaultFeedId,
   onSelectFeed,
@@ -80,27 +79,13 @@ function FeedListContent({
         })
       )}
 
-      <RoleGate min="editor">
-        {selectedFeedId && (
+      {selectedFeedId && (
+        <RoleGate min="editor">
           <Button size="sm" onClick={onSaveFeed} disabled={isSaving} style={{ width: "100%", marginTop: 10 }}>
             {isSaving ? "Saving…" : "Save feed"}
           </Button>
-        )}
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={onCreateFeed}
-          style={{
-            width: "100%",
-            marginTop: 6,
-            background: "var(--admin-accent-soft)",
-            borderColor: "var(--admin-accent-border)",
-            color: "var(--admin-accent-ink)",
-          }}
-        >
-          + New feed
-        </Button>
-      </RoleGate>
+        </RoleGate>
+      )}
       {selectedFeedId && (
         <RoleGate min="owner">
           <Button
@@ -155,7 +140,6 @@ export function AdminFeedsPanel({
   contentUnitLabel,
   contentUnitLabelPlural,
   onSelectFeed,
-  onCreateFeed,
   onCopyFeed,
   onRefreshFeeds,
   onLoadStats,
@@ -212,7 +196,6 @@ export function AdminFeedsPanel({
           <FeedListContent
             feeds={feeds}
             feedsLoading={feedsLoading}
-            onCreateFeed={onCreateFeed}
             selectedFeedId={selectedFeedId}
             defaultFeedId={defaultFeedId}
             onSelectFeed={onSelectFeed}
