@@ -2148,6 +2148,19 @@ questions with the filter active) — this needs a real admin session, which sta
 this file's standing rule. Worth a full click-through next session before trusting this is
 pixel/behavior-correct beyond what static analysis and pure-logic testing can confirm.
 
+**Status at end of session: committed (`5c7a2e7 redesign of navigation and survey editor`) and
+confirmed pushed** (`git status` clean, `HEAD` == `origin/main`) — given this repo's
+auto-deploy-on-push pipeline, treat this as already live on `studyfeed.org` unless proven
+otherwise. Full status, what to do first if picking this back up, and one deliberate deviation
+from the original design (flat props on `AdminFeedsPanel` instead of grouped
+`feedActions`/`postActions` objects, chosen so the prop-shape audit above could be a mechanical
+flat-list diff) are all in the plan file's "Status" section at the top —
+`~/.claude/plans/tender-whistling-otter.md`. **One loose end from this session, unresolved**:
+`.claude/launch.json` (recreated mid-session for browser-based verification, no secrets) got
+swept into this session's auto-commit despite being flagged untracked-on-purpose earlier in this
+same file — harmless, but the user hasn't said whether to keep it tracked or remove it; ask
+rather than deciding unilaterally if it comes up again.
+
 ## One-off incident: CLAUDE.md itself got deleted mid-session (2026-08-01)
 
 During the admin dashboard redesign work, this file was found deleted from the working directory

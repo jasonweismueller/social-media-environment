@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { pravatar } from "../utils";
 import { Card, Table, Th, Td, Toggle, Button, Badge, Tabs, RoleGate } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
+import { AdminTreeSlotsContext } from "./AdminShell";
 
 function feedListButtonStyle(isActive) {
   return {
@@ -30,6 +32,112 @@ function keyFor(pid, fid) {
   return `${pid || "global"}::${fid}`;
 }
 
+// The tree-sidebar's Feeds section content (filter box, create/refresh,
+// wipe-on-change toggle, the feed rows themselves) — portaled into
+// AdminShell's Feeds slot instead of rendering in the main content column,
+// see AdminTreeSlotsContext in ./AdminShell for why.
+function FeedListContent({
+  feeds,
+  filteredFeeds,
+  feedsLoading,
+  filterText,
+  setFilterText,
+  onCreateFeed,
+  onRefreshFeeds,
+  wipeOnChange,
+  updatingWipe,
+  onSetWipePolicy,
+  selectedFeedId,
+  defaultFeedId,
+  onSelectFeed,
+}) {
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--admin-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+          Feed list
+        </div>
+        {feedsLoading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+      </div>
+
+      <input
+        type="text"
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+        placeholder="Filter by name or ID…"
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: "1px solid #d1d5db",
+          fontSize: 13,
+          marginBottom: 10,
+        }}
+      />
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <RoleGate min="editor">
+          <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ flex: 1 }}>
+            + New feed
+          </Button>
+        </RoleGate>
+        <Button size="sm" variant="secondary" onClick={onRefreshFeeds} title="Reload feed registry from backend">
+          Refresh
+        </Button>
+      </div>
+
+      <RoleGate min="owner">
+        <div style={{ marginBottom: 14 }}>
+          <Toggle
+            label="Wipe on change"
+            hint="Publishing a checksum-changing feed wipes its participants"
+            checked={!!wipeOnChange}
+            busy={updatingWipe}
+            disabled={wipeOnChange === null}
+            onChange={onSetWipePolicy}
+          />
+        </div>
+      </RoleGate>
+
+      <div>
+        {filteredFeeds.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>
+            {feeds.length === 0
+              ? 'No feeds yet. Click "+ New feed" to create one.'
+              : "No feeds match this filter."}
+          </div>
+        ) : (
+          filteredFeeds.map((f) => {
+            const isActive = selectedFeedId === f.feed_id;
+            const rowIsDefault = f.feed_id === defaultFeedId;
+            return (
+              <button
+                key={f.feed_id}
+                type="button"
+                onClick={() => onSelectFeed(f.feed_id)}
+                style={feedListButtonStyle(isActive)}
+              >
+                <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827", marginBottom: 4 }}>
+                  {f.name || f.feed_id}
+                  {rowIsDefault && (
+                    <Badge tone="accent" style={{ marginLeft: 6 }}>
+                      default
+                    </Badge>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  Updated {f.updated_at ? new Date(f.updated_at).toLocaleDateString() : "—"}
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Master-detail conversion of the old flat Feeds table + separate top-level
  * Posts/Feed-Participants pages, mirroring AdminSurveysPanel's layout so the
@@ -37,6 +145,9 @@ function keyFor(pid, fid) {
  * stays in AdminDashboard (too entangled with checksum-aware caching and S3
  * snapshotting to safely relocate) — this component is purely presentational,
  * fed by props/callbacks, the same pattern FeedParticipantsPage already used.
+ * The feed list itself (left column) is portaled into AdminShell's sidebar —
+ * see AdminTreeSlotsContext in ./AdminShell — so this component only ever
+ * renders the detail pane, at full content width.
  */
 export function AdminFeedsPanel({
   projectId,
@@ -113,91 +224,31 @@ export function AdminFeedsPanel({
   const anyFlagBusy = allSavingKeys.some((k) => ff[k]);
   const isDefault = selectedFeedId === defaultFeedId;
 
+  const { feedsSlot } = useContext(AdminTreeSlotsContext);
+
   return (
-    <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-      <div style={{ width: 280, flex: "0 0 280px", borderRight: "1px solid #e5e7eb", paddingRight: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <h3 style={{ margin: 0 }}>Feed list</h3>
-          {feedsLoading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
-        </div>
+    <>
+      {feedsSlot &&
+        createPortal(
+          <FeedListContent
+            feeds={feeds}
+            filteredFeeds={filteredFeeds}
+            feedsLoading={feedsLoading}
+            filterText={filterText}
+            setFilterText={setFilterText}
+            onCreateFeed={onCreateFeed}
+            onRefreshFeeds={onRefreshFeeds}
+            wipeOnChange={wipeOnChange}
+            updatingWipe={updatingWipe}
+            onSetWipePolicy={onSetWipePolicy}
+            selectedFeedId={selectedFeedId}
+            defaultFeedId={defaultFeedId}
+            onSelectFeed={onSelectFeed}
+          />,
+          feedsSlot
+        )}
 
-        <input
-          type="text"
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          placeholder="Filter by name or ID…"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px solid #d1d5db",
-            fontSize: 13,
-            marginBottom: 10,
-          }}
-        />
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          <RoleGate min="editor">
-            <Button size="sm" variant="secondary" onClick={onCreateFeed} style={{ flex: 1 }}>
-              + New feed
-            </Button>
-          </RoleGate>
-          <Button size="sm" variant="secondary" onClick={onRefreshFeeds} title="Reload feed registry from backend">
-            Refresh
-          </Button>
-        </div>
-
-        <RoleGate min="owner">
-          <div style={{ marginBottom: 14 }}>
-            <Toggle
-              label="Wipe on change"
-              hint="Publishing a checksum-changing feed wipes its participants"
-              checked={!!wipeOnChange}
-              busy={updatingWipe}
-              disabled={wipeOnChange === null}
-              onChange={onSetWipePolicy}
-            />
-          </div>
-        </RoleGate>
-
-        <div>
-          {filteredFeeds.length === 0 ? (
-            <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>
-              {feeds.length === 0
-                ? 'No feeds yet. Click "+ New feed" to create one.'
-                : "No feeds match this filter."}
-            </div>
-          ) : (
-            filteredFeeds.map((f) => {
-              const isActive = selectedFeedId === f.feed_id;
-              const rowIsDefault = f.feed_id === defaultFeedId;
-              return (
-                <button
-                  key={f.feed_id}
-                  type="button"
-                  onClick={() => onSelectFeed(f.feed_id)}
-                  style={feedListButtonStyle(isActive)}
-                >
-                  <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827", marginBottom: 4 }}>
-                    {f.name || f.feed_id}
-                    {rowIsDefault && (
-                      <Badge tone="accent" style={{ marginLeft: 6 }}>
-                        default
-                      </Badge>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>
-                    Updated {f.updated_at ? new Date(f.updated_at).toLocaleDateString() : "—"}
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ minWidth: 0 }}>
         {!selectedFeedId && <div style={{ color: "#6b7280" }}>Select or create a feed.</div>}
 
         {selectedFeedId && (
@@ -459,6 +510,6 @@ export function AdminFeedsPanel({
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }

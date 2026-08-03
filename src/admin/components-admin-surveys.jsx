@@ -1,11 +1,13 @@
 import React, {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 import {
   normalizeSurvey,
@@ -37,8 +39,9 @@ import {
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
 
-import { Card as AdminUiCard, Tabs } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, Badge } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
+import { AdminTreeSlotsContext } from "./AdminShell";
 
 /* =========================
    Local helpers
@@ -849,6 +852,102 @@ function surveyListButtonStyle(isActive) {
   };
 }
 
+// The tree-sidebar's Surveys section content (filter box, create/refresh,
+// the survey rows themselves) — portaled into AdminShell's Surveys slot
+// instead of rendering in the main content column, see AdminTreeSlotsContext
+// in ./AdminShell. Mirrors AdminFeedsPanel's FeedListContent exactly (filter
+// input + paired secondary buttons + row style) so the two sections finally
+// share one visual language instead of the survey list being the odd one
+// out (no filter, no refresh button, a standalone primary-blue "+ New
+// Survey" button).
+function SurveyListContent({
+  surveys,
+  filteredSurveys,
+  loading,
+  filterText,
+  setFilterText,
+  onCreateSurvey,
+  onRefreshSurveys,
+  selectedSurveyId,
+  onSelectSurvey,
+}) {
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--admin-muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>
+          Survey list
+        </div>
+        {loading && <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>}
+      </div>
+
+      <input
+        type="text"
+        value={filterText}
+        onChange={(e) => setFilterText(e.target.value)}
+        placeholder="Filter by name or ID…"
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: "1px solid #d1d5db",
+          fontSize: 13,
+          marginBottom: 10,
+        }}
+      />
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <Button size="sm" variant="secondary" onClick={onCreateSurvey} style={{ flex: 1 }}>
+          + New Survey
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onRefreshSurveys} title="Reload survey list from backend">
+          Refresh
+        </Button>
+      </div>
+
+      <div>
+        {filteredSurveys.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>
+            {surveys.length === 0
+              ? 'No surveys yet. Click "+ New Survey" to create one.'
+              : "No surveys match this filter."}
+          </div>
+        ) : (
+          filteredSurveys.map((s) => {
+            const isActive = selectedSurveyId === s.survey_id;
+            return (
+              <button
+                key={s.survey_id}
+                type="button"
+                onClick={() => onSelectSurvey(s.survey_id)}
+                style={surveyListButtonStyle(isActive)}
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: isActive ? "#3730a3" : "#111827",
+                    marginBottom: 4,
+                  }}
+                >
+                  {s.name || s.survey_id}
+                  {s.status === "draft" && (
+                    <Badge tone="neutral" style={{ marginLeft: 6 }}>
+                      draft
+                    </Badge>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                  {surveyQuestionCount(s || {})} questions
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Delegates to the shared admin design system (src/admin/ui/Card.jsx) so this
 // panel's outer chrome matches the rest of the redesigned dashboard, without
 // having to touch any of this file's SectionCard call sites individually —
@@ -1299,6 +1398,9 @@ export function AdminSurveysPanel({
   const [resettingGroupBalance, setResettingGroupBalance] = useState(false);
   const [resetGroupBalanceError, setResetGroupBalanceError] = useState("");
   const [deletingSurveyData, setDeletingSurveyData] = useState(false);
+  const [surveyFilterText, setSurveyFilterText] = useState("");
+
+  const { surveysSlot } = useContext(AdminTreeSlotsContext);
 
   const hasExperimentGroups =
     Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
@@ -2230,78 +2332,35 @@ export function AdminSurveysPanel({
     return () => clearTimeout(timer);
   }, [copiedLinkState]);
 
+  const filteredSurveys = surveyFilterText.trim()
+    ? surveys.filter((s) => {
+        const q = surveyFilterText.trim().toLowerCase();
+        return (
+          (s.name || "").toLowerCase().includes(q) ||
+          (s.survey_id || "").toLowerCase().includes(q)
+        );
+      })
+    : surveys;
+
   return (
-    <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-      <div
-        style={{
-          width: 280,
-          flex: "0 0 280px",
-          borderRight: "1px solid #e5e7eb",
-          paddingRight: 18,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 18,
-          }}
-        >
-          <h3 style={{ margin: 0 }}>Survey list</h3>
-          {loading && (
-            <span style={{ fontSize: 12, color: "#6b7280" }}>Loading…</span>
-          )}
-        </div>
+    <>
+      {surveysSlot &&
+        createPortal(
+          <SurveyListContent
+            surveys={surveys}
+            filteredSurveys={filteredSurveys}
+            loading={loading}
+            filterText={surveyFilterText}
+            setFilterText={setSurveyFilterText}
+            onCreateSurvey={handleCreateSurvey}
+            onRefreshSurveys={loadAll}
+            selectedSurveyId={selectedSurveyId}
+            onSelectSurvey={handleSelectSurvey}
+          />,
+          surveysSlot
+        )}
 
-        <button
-          type="button"
-          onClick={handleCreateSurvey}
-          style={{
-            marginBottom: 14,
-            width: "100%",
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: "1px solid #4f46e5",
-            background: "#4f46e5",
-            color: "#fff",
-            fontWeight: 700,
-            cursor: "pointer",
-            boxShadow: "0 4px 10px rgba(79,70,229,0.18)",
-          }}
-        >
-          + New Survey
-        </button>
-
-        <div>
-          {surveys.map((s) => {
-            const isActive = selectedSurveyId === s.survey_id;
-            return (
-              <button
-                key={s.survey_id}
-                type="button"
-                onClick={() => handleSelectSurvey(s.survey_id)}
-                style={surveyListButtonStyle(isActive)}
-              >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: isActive ? "#3730a3" : "#111827",
-                    marginBottom: 4,
-                  }}
-                >
-                  {s.name || s.survey_id}
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  {surveyQuestionCount(s || {})} questions
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ minWidth: 0 }}>
         {!survey && (
           <div style={{ color: "#6b7280" }}>Select or create a survey.</div>
         )}
@@ -3230,6 +3289,6 @@ export function AdminSurveysPanel({
           </>
         )}
       </div>
-    </div>
+    </>
   );
 }
