@@ -3,7 +3,9 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main   # change if your default branch is "master"
+      - production   # studyfeed.org only deploys from here now — see
+                      # CLAUDE.md "Staging environment" for the promotion
+                      # flow. main auto-deploys to Netlify staging instead.
   workflow_dispatch:
 
 permissions:
