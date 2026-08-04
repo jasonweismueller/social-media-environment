@@ -2787,3 +2787,29 @@ effect). Confidence is via code review instead: the new logic
 already-proven `chosen`-selection-and-post-loading code that was live before this change, just
 without the removed default-lookup branch — worth a real click-through next time there's a way
 to mock the initial-mount fetch, or admin access to confirm against real data.
+
+## Session handoff (2026-08-04, end of session) — read this first if picking up fresh
+
+**Everything from this session is committed and pushed.** `git status` clean, `HEAD` ==
+`origin/main` = `0f0afd7 remove default feed function`. This surprised the session itself partway
+through — earlier turns assumed changes were sitting uncommitted in the working tree (the standing
+caution in this file about no staging buffer), but the user's GitHub Desktop app had in fact been
+auto-committing throughout, same mechanism documented in earlier sessions' "Deployment" notes, just
+not actively watched for this time. **Lesson for next time**: run `git status`/`git log` to check
+actual state rather than assuming based on what a given turn did or didn't call `git commit` on —
+this repo's auto-commit can run without any tool call from Claude at all.
+
+This session covered five separable pieces of work, in order: the Users & access page rework +
+project access control + Feed Settings tab redesign; a username/role-selector polish pass; a real
+self-inflicted lockout incident and its fix/hardening; a five-item nav/UX polish batch plus
+double-click-to-rename; and full removal of the "default feed" concept, replaced with a 404 page
+for feed-based launch links that don't match a real feed. **Full index, reading order, and the
+consolidated list of what's genuinely unverified across all five pieces**:
+`~/.claude/plans/patient-guarding-lovelace.md` — read that file's own "Status" section rather than
+re-deriving this from five separate CLAUDE.md entries.
+
+**The one item worth flagging above the others**: `project_access` RLS (per-user project
+restriction) was written and applied to the live database, but never exercised against a real
+restricted (non-owner) session — only verified by reading the policy SQL and by mocking the
+frontend. Unlike everything else unverified this session, this one is a real security boundary,
+not just UX polish, so it's the highest-priority thing to close out next.
