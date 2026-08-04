@@ -2681,3 +2681,59 @@ Edge Function's rejections themselves against a real request (would need a real 
 standing limitation as elsewhere in this file) — only the SQL-level fix and the frontend UI states
 were exercised directly; the reasoning in the deno-checked/deployed function code was not
 exercised end-to-end with a real HTTP call.
+
+### Admin polish batch: nav header, Posts toolbar, Feeds/Surveys nav visibility, Surveys heading, rename (2026-08-04)
+
+Five small direct-feedback items plus one feature request, all in the admin shell/Feeds/Surveys —
+none touch the backend.
+
+- **Nav header now shows the username, not role.** `AdminShell`'s subtitle (and
+  `AdminProjectPicker`'s) now reads `getAdminUsername() || getAdminEmail()`, dropping `· role: X`
+  entirely. Needed real session plumbing, not just a display change: `getAdminUsername()` is new
+  (`utils-backend.js`), backed by a new `ADMIN_USERNAME_KEY` localStorage slot threaded through
+  `setAdminSession`/`clearAdminSession` the same way role/email already are.
+  `fetchAdminProfile`/`supabaseAdminSignIn`/`supabaseAdminTouch` (`utils-backend-supabase.js`) now
+  select and return `username` too. GAS login paths pass `username: ""` explicitly (not just
+  omitted) so a stale Supabase-session username can't leak into a GAS session on the same browser.
+- **Logout button**: moved onto the same row as "← Switch project / platform" (previously
+  top-aligned against the title block instead, a few px off from that link), sized up 26→34px with
+  a tinted danger-soft background instead of a bare icon.
+- **Posts card toolbar**: refresh is now a plain muted "↻" glyph with no button chrome (was an
+  equally-weighted icon button next to "+"), with a real gap (16px) separating it from "+", which
+  keeps its bordered `IconButton` look as the actual primary action.
+- **Feeds/Surveys nav rows**: inactive rows now get a real border + background
+  (`var(--admin-surface-alt)`) instead of blending into transparent — the reported complaint was
+  specifically that "Surveys" was easy to miss sitting right below "Delete feed" when Feeds was
+  expanded. Nav gap bumped 2px→12px for the same reason.
+- **Surveys heading now matches Feeds' pattern.** Two changes: removed the generic "Surveys /
+  Create post-feed surveys..." `PageHeader` that always showed above `AdminSurveysPanel`
+  (`components-admin-dashboard.jsx`) — Feeds has no equivalent outer heading — and changed the
+  panel's own `<h3>` from a hardcoded literal "Survey Editor" to `survey.name || survey.survey_id`,
+  mirroring Feeds' `selectedFeedName || selectedFeedId`. Caught and fixed a real bug from this
+  during verification: a brand-new unsaved survey has both `name` and `survey_id` as empty strings
+  (`handleCreateSurvey`'s `baseSurvey`), so the naive port rendered a blank heading — added a
+  `|| "New survey"` fallback, confirmed via the same live-mocked verification technique used
+  elsewhere in this file.
+- **New feature, both Feeds and Surveys sidebar lists: double-click the *selected* row to rename
+  it inline.** Local-only — `renameFeed`/`renameSurvey` just update the already-in-memory
+  `feeds`/`survey` state exactly as the existing "Save feed"/"Save survey" flows already read from
+  (`handleSaveFeed` already does `name: row?.name || feedId` off the `feeds` array;
+  `survey.name` is the same field the Setup tab's own text field already writes to), so no new
+  backend call was needed for either. Feeds' rename is gated `hasAdminRole("editor")` (mirrors
+  "Save feed"'s own `RoleGate`); Surveys' is left ungated, matching this file's own pre-existing
+  lack of role gates on Save/Delete survey — a real inconsistency between the two panels, not
+  something introduced here, left as-is rather than silently "fixing" it as a drive-by.
+
+**Verified**: all files parse clean. Live-rendered via the same fetch-mock-plus-fake-session
+technique used throughout this file (fresh dev-server tab, fabricated `projects`/`feeds`/
+`surveys`/`experiment_groups` responses): confirmed the nav subtitle reads "Signed in as jasonw"
+with no role text; the logout button renders larger, tinted, and aligned with the back-link row;
+the Posts toolbar shows a bare "↻" separated from a bordered "+"; the Surveys nav row renders
+visibly bordered/backgrounded under an expanded Feeds section; creating a feed/survey and
+double-clicking its selected sidebar row switched it into a live input, and committing a new name
+updated both the sidebar row and the detail-pane heading in the same render (confirmed via
+`get_page_text` and direct DOM inspection, not just visually). **Not verified**: an actual
+mouse double-click by a real user (used a dispatched `dblclick` `MouseEvent` instead, same
+class of gap as every click-simulation caveat already documented in this file) and the Setup
+tab's "Survey name" field re-rendering with the new value specifically (confirmed indirectly via
+the heading, which reads the same `survey.name`, but the field itself wasn't directly queried).

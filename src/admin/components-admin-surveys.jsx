@@ -873,7 +873,20 @@ function SurveyListContent({
   showSaveButton,
   onDeleteSelectedSurvey,
   showDeleteButton,
+  onRenameSurvey,
 }) {
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const startRename = (s) => {
+    setRenamingId(s.survey_id);
+    setRenameValue(s.name || s.survey_id);
+  };
+  const commitRename = () => {
+    if (renamingId) onRenameSurvey?.(renamingId, renameValue);
+    setRenamingId(null);
+  };
+
   return (
     <div>
       {loading && (
@@ -885,16 +898,43 @@ function SurveyListContent({
       ) : (
         surveys.map((s) => {
           const isActive = selectedSurveyId === s.survey_id;
+          const isRenaming = renamingId === s.survey_id;
           return (
             <button
               key={s.survey_id}
               type="button"
-              onClick={() => onSelectSurvey(s.survey_id)}
+              onClick={() => !isRenaming && onSelectSurvey(s.survey_id)}
+              onDoubleClick={() => isActive && startRename(s)}
+              title={isActive && !isRenaming ? "Double-click to rename" : undefined}
               style={surveyListButtonStyle(isActive)}
             >
-              <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
-                {s.name || s.survey_id}
-              </div>
+              {isRenaming ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") setRenamingId(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    border: "1px solid var(--admin-accent)",
+                    borderRadius: 6,
+                    padding: "2px 6px",
+                  }}
+                />
+              ) : (
+                <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
+                  {s.name || s.survey_id}
+                </div>
+              )}
             </button>
           );
         })
@@ -1537,6 +1577,21 @@ export function AdminSurveysPanel({
       console.warn("Failed to load survey:", e);
       setSurvey(null);
       setLinkedFeedPostsMap({});
+    }
+  }
+
+  // Double-click-to-rename in the sidebar's survey list (SurveyListContent).
+  // Local-only, same as the Feeds equivalent — updates the loaded editor's
+  // `survey.name` exactly as typing into the Setup tab's "Survey name"
+  // field already would, so the existing "Save survey" button persists it
+  // with no separate rename call needed. Also patches the list row itself
+  // so it doesn't wait for a reload to reflect the new name.
+  function renameSurvey(targetSurveyId, newName) {
+    const trimmed = String(newName || "").trim();
+    if (!trimmed) return;
+    setSurveys((prev) => prev.map((s) => (s.survey_id === targetSurveyId ? { ...s, name: trimmed } : s)));
+    if (targetSurveyId === selectedSurveyId) {
+      setSurvey((prev) => (prev ? { ...prev, name: trimmed } : prev));
     }
   }
 
@@ -2259,6 +2314,7 @@ export function AdminSurveysPanel({
             showSaveButton={!!survey}
             onDeleteSelectedSurvey={handleDeleteSurvey}
             showDeleteButton={!!survey?.survey_id}
+            onRenameSurvey={renameSurvey}
           />,
           surveysSlot
         )}
@@ -2278,7 +2334,7 @@ export function AdminSurveysPanel({
                 marginBottom: 18,
               }}
             >
-              <h3 style={{ margin: 0 }}>Survey Editor</h3>
+              <h3 style={{ margin: 0 }}>{survey.name || survey.survey_id || "New survey"}</h3>
 
               <div
                 style={{

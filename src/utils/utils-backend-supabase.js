@@ -15,7 +15,7 @@ import { getSupabaseClient } from "./utils-supabase-client";
 async function fetchAdminProfile(supabase, userId) {
   const { data, error } = await supabase
     .from("profiles")
-    .select("role, disabled, email")
+    .select("role, disabled, email, username")
     .eq("id", userId)
     .single();
 
@@ -54,6 +54,7 @@ export async function supabaseAdminSignIn(email, password) {
       ttlSec: ttlSecFromExpiresAt(data.session.expires_at),
       role: profile.role || "viewer",
       email: profile.email || data.user.email,
+      username: profile.username || "",
     };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
@@ -96,6 +97,7 @@ export async function supabaseAdminTouch() {
       ttlSec: ttlSecFromExpiresAt(data.session.expires_at),
       role: profile.role || "viewer",
       email: profile.email || data.session.user.email,
+      username: profile.username || "",
     };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };

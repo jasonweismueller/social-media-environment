@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { pravatar } from "../utils";
+import { pravatar, hasAdminRole } from "../utils";
 import { Card, Table, Th, Td, Toggle, Button, IconButton, Badge, Tabs, RoleGate } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
@@ -102,7 +102,22 @@ function FeedListContent({
   onSaveFeed,
   isSaving,
   onDeleteSelectedFeed,
+  onRenameFeed,
 }) {
+  const canRename = hasAdminRole("editor");
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const startRename = (f) => {
+    if (!canRename) return;
+    setRenamingId(f.feed_id);
+    setRenameValue(f.name || f.feed_id);
+  };
+  const commitRename = () => {
+    if (renamingId) onRenameFeed?.(renamingId, renameValue);
+    setRenamingId(null);
+  };
+
   return (
     <div>
       {feedsLoading && (
@@ -115,21 +130,48 @@ function FeedListContent({
         feeds.map((f) => {
           const isActive = selectedFeedId === f.feed_id;
           const rowIsDefault = f.feed_id === defaultFeedId;
+          const isRenaming = renamingId === f.feed_id;
           return (
             <button
               key={f.feed_id}
               type="button"
-              onClick={() => onSelectFeed(f.feed_id)}
+              onClick={() => !isRenaming && onSelectFeed(f.feed_id)}
+              onDoubleClick={() => isActive && startRename(f)}
+              title={isActive && canRename && !isRenaming ? "Double-click to rename" : undefined}
               style={feedListButtonStyle(isActive)}
             >
-              <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
-                {f.name || f.feed_id}
-                {rowIsDefault && (
-                  <Badge tone="accent" style={{ marginLeft: 6 }}>
-                    default
-                  </Badge>
-                )}
-              </div>
+              {isRenaming ? (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") setRenamingId(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    border: "1px solid var(--admin-accent)",
+                    borderRadius: 6,
+                    padding: "2px 6px",
+                  }}
+                />
+              ) : (
+                <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
+                  {f.name || f.feed_id}
+                  {rowIsDefault && (
+                    <Badge tone="accent" style={{ marginLeft: 6 }}>
+                      default
+                    </Badge>
+                  )}
+                </div>
+              )}
             </button>
           );
         })
@@ -218,6 +260,7 @@ export function AdminFeedsPanel({
   onDeleteFeed,
   onSetWipePolicy,
   onCopyParticipantLink,
+  onRenameFeed,
   onSaveFeed,
   onSetRandomize,
   onRefreshPosts,
@@ -277,6 +320,7 @@ export function AdminFeedsPanel({
             onSaveFeed={onSaveFeed}
             isSaving={isSaving}
             onDeleteSelectedFeed={handleDeleteSelectedFeed}
+            onRenameFeed={onRenameFeed}
           />,
           feedsSlot
         )}
@@ -317,16 +361,35 @@ export function AdminFeedsPanel({
                 <Card
                   title={contentUnitLabelPlural}
                   actions={
-                    <>
-                      <IconButton size="sm" onClick={onRefreshPosts} title={`Refresh ${contentUnitLabelPlural.toLowerCase()} from backend`}>
-                        🔄
-                      </IconButton>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      {/* Plain glyph, no button chrome — a secondary, low-emphasis
+                          action next to "+" (the actual primary one), not an
+                          equally-weighted icon button. */}
+                      <button
+                        type="button"
+                        onClick={onRefreshPosts}
+                        title={`Refresh ${contentUnitLabelPlural.toLowerCase()} from backend`}
+                        aria-label="Refresh"
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--admin-muted)",
+                          cursor: "pointer",
+                          fontSize: 17,
+                          lineHeight: 1,
+                          padding: 4,
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        ↻
+                      </button>
                       <RoleGate min="editor">
                         <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
                           ➕
                         </IconButton>
                       </RoleGate>
-                    </>
+                    </div>
                   }
                 >
                   {posts.length === 0 ? (

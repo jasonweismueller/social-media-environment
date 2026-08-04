@@ -1563,6 +1563,7 @@ const ADMIN_TOKEN_KEY = `admin_token_v1`;
 const ADMIN_TOKEN_EXP_KEY = `admin_token_exp_v1`;
 const ADMIN_ROLE_KEY = `admin_role_v1`;
 const ADMIN_EMAIL_KEY = `admin_email_v1`;
+const ADMIN_USERNAME_KEY = `admin_username_v1`;
 
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
 
@@ -1576,7 +1577,7 @@ export async function touchAdminSession() {
     const res = await supabaseAdminTouch();
     if (!res.ok) return { ok: false, err: res.err };
 
-    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email });
+    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email, username: res.username });
     return { ok: true, ttl_s: Number(res.ttlSec || 0), role: res.role, email: res.email };
   }
 
@@ -1660,7 +1661,7 @@ export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, 
   return () => clearInterval(id);
 }
 
-export function setAdminSession({ token, ttlSec, role, email } = {}) {
+export function setAdminSession({ token, ttlSec, role, email, username } = {}) {
   try {
     if (!token) {
       clearAdminSession();
@@ -1677,6 +1678,15 @@ export function setAdminSession({ token, ttlSec, role, email } = {}) {
 
     if (role) localStorage.setItem(ADMIN_ROLE_KEY, String(role));
     if (email) localStorage.setItem(ADMIN_EMAIL_KEY, String(email));
+    // Explicit `undefined` (the GAS backend never passes this — see
+    // adminLoginUser/adminLogin below) leaves whatever's already stored
+    // alone; an explicit empty string (a Supabase account with no username
+    // set) actively clears it, same "absent key vs. empty value" convention
+    // admin-users/index.ts's own `update` action already uses.
+    if (username !== undefined) {
+      if (username) localStorage.setItem(ADMIN_USERNAME_KEY, String(username));
+      else localStorage.removeItem(ADMIN_USERNAME_KEY);
+    }
   } catch {}
 }
 
@@ -1685,6 +1695,7 @@ export function clearAdminSession() {
   localStorage.removeItem(ADMIN_TOKEN_EXP_KEY);
   localStorage.removeItem(ADMIN_ROLE_KEY);
   localStorage.removeItem(ADMIN_EMAIL_KEY);
+  localStorage.removeItem(ADMIN_USERNAME_KEY);
 }
 
 export function getAdminToken() {
@@ -1728,6 +1739,24 @@ export function getAdminEmail() {
   }
 }
 
+// Supabase-only (profiles.username, see 20260801000017_profiles_username.sql
+// and the Users page rework in CLAUDE.md) — null on GAS, or on a Supabase
+// account that hasn't set one yet. Callers should fall back to
+// getAdminEmail() the same way components-admin-users.jsx's own user rows
+// already do.
+export function getAdminUsername() {
+  try {
+    const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
+    if (exp && Date.now() > exp) {
+      clearAdminSession();
+      return null;
+    }
+    return localStorage.getItem(ADMIN_USERNAME_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 export function hasAdminSession() {
   return !!getAdminToken();
 }
@@ -1758,6 +1787,11 @@ export async function adminLogin(password) {
         ttlSec: data.ttl_s || data.ttl_sec || null,
         role: data.role || "owner",
         email: data.email || "owner",
+        // GAS has no username concept at all (see getAdminUsername's own
+        // comment) — pass an explicit empty string, not just omit the key,
+        // so a stale username from a previous Supabase session on the same
+        // browser can't leak into a GAS session's display.
+        username: "",
       });
       return { ok: true };
     }
@@ -1773,7 +1807,7 @@ export async function adminLoginUser(email, password) {
     const res = await supabaseAdminSignIn(email, password);
     if (!res.ok) return { ok: false, err: res.err };
 
-    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email });
+    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email, username: res.username });
     return { ok: true };
   }
 
@@ -1790,6 +1824,7 @@ export async function adminLoginUser(email, password) {
         ttlSec: data.ttl_s || data.ttl_sec || null,
         role: data.role || "viewer",
         email: data.email || email,
+        username: "",
       });
       return { ok: true };
     }

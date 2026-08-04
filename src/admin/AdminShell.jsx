@@ -87,13 +87,18 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
     >
       {/* Background/padding live on this shared row (not on the NavLink
           alone) so the "+" reads as part of the same button, not a
-          separate control floating off to the side. */}
+          separate control floating off to the side. Inactive rows get a
+          real border/background (not just plain text on transparent) so
+          e.g. "Surveys" still reads as a distinct, clickable button even
+          right underneath Feeds' own "Delete feed" — previously it was
+          easy to miss there, blending into the list above it. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          borderRadius: "var(--admin-radius-sm)",
-          background: active ? "var(--admin-accent-soft)" : "transparent",
+          borderRadius: "var(--admin-radius-md)",
+          background: active ? "var(--admin-accent-soft)" : "var(--admin-surface-alt)",
+          border: active ? "1px solid transparent" : "1px solid var(--admin-border-subtle)",
         }}
       >
         <NavLink
@@ -207,56 +212,61 @@ export function AdminShell({
           padding: "16px 12px",
         }}
       >
-        <div style={{ padding: "4px 8px 16px", flex: "0 0 auto", display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {backTo && (
+        <div style={{ padding: "4px 8px 16px", flex: "0 0 auto" }}>
+          {/* backTo and the logout button share one row so they're visually
+              paired (same height, same baseline) — previously the logout
+              button was top-aligned against the title block instead, which
+              put it a few pixels off from "← Switch project / platform"
+              rather than lined up with it. */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+            {backTo ? (
               <Link
                 to={backTo}
                 style={{
-                  display: "inline-block",
                   fontSize: 12,
                   fontWeight: 700,
                   color: "var(--admin-muted)",
                   textDecoration: "none",
-                  marginBottom: 8,
                 }}
               >
                 {backLabel}
               </Link>
+            ) : (
+              <span />
             )}
-            <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
-              {title}
-            </div>
-            {subtitle && (
-              <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 3 }}>
-                {subtitle}
-              </div>
-            )}
+
+            <button
+              type="button"
+              onClick={onLogout}
+              title="Log out"
+              aria-label="Log out"
+              style={{
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 34,
+                height: 34,
+                border: "none",
+                borderRadius: "var(--admin-radius-sm)",
+                background: "var(--admin-danger-soft)",
+                color: "var(--admin-danger-ink, #b91c1c)",
+                cursor: "pointer",
+                fontSize: 18,
+              }}
+            >
+              ⏻
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onLogout}
-            title="Log out"
-            aria-label="Log out"
-            style={{
-              flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 26,
-              height: 26,
-              marginTop: 2,
-              border: "none",
-              borderRadius: "var(--admin-radius-sm)",
-              background: "transparent",
-              color: "var(--admin-danger-ink, #b91c1c)",
-              cursor: "pointer",
-              fontSize: 14,
-            }}
-          >
-            ⏻
-          </button>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
+            {title}
+          </div>
+          {subtitle && (
+            <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 3 }}>
+              {subtitle}
+            </div>
+          )}
         </div>
 
         {projectSwitcher && (
@@ -274,7 +284,7 @@ export function AdminShell({
           </div>
         )}
 
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minHeight: 0 }}>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0 }}>
           <TreeSection
             to={FEEDS_PATH}
             icon="🗂️"

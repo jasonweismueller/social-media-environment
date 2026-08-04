@@ -10,7 +10,7 @@ import {
   getProjectId,
   hasAdminRole,
   getAdminEmail,
-  getAdminRole,
+  getAdminUsername,
 } from "../utils";
 import "./ui/tokens.css";
 import { Card, PageHeader, Button, Badge } from "./ui";
@@ -110,7 +110,7 @@ export function AdminProjectPicker() {
       <div style={{ maxWidth: 880, margin: "0 auto" }}>
         <PageHeader
           title="Projects"
-          subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"} — choose a project to continue.`}
+          subtitle={`Signed in as ${getAdminUsername() || getAdminEmail() || "unknown"} — choose a project to continue.`}
           actions={
             <>
               {hasAdminRole("owner") && (

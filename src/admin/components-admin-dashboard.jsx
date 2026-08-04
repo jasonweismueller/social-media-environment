@@ -15,7 +15,7 @@ import {
   getWipePolicyFromBackend,
   setWipePolicyOnBackend,
   getAdminEmail,
-  getAdminRole,
+  getAdminUsername,
   startSessionWatch,
   getAdminSecondsLeft,
   touchAdminSession,
@@ -40,7 +40,7 @@ import { AdminSurveysPanel } from "./components-admin-surveys";
 import { AdminFeedsPanel } from "./components-admin-feeds";
 import { randomAvatarByKind } from "../avatar-utils";
 import { AdminShell } from "./AdminShell";
-import { PageHeader, Badge, RoleGate } from "./ui";
+import { Badge, RoleGate } from "./ui";
 
 // Dynamically choose correct editor (FB or IG)
 import { genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB } from "./components-admin-editor-facebook";
@@ -974,6 +974,17 @@ export function AdminDashboard({
     writePostNames(projectId, id, copiedPostNames);
   };
 
+  // Double-click-to-rename in the sidebar's feed list (FeedListContent).
+  // Local-only, like every other pending edit here — handleSaveFeed already
+  // reads name off this same `feeds` array (`row?.name || feedId`) when it
+  // persists, so no separate backend call is needed just for a rename.
+  const renameFeed = (targetFeedId, newName) => {
+    const trimmed = String(newName || "").trim();
+    if (!trimmed) return;
+    setFeeds((prev) => prev.map((f) => (f.feed_id === targetFeedId ? { ...f, name: trimmed } : f)));
+    if (targetFeedId === feedId) setFeedName(trimmed);
+  };
+
   const openNew = () => {
     setIsNew(true);
     const avatarRandomKind = "any";
@@ -1381,7 +1392,7 @@ export function AdminDashboard({
       >
         <AdminShell
           title={DASHBOARD_TITLE}
-          subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
+          subtitle={`Signed in as ${getAdminUsername() || getAdminEmail() || "unknown"}`}
           onLogout={onLogout}
           backTo="/admin"
           backLabel="← Switch project / platform"
@@ -1460,6 +1471,7 @@ export function AdminDashboard({
               onSelectFeed={selectFeed}
               onCreateFeed={createNewFeed}
               onCopyFeed={copyFeed}
+              onRenameFeed={renameFeed}
               onRefreshFeeds={loadFeeds}
               onLoadStats={loadStatsFor}
               onLoadFlags={loadFlagsFor}
@@ -1483,10 +1495,10 @@ export function AdminDashboard({
           </div>
 
           <div style={{ display: location.pathname.startsWith("/admin/dashboard/surveys") ? "block" : "none" }}>
-            <PageHeader
-              title="Surveys"
-              subtitle="Create post-feed surveys and link one survey to one or more feeds in this project."
-            />
+            {/* No generic "Surveys" title/subtitle here — matches Feeds,
+                which has no equivalent outer heading either, just the
+                selected item's own name once one is picked (AdminSurveysPanel
+                renders that itself, mirroring AdminFeedsPanel's <h3>). */}
             <AdminSurveysPanel
               projectId={projectId}
               feedId={feedId}
