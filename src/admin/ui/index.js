@@ -9,3 +9,4 @@ export { Popover } from "./Popover";
 export { OverflowMenu } from "./OverflowMenu";
 export { Tabs } from "./Tabs";
 export { RoleGate } from "./RoleGate";
+export { Modal } from "./Modal";

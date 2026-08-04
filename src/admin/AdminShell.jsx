@@ -7,7 +7,6 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 // path instead of replacing it.
 const FEEDS_PATH = "/admin/dashboard/feeds";
 const SURVEYS_PATH = "/admin/dashboard/surveys";
-const USERS_PATH = "/admin/dashboard/users";
 
 // Lets AdminFeedsPanel/AdminSurveysPanel portal their own list column (feed
 // list / survey list — filter box, create/refresh buttons, the rows
@@ -58,21 +57,6 @@ export function TreeAddButton({ onClick, title }) {
       +
     </button>
   );
-}
-
-function navItemStyle(isActive) {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "7px 10px",
-    borderRadius: "var(--admin-radius-sm)",
-    fontSize: 13,
-    fontWeight: 600,
-    textDecoration: "none",
-    color: isActive ? "var(--admin-accent-ink)" : "var(--admin-text)",
-    background: isActive ? "var(--admin-accent-soft)" : "transparent",
-  };
 }
 
 // One expandable section of the tree sidebar (Feeds or Surveys): a single
@@ -178,7 +162,6 @@ export function AdminShell({
   backTo,
   backLabel = "← All projects",
   projectSwitcher,
-  showUsersNav = true,
   children,
 }) {
   const location = useLocation();
@@ -312,15 +295,6 @@ export function AdminShell({
             slotRef={setSurveysSlotEl}
             addSlotRef={setSurveysAddSlotEl}
           />
-          {showUsersNav && (
-            <NavLink
-              to={USERS_PATH}
-              style={({ isActive }) => ({ ...navItemStyle(isActive), flex: "0 0 auto" })}
-            >
-              <span aria-hidden="true">🔐</span>
-              Users
-            </NavLink>
-          )}
         </nav>
       </aside>
 

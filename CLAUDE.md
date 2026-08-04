@@ -2411,3 +2411,161 @@ and a hand-built event stream through the real `buildParticipantRow` produced th
 on all three apps while normal mode still clamps as before. **Not verified**: real click-through
 inside an actual survey preview/live feed — same standing limitation as everywhere else in this
 file (no admin login, no way to drive a real participant session end-to-end from here).
+
+## Admin user management rework + project access control (2026-08-04) — DB migration NOT yet applied
+
+Two direct-feedback items handled together, run mostly overnight while unattended: (1) "the users
+page needs an entire refresh... it would be better placed before we even go to a project... manage
+which projects they have access to and which platform and which feeds even perhaps," and (2) "the
+settings page on feed also needs to be redesigned... some things like the randomize sliders only
+take up the left half of the box."
+
+**Important — one piece is code-only, not yet live**: `supabase db query --linked -f` (the
+established process this repo uses for schema changes, see "Backend migration" section above) was
+**blocked by Claude Code's own auto-mode permission classifier** this session — a direct write to
+the live production database, correctly gated. Unlike every other Supabase migration in this file,
+**this one was not applied by Claude**. The migration file is written, reviewed, and sitting at
+`supabase/migrations/20260801000016_project_access.sql`, ready to run — same "handed over, not
+applied" posture this file already uses for every Code.gs change, just for a different reason
+(permission gate, not "can't touch it at all"). **Next step for whoever picks this up**: run
+```
+supabase db query --linked -f supabase/migrations/20260801000016_project_access.sql
+```
+from a real terminal. Until that runs, `listAllProjectAccess()`/`setUserProjectAccess()` will fail
+with "Could not find the table 'public.project_access'" (confirmed — see Verified section below)
+and the Users page will simply show every user as "all projects" (fails safe: the frontend swallows
+the error and treats it as zero restrictions, matching the "no rows = unrestricted" design intent
+below almost by accident, but the actual UI for granting/restricting won't work until the table
+exists). Also **not yet committed** — per the "Deployment" section's now-corrected understanding
+(auto-commit is the user's own GitHub Desktop app, not automatic), all of this sat in the working
+tree at session end; nothing here is live on `studyfeed.org` yet.
+
+### Users page: moved out of the per-project dashboard, rebuilt as a real access-control page
+
+**Root problem wasn't just visual.** The old `AdminUsersPanel` (`components-admin-users.jsx`) was
+mounted as a tab three navigation levels deep (project → platform → dashboard → Users), which
+misrepresented what user accounts actually are: `profiles.role` is global, never project-scoped
+(confirmed already in `20260801000002_profiles.sql`'s own comment) — so burying account management
+inside one particular project's sidebar was structurally wrong, not just cluttered. The "Add user"
+form was a permanently-open 3-column fieldset with a full-width primary button below it, and the
+existing-users table used three `prompt()`/`confirm()` dialogs (change role, reset password,
+disable) instead of real UI.
+
+**Moved**: new top-level route `/admin/users` (`AdminEntry.jsx`), reachable via a "Manage users"
+button (owner-only) on `AdminProjectPicker` — i.e. from the *project picker*, before any project is
+chosen, matching "before we even go to a project" exactly. `AdminShell.jsx`'s per-project sidebar
+no longer has a Users nav item at all; the old `/admin/dashboard/users` path now redirects to
+`/admin/users` for stale bookmarks (`components-admin-dashboard.jsx`).
+
+**Rebuilt** (`components-admin-users.jsx`, full rewrite, `AdminUsersPage` replacing
+`AdminUsersPanel`) as a master-detail page matching the Feeds/Surveys panels' own visual language:
+a left column of user rows (email, role badge, disabled badge, project-access summary badge) and a
+right detail pane for whichever user is selected. Role changes are now a plain `<select>` that
+applies on change (no `prompt()`), password reset and "Add user" are real modal dialogs (new
+**`src/admin/ui/Modal.jsx`** — portals into the nearest `.admin-shell` ancestor rather than
+`document.body`, same reasoning as `Popover.jsx`: the `--admin-*` tokens in `ui/tokens.css` are
+scoped to `.admin-shell` and render invisibly past that boundary), and "Account enabled" is a real
+`Toggle` instead of a button whose label was the only indicator of current state. An owner can't
+delete their own account from this UI either (button disabled + tooltip) — the Edge Function
+already enforced this server-side (`admin-users/index.ts`), this just surfaces it before the click
+instead of after a failed request.
+
+### New feature: per-user project access (`project_access` table + RLS)
+
+This is genuinely new, not a port of existing GAS behavior — GAS/Sheets never had project-scoped
+admin accounts either (see the profiles-table comment above), so this was a real design decision,
+not a mechanical rebuild.
+
+- **`project_access(id, user_id, project_id, apps text[])`** — one row per (user, project) grant.
+  `apps = '{}'` (the default) means every platform for that project; a non-empty array narrows it
+  to specific fb/ig/amz platforms.
+- **Deliberately opt-in, not opt-out — chosen specifically to make shipping this a no-op for every
+  existing account.** A user with **zero** `project_access` rows keeps today's behavior exactly:
+  sees every project, on every platform. Restriction only kicks in once an owner explicitly grants
+  that user a specific set of projects. Confirmed via `supabase db query --linked` before writing
+  the migration that only one real profile exists in production right now (the owner account,
+  which bypasses all of this anyway) — so there was zero lockout risk in the design, not just in
+  theory.
+- **RLS enforcement, real but intentionally scoped to two tables, not the whole schema.**
+  `has_project_access(pid)` and `has_project_app_access(pid, app)` (both `security definer`,
+  mirroring `current_profile_role()`'s existing pattern) gate `projects_select_admins` (replacing
+  the policy from `20260801000003_projects_and_feeds.sql`) and a new `feeds_select_admins` policy.
+  `feeds_select_public` was split into `feeds_select_anon` (untouched `using (true)`, so real
+  participants loading a study — always anonymous, never authenticated — are completely unaffected)
+  and `feeds_select_admins` (authenticated admins only, now gated). **Posts/surveys/participants/
+  survey_responses tables were deliberately left ungated this pass** — the admin UI never lets you
+  reach those without first browsing through a project and feed you can already see, so this closes
+  the primary navigation surface; a determined actor with a known feed_id and direct API access
+  could still bypass deeper-table RLS. Flagging this honestly rather than overclaiming — same
+  posture as every other "not yet verified" note in this file.
+- **Frontend**: `supabaseListProjectAccess()`/`supabaseSetUserProjectAccess()`
+  (`utils-backend-supabase.js`, plain delete+reinsert per user, same idiom already used for
+  `feed_surveys`/`experiment_groups` resyncs) and `listAllProjectAccess()`/`setUserProjectAccess()`
+  (`utils-backend.js`, Supabase-only — GAS branch is a plain no-op, same reasoning as
+  `loadCustomMeasureGroups`). The Users page's `ProjectAccessEditor` renders an "All projects" /
+  "Selected projects only" toggle, and when restricted, a checklist of every project (owner always
+  sees the full list, so no separate "list all projects ignoring my own access" call was needed)
+  with per-project platform chips — all three platforms highlighted by default on a freshly-granted
+  project, which saves back to `apps: []` (not a literal 3-element array) specifically so a future
+  4th platform is included automatically rather than silently excluded from every grant made before
+  it existed.
+
+### Feed Settings tab: 7 sparse cards → 4, randomize toggles now use the full card width
+
+Second direct-feedback item, in `components-admin-feeds.jsx`'s `AdminFeedsPanel` Settings tab —
+Identity / Participant stats / Post order / Randomize / Sharing / Import-export / Danger zone
+(7 cards, several holding exactly one field or one button) consolidated into 4: **Overview**
+(identity + stats + Make-default/Copy-feed actions, one header row), **Behavior** (post-order
+shuffle + the 5 participant-facing randomize flags, all 6 toggles in one card), **Sharing & export**
+(participant link + Export Feed/PDF/Import, one button row, editor-only buttons gated inline rather
+than needing their own card), and **Danger zone** (unchanged — wipe-on-change, still owner-only).
+
+The randomize toggles' actual complaint — "only take up the left half of the box" — was a literal
+`maxWidth: 320` on a `display:"grid"` (implicitly single-column) container inside a full-width
+`Card`. Replaced with `gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))"` and no
+max-width, so the 6 toggles now lay out as a responsive 2-column grid filling the card, collapsing
+to 1 column only on a narrow viewport. No logic changed — every `Toggle`'s `checked`/`busy`/
+`disabled`/`onChange` prop is byte-for-byte the same as before, only which `Card` wraps it and the
+grid CSS changed.
+
+### How this was verified
+
+The sandbox's `npm run dev` (see "Build/dev notes") was already running from an earlier session,
+reused via a fresh browser tab rather than restarting it. Both pieces were verified against the
+**real, running app** rather than mocks-in-isolation, using techniques already established
+elsewhere in this file:
+
+- **Users page**: faked a local admin session (`admin_token_v1`/`admin_role_v1`/`admin_email_v1` in
+  `localStorage` — never real credentials, never typed into a form) to get past the `hasAdminRole`
+  gate, confirmed the real Supabase/Edge-Function calls fail gracefully with a visible error banner
+  (`missing Authorization bearer token`, `Could not find the table 'public.project_access'` —
+  exactly the "table doesn't exist yet" error expected given the migration is unapplied, confirming
+  the code path is correct and just waiting on the DB), then monkey-patched `window.fetch` to return
+  fabricated `profiles`/`projects`/`project_access` responses and drove the real page end-to-end:
+  user list with role/disabled/project-count badges, selecting a user, the `ProjectAccessEditor`
+  correctly rendering an already-granted project with a partial platform restriction (2 of 3 chips
+  highlighted, matching fabricated `apps: ["fb","ig"]`), checking a new project and seeing "Save
+  access" appear (dirty-state detection), and the "Add user" modal rendering correctly themed
+  (confirming `Modal.jsx`'s portal-into-`.admin-shell` approach works, not just in theory).
+- **Feed Settings tab**: driving the full dashboard route required also mocking session-expiry
+  watch and project resolution, which wasn't worth chasing down for a pure-JSX layout change — used
+  a more targeted technique instead: fetched the exact timestamped module URL the running app
+  currently uses for `src/admin/ui/index.js` (same "same module instance as the real app graph"
+  technique documented earlier in this file under "merged tree-sidebar navigation"), imported the
+  real `Card`/`Toggle`/`Button`/`RoleGate` components plus React/ReactDOM from Vite's own dep cache,
+  and rendered the exact new Settings-tab JSX tree with fabricated stats/flags into a scratch node
+  appended to the live page (hiding the rest of the page rather than using a separate blank tab, so
+  the real `.admin-shell` CSS tokens were in scope). Confirmed visually and via `get_page_text`: all
+  4 cards render with correct content, the 6 randomize toggles lay out 2-per-row filling the full
+  card width (the literal complaint), and `RoleGate`-gated pieces (Behavior card, Export/Import
+  buttons, Danger zone) correctly appear/disappear based on a faked `admin_role_v1` value.
+- Both test sessions' `localStorage` keys and monkey-patched `window.fetch` were cleaned up
+  afterward; no real data was read, written, or could have been (every fabricated response was
+  synthetic, and the one real network call that did fire — `admin-users` Edge Function with a fake
+  token — was correctly rejected server-side, never touching real user data).
+- **Not verified**: an actual click-through with a real owner session (standing limitation
+  throughout this file — no login), and the `project_access` RLS policies themselves were reviewed
+  by reading, not exercised against live data, since the migration hasn't been applied yet. Once it
+  is, worth a quick `supabase db query --linked` sanity check mirroring the pattern used for the
+  `posts.id` collision fix: confirm `projects_select_admins`/`feeds_select_admins` still return
+  every row for the owner account (should be a no-op change for them) before trusting it further.

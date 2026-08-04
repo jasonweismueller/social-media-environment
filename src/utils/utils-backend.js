@@ -56,6 +56,8 @@ import {
   supabaseFetchParticipantsStats,
   supabaseListCustomMeasureGroups,
   supabaseSaveCustomMeasureGroups,
+  supabaseListProjectAccess,
+  supabaseSetUserProjectAccess,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -3474,6 +3476,37 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
 
   try {
     await supabaseSaveCustomMeasureGroups({ surveyId: survey_id, groups: Array.isArray(groups) ? groups : [] });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+/**
+ * Per-user project access (Users admin page rework, 2026-08-04 — see
+ * CLAUDE.md). Supabase-only, same reasoning as custom measure groups above:
+ * this is a brand-new restriction concept with no GAS admin-account
+ * equivalent (GAS/Sheets roles were always global, see
+ * 20260801000002_profiles.sql's own comment), so the GAS branch is a plain
+ * no-op rather than a call to an action that was never built there.
+ */
+export async function listAllProjectAccess() {
+  if (!hasAdminSession() || !isSupabaseBackend()) return [];
+  try {
+    return await supabaseListProjectAccess();
+  } catch (e) {
+    console.warn("listAllProjectAccess failed:", e);
+    return [];
+  }
+}
+
+export async function setUserProjectAccess(userId, entries) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!userId) return { ok: false, err: "userId required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "project access requires the Supabase backend" };
+
+  try {
+    await supabaseSetUserProjectAccess(userId, Array.isArray(entries) ? entries : []);
     return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };

@@ -430,42 +430,32 @@ export function AdminFeedsPanel({
 
             {activeFeedTab === "settings" && (
               <div style={{ display: "grid", gap: 16 }}>
-                <Card title="Identity">
-                  <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
-                    <div>
-                      <span style={{ color: "#6b7280" }}>Name: </span>
-                      {selectedFeedName || selectedFeedId}
-                    </div>
-                    <div>
-                      <span style={{ color: "#6b7280" }}>ID: </span>
-                      <span style={{ fontFamily: "monospace" }}>{selectedFeedId}</span>
-                    </div>
+                <Card
+                  title={selectedFeedName || selectedFeedId}
+                  subtitle={`ID: ${selectedFeedId}`}
+                  actions={
                     <RoleGate min="editor">
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Button size="sm" variant="secondary" onClick={() => onSetDefaultFeed(selectedFeedId)} disabled={isDefault}>
-                          {isDefault ? "Already default" : "Make default"}
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={onCopyFeed} title="Duplicate this feed's posts into a new feed">
-                          Copy feed
-                        </Button>
-                      </div>
+                      <Button size="sm" variant="secondary" onClick={() => onSetDefaultFeed(selectedFeedId)} disabled={isDefault}>
+                        {isDefault ? "Default feed" : "Make default"}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={onCopyFeed} title="Duplicate this feed's posts into a new feed">
+                        Copy feed
+                      </Button>
                     </RoleGate>
-                  </div>
-                </Card>
-
-                <Card title="Participant stats">
-                  <div style={{ display: "flex", gap: 24, fontSize: 13 }}>
+                  }
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap", fontSize: 13 }}>
                     <div>
-                      <div style={{ color: "#6b7280", fontSize: 11 }}>Total</div>
-                      <div style={{ fontWeight: 700 }}>{stats ? stats.total : "—"}</div>
+                      <div style={{ color: "#6b7280", fontSize: 11 }}>Total participants</div>
+                      <div style={{ fontWeight: 700, fontSize: 17 }}>{stats ? stats.total : "—"}</div>
                     </div>
                     <div>
                       <div style={{ color: "#6b7280", fontSize: 11 }}>Submitted</div>
-                      <div style={{ fontWeight: 700 }}>{stats ? stats.submitted : "—"}</div>
+                      <div style={{ fontWeight: 700, fontSize: 17 }}>{stats ? stats.submitted : "—"}</div>
                     </div>
                     <div>
-                      <div style={{ color: "#6b7280", fontSize: 11 }}>Avg (m:ss)</div>
-                      <div style={{ fontWeight: 700 }}>
+                      <div style={{ color: "#6b7280", fontSize: 11 }}>Avg time (m:ss)</div>
+                      <div style={{ fontWeight: 700, fontSize: 17 }}>
                         {stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
                       </div>
                     </div>
@@ -478,16 +468,14 @@ export function AdminFeedsPanel({
                 </Card>
 
                 <RoleGate min="editor">
-                  <Card title="Post order" subtitle="Shuffles the order posts are shown in, this session">
-                    <div style={{ maxWidth: 320 }}>
-                      <Toggle label="Randomize order" checked={!!randomize} onChange={onSetRandomize} />
-                    </div>
-                  </Card>
-                </RoleGate>
-
-                <RoleGate min="editor">
-                  <Card title="Randomize" subtitle="Per-feed participant-facing randomization flags">
-                    <div style={{ display: "grid", gap: 8, maxWidth: 320 }}>
+                  <Card title="Behavior" subtitle="How this feed behaves for participants">
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", columnGap: 20 }}>
+                      <Toggle
+                        label="Randomize post order"
+                        hint="Shuffles order, this session only"
+                        checked={!!randomize}
+                        onChange={onSetRandomize}
+                      />
                       {Object.entries(flagKinds).map(([kind, { label, savingKey }]) => (
                         <Toggle
                           key={kind}
@@ -502,15 +490,16 @@ export function AdminFeedsPanel({
                   </Card>
                 </RoleGate>
 
-                <Card title="Sharing">
-                  <Button size="sm" variant="secondary" onClick={() => onCopyParticipantLink(feeds.find((f) => f.feed_id === selectedFeedId) || { feed_id: selectedFeedId, name: selectedFeedName })}>
-                    Copy participant link
-                  </Button>
-                </Card>
-
-                <RoleGate min="editor">
-                  <Card title="Import / export" subtitle="Back up or move this feed's posts">
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <Card title="Sharing & export" subtitle="Participant links, backups, and printable copies">
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onCopyParticipantLink(feeds.find((f) => f.feed_id === selectedFeedId) || { feed_id: selectedFeedId, name: selectedFeedName })}
+                    >
+                      Copy participant link
+                    </Button>
+                    <RoleGate min="editor">
                       <Button size="sm" variant="secondary" onClick={onExportPostsJson} title="Export current posts as JSON">
                         Export Feed
                       </Button>
@@ -536,9 +525,9 @@ export function AdminFeedsPanel({
                           }}
                         />
                       </label>
-                    </div>
-                  </Card>
-                </RoleGate>
+                    </RoleGate>
+                  </div>
+                </Card>
 
                 {/* "Delete feed" itself now lives in the sidebar, next to Save
                     feed / + New feed — see FeedListContent above. */}

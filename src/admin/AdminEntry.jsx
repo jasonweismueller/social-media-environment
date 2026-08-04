@@ -4,6 +4,7 @@ import AdminLogin from "./components-admin-login";
 import { AdminDashboard } from "./components-admin-dashboard";
 import { AdminProjectPicker } from "./AdminProjectPicker";
 import { AdminPlatformPicker } from "./AdminPlatformPicker";
+import { AdminUsersPage } from "./components-admin-users";
 
 /**
  * Owns the whole `/admin/*` sub-tree: login gate, then
@@ -18,6 +19,7 @@ export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps 
   return (
     <Routes>
       <Route index element={<AdminProjectPicker />} />
+      <Route path="users" element={<AdminUsersPage />} />
       <Route path="platform" element={<AdminPlatformPicker currentApp={currentApp} />} />
       <Route path="dashboard/*" element={<AdminDashboard {...dashboardProps} />} />
       <Route path="*" element={<Navigate to="/admin" replace />} />

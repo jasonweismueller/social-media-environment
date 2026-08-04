@@ -1200,3 +1200,55 @@ export async function supabaseAdminUpdateUser({ email, role, password, disabled 
 export async function supabaseAdminDeleteUser(email) {
   return invokeAdminUsers({ action: "delete", email });
 }
+
+/* =================== Per-user project access (2026-08-04) ===================
+ * Backs the reworked Users admin page's project-access editor
+ * (see CLAUDE.md). No Edge Function needed — unlike admin-users above,
+ * granting/revoking a project doesn't touch Supabase Auth at all, so plain
+ * RLS-gated table reads/writes (project_access_write_owner in
+ * 20260801000016_project_access.sql) are sufficient, same reasoning as
+ * wipeParticipantsOnBackend/custom_measure_groups.
+ */
+
+// Every project_access row across every user in one call, so the Users page
+// can show each user's granted-project count/list without an N+1 query per
+// row. Small table (bounded by users × projects an owner has actually
+// restricted), safe to fetch in full and group client-side.
+export async function supabaseListProjectAccess() {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("project_access")
+    .select("user_id, project_id, apps");
+  if (error) throw new Error(error.message);
+  return (data || []).map((row) => ({
+    user_id: row.user_id,
+    project_id: row.project_id,
+    apps: Array.isArray(row.apps) ? row.apps : [],
+  }));
+}
+
+// Replaces a user's entire project_access set in one call — delete+reinsert,
+// same idiom already used for feed_surveys/experiment_groups resyncs
+// elsewhere in this file. Passing an empty array clears every row for that
+// user, which per has_project_access()/has_project_app_access() (both in
+// the migration above) means "unrestricted — every project, every
+// platform," not "no access" — restriction is opt-in via an explicit row,
+// never the default.
+export async function supabaseSetUserProjectAccess(userId, entries) {
+  const supabase = getSupabaseClient();
+  const { error: delErr } = await supabase.from("project_access").delete().eq("user_id", userId);
+  if (delErr) throw new Error(delErr.message);
+
+  const rows = (Array.isArray(entries) ? entries : [])
+    .filter((e) => e && e.project_id)
+    .map((e) => ({
+      user_id: userId,
+      project_id: e.project_id,
+      apps: Array.isArray(e.apps) ? e.apps : [],
+    }));
+  if (!rows.length) return true;
+
+  const { error: insErr } = await supabase.from("project_access").insert(rows);
+  if (insErr) throw new Error(insErr.message);
+  return true;
+}

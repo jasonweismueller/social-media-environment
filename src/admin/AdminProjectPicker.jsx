@@ -113,6 +113,11 @@ export function AdminProjectPicker() {
           subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"} — choose a project to continue.`}
           actions={
             <>
+              {hasAdminRole("owner") && (
+                <Button size="sm" variant="ghost" onClick={() => navigate("/admin/users")}>
+                  Manage users
+                </Button>
+              )}
               <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
                 {loading ? "Loading…" : "Refresh"}
               </Button>

@@ -14,7 +14,6 @@ import {
   deleteFeedOnBackend,
   getWipePolicyFromBackend,
   setWipePolicyOnBackend,
-  hasAdminRole,
   getAdminEmail,
   getAdminRole,
   startSessionWatch,
@@ -37,7 +36,6 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import "./ui/tokens.css";
 import { Modal, LoadingOverlay } from "../ui-core";
-import { AdminUsersPanel } from "./components-admin-users";
 import { AdminSurveysPanel } from "./components-admin-surveys";
 import { AdminFeedsPanel } from "./components-admin-feeds";
 import { randomAvatarByKind } from "../avatar-utils";
@@ -529,9 +527,6 @@ export function AdminDashboard({
 
   // feed flags per project+feed
   const [feedFlags, setFeedFlags] = useState({});
-
-  // counts
-  const [usersCount, setUsersCount] = useState(null);
 
   // UX overlay control
   const showOverlay =
@@ -1388,7 +1383,6 @@ export function AdminDashboard({
           title={DASHBOARD_TITLE}
           subtitle={`Signed in as ${getAdminEmail() || "unknown"} · role: ${getAdminRole() || "viewer"}`}
           onLogout={onLogout}
-          showUsersNav={hasAdminRole("owner")}
           backTo="/admin"
           backLabel="← Switch project / platform"
           projectSwitcher={
@@ -1515,18 +1509,12 @@ export function AdminDashboard({
             <Route path="participants/feed" element={<Navigate to="/admin/dashboard/feeds" replace />} />
             <Route path="participants/survey" element={<Navigate to="/admin/dashboard/surveys" replace />} />
 
-            <Route
-              path="users"
-              element={
-                <RoleGate min="owner">
-                  <PageHeader
-                    title={`Users${usersCount != null ? ` (${usersCount})` : ""}`}
-                    subtitle="Manage admin users & roles."
-                  />
-                  <AdminUsersPanel embed onCountChange={setUsersCount} />
-                </RoleGate>
-              }
-            />
+            {/* Users management moved out of the per-project dashboard
+                entirely — it's now a top-level page (/admin/users, see
+                AdminEntry.jsx + CLAUDE.md "Admin user management rework"),
+                since accounts/roles were never actually project-scoped.
+                Redirect the old nested path for stale bookmarks. */}
+            <Route path="users" element={<Navigate to="/admin/users" replace />} />
 
             <Route path="*" element={<Navigate to="/admin/dashboard/feeds" replace />} />
           </Routes>
