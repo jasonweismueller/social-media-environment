@@ -7,8 +7,6 @@ import {
   randomSVG,
   uploadJsonToS3ViaSigner,
   listFeedsFromBackend,
-  getDefaultFeedFromBackend,
-  setDefaultFeedOnBackend,
   savePostsToBackend,
   loadPostsFromBackend,
   deleteFeedOnBackend,
@@ -522,7 +520,6 @@ export function AdminDashboard({
   const [feedsLoading, setFeedsLoading] = useState(false);
   const [feedsError, setFeedsError] = useState("");
 
-  const [defaultFeedId, setDefaultFeedId] = useState(null);
   const feedsAbortRef = useRef(null);
 
   // feed flags per project+feed
@@ -778,19 +775,23 @@ export function AdminDashboard({
 
     try {
       const effPid = pidForBackend(projectId);
-      const [list, backendDefault] = await Promise.all([
-        listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal }),
-        getDefaultFeedFromBackend({ projectId: effPid, signal: ctrl.signal }),
-      ]);
+      const list = await listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal });
 
       if (ctrl.signal.aborted) return;
 
       const feedsList = Array.isArray(list) ? list : [];
       setFeeds(feedsList);
-      setDefaultFeedId(backendDefault || null);
 
-      const chosen =
-        feedsList.find((f) => f.feed_id === backendDefault) || feedsList[0] || null;
+      // Auto-selects the first feed in the list — matches AdminSurveysPanel's
+      // own loadAll, which already does this for Surveys. The old "default
+      // feed" concept (a separately stored, admin-settable pointer) has been
+      // removed entirely per direct user request (2026-08-04, see
+      // CLAUDE.md) — participant launch links are now expected to always
+      // carry an explicit feed_id (a mismatched one shows a 404, see
+      // App-facebook.jsx's feedNotFound), so there was no remaining reason
+      // to keep a separate "default" concept around, plain first-in-list is
+      // enough for the admin-dashboard convenience this always was.
+      const chosen = feedsList[0] || null;
 
       if (chosen) {
         setFeedId(chosen.feed_id);
@@ -819,9 +820,6 @@ export function AdminDashboard({
 
         setPostNames(readPostNames(projectId, chosen.feed_id) || {});
         loadFlagsFor(chosen.feed_id);
-        if (backendDefault && backendDefault !== chosen.feed_id) {
-          loadFlagsFor(backendDefault);
-        }
       } else {
         setFeedId("");
         setFeedName("");
@@ -1176,11 +1174,6 @@ export function AdminDashboard({
     }
   };
 
-  const handleSetDefaultFeed = async (fid) => {
-    const ok = await setDefaultFeedOnBackend(fid);
-    if (ok) setDefaultFeedId(fid);
-  };
-
   const handleCopyParticipantLink = async (f) => {
     if (!f?.feed_id) {
       alert("Missing feed_id for this row");
@@ -1218,7 +1211,6 @@ export function AdminDashboard({
       } else {
         setFeeds((prev) => prev.filter((x) => x.feed_id !== f.feed_id));
       }
-      if (defaultFeedId === f.feed_id) setDefaultFeedId(null);
       alert("Feed deleted.");
     } else {
       alert("Failed to delete feed. Please re-login and try again.");
@@ -1454,7 +1446,6 @@ export function AdminDashboard({
               feedsLoading={feedsLoading}
               selectedFeedId={feedId}
               selectedFeedName={feedName}
-              defaultFeedId={defaultFeedId}
               feedStats={feedStats}
               feedFlags={feedFlags}
               flagKinds={FLAG_KINDS}
@@ -1476,7 +1467,6 @@ export function AdminDashboard({
               onLoadStats={loadStatsFor}
               onLoadFlags={loadFlagsFor}
               onToggleFlag={toggleFlag}
-              onSetDefaultFeed={handleSetDefaultFeed}
               onDeleteFeed={handleDeleteFeed}
               onSetWipePolicy={handleSetWipePolicy}
               onCopyParticipantLink={handleCopyParticipantLink}

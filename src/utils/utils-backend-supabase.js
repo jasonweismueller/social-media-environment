@@ -259,34 +259,6 @@ export async function supabaseListFeeds({ projectId, app }) {
   }));
 }
 
-// No `default_feed` concept exists in the Phase 1-3 Postgres schema (see
-// supabase/README.md's entity inventory — it only carries what the GAS
-// Feeds/Posts/etc. sheets held, and "which feed is the admin dashboard's
-// default" was never one of them). Rather than add a migration for what is
-// purely an admin-dashboard convenience (participants always get feed_id
-// from the launch link's URL, never from this), mirror the same
-// client-local pattern already used for the default *project*
-// (getDefaultProjectFromBackend/setDefaultProjectOnBackend in
-// utils-backend.js) — scoped per app+project so it doesn't collide across
-// platforms/projects.
-const DEFAULT_FEED_KEY = (app, projectId) => `DEFAULT_FEED_ID::${app}::${projectId || "global"}`;
-
-export function supabaseGetDefaultFeedId({ app, projectId }) {
-  try {
-    return localStorage.getItem(DEFAULT_FEED_KEY(app, projectId)) || null;
-  } catch {
-    return null;
-  }
-}
-
-export function supabaseSetDefaultFeedId({ app, projectId, feedId }) {
-  try {
-    if (feedId) localStorage.setItem(DEFAULT_FEED_KEY(app, projectId), feedId);
-    else localStorage.removeItem(DEFAULT_FEED_KEY(app, projectId));
-  } catch {}
-  return true;
-}
-
 export async function supabaseListSurveys({ projectId }) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase

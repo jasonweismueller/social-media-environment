@@ -17,8 +17,6 @@ import {
   supabaseListProjects,
   supabaseLoadPosts,
   supabaseListFeeds,
-  supabaseGetDefaultFeedId,
-  supabaseSetDefaultFeedId,
   supabaseListSurveys,
   supabaseLoadSurveyDefinition,
   supabaseGetLinkedFeedIds,
@@ -256,7 +254,6 @@ export const GS_TOKEN = "a38d92c1-48f9-4f2c-bc94-12c72b9f3427";
 
 /* ---------------------- Base GET URL builders ----------------------------- */
 const FEEDS_GET_URL = () => `${GS_ENDPOINT}?path=feeds&app=${getApp()}`;
-const DEFAULT_FEED_GET_URL = () => `${GS_ENDPOINT}?path=default_feed&app=${getApp()}`;
 const POSTS_GET_URL = () => `${GS_ENDPOINT}?path=posts&app=${getApp()}`;
 const PARTICIPANTS_GET_URL = () => `${GS_ENDPOINT}?path=participants&app=${getApp()}`;
 const WIPE_POLICY_GET_URL = () => `${GS_ENDPOINT}?path=wipe_policy&app=${getApp()}`;
@@ -2079,55 +2076,6 @@ export async function listFeedsFromBackend({ projectId = getProjectId(), signal 
   }
 }
 
-/* -------- default feed helpers (persisted on backend) --------------------- */
-export async function getDefaultFeedFromBackend({ projectId = getProjectId(), signal } = {}) {
-  if (isSupabaseBackend()) {
-    return supabaseGetDefaultFeedId({ app: getApp(), projectId });
-  }
-
-  try {
-    const data = await getJsonWithRetry(
-      buildQueryUrl(DEFAULT_FEED_GET_URL(), {
-        project_id: projectId || undefined,
-        _ts: Date.now(),
-      }),
-      { method: "GET", mode: "cors", cache: "no-store", signal },
-      { retries: 1, timeoutMs: 8000 }
-    );
-    return data && typeof data === "object" ? data.feed_id || null : null;
-  } catch (e) {
-    console.warn("getDefaultFeedFromBackend failed:", e);
-    return null;
-  }
-}
-
-export async function setDefaultFeedOnBackend(feedId, { projectId = getProjectId() } = {}) {
-  if (isSupabaseBackend()) {
-    return supabaseSetDefaultFeedId({ app: getApp(), projectId, feedId });
-  }
-
-  const admin_token = getAdminToken();
-  if (!admin_token) {
-    console.warn("setDefaultFeedOnBackend: missing admin_token");
-    return false;
-  }
-
-  try {
-    const { res } = await postJson({
-      action: "set_default_feed",
-      app: APP,
-      feed_id: feedId || "",
-      admin_token,
-      project_id: projectId || undefined,
-    });
-
-    return res.ok;
-  } catch (e) {
-    console.warn("setDefaultFeedOnBackend failed:", e);
-    return false;
-  }
-}
-
 export async function deleteFeedOnBackend(feedId, { projectId = getProjectId() } = {}) {
   if (!hasAdminSession()) return false;
 
@@ -2208,9 +2156,10 @@ export async function loadPostsFromBackend(arg1, arg2) {
     projectId = arg1.projectId || projectId;
   }
 
-  if (!feedId) {
-    feedId = await getDefaultFeedFromBackend({ projectId, signal });
-  }
+  // No more falling back to a stored "default feed" when no feedId is
+  // given — that concept was removed entirely (2026-08-04, direct user
+  // request, see CLAUDE.md). Every real call site always passes one.
+  if (!feedId) return [];
 
   if (!force) {
     const cached = __getCachedPosts(feedId, projectId);

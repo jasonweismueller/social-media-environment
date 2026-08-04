@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar, hasAdminRole } from "../utils";
-import { Card, Table, Th, Td, Toggle, Button, IconButton, Badge, Tabs, RoleGate } from "./ui";
+import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -97,7 +97,6 @@ function FeedListContent({
   feeds,
   feedsLoading,
   selectedFeedId,
-  defaultFeedId,
   onSelectFeed,
   onSaveFeed,
   isSaving,
@@ -129,7 +128,6 @@ function FeedListContent({
       ) : (
         feeds.map((f) => {
           const isActive = selectedFeedId === f.feed_id;
-          const rowIsDefault = f.feed_id === defaultFeedId;
           const isRenaming = renamingId === f.feed_id;
           return (
             <button
@@ -165,11 +163,6 @@ function FeedListContent({
               ) : (
                 <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
                   {f.name || f.feed_id}
-                  {rowIsDefault && (
-                    <Badge tone="accent" style={{ marginLeft: 6 }}>
-                      default
-                    </Badge>
-                  )}
                 </div>
               )}
             </button>
@@ -235,7 +228,6 @@ export function AdminFeedsPanel({
   feedsLoading,
   selectedFeedId,
   selectedFeedName,
-  defaultFeedId,
   feedStats,
   feedFlags,
   flagKinds,
@@ -256,7 +248,6 @@ export function AdminFeedsPanel({
   onLoadStats,
   onLoadFlags,
   onToggleFlag,
-  onSetDefaultFeed,
   onDeleteFeed,
   onSetWipePolicy,
   onCopyParticipantLink,
@@ -292,7 +283,6 @@ export function AdminFeedsPanel({
   const ff = feedFlags[rowKey] || {};
   const stats = feedStats[rowKey];
   const anyFlagBusy = allSavingKeys.some((k) => ff[k]);
-  const isDefault = selectedFeedId === defaultFeedId;
 
   const { feedsSlot, feedsAddSlot } = useContext(AdminTreeSlotsContext);
 
@@ -315,7 +305,6 @@ export function AdminFeedsPanel({
             feeds={feeds}
             feedsLoading={feedsLoading}
             selectedFeedId={selectedFeedId}
-            defaultFeedId={defaultFeedId}
             onSelectFeed={onSelectFeed}
             onSaveFeed={onSaveFeed}
             isSaving={isSaving}
@@ -331,14 +320,7 @@ export function AdminFeedsPanel({
         {selectedFeedId && (
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h3 style={{ margin: 0 }}>
-                {selectedFeedName || selectedFeedId}
-                {isDefault && (
-                  <Badge tone="accent" style={{ marginLeft: 8 }}>
-                    default
-                  </Badge>
-                )}
-              </h3>
+              <h3 style={{ margin: 0 }}>{selectedFeedName || selectedFeedId}</h3>
             </div>
 
             <Tabs
@@ -403,10 +385,10 @@ export function AdminFeedsPanel({
                           <Th style={{ width: "6%" }} />
                           <Th style={{ width: "14%" }}>Post</Th>
                           <Th style={{ width: "12%" }}>Author</Th>
-                          <Th style={{ width: "32%" }}>Text</Th>
+                          <Th style={{ width: "38%" }}>Text</Th>
                           <Th style={{ width: "9%" }}>Time</Th>
                           <Th style={{ width: "9%" }}>Media</Th>
-                          <Th style={{ width: "18%" }}>Actions</Th>
+                          <Th style={{ width: "12%" }}>Actions</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -484,7 +466,6 @@ export function AdminFeedsPanel({
                 projectId={projectId}
                 feedId={selectedFeedId}
                 feedName={selectedFeedName}
-                defaultFeedId={defaultFeedId}
                 postNamesMap={postNames}
                 posts={posts}
                 onLogout={onLogout}
@@ -498,9 +479,6 @@ export function AdminFeedsPanel({
                   subtitle={`ID: ${selectedFeedId}`}
                   actions={
                     <RoleGate min="editor">
-                      <Button size="sm" variant="secondary" onClick={() => onSetDefaultFeed(selectedFeedId)} disabled={isDefault}>
-                        {isDefault ? "Default feed" : "Make default"}
-                      </Button>
                       <Button size="sm" variant="secondary" onClick={onCopyFeed} title="Duplicate this feed's posts into a new feed">
                         Copy feed
                       </Button>

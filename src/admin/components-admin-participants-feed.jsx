@@ -1101,7 +1101,6 @@ export function FeedParticipantsPage({
   projectId: projectIdProp,
   posts = [],
   postNamesMap,
-  defaultFeedId,
   onLogout,
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
@@ -1560,7 +1559,6 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
             <code style={{ fontSize: ".9em" }}>{projectId || "global"}</code>
             <span className="subtle"> · </span>
             <code style={{ fontSize: ".9em" }}>{feedName || feedId || "no feed selected"}</code>
-            {defaultFeedId && defaultFeedId === feedId && <span className="subtle"> · default</span>}
             {usingSimulated && <span className="subtle"> · SIMULATED</span>}
             <span className="subtle"> — survey responses live on the Survey Participants page</span>
           </>

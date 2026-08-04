@@ -2737,3 +2737,53 @@ mouse double-click by a real user (used a dispatched `dblclick` `MouseEvent` ins
 class of gap as every click-simulation caveat already documented in this file) and the Setup
 tab's "Survey name" field re-rendering with the new value specifically (confirmed indirectly via
 the heading, which reads the same `survey.name`, but the field itself wasn't directly queried).
+
+## "Default feed" concept removed entirely; feed-based launch links now 404 on a bad feed_id (2026-08-04)
+
+Direct follow-up, same day, after the previous entry above walked back a partial removal out of
+caution. The user confirmed explicitly: no participant should ever land on a feed-based launch
+link without a real, matching `feed_id` — "if anything it should show Error 404 like the
+studyfeed.org index" — closing the exact gap the previous entry's caution was about. Also asked
+for Feeds to auto-select its first item the same way Surveys already silently did.
+
+**Participant-facing (`App-{facebook,instagram,amazon}.jsx`, all three,
+near-duplicate-footgun applies)**: `resolveChosenFeed` no longer calls
+`getDefaultFeedFromBackend` or falls back to `feedsList[0]` — it now *only* matches the URL's
+`feed_id` against real feeds, returning `null` for anything else (typo, deleted feed, stale
+link). New `feedNotFound` state, set when `resolveChosenFeed` returns null for a (non-survey-only)
+feed-based launch; the main render now short-circuits to a plain 404 block — literally the same
+markup/copy as `index.html`'s own static bootstrap-script 404 (title "404", "This page could not
+be found."), reproduced in JSX since that check runs before this app bundle even loads and has no
+per-project feed data to check against. Replaces the whole app shell, not a dialog over it —
+deliberately different from the pre-existing "Couldn't start the study" modal (still used for
+genuine transient errors elsewhere in `startBoot`), since a bad feed_id isn't "something went
+wrong," it's "this isn't a valid page." `document.title` also flips to "404 Not Found" to match.
+
+**Admin dashboard**: `defaultFeedId` state, `getDefaultFeedFromBackend`/`setDefaultFeedOnBackend`,
+the "Make default"/"Default feed" button, and every "default" badge (feed list rows, the detail
+heading, `FeedParticipantsPage`'s subtitle) are all gone — not hidden, fully removed, along with
+the now-fully-dead `supabaseGetDefaultFeedId`/`supabaseSetDefaultFeedId` (`utils-backend-supabase.js`)
+and the GAS `DEFAULT_FEED_GET_URL`/`set_default_feed` action plumbing (`utils-backend.js`).
+`loadFeeds()` now auto-selects the first feed in the list on load, mirroring
+`AdminSurveysPanel`'s own `loadAll` (which already did this for Surveys, unchanged) — so Feeds and
+Surveys now behave identically on arrival, per direct request, instead of Feeds requiring an
+explicit click. `loadPostsFromBackend` (`utils-backend.js`) had its own internal
+`getDefaultFeedFromBackend` fallback for a missing `feedId` argument — replaced with a plain
+`return []`, since every real call site already always passes one and there's no "default" left
+to fall back to.
+
+**Verified against real production data (read-only, no writes, no participant data touched)**:
+loaded `?project=project_1&feed_id=this_feed_does_not_exist_verify_404` — rendered the exact 404
+block, `document.title` "404 Not Found," zero console errors; loaded the same project with a real
+feed_id (`feed_1_rev`) immediately after — rendered the real Participant Information/consent
+preface content for that live UWA-ethics-approved study exactly as before, confirming the change
+doesn't affect a genuinely valid launch link. The admin-dashboard auto-select-first-feed change
+itself was **not** verified live — hit a test-harness timing limit (the app's first data fetch on
+mount fires before a post-navigation `javascript_tool` call can patch `window.fetch`, a genuinely
+different problem from every other fetch-mock verification elsewhere in this file, which all
+mock *before* triggering the fetch via a later user action, not before the initial mount's own
+effect). Confidence is via code review instead: the new logic
+(`const chosen = feedsList[0] || null`) is a mechanical simplification of the exact same
+already-proven `chosen`-selection-and-post-loading code that was live before this change, just
+without the removed default-lookup branch — worth a real click-through next time there's a way
+to mock the initial-mount fetch, or admin access to confirm against real data.

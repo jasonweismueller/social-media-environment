@@ -19,7 +19,6 @@ import {
   buildMinimalHeader,
   buildParticipantRow,
   computeFeedId,
-  getDefaultFeedFromBackend,
   hasAdminSession,
   adminLogout,
   listFeedsFromBackend,
@@ -929,6 +928,16 @@ export default function App() {
 
   const [bootPhase, setBootPhase] = useState(onAdmin ? "ready" : "idle");
   const [bootError, setBootError] = useState("");
+  // Set when a feed-based launch link's feed_id doesn't match any real feed
+  // in the project (2026-08-04, direct user request) — no longer falls back
+  // to the project's "default"/first feed, since a stale or mistyped
+  // feed_id should read as a broken link, not silently substitute a
+  // different feed. Renders the same static 404 index.html itself shows
+  // for a launch link missing feed/survey params entirely.
+  const [feedNotFound, setFeedNotFound] = useState(false);
+  useEffect(() => {
+    if (feedNotFound) document.title = "404 Not Found";
+  }, [feedNotFound]);
 
   const [contentPhase, setContentPhase] = useState("idle");
   const [surveyOnlyPrereqPhase, setSurveyOnlyPrereqPhase] = useState("idle");
@@ -1260,28 +1269,22 @@ export default function App() {
       });
 
       try {
-        const [feedsList, backendDefault] = await Promise.all([
-          listFeedsFromBackend({ signal }),
-          getDefaultFeedFromBackend({ signal }),
-        ]);
+        const feedsList = await listFeedsFromBackend({ signal });
 
         if (signal?.aborted) {
           t.end({ aborted: true });
           return null;
         }
 
+        // No more falling back to the project's default/first feed — a
+        // feed-based launch link's feed_id is expected to always match a
+        // real feed (2026-08-04, direct user request); anything else reads
+        // as a broken/stale link, not "just show them something."
         const urlFeedId = getFeedIdFromUrl();
-        const chosen =
-          (feedsList || []).find((f) => f.feed_id === urlFeedId) ||
-          (feedsList || []).find(
-            (f) => f.feed_id === (backendDefault?.feed_id || backendDefault)
-          ) ||
-          (feedsList || [])[0] ||
-          null;
+        const chosen = (feedsList || []).find((f) => f.feed_id === urlFeedId) || null;
 
         t.end({
           feedsCount: (feedsList || []).length,
-          backendDefault,
           chosenFeedId: chosen?.feed_id || null,
         });
 
@@ -1305,6 +1308,7 @@ export default function App() {
 
     setBootPhase("loading");
     setBootError("");
+    setFeedNotFound(false);
 
     setSurveyBoot(null);
     setFeedSequenceIds([]);
@@ -1390,7 +1394,10 @@ export default function App() {
       }
 
       if (!chosen) {
-        throw new Error("No feeds are available.");
+        setFeedNotFound(true);
+        setBootPhase("error");
+        t.end({ feedNotFound: true });
+        return;
       }
 
       const chosenFeedId = chosen.feed_id;
@@ -2866,6 +2873,37 @@ export default function App() {
     } :
     loadingNextStageOverlay ? { title: "Loading questions…", subtitle: "Preparing the next stage" } :
     null;
+
+  // A feed-based launch link whose feed_id doesn't match any real feed in
+  // the project — same static 404 index.html's own bootstrap script shows
+  // for a launch link missing feed/survey params entirely (see index.html),
+  // reproduced here since that check runs before this app bundle even
+  // loads and can't see per-project feed data. Replaces the whole app
+  // shell, not a dialog over it — this isn't "something went wrong," it's
+  // "this isn't a valid page."
+  if (!onAdmin && feedNotFound) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          fontFamily:
+            "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+          color: "#444",
+          textAlign: "center",
+          padding: 24,
+          boxSizing: "border-box",
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: "0 0 8px" }}>404</h1>
+          <p style={{ fontSize: 15, margin: 0, color: "#777" }}>This page could not be found.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Router>
