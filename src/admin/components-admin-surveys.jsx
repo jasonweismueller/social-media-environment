@@ -2041,9 +2041,22 @@ export function AdminSurveysPanel({
     // list to source it from), so catch it here with a clear message
     // instead of letting a raw Postgres FK-violation string reach the
     // admin — see CLAUDE.md for the real incident this was found from.
-    const unsavedSelected = orderedLinkedFeedIdsFromSurvey(survey)
+    // Separately, a linked feed can also have been deleted entirely since
+    // it was linked — that one has no matching entry in `feeds` at all
+    // (handled as `orphanedFeedIds` above, with its own cleanup UI), so
+    // it's checked here by id rather than by object.
+    const linkedIds = orderedLinkedFeedIdsFromSurvey(survey);
+    const unsavedSelected = linkedIds
       .map((fid) => feeds.find((f) => String(f.feed_id) === String(fid)))
       .filter((f) => f && !f.updated_at);
+    if (orphanedFeedIds.length) {
+      toast.error(
+        `${orphanedFeedIds.join(", ")} ${orphanedFeedIds.length === 1 ? "no longer exists" : "no longer exist"} — remove ${
+          orphanedFeedIds.length === 1 ? "it" : "them"
+        } using the panel above before saving feed setup.`
+      );
+      return;
+    }
     if (unsavedSelected.length) {
       const names = unsavedSelected.map((f) => f.name || f.feed_id).join(", ");
       toast.error(
@@ -2331,6 +2344,15 @@ export function AdminSurveysPanel({
 
   const selectedFeedIds = orderedLinkedFeedIdsFromSurvey(survey);
   const isMultiFeedMode = deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY;
+  // Feed ids the survey still references that no longer exist in `feeds` at
+  // all (deleted, or a stale reference from before) — distinct from a feed
+  // that exists locally but hasn't been saved yet (handled separately in
+  // handleSaveFeedLinks). These can't be un-checked through the normal
+  // picker below since that only ever iterates the real `feeds` list, so
+  // there'd be no way to remove one without the dedicated cleanup UI below.
+  const orphanedFeedIds = selectedFeedIds.filter(
+    (fid) => !feeds.some((f) => String(f.feed_id) === String(fid))
+  );
 
   const studyApp = useMemo(() => getCurrentStudyApp(), []);
 
@@ -3098,6 +3120,38 @@ export function AdminSurveysPanel({
                   ? "This survey currently still depends on feed context. Keep at least one linked feed unless you remove feed-specific visibility or add explicit post_feed_id values to all reminder questions."
                   : "This survey can run as a direct survey-only study without linked feed context."}
               </div>
+
+              {orphanedFeedIds.length > 0 && (
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "var(--admin-danger-ink, #991b1b)",
+                    background: "var(--admin-danger-soft, #fef2f2)",
+                    border: "1px solid var(--admin-danger-border, #fecaca)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    marginBottom: 10,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                    {orphanedFeedIds.length === 1 ? "1 feed" : `${orphanedFeedIds.length} feeds`} referenced here
+                    no longer exist — this is why the id shows instead of a name, and why saving feed setup
+                    fails.
+                  </div>
+                  {orphanedFeedIds.map((fid) => (
+                    <div
+                      key={fid}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 4 }}
+                    >
+                      <code style={{ fontSize: 12 }}>{fid}</code>
+                      <Button size="sm" variant="secondary" onClick={() => toggleFeed(fid)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY && (
                 <div
