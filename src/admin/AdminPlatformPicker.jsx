@@ -2,12 +2,12 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getProjectId } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button } from "./ui";
+import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart } from "./ui";
 
 const PLATFORMS = [
-  { app: "fb", label: "Facebook", icon: "📘", blurb: "News-feed style posts, comments, reactions." },
-  { app: "ig", label: "Instagram", icon: "📷", blurb: "Photo grid feed, likes, comments." },
-  { app: "amz", label: "Amazon Reviews", icon: "🛒", blurb: "Product review list." },
+  { app: "fb", label: "Facebook", icon: IconFacebook, blurb: "News-feed style posts, comments, reactions." },
+  { app: "ig", label: "Instagram", icon: IconInstagram, blurb: "Photo grid feed, likes, comments." },
+  { app: "amz", label: "Amazon Reviews", icon: IconCart, blurb: "Product review list." },
 ];
 
 /**
@@ -59,7 +59,22 @@ export function AdminPlatformPicker({ currentApp }) {
             <Card key={p.app} bodyStyle={{ padding: 16 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                  <span style={{ fontSize: 26 }} aria-hidden="true">{p.icon}</span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 40,
+                      height: 40,
+                      borderRadius: "var(--admin-radius-md)",
+                      background: "var(--admin-accent-soft)",
+                      color: "var(--admin-accent-ink)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <p.icon size={22} />
+                  </span>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: "var(--admin-text)" }}>
                       {p.label}

@@ -38,7 +38,7 @@ import { AdminSurveysPanel } from "./components-admin-surveys";
 import { AdminFeedsPanel } from "./components-admin-feeds";
 import { randomAvatarByKind } from "../avatar-utils";
 import { AdminShell } from "./AdminShell";
-import { Badge, RoleGate, useToast, useConfirm, usePrompt } from "./ui";
+import { Badge, RoleGate, useToast, useConfirm, usePrompt, ErrorBoundary } from "./ui";
 
 // Dynamically choose correct editor (FB or IG)
 import { genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB } from "./components-admin-editor-facebook";
@@ -1498,6 +1498,7 @@ export function AdminDashboard({
               exist so those paths match instead of falling through to the
               wildcard redirect. */}
           <div style={{ display: location.pathname.startsWith("/admin/dashboard/feeds") ? "block" : "none" }}>
+            <ErrorBoundary label="The Feeds panel crashed" resetKey={feedId}>
             <AdminFeedsPanel
               projectId={projectId}
               feeds={feeds}
@@ -1541,6 +1542,7 @@ export function AdminDashboard({
               onRemovePost={removePost}
               onLogout={onLogout}
             />
+            </ErrorBoundary>
           </div>
 
           <div style={{ display: location.pathname.startsWith("/admin/dashboard/surveys") ? "block" : "none" }}>
@@ -1548,12 +1550,14 @@ export function AdminDashboard({
                 which has no equivalent outer heading either, just the
                 selected item's own name once one is picked (AdminSurveysPanel
                 renders that itself, mirroring AdminFeedsPanel's <h3>). */}
+            <ErrorBoundary label="The Surveys panel crashed">
             <AdminSurveysPanel
               projectId={projectId}
               feedId={feedId}
               feeds={feeds}
               loadFeedPosts={loadFeedPostsForSurveys}
             />
+            </ErrorBoundary>
           </div>
 
           <Routes>

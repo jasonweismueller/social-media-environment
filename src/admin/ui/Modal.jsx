@@ -1,6 +1,9 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * Admin-themed modal dialog. Portals into the nearest `.admin-shell`
  * ancestor rather than `document.body` — same reasoning as
@@ -8,9 +11,15 @@ import { createPortal } from "react-dom";
  * (`src/admin/ui/tokens.css`) are scoped to `.admin-shell`, so a dialog
  * portaled past that boundary would render with no background/border/text
  * color at all.
+ *
+ * Also traps Tab focus within the dialog and returns focus to whatever
+ * triggered it on close — `ConfirmDialog`/`PromptDialog` get this for free
+ * since they render through this component.
  */
 export function Modal({ title, subtitle, onClose, children, footer, width = 480 }) {
   const anchorRef = useRef(null);
+  const dialogRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
   const [portalTarget, setPortalTarget] = useState(null);
 
   useLayoutEffect(() => {
@@ -18,8 +27,56 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480 
   }, []);
 
   useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement;
+    return () => {
+      const toRestore = previouslyFocusedRef.current;
+      if (toRestore && typeof toRestore.focus === "function" && document.contains(toRestore)) {
+        toRestore.focus();
+      }
+    };
+  }, []);
+
+  // Separate from the capture-previous-focus effect above and keyed on
+  // `portalTarget`, not `[]` — on first mount `portalTarget` is still null
+  // (see the useLayoutEffect below), so the portal, and therefore
+  // `dialogRef.current`, doesn't exist yet on the initial commit. Waiting
+  // for `portalTarget` to flip to a real value guarantees the ref is
+  // attached by the time this runs.
+  useEffect(() => {
+    if (!portalTarget || !dialogRef.current) return;
+    // If a child already grabbed focus via its own `autoFocus` (e.g.
+    // PromptDialog's input, ConfirmDialog's confirm button), respect it
+    // instead of stealing focus back to whatever's first in DOM order.
+    if (!dialogRef.current.contains(document.activeElement)) {
+      const first = dialogRef.current.querySelector(FOCUSABLE_SELECTOR);
+      (first || dialogRef.current).focus();
+    }
+  }, [portalTarget]);
+
+  useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === "Escape") onClose?.();
+      if (e.key === "Escape") {
+        onClose?.();
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+
+      const focusable = Array.from(dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+        (el) => el.offsetParent !== null
+      );
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (e.shiftKey && (active === first || !dialogRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -27,8 +84,6 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480 
 
   const node = (
     <div
-      role="dialog"
-      aria-modal="true"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
@@ -44,6 +99,11 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480 
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === "string" ? title : undefined}
+        tabIndex={-1}
         style={{
           width: "100%",
           maxWidth: width,
@@ -54,6 +114,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480 
           borderRadius: "var(--admin-radius-lg)",
           boxShadow: "var(--admin-shadow-md)",
           overflow: "hidden",
+          outline: "none",
         }}
       >
         <div

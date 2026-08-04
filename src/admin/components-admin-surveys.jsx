@@ -39,7 +39,7 @@ import {
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
 
-import { Card as AdminUiCard, Tabs, Button, useToast, useConfirm, usePrompt, EmptyState } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, useToast, useConfirm, usePrompt, EmptyState, IconClipboard } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -2379,7 +2379,7 @@ export function AdminSurveysPanel({
       <div style={{ minWidth: 0 }}>
         {!survey && (
           <EmptyState
-            icon="📋"
+            icon={IconClipboard}
             title="No survey selected"
             message="Pick a survey from the list, or create a new one to get started."
           />

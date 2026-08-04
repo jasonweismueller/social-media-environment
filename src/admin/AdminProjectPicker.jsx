@@ -13,7 +13,7 @@ import {
   getAdminUsername,
 } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, EmptyState } from "./ui";
+import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, EmptyState, IconFolder } from "./ui";
 
 /**
  * Landing page after login: pick a project (or create/delete one), then
@@ -140,7 +140,7 @@ export function AdminProjectPicker() {
         {!loading && projects.length === 0 && (
           <Card>
             <EmptyState
-              icon="📁"
+              icon={IconFolder}
               title="No projects yet"
               message="Projects hold your feeds and surveys for a study. Create one to get started."
               action={

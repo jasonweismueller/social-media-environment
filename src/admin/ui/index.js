@@ -11,6 +11,22 @@ export { Tabs } from "./Tabs";
 export { RoleGate } from "./RoleGate";
 export { Modal } from "./Modal";
 export { EmptyState } from "./EmptyState";
+export { ErrorBoundary } from "./ErrorBoundary";
+export {
+  IconFolder,
+  IconFeed,
+  IconClipboard,
+  IconUser,
+  IconInbox,
+  IconNote,
+  IconWarning,
+  IconPencil,
+  IconTrash,
+  IconPlus,
+  IconFacebook,
+  IconInstagram,
+  IconCart,
+} from "./icons";
 export { ToastProvider, useToast } from "./Toast";
 export { ConfirmProvider, useConfirm } from "./ConfirmDialog";
 export { PromptProvider, usePrompt } from "./PromptDialog";

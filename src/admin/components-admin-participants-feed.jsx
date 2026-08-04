@@ -13,7 +13,7 @@ import {
   hasAdminRole,
   wipeParticipantsOnBackend,
 } from "../utils";
-import { PageHeader, Button, useToast, useConfirm, EmptyState } from "./ui";
+import { PageHeader, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : elseRender ?? null;
@@ -1894,7 +1894,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
       </h5>
 
       {visible.length === 0 ? (
-        <EmptyState compact icon="🗒️" title="No submissions yet" message="Real or simulated participant rows will appear here." />
+        <EmptyState compact icon={IconNote} title="No submissions yet" message="Real or simulated participant rows will appear here." />
       ) : (
         <>
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: fsTable }}>

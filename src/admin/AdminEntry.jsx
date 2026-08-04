@@ -5,7 +5,7 @@ import { AdminDashboard } from "./components-admin-dashboard";
 import { AdminProjectPicker } from "./AdminProjectPicker";
 import { AdminPlatformPicker } from "./AdminPlatformPicker";
 import { AdminUsersPage } from "./components-admin-users";
-import { ToastProvider, ConfirmProvider, PromptProvider } from "./ui";
+import { ToastProvider, ConfirmProvider, PromptProvider, ErrorBoundary } from "./ui";
 
 /**
  * Owns the whole `/admin/*` sub-tree: login gate, then
@@ -24,10 +24,38 @@ export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps 
       <ConfirmProvider>
         <PromptProvider>
           <Routes>
-            <Route index element={<AdminProjectPicker />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="platform" element={<AdminPlatformPicker currentApp={currentApp} />} />
-            <Route path="dashboard/*" element={<AdminDashboard {...dashboardProps} />} />
+            <Route
+              index
+              element={
+                <ErrorBoundary label="The project list crashed">
+                  <AdminProjectPicker />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="users"
+              element={
+                <ErrorBoundary label="The users page crashed">
+                  <AdminUsersPage />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="platform"
+              element={
+                <ErrorBoundary label="The platform picker crashed">
+                  <AdminPlatformPicker currentApp={currentApp} />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="dashboard/*"
+              element={
+                <ErrorBoundary label="The admin dashboard crashed">
+                  <AdminDashboard {...dashboardProps} />
+                </ErrorBoundary>
+              }
+            />
             <Route path="*" element={<Navigate to="/admin" replace />} />
           </Routes>
         </PromptProvider>

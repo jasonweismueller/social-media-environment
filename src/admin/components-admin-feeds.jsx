@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar, hasAdminRole } from "../utils";
-import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState } from "./ui";
+import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -321,7 +321,7 @@ export function AdminFeedsPanel({
       <div style={{ minWidth: 0 }}>
         {!selectedFeedId && (
           <EmptyState
-            icon="📰"
+            icon={IconFeed}
             title="No feed selected"
             message="Pick a feed from the list, or create a new one to get started."
           />
@@ -378,7 +378,7 @@ export function AdminFeedsPanel({
                       </button>
                       <RoleGate min="editor">
                         <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
-                          ➕
+                          <IconPlus size={15} />
                         </IconButton>
                       </RoleGate>
                     </div>
@@ -386,7 +386,7 @@ export function AdminFeedsPanel({
                 >
                   {posts.length === 0 ? (
                     <EmptyState
-                      icon="📝"
+                      icon={IconNote}
                       title={`No ${contentUnitLabelPlural.toLowerCase()} yet`}
                       message={`Use the + button above to add the first one, or import a backup JSON from Settings.`}
                     />
@@ -455,10 +455,10 @@ export function AdminFeedsPanel({
                               <Td>
                                 <div style={{ display: "flex", gap: 4 }}>
                                   <IconButton size="sm" onClick={() => onEditPost(p)} title="Edit post">
-                                    ✏️
+                                    <IconPencil size={15} />
                                   </IconButton>
                                   <IconButton size="sm" onClick={() => onRemovePost(p.id)} title="Delete post">
-                                    🗑️
+                                    <IconTrash size={15} />
                                   </IconButton>
                                 </div>
                               </Td>

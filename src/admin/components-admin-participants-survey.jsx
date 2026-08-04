@@ -31,7 +31,7 @@ import {
   loadCustomMeasureGroups,
   saveCustomMeasureGroups,
 } from "../utils";
-import { PageHeader, Card, Table, Th, Td, Button, Badge, useToast, useConfirm, EmptyState } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Button, Badge, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -809,7 +809,7 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
   return (
     <Card title="Responses" subtitle={`${dataset.rows.length} response${dataset.rows.length === 1 ? "" : "s"} for this survey.`}>
       {visible.length === 0 ? (
-        <EmptyState icon="🗒️" title="No responses yet" message="Responses will appear here as participants complete this survey." />
+        <EmptyState icon={IconNote} title="No responses yet" message="Responses will appear here as participants complete this survey." />
       ) : (
         <>
           <Table>

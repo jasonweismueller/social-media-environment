@@ -31,7 +31,7 @@ import {
 } from "../utils";
 import { isSupabaseBackend } from "../utils/utils-supabase-client";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState } from "./ui";
+import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser } from "./ui";
 
 const ROLE_OPTIONS = [
   { value: "viewer", label: "Viewer", hint: "Read-only access" },
@@ -806,7 +806,7 @@ export function AdminUsersPage() {
           <div style={{ minWidth: 0 }}>
             {!selectedUser ? (
               <Card>
-                <EmptyState icon="👤" title="No user selected" message="Pick a user from the list to view or edit their access." />
+                <EmptyState icon={IconUser} title="No user selected" message="Pick a user from the list to view or edit their access." />
               </Card>
             ) : (
               <div style={{ display: "grid", gap: 16 }}>

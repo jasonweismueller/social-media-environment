@@ -1,5 +1,6 @@
 import React, { createContext, useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
+import { IconFeed, IconClipboard } from "./ui";
 
 // Absolute paths (not relative "feeds"/"surveys") — relative NavLink targets
 // resolve against the current URL segment-by-segment in react-router, so a
@@ -287,7 +288,7 @@ export function AdminShell({
         <nav style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0 }}>
           <TreeSection
             to={FEEDS_PATH}
-            icon="🗂️"
+            icon={<IconFeed size={16} />}
             label="Feeds"
             active={isFeedsActive}
             expanded={expandedKey === "feeds"}
@@ -297,7 +298,7 @@ export function AdminShell({
           />
           <TreeSection
             to={SURVEYS_PATH}
-            icon="📋"
+            icon={<IconClipboard size={16} />}
             label="Surveys"
             active={isSurveysActive}
             expanded={expandedKey === "surveys"}
