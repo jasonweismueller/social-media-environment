@@ -1185,15 +1185,16 @@ export async function supabaseAdminListUsers() {
   return { ok: true, users: Array.isArray(res.users) ? res.users : [] };
 }
 
-export async function supabaseAdminCreateUser(email, password, role = "viewer") {
-  return invokeAdminUsers({ action: "create", email, password, role });
+export async function supabaseAdminCreateUser(email, password, role = "viewer", username = "") {
+  return invokeAdminUsers({ action: "create", email, password, role, username });
 }
 
-export async function supabaseAdminUpdateUser({ email, role, password, disabled }) {
+export async function supabaseAdminUpdateUser({ email, role, password, disabled, username }) {
   const payload = { action: "update", email };
   if (role != null) payload.role = role;
   if (password != null) payload.password = password;
   if (typeof disabled === "boolean") payload.disabled = disabled;
+  if (username != null) payload.username = username;
   return invokeAdminUsers(payload);
 }
 

@@ -18,6 +18,22 @@ import { corsHeaders, handlePreflight, jsonResponse } from "../_shared/cors.ts";
 
 const ROLES = ["viewer", "editor", "owner"];
 
+// Display-only handle (profiles.username, 20260801000017_profiles_username.sql)
+// — never used for sign-in, Auth stays email/password. Kept intentionally
+// restrictive (lowercase, no spaces) so it reads cleanly as a short label
+// wherever email would otherwise be shown.
+function sanitizeUsername(raw: unknown): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "")
+    .slice(0, 40);
+}
+
+function usernameErrMessage(error: { code?: string; message: string }): string {
+  return error.code === "23505" ? "That username is already taken" : error.message;
+}
+
 Deno.serve(async (req: Request) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
@@ -66,7 +82,7 @@ Deno.serve(async (req: Request) => {
   if (action === "list") {
     const { data, error } = await admin
       .from("profiles")
-      .select("id, email, role, disabled, created_at")
+      .select("id, email, username, role, disabled, created_at")
       .order("email", { ascending: true });
     if (error) return jsonResponse({ ok: false, err: error.message }, { status: 500 });
     return jsonResponse({ ok: true, users: data || [] }, { headers: corsHeaders });
@@ -76,6 +92,10 @@ Deno.serve(async (req: Request) => {
     const email = String(body?.email || "").trim().toLowerCase();
     const password = String(body?.password || "");
     const role = ROLES.includes(body?.role) ? body.role : "viewer";
+    // Every new account gets a username even if the caller left the field
+    // blank — falls back to the email's local part so the Users list never
+    // has to fall back to a long email for an account created after this.
+    const username = sanitizeUsername(body?.username) || sanitizeUsername(email.split("@")[0]);
     if (!email || !password) {
       return jsonResponse({ ok: false, err: "email and password are required" }, { status: 400 });
     }
@@ -90,11 +110,23 @@ Deno.serve(async (req: Request) => {
     }
 
     // handle_new_auth_user (20260801000002_profiles.sql) already inserted a
-    // profiles row with the default role 'viewer' via trigger — only need a
-    // second write when a non-default role was requested.
-    if (role !== "viewer") {
-      const { error: roleErr } = await admin.from("profiles").update({ role }).eq("id", created.user.id);
-      if (roleErr) return jsonResponse({ ok: false, err: roleErr.message }, { status: 500 });
+    // profiles row with the default role 'viewer' and no username via
+    // trigger — only need a second write when either differs from that.
+    const profileUpdates: Record<string, unknown> = {};
+    if (role !== "viewer") profileUpdates.role = role;
+    if (username) profileUpdates.username = username;
+    if (Object.keys(profileUpdates).length) {
+      const { error: updErr } = await admin.from("profiles").update(profileUpdates).eq("id", created.user.id);
+      if (updErr) {
+        // The auth user (and its default-role profile row) already exist at
+        // this point — a username collision here shouldn't be reported as a
+        // total failure to create, since the account is real and usable,
+        // just missing the requested username/role. Say so explicitly.
+        return jsonResponse(
+          { ok: false, err: `Account created, but failed to set role/username: ${usernameErrMessage(updErr)}` },
+          { status: 500 }
+        );
+      }
     }
 
     return jsonResponse({ ok: true }, { headers: corsHeaders });
@@ -122,10 +154,14 @@ Deno.serve(async (req: Request) => {
     const profileUpdates: Record<string, unknown> = {};
     if (body?.role != null && ROLES.includes(body.role)) profileUpdates.role = body.role;
     if (typeof body?.disabled === "boolean") profileUpdates.disabled = body.disabled;
+    // Explicit empty string clears a previously-set username back to null
+    // (falls back to displaying email again) rather than being silently
+    // ignored — only a fully-absent key means "don't touch this field".
+    if (body?.username != null) profileUpdates.username = sanitizeUsername(body.username) || null;
 
     if (Object.keys(profileUpdates).length) {
       const { error: updateErr } = await admin.from("profiles").update(profileUpdates).eq("id", target.id);
-      if (updateErr) return jsonResponse({ ok: false, err: updateErr.message }, { status: 500 });
+      if (updateErr) return jsonResponse({ ok: false, err: usernameErrMessage(updateErr) }, { status: 500 });
     }
 
     return jsonResponse({ ok: true }, { headers: corsHeaders });

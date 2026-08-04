@@ -33,7 +33,11 @@ import { isSupabaseBackend } from "../utils/utils-supabase-client";
 import "./ui/tokens.css";
 import { Card, PageHeader, Button, Badge, Toggle, Modal } from "./ui";
 
-const ROLES = ["viewer", "editor", "owner"];
+const ROLE_OPTIONS = [
+  { value: "viewer", label: "Viewer", hint: "Read-only access" },
+  { value: "editor", label: "Editor", hint: "Can edit posts, surveys, and feeds" },
+  { value: "owner", label: "Owner", hint: "Full control, including user management" },
+];
 const ROLE_TONE = { owner: "accent", editor: "neutral", viewer: "neutral" };
 const PLATFORMS = [
   { app: "fb", label: "Facebook" },
@@ -92,6 +96,130 @@ function ChoiceChip({ active, onClick, children, tone = "accent", disabled }) {
     >
       {children}
     </button>
+  );
+}
+
+/** Connected pill group for role selection — replaces a plain `<select>` in
+ * both the detail panel and the Add User modal, so the three roles (and
+ * what each one means, via `title`) are visible at a glance instead of
+ * hidden behind a dropdown. */
+function SegmentedControl({ options, value, onChange, disabled }) {
+  return (
+    <div
+      role="radiogroup"
+      style={{
+        display: "inline-flex",
+        border: "1px solid var(--admin-border)",
+        borderRadius: 999,
+        padding: 2,
+        gap: 2,
+        background: "var(--admin-surface-alt)",
+      }}
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            title={opt.hint}
+            disabled={disabled}
+            onClick={() => !active && onChange(opt.value)}
+            style={{
+              border: "none",
+              borderRadius: 999,
+              padding: "5px 13px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: disabled ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.6 : 1,
+              background: active ? "var(--admin-accent)" : "transparent",
+              color: active ? "#fff" : "var(--admin-text)",
+              transition: "background 0.12s ease, color 0.12s ease",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Inline click-to-edit username, shown under the selected user's heading.
+ * Starts collapsed (a small "Set a username"/"Edit username" link) rather
+ * than an always-open input, since this is edited rarely — matches the
+ * dirty-state-driven Save affordance `ProjectAccessEditor` already uses
+ * elsewhere on this page. */
+function UsernameEditor({ user, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(user.username || "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    setValue(user.username || "");
+    setEditing(false);
+    setErr("");
+  }, [user.id]);
+
+  const save = async () => {
+    setBusy(true);
+    setErr("");
+    const res = await adminUpdateUser({ email: user.email, username: value.trim() });
+    setBusy(false);
+    if (!res?.ok) {
+      setErr(res?.err || "Failed to save username");
+      return;
+    }
+    setEditing(false);
+    onSaved?.();
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        style={{
+          border: "none",
+          background: "transparent",
+          padding: 0,
+          cursor: "pointer",
+          color: "var(--admin-accent-ink)",
+          fontSize: 11,
+          fontWeight: 700,
+        }}
+      >
+        {user.username ? "Edit username" : "Set a username"}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <input
+        autoFocus
+        className="input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="username"
+        style={{ fontSize: 13, padding: "4px 8px", width: 160 }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <Button size="sm" variant="primary" onClick={save} busy={busy}>
+        Save
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
+      {err && <span style={{ color: "var(--admin-danger-ink)", fontSize: 11 }}>{err}</span>}
+    </div>
   );
 }
 
@@ -293,8 +421,20 @@ function ProjectAccessEditor({ user, projects, savedEntries, onSaved }) {
   );
 }
 
+// Mirrors the Edge Function's own sanitizeUsername (admin-users/index.ts) —
+// used here only to compute the placeholder preview shown while the field
+// is empty, the server does the real (authoritative) sanitizing/fallback.
+function suggestUsername(email) {
+  return String(email || "")
+    .split("@")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "");
+}
+
 function AddUserModal({ onClose, onCreated }) {
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [role, setRole] = useState("viewer");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -307,7 +447,7 @@ function AddUserModal({ onClose, onCreated }) {
       return;
     }
     setBusy(true);
-    const res = await adminCreateUser(email.trim(), password.trim(), role);
+    const res = await adminCreateUser(email.trim(), password.trim(), role, username.trim());
     setBusy(false);
     if (!res?.ok) {
       setErr(res?.err || "Failed to create user.");
@@ -346,14 +486,21 @@ function AddUserModal({ onClose, onCreated }) {
           />
         </label>
         <label style={{ display: "grid", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
+          Username
+          <input
+            className="input"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder={suggestUsername(email) || "auto-generated from email"}
+            style={{ fontSize: 14 }}
+          />
+          <span style={{ fontWeight: 400, fontSize: 11 }}>
+            Shown instead of the email around the admin dashboard. Sign-in still uses email + password.
+          </span>
+        </label>
+        <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
           Role
-          <select className="select" value={role} onChange={(e) => setRole(e.target.value)} style={{ fontSize: 14 }}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
+          <SegmentedControl options={ROLE_OPTIONS} value={role} onChange={setRole} />
         </label>
         <label style={{ display: "grid", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
           Password
@@ -608,9 +755,22 @@ export function AdminUsersPage() {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, color: isActive ? "var(--admin-accent-ink)" : "var(--admin-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {u.email === me ? "You — " : ""}
-                        {u.email}
+                        {u.username || u.email}
                       </div>
                     </div>
+                    {u.username && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--admin-muted)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {u.email}
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                       <Badge tone={ROLE_TONE[u.role] || "neutral"}>{u.role}</Badge>
                       {u.disabled && <Badge tone="danger">disabled</Badge>}
@@ -636,31 +796,27 @@ export function AdminUsersPage() {
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "var(--admin-text)" }}>
-                          {selectedUser.email}
+                          {selectedUser.username || selectedUser.email}
                         </h2>
                         {selectedUser.email === me && <Badge tone="accent">You</Badge>}
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 4 }}>
-                        Created {formatDate(selectedUser.created_at)}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, fontSize: 12, color: "var(--admin-muted)", flexWrap: "wrap" }}>
+                        {selectedUser.username && <span>{selectedUser.email}</span>}
+                        {selectedUser.username && <span>·</span>}
+                        <span>Created {formatDate(selectedUser.created_at)}</span>
+                      </div>
+                      <div style={{ marginTop: 6 }}>
+                        <UsernameEditor user={selectedUser} onSaved={load} />
                       </div>
                     </div>
 
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--admin-muted)" }}>
-                        Role
-                        <select
-                          className="select"
-                          value={selectedUser.role}
-                          disabled={roleBusyEmail === selectedUser.email}
-                          onChange={(e) => changeRole(selectedUser, e.target.value)}
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <SegmentedControl
+                        options={ROLE_OPTIONS}
+                        value={selectedUser.role}
+                        disabled={roleBusyEmail === selectedUser.email}
+                        onChange={(role) => changeRole(selectedUser, role)}
+                      />
                       <Button size="sm" variant="secondary" onClick={() => setResetPwUser(selectedUser)}>
                         Reset password
                       </Button>

@@ -1328,8 +1328,8 @@ export async function adminListUsers() {
   }
 }
 
-export async function adminCreateUser(email, password, role = "viewer") {
-  if (isSupabaseBackend()) return supabaseAdminCreateUser(email, password, role);
+export async function adminCreateUser(email, password, role = "viewer", username = "") {
+  if (isSupabaseBackend()) return supabaseAdminCreateUser(email, password, role, username);
 
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
@@ -1353,8 +1353,8 @@ export async function adminCreateUser(email, password, role = "viewer") {
   }
 }
 
-export async function adminUpdateUser({ email, role, password, disabled }) {
-  if (isSupabaseBackend()) return supabaseAdminUpdateUser({ email, role, password, disabled });
+export async function adminUpdateUser({ email, role, password, disabled, username }) {
+  if (isSupabaseBackend()) return supabaseAdminUpdateUser({ email, role, password, disabled, username });
 
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
