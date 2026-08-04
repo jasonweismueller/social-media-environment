@@ -4,6 +4,7 @@ import {
   makeEmptySurvey,
   makeQuestionByType,
   SURVEY_QUESTION_TYPES,
+  VISIBLE_IF_ELIGIBLE_TYPES,
 } from "../utils";
 import { useConfirm } from "./ui";
 
@@ -466,6 +467,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       _showFeedVisibilityEditor: false,
       _showFeedOverridesEditor: false,
       _showGroupVisibilityEditor: false,
+      _showConditionalDisplayEditor: false,
       meta: q?.meta || {},
     };
   }
@@ -506,6 +508,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
     _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
     _showGroupVisibilityEditor: !!q?._showGroupVisibilityEditor,
+    _showConditionalDisplayEditor: !!q?._showConditionalDisplayEditor,
     meta: q?.meta || {},
   };
 }
@@ -852,6 +855,44 @@ export function computeDuplicateQuestionIds(questions) {
   );
 }
 
+// Same shared-by-both-lists pattern as computeDuplicateQuestionIds above. A
+// question's visible_if.question_id can go stale three ways: the source
+// question was deleted, reordered to after this one (isQuestionVisible has
+// no forward-reference support, same as ConditionalDisplayEditor's picker),
+// or changed to a type VISIBLE_IF_ELIGIBLE_TYPES no longer covers. Returns
+// the ids of the *dependent* questions (the ones whose own condition is now
+// broken), not the missing source ids.
+export function computeBrokenVisibleIfQuestionIds(questions) {
+  const list = Array.isArray(questions) ? questions : [];
+  const indexById = new Map();
+  const typeById = new Map();
+  list.forEach((q, i) => {
+    const id = String(q?.id || "").trim();
+    if (!id) return;
+    indexById.set(id, i);
+    typeById.set(id, q?.type);
+  });
+
+  const broken = new Set();
+  list.forEach((q, i) => {
+    const sourceId = String(q?.visible_if?.question_id || "").trim();
+    if (!sourceId) return;
+    const id = String(q?.id || "").trim();
+    if (!id) return;
+
+    const sourceIndex = indexById.get(sourceId);
+    const sourceType = typeById.get(sourceId);
+    const sourceIsValid =
+      sourceIndex !== undefined &&
+      sourceIndex < i &&
+      VISIBLE_IF_ELIGIBLE_TYPES.includes(sourceType);
+
+    if (!sourceIsValid) broken.add(id);
+  });
+
+  return broken;
+}
+
 function makePageBlock(index = 0) {
   return {
     id: `block_${Date.now()}_${index}`,
@@ -928,6 +969,7 @@ export function makeBackendQuestionFromType(type, index = 0) {
     reminder_interactive: !!base?.reminder_interactive,
     _showFeedVisibilityEditor: false,
     _showFeedOverridesEditor: false,
+    _showConditionalDisplayEditor: false,
     meta: base?.meta || {},
   };
 
@@ -1242,6 +1284,27 @@ function UsersIcon({ size = 14 }) {
       <circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function GitBranchIcon({ size = 14 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="6" y1="3" x2="6" y2="15" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M18 9a9 9 0 0 1-9 9" />
     </svg>
   );
 }
@@ -2327,6 +2390,206 @@ function QuestionGroupVisibilityEditor({ experimentGroups, value, onChange }) {
   );
 }
 
+// Only SINGLE/DROPDOWN/MULTI/SLIDER/TEXT/TEXTAREA are ever offered as a
+// source here (VISIBLE_IF_ELIGIBLE_TYPES) — matrix/bipolar responses are
+// objects keyed by row and can't be matched by isQuestionVisible's
+// equals/not_equals/includes without extending the evaluator.
+function ConditionalDisplayEditor({ eligibleSourceQuestions, value, onChange }) {
+  const safeQuestions = Array.isArray(eligibleSourceQuestions)
+    ? eligibleSourceQuestions
+    : [];
+  const rule = value && typeof value === "object" ? value : null;
+  const sourceId = String(rule?.question_id || "");
+  const sourceQuestion =
+    safeQuestions.find((sq) => String(sq?.id || "") === sourceId) || null;
+  const isMultiSource = sourceQuestion?.type === SURVEY_QUESTION_TYPES.MULTI;
+
+  const operator = !rule
+    ? "equals"
+    : Object.prototype.hasOwnProperty.call(rule, "includes")
+      ? "includes"
+      : Object.prototype.hasOwnProperty.call(rule, "not_equals")
+        ? "not_equals"
+        : "equals";
+
+  const rawValue = rule ? rule[operator] : "";
+
+  function questionLabel(q) {
+    const text = stripHtmlForEmptyCheck(q?.text || "") || q?.id || "";
+    return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+  }
+
+  function setSource(nextSourceId) {
+    if (!nextSourceId) {
+      onChange(null);
+      return;
+    }
+    const nextSource = safeQuestions.find(
+      (sq) => String(sq?.id || "") === nextSourceId
+    );
+    if (!nextSource) return;
+
+    // Seed a valid starting value per type rather than an empty string, so
+    // the rule is immediately meaningful (an empty equals/includes almost
+    // never matches a real choice value).
+    if (nextSource.type === SURVEY_QUESTION_TYPES.MULTI) {
+      onChange({
+        question_id: nextSourceId,
+        includes: nextSource.choices?.[0]?.value ?? "",
+      });
+    } else if (
+      nextSource.type === SURVEY_QUESTION_TYPES.SINGLE ||
+      nextSource.type === SURVEY_QUESTION_TYPES.DROPDOWN
+    ) {
+      onChange({
+        question_id: nextSourceId,
+        equals: nextSource.choices?.[0]?.value ?? "",
+      });
+    } else if (nextSource.type === SURVEY_QUESTION_TYPES.SLIDER) {
+      // Stored as a string — the real slider response value is always a
+      // numeric string (see ui-survey.jsx's handleSliderChange), and
+      // isQuestionVisible's equals/not_equals use strict ===.
+      onChange({
+        question_id: nextSourceId,
+        equals: String(nextSource.min ?? 0),
+      });
+    } else {
+      onChange({ question_id: nextSourceId, equals: "" });
+    }
+  }
+
+  function setOperator(nextOperator) {
+    if (!sourceQuestion) return;
+    onChange({ question_id: sourceId, [nextOperator]: rawValue ?? "" });
+  }
+
+  function setValue(nextValue) {
+    if (!sourceQuestion) return;
+    onChange({ question_id: sourceId, [operator]: nextValue });
+  }
+
+  if (safeQuestions.length === 0) {
+    return (
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: 10,
+          padding: 12,
+          background: "#fafafa",
+          color: "#6b7280",
+          fontSize: 13,
+        }}
+      >
+        No earlier text, choice, or slider questions yet to condition this one on.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        border: "1px solid #d1d5db",
+        borderRadius: 10,
+        padding: 12,
+        background: "#fafafa",
+      }}
+    >
+      <div style={{ fontSize: 13, color: "#111827", marginBottom: 10 }}>
+        Only show this question if an earlier answer matches a condition.
+        Leave unset to always show it.
+      </div>
+
+      <FieldBlock label="Condition based on">
+        <SelectInput value={sourceId} onChange={setSource}>
+          <option value="">No condition (always show)</option>
+          {safeQuestions.map((sq, i) => (
+            <option key={sq.id} value={sq.id}>
+              {`Q${i + 1} · ${questionLabel(sq)}`}
+            </option>
+          ))}
+        </SelectInput>
+      </FieldBlock>
+
+      {sourceQuestion && isMultiSource && (
+        <FieldBlock label="and it includes">
+          <SelectInput value={String(rawValue ?? "")} onChange={setValue}>
+            {(sourceQuestion.choices || []).map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label || c.value}
+              </option>
+            ))}
+          </SelectInput>
+        </FieldBlock>
+      )}
+
+      {sourceQuestion && !isMultiSource && (
+        <>
+          <FieldBlock label="Condition">
+            <SelectInput value={operator} onChange={setOperator}>
+              <option value="equals">Equals</option>
+              <option value="not_equals">Does not equal</option>
+            </SelectInput>
+          </FieldBlock>
+
+          <FieldBlock
+            label="Value"
+            hint={
+              sourceQuestion.type === SURVEY_QUESTION_TYPES.TEXT ||
+              sourceQuestion.type === SURVEY_QUESTION_TYPES.TEXTAREA
+                ? "Exact match against the participant's typed answer."
+                : ""
+            }
+          >
+            {sourceQuestion.type === SURVEY_QUESTION_TYPES.SINGLE ||
+            sourceQuestion.type === SURVEY_QUESTION_TYPES.DROPDOWN ? (
+              <SelectInput value={String(rawValue ?? "")} onChange={setValue}>
+                <option value="">Select an option</option>
+                {(sourceQuestion.choices || []).map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label || c.value}
+                  </option>
+                ))}
+              </SelectInput>
+            ) : sourceQuestion.type === SURVEY_QUESTION_TYPES.SLIDER ? (
+              <NumberInput
+                value={rawValue ?? ""}
+                min={sourceQuestion.min}
+                max={sourceQuestion.max}
+                onChange={setValue}
+              />
+            ) : (
+              <TextInput
+                value={rawValue ?? ""}
+                onChange={setValue}
+                placeholder="Exact text to match"
+              />
+            )}
+          </FieldBlock>
+        </>
+      )}
+
+      {rule && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          style={{
+            marginTop: 4,
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          Clear condition
+        </button>
+      )}
+    </div>
+  );
+}
+
 function FeedOverridesEditor({ availableFeeds, value, onChange }) {
   const safeFeeds = Array.isArray(availableFeeds) ? availableFeeds : [];
   const normalized = normalizeFeedOverridesMap(value);
@@ -2520,12 +2783,14 @@ function QuestionAdvancedFeedTools({
   onToggleVisibilityEditor,
   onToggleOverridesEditor,
   onToggleGroupVisibilityEditor,
+  onToggleConditionalDisplayEditor,
 }) {
   const visibleFeedCount = normalizeVisibleInFeeds(q?.visible_in_feeds).length;
   const overrideCount = Object.keys(pruneFeedOverridesMap(q?.feed_overrides)).length;
   const hasLinkedFeeds = Array.isArray(linkedFeeds) && linkedFeeds.length > 0;
   const hasExperimentGroups = Array.isArray(experimentGroups) && experimentGroups.length > 0;
   const groupCount = uniqueStringList(q?.visible_to_group_ids).length;
+  const hasCondition = !!q?.visible_if?.question_id;
 
   return (
     <div
@@ -2579,6 +2844,16 @@ function QuestionAdvancedFeedTools({
           <ChevronDownIcon size={12} open={!!q?._showGroupVisibilityEditor} />
         </SecondaryPillButton>
       )}
+
+      <SecondaryPillButton
+        onClick={onToggleConditionalDisplayEditor}
+        active={!!q?._showConditionalDisplayEditor}
+        title="Only show this question if an earlier answer matches a condition"
+      >
+        <GitBranchIcon size={14} />
+        <span>Conditional display{hasCondition ? " (1)" : ""}</span>
+        <ChevronDownIcon size={12} open={!!q?._showConditionalDisplayEditor} />
+      </SecondaryPillButton>
 
       {!hasLinkedFeeds && (
         <span style={{ fontSize: 12, color: "#6b7280" }}>
@@ -2683,6 +2958,7 @@ function CollapsedQuestionRow({
   totalQuestions,
   type,
   isDuplicateId = false,
+  hasBrokenCondition = false,
   moveQuestion,
   removeQuestion,
   duplicateQuestion,
@@ -2788,6 +3064,15 @@ function CollapsedQuestionRow({
         />
       ) : null}
 
+      {hasBrokenCondition ? (
+        <span
+          title="Its display condition references a question that's no longer available"
+          style={{ fontSize: 11, color: "#dc2626", flex: "0 0 auto" }}
+        >
+          ⚠
+        </span>
+      ) : null}
+
       <button
         type="button"
         onClick={onToggleCollapsed}
@@ -2861,9 +3146,11 @@ function QuestionCard({
   displayNumber,
   totalQuestions,
   isDuplicateId = false,
+  hasBrokenCondition = false,
   linkedFeeds,
   linkedFeedPostsMap,
   experimentGroups,
+  eligibleSourceQuestions,
   updateQuestion,
   removeQuestion,
   moveQuestion,
@@ -3034,6 +3321,7 @@ function QuestionCard({
           totalQuestions={totalQuestions}
           type={type}
           isDuplicateId={isDuplicateId}
+          hasBrokenCondition={hasBrokenCondition}
           moveQuestion={moveQuestion}
           removeQuestion={removeQuestion}
           duplicateQuestion={duplicateQuestion}
@@ -3095,6 +3383,7 @@ function QuestionCard({
                         : false,
                     _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
                     _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
+                    _showConditionalDisplayEditor: !!q._showConditionalDisplayEditor,
                     meta: q.meta || {},
                   };
 
@@ -3412,7 +3701,35 @@ function QuestionCard({
             _showGroupVisibilityEditor: !q?._showGroupVisibilityEditor,
           })
         }
+        onToggleConditionalDisplayEditor={() =>
+          updateQuestion(index, {
+            _showConditionalDisplayEditor: !q?._showConditionalDisplayEditor,
+          })
+        }
       />
+
+      {hasBrokenCondition && (
+        <div style={{ fontSize: 12, color: "#dc2626", marginTop: 6, fontWeight: 600 }}>
+          ⚠ Its display condition references a question that's no longer available.
+        </div>
+      )}
+
+      {q?._showConditionalDisplayEditor && (
+        <div style={{ marginTop: 12 }}>
+          <FieldBlock
+            label="Conditional display"
+            hint="Only show this question if an earlier answer matches a condition. Leave unset to always show it."
+          >
+            <ConditionalDisplayEditor
+              eligibleSourceQuestions={eligibleSourceQuestions}
+              value={q.visible_if}
+              onChange={(nextVisibleIf) =>
+                updateQuestion(index, { visible_if: nextVisibleIf })
+              }
+            />
+          </FieldBlock>
+        </div>
+      )}
 
       {q?._showGroupVisibilityEditor && (
         <div style={{ marginTop: 12 }}>
@@ -3587,6 +3904,7 @@ function OutlineRow({
   displayNumber,
   pageNumber,
   isDuplicateId = false,
+  hasBrokenCondition = false,
   totalCount,
   onMoveUp,
   onMoveDown,
@@ -3766,6 +4084,15 @@ function OutlineRow({
             flex: "0 0 auto",
           }}
         />
+      ) : null}
+
+      {hasBrokenCondition ? (
+        <span
+          title="Its display condition references a question that's no longer available"
+          style={{ fontSize: 10, color: "#dc2626", flex: "0 0 auto" }}
+        >
+          ⚠
+        </span>
       ) : null}
 
       <button
@@ -4389,6 +4716,11 @@ function StudyOutlineModal({
     [currentQuestions]
   );
 
+  const brokenVisibleIfQuestionIds = useMemo(
+    () => computeBrokenVisibleIfQuestionIds(currentQuestions),
+    [currentQuestions]
+  );
+
   const [outlineFilter, setOutlineFilter] = useState("");
 
   const questionCount = currentQuestions.filter(
@@ -4539,6 +4871,7 @@ function StudyOutlineModal({
                 displayNumber={displayNumbers[i]}
                 pageNumber={pageNumbers[i]}
                 isDuplicateId={item?.id ? duplicateQuestionIds.has(item.id) : false}
+                hasBrokenCondition={item?.id ? brokenVisibleIfQuestionIds.has(item.id) : false}
                 totalCount={currentQuestions.length}
                 onMoveUp={() => moveQuestion(i, i - 1)}
                 onMoveDown={() => moveQuestion(i, i + 1)}
@@ -4717,6 +5050,11 @@ export function SurveyEditor({
     [currentQuestions]
   );
 
+  const brokenVisibleIfQuestionIds = useMemo(
+    () => computeBrokenVisibleIfQuestionIds(currentQuestions),
+    [currentQuestions]
+  );
+
   function addQuestion(type) {
     onSurveyChange((prev) => {
       const current = getQuestionList(prev);
@@ -4776,6 +5114,7 @@ export function SurveyEditor({
         reminder_interactive: !!sourceQuestion?.reminder_interactive,
         _showFeedVisibilityEditor: !!sourceQuestion?._showFeedVisibilityEditor,
         _showFeedOverridesEditor: !!sourceQuestion?._showFeedOverridesEditor,
+        _showConditionalDisplayEditor: !!sourceQuestion?._showConditionalDisplayEditor,
       };
 
       if (shouldAutoRewriteRowValues(copiedQuestion)) {
@@ -4806,8 +5145,21 @@ export function SurveyEditor({
   function removeQuestion(index) {
     onSurveyChange((prev) => {
       const currentQuestionsCopy = [...getQuestionList(prev)];
+      const removedId = String(currentQuestionsCopy[index]?.id || "").trim();
       currentQuestionsCopy.splice(index, 1);
-      return setQuestionList(prev, currentQuestionsCopy);
+
+      // Mirrors ExperimentGroupsEditor.deleteGroup's cleanup below — deleting
+      // a question shouldn't leave some other question silently pointed at a
+      // ghost visible_if.question_id.
+      const cleaned = removedId
+        ? currentQuestionsCopy.map((question) =>
+            question?.visible_if?.question_id === removedId
+              ? { ...question, visible_if: null }
+              : question
+          )
+        : currentQuestionsCopy;
+
+      return setQuestionList(prev, cleaned);
     });
   }
 
@@ -4996,9 +5348,13 @@ export function SurveyEditor({
               displayNumber={questionDisplayNumbers[i]}
               totalQuestions={currentQuestions.length}
               isDuplicateId={q?.id ? duplicateQuestionIds.has(q.id) : false}
+              hasBrokenCondition={q?.id ? brokenVisibleIfQuestionIds.has(q.id) : false}
               linkedFeeds={orderedLinkedFeeds}
               linkedFeedPostsMap={linkedFeedPostsMap}
               experimentGroups={experimentGroups}
+              eligibleSourceQuestions={currentQuestions
+                .slice(0, i)
+                .filter((sq) => VISIBLE_IF_ELIGIBLE_TYPES.includes(sq?.type))}
               updateQuestion={updateQuestion}
               removeQuestion={removeQuestion}
               moveQuestion={moveQuestion}

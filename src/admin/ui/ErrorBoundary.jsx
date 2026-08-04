@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "./Button";
 import { IconWarning } from "./icons";
+import { Sentry } from "../../utils/utils-sentry";
 
 /**
  * Catches render/lifecycle errors in its subtree and shows a recoverable
@@ -26,6 +27,10 @@ export class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error("Admin panel crashed:", error, info?.componentStack);
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: info?.componentStack } },
+      tags: { boundary: this.props.label || "admin" },
+    });
   }
 
   componentDidUpdate(prevProps) {

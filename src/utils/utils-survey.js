@@ -38,6 +38,22 @@ export function isValidSurveyQuestionType(type) {
   return Object.values(SURVEY_QUESTION_TYPES).includes(type);
 }
 
+// Question types whose response value `isQuestionVisible`'s `equals`/
+// `not_equals`/`includes` operators can actually match meaningfully — scalar
+// string (TEXT/TEXTAREA/SINGLE/DROPDOWN/SLIDER, see the response shapes in
+// isQuestionVisible's callers) or a flat array of strings (MULTI). Matrix/
+// bipolar responses are objects keyed by row, info/post_reminder/page_break
+// aren't real answers — none of those can be a `visible_if` condition source
+// without extending the evaluator, which is out of scope here.
+export const VISIBLE_IF_ELIGIBLE_TYPES = [
+  SURVEY_QUESTION_TYPES.TEXT,
+  SURVEY_QUESTION_TYPES.TEXTAREA,
+  SURVEY_QUESTION_TYPES.SINGLE,
+  SURVEY_QUESTION_TYPES.MULTI,
+  SURVEY_QUESTION_TYPES.DROPDOWN,
+  SURVEY_QUESTION_TYPES.SLIDER,
+];
+
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
