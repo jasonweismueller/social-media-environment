@@ -24,6 +24,54 @@ notes"), changes typically ship with only static syntax-checking and careful cod
 them — no live browser click-through is possible from here. Weigh that when deciding how
 confident to sound about something being "fixed," and say plainly when it's unverified.
 
+**Superseded 2026-08-05 for production specifically** — see "Staging environment added
+(2026-08-05)" below. `main` still behaves exactly as described above (auto-commit, auto-push,
+now auto-deploys to a Netlify *staging* site), but `studyfeed.org` itself no longer redeploys on
+every push to `main` — it now requires a deliberate promotion step. The "no staging buffer, a
+file edit is very likely a production change" framing above is still correct for *staging*, just
+no longer for production.
+
+## Staging environment added (2026-08-05)
+
+Per direct request, after `main` → `studyfeed.org` direct-to-production deploys had been the
+norm since this repo existed (see "Deployment" above) — added a real gate.
+
+**New flow**:
+- `main` — unchanged in every way except where it deploys. Same auto-commit/auto-push behavior,
+  same "an edit here is live within the session" immediacy — just now live on a **Netlify
+  staging site**, not `studyfeed.org`. Netlify project connected directly to this GitHub repo,
+  builds `main` with `npm run build` → publishes `dist`, same build as production's own pipeline.
+- `production` branch (new) — `studyfeed.org` (GitHub Pages, `.github/workflows/deploy.yml`) now
+  only redeploys on a push to **`production`**, not `main` (`branches: [main]` →
+  `branches: [production]` in the workflow file). **To actually ship a change**: merge/fast-forward
+  `main` into `production` and push `production` — that push is what triggers the real deploy.
+  Until that happens, `studyfeed.org` keeps serving whatever `production` last pointed at,
+  regardless of how far ahead `main` is.
+
+**Status, 2026-08-05**: workflow file changed and committed (`f32e4be`) on `main`; a local
+`production` branch created pointing at that same commit (so its own copy of the workflow
+already has the new trigger). **Neither has been pushed to `origin` yet** — Claude's git push
+failed in this sandbox (`fatal: could not read Username for 'https://github.com'` — no working
+push credential here, `gh auth status` also shows an invalid token), matching this repo's
+existing established pattern that pushes happen via the user's own authenticated GitHub Desktop
+app, not from Claude's sandbox. **Until both `main` and `production` are pushed, nothing above is
+actually live** — `origin/production` doesn't exist yet, so GitHub Pages is still deploying
+however it did before this change (i.e. still effectively `main`-triggered until the old workflow
+run history ages out and the new branch/trigger actually exists on GitHub).
+
+**Not yet done, needs the user**:
+- Push `main` (1 commit ahead) and publish/push the new `production` branch to `origin` —
+  GitHub Desktop should show `main` as ahead and `production` as a new local-only branch to
+  publish.
+- Netlify site's environment variables are still unset (`VITE_SUPABASE_URL`/
+  `VITE_SUPABASE_ANON_KEY`/`VITE_SENTRY_DSN`) — until set, the staging build falls back to the old
+  GAS backend by default (safe accidental default, not real Supabase data, but also not yet a
+  fully working staging site). Whether staging gets its own separate Supabase project (recommended
+  — never share tables with real participant data) is still pending a cost check against the
+  user's actual current Supabase plan, which Claude can't see.
+- First real promotion (merge `main` → `production`, push) hasn't happened — `studyfeed.org` is
+  still serving whatever it was serving before this change, unaffected so far.
+
 ## Architecture
 
 **Three parallel frontend apps, one shared core.** `index.html` picks which app bundle to load
