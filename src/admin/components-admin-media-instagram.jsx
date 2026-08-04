@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { randomSVG, uploadFileToS3ViaSigner } from "../utils";
 import { EditorSection, Field } from "./components-admin-editor-ui";
+import { useToast } from "./ui";
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function toNum(v, fallback) {
@@ -233,6 +234,7 @@ function Thumb({ src, active, onClick, onRemove, idx }) {
 }
 
 function CarouselEditor({ images, setImages, feedId, isNew }) {
+  const toast = useToast();
   const [sel, setSel] = useState(0);
   const safeSel = Math.min(sel, Math.max(0, (images?.length || 1) - 1));
   const current = images?.[safeSel] || null;
@@ -269,10 +271,10 @@ function CarouselEditor({ images, setImages, feedId, isNew }) {
       }
 
       if (el) el.textContent = isNew ? "Add Post" : "Edit Post";
-      alert("Images uploaded ✔");
+      toast.success("Images uploaded");
     } catch (e) {
       console.error(e);
-      alert(String(e?.message || "Upload failed."));
+      toast.error(String(e?.message || "Upload failed."));
       if (el) el.textContent = isNew ? "Add Post" : "Edit Post";
     }
   };
@@ -376,6 +378,7 @@ export function MediaFieldset({
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const toast = useToast();
   // Single-image helpers (tolerate missing fields)
   const imgUrl = editing.image?.url || "";
   const focalX = toNum(editing.image?.focalX, 50);
@@ -579,10 +582,10 @@ export function MediaFieldset({
                       image: { alt: "Image", url: cdnUrl, focalX: 50, focalY: 50, zoom: 1 },
                     }));
 
-                    alert("Image uploaded ✔");
+                    toast.success("Image uploaded");
                   } catch (err) {
                     console.error(err);
-                    alert(String(err?.message || "Image upload failed."));
+                    toast.error(String(err?.message || "Image upload failed."));
                   } finally {
                     e.target.value = "";
                   }
@@ -715,10 +718,10 @@ export function MediaFieldset({
                     if (el) el.textContent = isNew ? "Add Post" : "Edit Post";
 
                     setEditing((ed) => ({ ...ed, videoMode: "url", video: { url: cdnUrl } }));
-                    alert("Video uploaded ✔");
+                    toast.success("Video uploaded");
                   } catch (err) {
                     console.error(err);
-                    alert(String(err?.message || "Video upload failed."));
+                    toast.error(String(err?.message || "Video upload failed."));
                   } finally {
                     setUploadingVideo?.(false);
                     e.target.value = "";
@@ -750,10 +753,10 @@ export function MediaFieldset({
                     setUploadingPoster?.(true);
                     const { cdnUrl } = await uploadFileToS3ViaSigner({ file: f, feedId, prefix: "posters" });
                     setEditing((ed) => ({ ...ed, videoPosterUrl: cdnUrl }));
-                    alert("Poster uploaded ✔");
+                    toast.success("Poster uploaded");
                   } catch (err) {
                     console.error(err);
-                    alert(String(err?.message || "Poster upload failed."));
+                    toast.error(String(err?.message || "Poster upload failed."));
                   } finally {
                     setUploadingPoster?.(false);
                     e.target.value = "";

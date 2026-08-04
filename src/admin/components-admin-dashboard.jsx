@@ -38,7 +38,7 @@ import { AdminSurveysPanel } from "./components-admin-surveys";
 import { AdminFeedsPanel } from "./components-admin-feeds";
 import { randomAvatarByKind } from "../avatar-utils";
 import { AdminShell } from "./AdminShell";
-import { Badge, RoleGate } from "./ui";
+import { Badge, RoleGate, useToast, useConfirm, usePrompt } from "./ui";
 
 // Dynamically choose correct editor (FB or IG)
 import { genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB } from "./components-admin-editor-facebook";
@@ -380,6 +380,7 @@ function buildRenderedFeedExportHtml({
 }
 
 function exportFeedAsPdf(args) {
+  const onError = args?.onError || (() => {});
   const html = buildRenderedFeedExportHtml(args);
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
@@ -400,7 +401,7 @@ function exportFeedAsPdf(args) {
   const doc = iframe.contentWindow?.document;
   if (!doc) {
     cleanup();
-    alert("Could not create the printable feed document.");
+    onError("Could not create the printable feed document.");
     return;
   }
 
@@ -414,7 +415,7 @@ function exportFeedAsPdf(args) {
       iframe.contentWindow?.print();
     } catch (err) {
       console.error("Feed PDF export failed:", err);
-      alert("Could not open the print dialog. Please try again.");
+      onError("Could not open the print dialog. Please try again.");
     } finally {
       cleanup();
     }
@@ -479,6 +480,10 @@ export function AdminDashboard({
 }) {
   const pidForBackend = (pid) => (pid && pid !== "global" ? pid : undefined);
   const location = useLocation();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
+  const editingSnapshotRef = useRef(null);
 
   const [sessExpiringSec, setSessExpiringSec] = useState(null);
   const [sessExpired, setSessExpired] = useState(false);
@@ -488,6 +493,7 @@ export function AdminDashboard({
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingPoster, setUploadingPoster] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingFeed, setDeletingFeed] = useState(false);
   const [ppOpen, setPpOpen] = useState(true);
   const [feedStats, setFeedStats] = useState({});
   const [postNames, setPostNames] = useState({});
@@ -597,7 +603,7 @@ export function AdminDashboard({
       }
       await loadFlagsFor(targetFeedId, { force: true });
     } catch (e) {
-      alert(e.message || "Failed to update feed flag. Please re-login and try again.");
+      toast.error(e.message || "Failed to update feed flag. Please re-login and try again.");
     } finally {
       setFeedFlags((m) => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), [savingKey]: false } }));
     }
@@ -926,13 +932,14 @@ export function AdminDashboard({
     loadFlagsFor(id);
   };
 
-  const createNewFeed = () => {
-    const id = prompt(
-      "New feed ID (letters/numbers/underscores):",
-      `feed_${(feeds.length || 0) + 1}`
-    );
+  const createNewFeed = async () => {
+    const id = await prompt({
+      title: "New feed ID",
+      message: "Letters, numbers, and underscores only.",
+      defaultValue: `feed_${(feeds.length || 0) + 1}`,
+    });
     if (!id) return;
-    const name = prompt("Optional feed name (shown in admin):", id) || id;
+    const name = (await prompt({ title: "Feed name", message: "Optional, shown in admin.", defaultValue: id, required: false })) || id;
     setFeedId(id);
     setFeedName(name);
     setPosts([]);
@@ -950,16 +957,25 @@ export function AdminDashboard({
   // posts deliberately keep their original ids). Like `createNewFeed`, the
   // new feed is pure local editor state until "Save" is clicked — no
   // separate backend call needed.
-  const copyFeed = () => {
+  const copyFeed = async () => {
     if (!feedId) return;
-    const id = prompt("New feed ID (letters/numbers/underscores):", `${feedId}_copy`);
+    const id = await prompt({
+      title: "New feed ID",
+      message: "Letters, numbers, and underscores only.",
+      defaultValue: `${feedId}_copy`,
+    });
     if (!id) return;
     if (feeds.some((f) => String(f.feed_id) === String(id))) {
-      alert("A feed with that ID already exists.");
+      toast.error("A feed with that ID already exists.");
       return;
     }
     const name =
-      prompt("Optional feed name (shown in admin):", `${feedName || feedId} (Copy)`) || id;
+      (await prompt({
+        title: "Feed name",
+        message: "Optional, shown in admin.",
+        defaultValue: `${feedName || feedId} (Copy)`,
+        required: false,
+      })) || id;
 
     const copiedPosts = JSON.parse(JSON.stringify(posts));
     const copiedPostNames = { ...postNames };
@@ -986,7 +1002,7 @@ export function AdminDashboard({
   const openNew = () => {
     setIsNew(true);
     const avatarRandomKind = "any";
-    setEditing({
+    const fresh = {
       id: uid(),
       postName: "",
       author: "",
@@ -1033,20 +1049,51 @@ export function AdminDashboard({
       newsHeadline: "",
       newsDescription: "",
       newsUrl: "",
-    });
+    };
+    editingSnapshotRef.current = JSON.stringify(fresh);
+    setEditing(fresh);
   };
 
   const openEdit = (p) => {
     setIsNew(false);
-    setEditing({
+    const fresh = {
       ...p,
       postName: p.postName ?? p.name ?? "",
       authorType: p.authorType ?? ((p.adType === "ad" || p.adType === "news") ? "company" : "female"),
-    });
+    };
+    editingSnapshotRef.current = JSON.stringify(fresh);
+    setEditing(fresh);
   };
 
-  const removePost = (id) => {
-    if (!confirm("Delete this post?")) return;
+  const isEditingDirty = () => editing && JSON.stringify(editing) !== editingSnapshotRef.current;
+
+  const closeEditing = async () => {
+    if (
+      isEditingDirty() &&
+      !(await confirm({
+        title: "Discard changes?",
+        message: "This post has unsaved changes. Discard them?",
+        danger: true,
+        confirmLabel: "Discard",
+      }))
+    ) {
+      return;
+    }
+    setEditing(null);
+  };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!isEditingDirty()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editing]);
+
+  const removePost = async (id) => {
+    if (!(await confirm({ title: "Delete post?", message: "This can't be undone.", danger: true, confirmLabel: "Delete" }))) return;
     setPosts((arr) => arr.filter((p) => p.id !== id));
     const next = { ...(postNames || {}) };
     if (next[id]) {
@@ -1058,11 +1105,11 @@ export function AdminDashboard({
 
   const saveEditing = () => {
     if (!editing.author?.trim() && app !== "amz" && app !== "amazon") {
-      alert("Author is required.");
+      toast.error("Author is required.");
       return;
     }
     if (!editing.text?.trim()) {
-      alert(`${CONTENT_UNIT_LABEL} text is required.`);
+      toast.error(`${CONTENT_UNIT_LABEL} text is required.`);
       return;
     }
 
@@ -1143,6 +1190,7 @@ export function AdminDashboard({
         feedId,
         name: row?.name || feedId,
         app: APP,
+        onError: toast.error,
       });
 
       if (ok) {
@@ -1165,9 +1213,9 @@ export function AdminDashboard({
           setPosts(arr);
           setCachedPosts(projectId, feedId, nextRow.checksum, arr);
         }
-        alert("Feed saved (snapshot created).");
+        toast.success("Feed saved (snapshot created).");
       } else {
-        alert("Failed to save feed. A local snapshot was still created.");
+        toast.error("Failed to save feed. A local snapshot was still created.");
       }
     } finally {
       setIsSaving(false);
@@ -1176,7 +1224,7 @@ export function AdminDashboard({
 
   const handleCopyParticipantLink = async (f) => {
     if (!f?.feed_id) {
-      alert("Missing feed_id for this row");
+      toast.error("Missing feed_id for this row");
       return;
     }
     const url =
@@ -1187,33 +1235,41 @@ export function AdminDashboard({
           )}&feed=${encodeURIComponent(f.feed_id)}`;
 
     await navigator.clipboard.writeText(url).catch(() => {});
-    alert("Link copied:\n" + url);
+    toast.success(`Link copied: ${url}`);
   };
 
   const handleDeleteFeed = async (f) => {
-    const okGo = confirm(
-      `Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`
-    );
+    const okGo = await confirm({
+      title: "Delete feed?",
+      message: `Delete feed "${f.name || f.feed_id}"?\n\nThis removes posts, participants, and cannot be undone.`,
+      danger: true,
+      confirmLabel: "Delete",
+    });
     if (!okGo) return;
-    const ok = await deleteFeedOnBackend(f.feed_id);
-    if (ok) {
-      if (f.feed_id === feedId) {
-        const next = feeds.filter((x) => x.feed_id !== f.feed_id);
-        const nextSel = next[0] || null;
-        setFeeds(next);
-        if (nextSel) {
-          await selectFeed(nextSel.feed_id);
+    setDeletingFeed(true);
+    try {
+      const ok = await deleteFeedOnBackend(f.feed_id);
+      if (ok) {
+        if (f.feed_id === feedId) {
+          const next = feeds.filter((x) => x.feed_id !== f.feed_id);
+          const nextSel = next[0] || null;
+          setFeeds(next);
+          if (nextSel) {
+            await selectFeed(nextSel.feed_id);
+          } else {
+            setFeedId("");
+            setFeedName("");
+            setPosts([]);
+          }
         } else {
-          setFeedId("");
-          setFeedName("");
-          setPosts([]);
+          setFeeds((prev) => prev.filter((x) => x.feed_id !== f.feed_id));
         }
+        toast.success("Feed deleted.");
       } else {
-        setFeeds((prev) => prev.filter((x) => x.feed_id !== f.feed_id));
+        toast.error("Failed to delete feed. Please re-login and try again.");
       }
-      alert("Feed deleted.");
-    } else {
-      alert("Failed to delete feed. Please re-login and try again.");
+    } finally {
+      setDeletingFeed(false);
     }
   };
 
@@ -1226,7 +1282,7 @@ export function AdminDashboard({
       if (res?.ok) {
         setWipeOnChange(!!res.wipe_on_change);
       } else {
-        alert(res?.err || "Failed to update policy");
+        toast.error(res?.err || "Failed to update policy");
       }
     } finally {
       setUpdatingWipe(false);
@@ -1284,6 +1340,7 @@ export function AdminDashboard({
       feedId,
       feedName: row?.name || feedId,
       postNames,
+      onError: toast.error,
     });
   };
 
@@ -1294,27 +1351,28 @@ export function AdminDashboard({
       const parsed = JSON.parse(text);
       const imported = Array.isArray(parsed) ? parsed : parsed.posts || [];
       if (!Array.isArray(imported)) {
-        alert("This file doesn't look like a posts backup.");
+        toast.error("This file doesn't look like a posts backup.");
         return;
       }
       if (
-        !confirm(
-          `Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`
-        )
+        !(await confirm({
+          title: "Replace editor posts?",
+          message: `Replace current editor posts (${posts.length}) with imported posts (${imported.length})?`,
+        }))
       ) {
         return;
       }
       setPosts(imported);
-      alert("Imported. Remember to Save to publish back to the backend.");
+      toast.success("Imported. Remember to Save to publish back to the backend.");
     } catch (err) {
       console.error(err);
-      alert("Failed to import JSON.");
+      toast.error("Failed to import JSON.");
     }
   };
 
-  const handleRenamePost = (id) => {
+  const handleRenamePost = async (id) => {
     const cur = postNames[id] || "";
-    const next = prompt("Post name (used in CSV headers):", cur ?? "");
+    const next = await prompt({ title: "Post name", message: "Used in CSV headers.", defaultValue: cur, required: false });
     if (next === null) return;
     const name = (next || "").trim();
     const map = { ...(postNames || {}) };
@@ -1454,6 +1512,7 @@ export function AdminDashboard({
               wipeOnChange={wipeOnChange}
               updatingWipe={updatingWipe}
               isSaving={isSaving}
+              deletingFeed={deletingFeed}
               posts={posts}
               postNames={postNames}
               randomize={randomize}
@@ -1527,11 +1586,11 @@ export function AdminDashboard({
       {editing && (
         <Modal
           title={isNew ? `Add ${CONTENT_UNIT_LABEL}` : `Edit ${CONTENT_UNIT_LABEL}`}
-          onClose={() => setEditing(null)}
+          onClose={closeEditing}
           wide
           footer={
             <>
-              <button className="btn" onClick={() => setEditing(null)}>
+              <button className="btn" onClick={closeEditing}>
                 Cancel
               </button>
               <RoleGate

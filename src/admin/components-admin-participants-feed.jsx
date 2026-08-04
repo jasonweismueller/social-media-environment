@@ -13,7 +13,7 @@ import {
   hasAdminRole,
   wipeParticipantsOnBackend,
 } from "../utils";
-import { PageHeader, Button } from "./ui";
+import { PageHeader, Button, useToast, useConfirm, EmptyState } from "./ui";
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : elseRender ?? null;
@@ -1104,6 +1104,8 @@ export function FeedParticipantsPage({
   onLogout,
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
+  const toast = useToast();
+  const confirm = useConfirm();
   const IG = isIGApp();
   const AMZ = isAmazonApp();
   const sourceKey = feedId || "noid";
@@ -1342,7 +1344,7 @@ export function FeedParticipantsPage({
 
   const runSimulation = () => {
     if (!posts?.length) {
-      alert("Simulation needs the current feed posts. Pass posts={posts} into FeedParticipantsPage.");
+      toast.error("Simulation needs the current feed posts. Pass posts={posts} into FeedParticipantsPage.");
       return;
     }
 
@@ -1572,16 +1574,19 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
               title="Delete the participants sheet for this feed (cannot be undone)"
               onClick={async () => {
                 if (!feedId) return;
-                const okGo = confirm(
-                  `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`
-                );
+                const okGo = await confirm({
+                  title: "Wipe all participants?",
+                  message: `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`,
+                  danger: true,
+                  confirmLabel: "Wipe",
+                });
                 if (!okGo) return;
                 const ok = await wipeParticipantsOnBackend(feedId, { projectId });
                 if (ok) {
                   await refresh(false);
-                  alert("Participants wiped.");
+                  toast.success("Participants wiped.");
                 } else {
-                  alert("Failed to wipe participants. Please re-login and try again.");
+                  toast.error("Failed to wipe participants. Please re-login and try again.");
                   onLogout?.();
                 }
               }}
@@ -1889,9 +1894,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
       </h5>
 
       {visible.length === 0 ? (
-        <div className="subtle" style={{ padding: ".5rem 0", fontSize: compact ? ".85rem" : ".9rem" }}>
-          No submissions yet.
-        </div>
+        <EmptyState compact icon="🗒️" title="No submissions yet" message="Real or simulated participant rows will appear here." />
       ) : (
         <>
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: fsTable }}>
@@ -1974,7 +1977,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
                           setDetailOpen(true);
                         } catch (err) {
                           console.error("Participant Details build failed:", err, r);
-                          alert("Failed to open details (see console).");
+                          toast.error("Failed to open details (see console).");
                         }
                       }}
                     >

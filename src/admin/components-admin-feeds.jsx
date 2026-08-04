@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar, hasAdminRole } from "../utils";
-import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate } from "./ui";
+import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -100,6 +100,7 @@ function FeedListContent({
   onSelectFeed,
   onSaveFeed,
   isSaving,
+  deletingFeed,
   onDeleteSelectedFeed,
   onRenameFeed,
 }) {
@@ -124,7 +125,7 @@ function FeedListContent({
       )}
 
       {feeds.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>No feeds yet.</div>
+        !feedsLoading && <EmptyState compact title="No feeds yet" message="Use + above to create one." />
       ) : (
         feeds.map((f) => {
           const isActive = selectedFeedId === f.feed_id;
@@ -176,7 +177,7 @@ function FeedListContent({
             size="sm"
             variant="secondary"
             onClick={onSaveFeed}
-            disabled={isSaving}
+            busy={isSaving}
             style={{
               width: "100%",
               marginTop: 10,
@@ -195,6 +196,7 @@ function FeedListContent({
             size="sm"
             variant="secondary"
             onClick={onDeleteSelectedFeed}
+            busy={deletingFeed}
             style={{
               width: "100%",
               marginTop: 6,
@@ -203,7 +205,7 @@ function FeedListContent({
               color: "var(--admin-danger-ink)",
             }}
           >
-            Delete feed
+            {deletingFeed ? "Deleting…" : "Delete feed"}
           </Button>
         </RoleGate>
       )}
@@ -236,6 +238,7 @@ export function AdminFeedsPanel({
   wipeOnChange,
   updatingWipe,
   isSaving,
+  deletingFeed,
   posts,
   postNames,
   randomize,
@@ -308,6 +311,7 @@ export function AdminFeedsPanel({
             onSelectFeed={onSelectFeed}
             onSaveFeed={onSaveFeed}
             isSaving={isSaving}
+            deletingFeed={deletingFeed}
             onDeleteSelectedFeed={handleDeleteSelectedFeed}
             onRenameFeed={onRenameFeed}
           />,
@@ -315,7 +319,13 @@ export function AdminFeedsPanel({
         )}
 
       <div style={{ minWidth: 0 }}>
-        {!selectedFeedId && <div style={{ color: "#6b7280" }}>Select or create a feed.</div>}
+        {!selectedFeedId && (
+          <EmptyState
+            icon="📰"
+            title="No feed selected"
+            message="Pick a feed from the list, or create a new one to get started."
+          />
+        )}
 
         {selectedFeedId && (
           <>
@@ -375,9 +385,11 @@ export function AdminFeedsPanel({
                   }
                 >
                   {posts.length === 0 ? (
-                    <div className="subtle" style={{ padding: ".5rem 0" }}>
-                      No posts yet.
-                    </div>
+                    <EmptyState
+                      icon="📝"
+                      title={`No ${contentUnitLabelPlural.toLowerCase()} yet`}
+                      message={`Use the + button above to add the first one, or import a backup JSON from Settings.`}
+                    />
                   ) : (
                     <Table style={{ tableLayout: "fixed" }}>
                       <thead>

@@ -2205,7 +2205,7 @@ export async function loadPostsFromBackend(arg1, arg2) {
  * savePostsToBackend(posts, { feedId, name } = {})
  */
 export async function savePostsToBackend(rawPosts, ctx = {}) {
-  const { feedId = null, name = null, projectId = getProjectId() } = ctx || {};
+  const { feedId = null, name = null, projectId = getProjectId(), onError = alert } = ctx || {};
   if (!hasAdminSession()) {
     console.warn("savePostsToBackend: missing admin session");
     return false;
@@ -2223,7 +2223,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
 
   if (offenders.length) {
     const lines = offenders.map((o) => `• Post ${o.id}: ${o.field}`).join("\n");
-    alert(
+    onError(
       "One or more posts still contain local data URLs.\n\n" +
         "Please upload images/videos so they use https URLs, then try saving again.\n\n" +
         lines
@@ -2248,7 +2248,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
       return true;
     } catch (err) {
       console.warn("Publish failed (supabase):", err);
-      alert(`Save failed: ${String(err?.message || err)}`);
+      onError(`Save failed: ${String(err?.message || err)}`);
       return false;
     }
   }
@@ -2270,7 +2270,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     );
 
     if (!res.ok) {
-      alert(`Save failed: HTTP ${res.status}`);
+      onError(`Save failed: HTTP ${res.status}`);
       return false;
     }
 
@@ -2278,7 +2278,7 @@ export async function savePostsToBackend(rawPosts, ctx = {}) {
     return true;
   } catch (err) {
     console.warn("Publish failed:", err);
-    alert(`Save failed: ${String(err?.message || err)}`);
+    onError(`Save failed: ${String(err?.message || err)}`);
     return false;
   }
 }

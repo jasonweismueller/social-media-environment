@@ -5,25 +5,34 @@ import { AdminDashboard } from "./components-admin-dashboard";
 import { AdminProjectPicker } from "./AdminProjectPicker";
 import { AdminPlatformPicker } from "./AdminPlatformPicker";
 import { AdminUsersPage } from "./components-admin-users";
+import { ToastProvider, ConfirmProvider, PromptProvider } from "./ui";
 
 /**
  * Owns the whole `/admin/*` sub-tree: login gate, then
  * projects -> platform -> dashboard. Mounted identically by all three
  * App-*.jsx files (which otherwise near-duplicate each other, see
  * CLAUDE.md) so this branching logic exists in exactly one place instead of
- * three.
+ * three. Also the single place the Toast/Confirm/Prompt providers are
+ * mounted, so every admin surface (including AdminUsersPage, which lives
+ * outside AdminShell) can call useToast()/useConfirm()/usePrompt().
  */
 export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps }) {
   if (!adminAuthed) return <AdminLogin onAuth={onAuth} />;
 
   return (
-    <Routes>
-      <Route index element={<AdminProjectPicker />} />
-      <Route path="users" element={<AdminUsersPage />} />
-      <Route path="platform" element={<AdminPlatformPicker currentApp={currentApp} />} />
-      <Route path="dashboard/*" element={<AdminDashboard {...dashboardProps} />} />
-      <Route path="*" element={<Navigate to="/admin" replace />} />
-    </Routes>
+    <ToastProvider>
+      <ConfirmProvider>
+        <PromptProvider>
+          <Routes>
+            <Route index element={<AdminProjectPicker />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="platform" element={<AdminPlatformPicker currentApp={currentApp} />} />
+            <Route path="dashboard/*" element={<AdminDashboard {...dashboardProps} />} />
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        </PromptProvider>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }
 

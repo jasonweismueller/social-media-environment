@@ -5,6 +5,7 @@ import {
   makeQuestionByType,
   SURVEY_QUESTION_TYPES,
 } from "../utils";
+import { useConfirm } from "./ui";
 
 /* =========================
    Small helpers
@@ -4367,6 +4368,7 @@ function StudyOutlineModal({
   onJumpTo,
   onClose,
 }) {
+  const confirm = useConfirm();
   const displayNumbers = useMemo(
     () => computeQuestionDisplayNumbers(currentQuestions),
     [currentQuestions]
@@ -4553,12 +4555,12 @@ function StudyOutlineModal({
                 onInsertPageBreakAfter={() =>
                   insertQuestionAt(i, EDITOR_PAGE_BREAK_TYPE, "below")
                 }
-                onDelete={() => {
+                onDelete={async () => {
                   if (item.type === EDITOR_PAGE_BREAK_TYPE) {
                     removeQuestion(i);
                     return;
                   }
-                  if (window.confirm("Delete this question?")) {
+                  if (await confirm({ title: "Delete this question?", danger: true, confirmLabel: "Delete" })) {
                     removeQuestion(i);
                   }
                 }}

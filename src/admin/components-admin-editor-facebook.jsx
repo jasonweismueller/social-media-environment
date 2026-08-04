@@ -13,6 +13,7 @@ import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-facebook";
 import { randomAvatarByKind } from "../avatar-utils";
 import { EditorSection, Field, Group, RadioGroup, CheckRow, PreviewPane, Toggle } from "./components-admin-editor-ui";
+import { useToast } from "./ui";
 
 /* ---------- gender-neutral comic avatar (64px) ---------------- */
 export function genNeutralAvatarDataUrl(size = 64) {
@@ -137,6 +138,7 @@ export function AdminPostEditor({
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const toast = useToast();
   const hasBio = !!editing.showBio;
   const hasIntervention = (editing.interventionType || "none") !== "none";
   const customAvatar = (editing.avatarMode || "random") !== "random";
@@ -372,10 +374,10 @@ export function AdminPostEditor({
                       avatarUrl: cdnUrl,
                     }));
 
-                    alert("Avatar uploaded ✔");
+                    toast.success("Avatar uploaded");
                   } catch (err) {
                     console.error("Avatar upload failed", err);
-                    alert(String(err?.message || "Avatar upload failed."));
+                    toast.error(String(err?.message || "Avatar upload failed."));
                     restoreTitle();
                   } finally {
                     e.target.value = "";

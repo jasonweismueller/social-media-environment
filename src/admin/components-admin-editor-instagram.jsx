@@ -11,6 +11,7 @@ import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-instagram";
 import { randomAvatarByKind } from "../avatar-utils";
 import { EditorSection, Field, Group, RadioGroup, PreviewPane, Toggle } from "./components-admin-editor-ui";
+import { useToast } from "./ui";
 
 /* ---------------- Avatar (neutral) ---------------- */
 export function genNeutralAvatarDataUrl(size = 64) {
@@ -87,6 +88,7 @@ export function AdminPostEditor({
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const toast = useToast();
   const customAvatar = (editing.avatarMode || "random") !== "random";
   const hasAd = (editing.adType || "none") !== "none";
   const hasBio = !!editing.showBio;
@@ -266,10 +268,10 @@ export function AdminPostEditor({
                       avatarMode: "url",
                       avatarUrl: cdnUrl,
                     }));
-                    alert("Avatar uploaded ✔");
+                    toast.success("Avatar uploaded");
                   } catch (err) {
                     console.error("Upload failed", err);
-                    alert("Avatar upload failed");
+                    toast.error("Avatar upload failed");
                   } finally {
                     e.target.value = "";
                   }

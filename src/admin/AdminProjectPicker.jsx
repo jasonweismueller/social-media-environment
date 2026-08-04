@@ -13,7 +13,7 @@ import {
   getAdminUsername,
 } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge } from "./ui";
+import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, EmptyState } from "./ui";
 
 /**
  * Landing page after login: pick a project (or create/delete one), then
@@ -23,6 +23,9 @@ import { Card, PageHeader, Button, Badge } from "./ui";
  */
 export function AdminProjectPicker() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
   const [projects, setProjects] = useState([]);
   const [defaultProjectId, setDefaultProjectId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,17 +56,18 @@ export function AdminProjectPicker() {
   };
 
   const createProject = async () => {
-    const id = prompt(
-      "New project ID (letters/numbers/underscores):",
-      `proj_${(projects.length || 0) + 1}`
-    );
+    const id = await prompt({
+      title: "New project ID",
+      message: "Letters, numbers, and underscores only.",
+      defaultValue: `proj_${(projects.length || 0) + 1}`,
+    });
     if (!id) return;
-    const name = prompt("Optional project name:", id) || id;
+    const name = (await prompt({ title: "Project name", message: "Optional.", defaultValue: id, required: false })) || id;
     setBusyId("__create__");
     try {
       const ok = await createProjectOnBackend({ projectId: id, name }).catch(() => false);
       if (!ok) {
-        alert("Failed to create project.");
+        toast.error("Failed to create project.");
         return;
       }
       setProjects((prev) => [{ project_id: id, name }, ...prev]);
@@ -85,9 +89,12 @@ export function AdminProjectPicker() {
 
   const removeProject = async (project) => {
     if (
-      !confirm(
-        `Delete project "${project.name || project.project_id}"?\nThis deletes ALL its feeds and participants.`
-      )
+      !(await confirm({
+        title: "Delete project?",
+        message: `Delete project "${project.name || project.project_id}"?\nThis deletes ALL its feeds and participants.`,
+        danger: true,
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }
@@ -95,7 +102,7 @@ export function AdminProjectPicker() {
     try {
       const ok = await deleteProjectOnBackend(project.project_id);
       if (!ok) {
-        alert("Failed to delete project.");
+        toast.error("Failed to delete project.");
         return;
       }
       setProjects((prev) => prev.filter((p) => p.project_id !== project.project_id));
@@ -132,9 +139,16 @@ export function AdminProjectPicker() {
 
         {!loading && projects.length === 0 && (
           <Card>
-            <div style={{ color: "var(--admin-muted)" }}>
-              No projects yet. Click "+ New project" to create one.
-            </div>
+            <EmptyState
+              icon="📁"
+              title="No projects yet"
+              message="Projects hold your feeds and surveys for a study. Create one to get started."
+              action={
+                <Button size="sm" variant="primary" onClick={createProject} busy={busyId === "__create__"}>
+                  + New project
+                </Button>
+              }
+            />
           </Card>
         )}
 

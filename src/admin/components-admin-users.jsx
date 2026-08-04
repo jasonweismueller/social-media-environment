@@ -31,7 +31,7 @@ import {
 } from "../utils";
 import { isSupabaseBackend } from "../utils/utils-supabase-client";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, Toggle, Modal } from "./ui";
+import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState } from "./ui";
 
 const ROLE_OPTIONS = [
   { value: "viewer", label: "Viewer", hint: "Read-only access" },
@@ -590,6 +590,8 @@ function ResetPasswordModal({ user, onClose, onDone }) {
 
 export function AdminUsersPage() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
   const me = getAdminEmail?.() || "";
   const backendHasAccessControl = isSupabaseBackend();
 
@@ -657,7 +659,7 @@ export function AdminUsersPage() {
     setRoleBusyEmail(user.email);
     const res = await adminUpdateUser({ email: user.email, role });
     setRoleBusyEmail(null);
-    if (!res?.ok) alert(res?.err || "Failed to change role");
+    if (!res?.ok) toast.error(res?.err || "Failed to change role");
     else load();
   };
 
@@ -665,17 +667,17 @@ export function AdminUsersPage() {
     setStatusBusyEmail(user.email);
     const res = await adminUpdateUser({ email: user.email, disabled: !user.disabled });
     setStatusBusyEmail(null);
-    if (!res?.ok) alert(res?.err || "Failed to update status");
+    if (!res?.ok) toast.error(res?.err || "Failed to update status");
     else load();
   };
 
   const deleteUser = async (user) => {
-    if (!confirm(`Delete ${user.email}? This cannot be undone.`)) return;
+    if (!(await confirm({ title: "Delete user?", message: `Delete ${user.email}? This cannot be undone.`, danger: true, confirmLabel: "Delete" }))) return;
     setDeleteBusyEmail(user.email);
     const res = await adminDeleteUser(user.email);
     setDeleteBusyEmail(null);
     if (!res?.ok) {
-      alert(res?.err || "Failed to delete user");
+      toast.error(res?.err || "Failed to delete user");
       return;
     }
     setSelectedEmail("");
@@ -757,7 +759,7 @@ export function AdminUsersPage() {
             {loading && users.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--admin-muted)", padding: "8px 4px" }}>Loading…</div>
             ) : sortedUsers.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--admin-muted)", padding: "8px 4px" }}>No users yet.</div>
+              <EmptyState compact title="No users yet" message="Use + Add user above to invite your first admin." />
             ) : (
               sortedUsers.map((u) => {
                 const isActive = u.email === selectedEmail;
@@ -804,7 +806,7 @@ export function AdminUsersPage() {
           <div style={{ minWidth: 0 }}>
             {!selectedUser ? (
               <Card>
-                <div style={{ color: "var(--admin-muted)" }}>Select a user.</div>
+                <EmptyState icon="👤" title="No user selected" message="Pick a user from the list to view or edit their access." />
               </Card>
             ) : (
               <div style={{ display: "grid", gap: 16 }}>

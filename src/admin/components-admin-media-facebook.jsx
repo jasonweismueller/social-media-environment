@@ -6,6 +6,7 @@ import {
   getProjectId as getProjectIdUtil, // fallback if prop not provided
 } from "../utils";
 import { EditorSection, Field, CheckRow } from "./components-admin-editor-ui";
+import { useToast } from "./ui";
 
 export function MediaFieldset({
   editing,
@@ -16,6 +17,7 @@ export function MediaFieldset({
   setUploadingVideo,
   setUploadingPoster,
 }) {
+  const toast = useToast();
   const resolvedProjectId = projectId ?? getProjectIdUtil?.();
   const uploadsDisabled = !feedId; // uploader requires a feedId
 
@@ -111,7 +113,7 @@ export function MediaFieldset({
                 onChange={async (e) => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  if (!feedId) { alert("Select or create a feed before uploading."); e.target.value = ""; return; }
+                  if (!feedId) { toast.error("Select or create a feed before uploading."); e.target.value = ""; return; }
                   try {
                     setHeaderText("Uploading… 0%");
                     const setPct = (pct) => { if (typeof pct === "number") setHeaderText(`Uploading… ${pct}%`); };
@@ -127,10 +129,10 @@ export function MediaFieldset({
                       imageMode: "url",
                       image: { alt: f.name || "Image", url: cdnUrl },
                     }));
-                    alert("Image uploaded ✔");
+                    toast.success("Image uploaded");
                   } catch (err) {
                     console.error("Image upload failed", err);
-                    alert(String(err?.message || "Image upload failed."));
+                    toast.error(String(err?.message || "Image upload failed."));
                   } finally {
                     resetHeaderText();
                     e.target.value = ""; // allow re-pick
@@ -199,7 +201,7 @@ export function MediaFieldset({
                 disabled={uploadsDisabled}
                 onChange={async (e) => {
                   const f = e.target.files?.[0]; if (!f) return;
-                  if (!feedId) { alert("Select or create a feed before uploading."); e.target.value = ""; return; }
+                  if (!feedId) { toast.error("Select or create a feed before uploading."); e.target.value = ""; return; }
                   try {
                     setUploadingVideo?.(true);
                     setHeaderText("Uploading… 0%");
@@ -216,10 +218,10 @@ export function MediaFieldset({
                       videoMode: "url",
                       video: { url: cdnUrl },
                     }));
-                    alert("Video uploaded ✔");
+                    toast.success("Video uploaded");
                   } catch (err) {
                     console.error(err);
-                    alert(String(err?.message || "Video upload failed."));
+                    toast.error(String(err?.message || "Video upload failed."));
                   } finally {
                     setUploadingVideo?.(false);
                     resetHeaderText();
@@ -246,7 +248,7 @@ export function MediaFieldset({
                 disabled={uploadsDisabled}
                 onChange={async (e) => {
                   const f = e.target.files?.[0]; if (!f) return;
-                  if (!feedId) { alert("Select or create a feed before uploading."); e.target.value = ""; return; }
+                  if (!feedId) { toast.error("Select or create a feed before uploading."); e.target.value = ""; return; }
                   try {
                     setUploadingPoster?.(true);
                     const { cdnUrl } = await uploadFileToS3ViaSigner({
@@ -256,10 +258,10 @@ export function MediaFieldset({
                       prefix: "posters",
                     });
                     setEditing(ed => ({ ...ed, videoPosterUrl: cdnUrl }));
-                    alert("Poster uploaded ✔");
+                    toast.success("Poster uploaded");
                   } catch (err) {
                     console.error(err);
-                    alert(String(err?.message || "Poster upload failed."));
+                    toast.error(String(err?.message || "Poster upload failed."));
                   } finally {
                     setUploadingPoster?.(false);
                     e.target.value = "";

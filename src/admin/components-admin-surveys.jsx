@@ -39,7 +39,7 @@ import {
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
 
-import { Card as AdminUiCard, Tabs, Button } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, useToast, useConfirm, usePrompt, EmptyState } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -529,7 +529,7 @@ function triggerHtmlDownload(filename, html) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function openPrintableSurveyDocument(html, filename = "survey_ethics_protocol.html") {
+function openPrintableSurveyDocument(html, filename = "survey_ethics_protocol.html", onFallback = () => {}) {
   // Avoid window.open(): Safari/Chrome often treat it as a blocked popup,
   // especially when called after React state updates. Printing from a hidden
   // iframe keeps the action in the same tab and prevents blank popup tabs.
@@ -574,7 +574,7 @@ function openPrintableSurveyDocument(html, filename = "survey_ethics_protocol.ht
       } catch (err) {
         cleanup();
         triggerHtmlDownload(filename, html);
-        alert(
+        onFallback(
           "The browser blocked automatic printing, so I downloaded a printable HTML file instead. Open it and choose Print → Save as PDF."
         );
       }
@@ -585,7 +585,7 @@ function openPrintableSurveyDocument(html, filename = "survey_ethics_protocol.ht
   } catch (err) {
     cleanup();
     triggerHtmlDownload(filename, html);
-    alert(
+    onFallback(
       "The browser blocked the printable view, so I downloaded a printable HTML file instead. Open it and choose Print → Save as PDF."
     );
   }
@@ -872,6 +872,7 @@ function SurveyListContent({
   isSaving,
   showSaveButton,
   onDeleteSelectedSurvey,
+  deletingSurvey,
   showDeleteButton,
   onRenameSurvey,
 }) {
@@ -894,7 +895,7 @@ function SurveyListContent({
       )}
 
       {surveys.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#6b7280", padding: "8px 4px" }}>No surveys yet.</div>
+        !loading && <EmptyState compact title="No surveys yet" message="Use + above to create one." />
       ) : (
         surveys.map((s) => {
           const isActive = selectedSurveyId === s.survey_id;
@@ -945,7 +946,7 @@ function SurveyListContent({
           size="sm"
           variant="secondary"
           onClick={onSaveSurvey}
-          disabled={isSaving}
+          busy={isSaving}
           style={{
             width: "100%",
             marginTop: 10,
@@ -962,6 +963,7 @@ function SurveyListContent({
           size="sm"
           variant="secondary"
           onClick={onDeleteSelectedSurvey}
+          busy={deletingSurvey}
           style={{
             width: "100%",
             marginTop: 6,
@@ -970,7 +972,7 @@ function SurveyListContent({
             color: "var(--admin-danger-ink)",
           }}
         >
-          Delete survey
+          {deletingSurvey ? "Deleting…" : "Delete survey"}
         </Button>
       )}
     </div>
@@ -1065,6 +1067,7 @@ function RichTextInput({
   placeholder = "Start typing...",
   minHeight = 180,
 }) {
+  const prompt = usePrompt();
   const editorRef = useRef(null);
   const isFocusedRef = useRef(false);
   const lastHtmlRef = useRef(String(value ?? ""));
@@ -1232,8 +1235,8 @@ function RichTextInput({
         <button
           type="button"
           style={buttonStyle}
-          onClick={() => {
-            const url = window.prompt("Enter link URL");
+          onClick={async () => {
+            const url = await prompt({ title: "Link URL" });
             if (url) runCommand("createLink", url);
           }}
         >
@@ -1336,6 +1339,9 @@ export function AdminSurveysPanel({
   loadFeedPosts,
 }) {
   const projectId = propProjectId || getProjectId();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
 
   const effectiveLoadFeedPosts = useCallback(
     async (currentFeedId) => {
@@ -1352,6 +1358,7 @@ export function AdminSurveysPanel({
   );
 
   const importFileRef = useRef(null);
+  const savedSurveySnapshotRef = useRef(null);
   const [surveys, setSurveys] = useState([]);
   const [feeds, setFeeds] = useState(Array.isArray(propFeeds) ? propFeeds : []);
   const [selectedSurveyId, setSelectedSurveyId] = useState(null);
@@ -1368,6 +1375,7 @@ export function AdminSurveysPanel({
   const [resettingGroupBalance, setResettingGroupBalance] = useState(false);
   const [resetGroupBalanceError, setResetGroupBalanceError] = useState("");
   const [deletingSurveyData, setDeletingSurveyData] = useState(false);
+  const [deletingSurvey, setDeletingSurvey] = useState(false);
 
   const { surveysSlot, surveysAddSlot } = useContext(AdminTreeSlotsContext);
 
@@ -1400,14 +1408,17 @@ export function AdminSurveysPanel({
   const handleResetGroupBalance = useCallback(async () => {
     if (!survey?.survey_id || resettingGroupBalance) return;
 
-    const confirmed = window.confirm(
-      "Reset experiment group balance for this survey?\n\n" +
+    const confirmed = await confirm({
+      title: "Reset experiment group balance?",
+      message:
         "This clears every recorded group assignment and restarts the " +
         "round-robin counter from group 1. Participants who already " +
         "submitted responses keep their recorded group in past data, but " +
         "anyone who started and didn't finish will be reassigned (possibly " +
-        "to a different group) the next time they're seen. This cannot be undone."
-    );
+        "to a different group) the next time they're seen. This cannot be undone.",
+      danger: true,
+      confirmLabel: "Reset",
+    });
     if (!confirmed) return;
 
     setResettingGroupBalance(true);
@@ -1430,13 +1441,17 @@ export function AdminSurveysPanel({
   const handleDeleteSurveyData = useCallback(async () => {
     if (!survey?.survey_id || deletingSurveyData) return;
 
-    const confirmed = window.confirm(
-      `Delete all submitted responses for "${survey.name || survey.survey_id}"?\n\n` +
+    const confirmed = await confirm({
+      title: "Delete survey response data?",
+      message:
+        `Delete all submitted responses for "${survey.name || survey.survey_id}"?\n\n` +
         "This permanently deletes every response row recorded for this survey " +
         "(e.g. test submissions) so you can start collecting real data with a " +
         "clean CSV. The survey itself — its questions, pages, and launch links — " +
-        "is not affected, only the collected response data. This cannot be undone."
-    );
+        "is not affected, only the collected response data. This cannot be undone.",
+      danger: true,
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
 
     setDeletingSurveyData(true);
@@ -1446,10 +1461,10 @@ export function AdminSurveysPanel({
         surveyId: survey.survey_id,
       });
       if (!res?.ok) {
-        alert(res?.err || "Failed to delete survey data.");
+        toast.error(res?.err || "Failed to delete survey data.");
         return;
       }
-      alert("Survey response data deleted.");
+      toast.success("Survey response data deleted.");
     } finally {
       setDeletingSurveyData(false);
     }
@@ -1529,11 +1544,41 @@ export function AdminSurveysPanel({
     loadAll();
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const isSurveyDirty = () =>
+    !!survey && JSON.stringify(survey) !== savedSurveySnapshotRef.current;
+
+  // Guards every action that would silently throw away the currently-open
+  // survey editor's state (switching survey, starting a new one, copying,
+  // importing). Returns false if the user cancels, so callers can bail out
+  // before doing anything destructive.
+  async function guardDiscardCurrentSurvey() {
+    if (!isSurveyDirty()) return true;
+    return confirm({
+      title: "Discard changes?",
+      message: "This survey has unsaved changes. Discard them?",
+      danger: true,
+      confirmLabel: "Discard",
+    });
+  }
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (!isSurveyDirty()) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [survey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleSelectSurvey(id) {
+    if (id === selectedSurveyId) return;
+    if (!(await guardDiscardCurrentSurvey())) return;
     setSelectedSurveyId(id);
 
     if (!id) {
       setSurvey(null);
+      savedSurveySnapshotRef.current = null;
       setLinkedFeedPostsMap({});
       return;
     }
@@ -1573,6 +1618,7 @@ export function AdminSurveysPanel({
       );
 
       setSurvey(editorSurvey);
+      savedSurveySnapshotRef.current = JSON.stringify(editorSurvey);
     } catch (e) {
       console.warn("Failed to load survey:", e);
       setSurvey(null);
@@ -1595,7 +1641,8 @@ export function AdminSurveysPanel({
     }
   }
 
-  function handleCreateSurvey() {
+  async function handleCreateSurvey() {
+    if (!(await guardDiscardCurrentSurvey())) return;
     const baseSurvey = {
       linked_project_id: projectId,
       linked_feed_ids: [],
@@ -1632,12 +1679,14 @@ export function AdminSurveysPanel({
     );
 
     setSurvey(editorSurvey);
+    savedSurveySnapshotRef.current = null;
     setSelectedSurveyId(null);
     setLinkedFeedPostsMap({});
   }
 
-  function handleCopySurvey() {
+  async function handleCopySurvey() {
     if (!survey) return;
+    if (!(await guardDiscardCurrentSurvey())) return;
 
     const copiedSurvey = resetSurveyIdentityForCopy(survey, {
       projectId,
@@ -1645,6 +1694,7 @@ export function AdminSurveysPanel({
     });
 
     setSurvey(copiedSurvey);
+    savedSurveySnapshotRef.current = null;
     setSelectedSurveyId(null);
     setLinkedFeedPostsMap({});
   }
@@ -1652,7 +1702,7 @@ export function AdminSurveysPanel({
   async function handleCopyLaunchLink(url, label = "link") {
     const ok = await copyTextToClipboard(url);
     if (!ok) {
-      alert(`Failed to copy ${label}.`);
+      toast.error(`Failed to copy ${label}.`);
       return;
     }
     setCopiedLinkState(label);
@@ -1739,7 +1789,7 @@ export function AdminSurveysPanel({
     if (!survey) return;
     const normalizedName = safeFileStem(survey.name || survey.survey_id || "survey");
     const html = buildSurveyEthicsHtmlDocument({ survey, feeds, projectId });
-    openPrintableSurveyDocument(html, `${normalizedName}_ethics_protocol.html`);
+    openPrintableSurveyDocument(html, `${normalizedName}_ethics_protocol.html`, toast.info);
   }
 
   async function handleImportSurveyFile(event) {
@@ -1756,11 +1806,12 @@ export function AdminSurveysPanel({
       });
 
       setSurvey(importedSurvey);
+      savedSurveySnapshotRef.current = null;
       setSelectedSurveyId(null);
       setLinkedFeedPostsMap({});
     } catch (e) {
       console.warn("Failed to import survey:", e);
-      alert("Failed to import survey JSON.");
+      toast.error("Failed to import survey JSON.");
     } finally {
       if (event.target) {
         event.target.value = "";
@@ -1886,15 +1937,16 @@ export function AdminSurveysPanel({
 
         setSelectedSurveyId(savedSurveyId);
         setSurvey(editorFresh);
+        savedSurveySnapshotRef.current = JSON.stringify(editorFresh);
 
         await loadAll();
-        alert("Survey saved");
+        toast.success("Survey saved");
       } else {
-        alert(res?.err || "Failed to save survey");
+        toast.error(res?.err || "Failed to save survey");
       }
     } catch (e) {
       console.warn("Failed to save survey:", e);
-      alert("Failed to save survey");
+      toast.error("Failed to save survey");
     } finally {
       setSavingSurvey(false);
     }
@@ -1902,21 +1954,25 @@ export function AdminSurveysPanel({
 
   async function handleDeleteSurvey() {
     if (!survey?.survey_id) return;
-    if (!window.confirm("Delete this survey?")) return;
+    if (!(await confirm({ title: "Delete this survey?", message: "This can't be undone.", danger: true, confirmLabel: "Delete" }))) return;
 
+    setDeletingSurvey(true);
     try {
       const res = await deleteSurveyOnBackend(survey.survey_id, { projectId });
       if (res?.ok) {
         setSurvey(null);
+        savedSurveySnapshotRef.current = null;
         setSelectedSurveyId(null);
         setLinkedFeedPostsMap({});
         await loadAll();
       } else {
-        alert(res?.err || "Failed to delete survey");
+        toast.error(res?.err || "Failed to delete survey");
       }
     } catch (e) {
       console.warn("Failed to delete survey:", e);
-      alert("Failed to delete survey");
+      toast.error("Failed to delete survey");
+    } finally {
+      setDeletingSurvey(false);
     }
   }
 
@@ -1974,7 +2030,7 @@ export function AdminSurveysPanel({
 
   async function handleSaveFeedLinks() {
     if (!survey?.survey_id) {
-      alert("Save survey first before linking feeds.");
+      toast.error("Save survey first before linking feeds.");
       return;
     }
 
@@ -2012,13 +2068,13 @@ export function AdminSurveysPanel({
         });
 
         await loadAll();
-        alert("Feeds linked");
+        toast.success("Feeds linked");
       } else {
-        alert(res?.err || "Failed to link feeds");
+        toast.error(res?.err || "Failed to link feeds");
       }
     } catch (e) {
       console.warn("Failed to link feeds:", e);
-      alert("Failed to link feeds");
+      toast.error("Failed to link feeds");
     } finally {
       setSavingLinks(false);
     }
@@ -2026,7 +2082,7 @@ export function AdminSurveysPanel({
 
   async function handleDownloadSurveyOnlyCsv() {
     if (!survey?.survey_id) {
-      alert("Save the survey first.");
+      toast.error("Save the survey first.");
       return;
     }
 
@@ -2038,7 +2094,7 @@ export function AdminSurveysPanel({
 
       const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
       if (!safeRows.length) {
-        alert("No survey responses found yet.");
+        toast.error("No survey responses found yet.");
         return;
       }
 
@@ -2067,7 +2123,7 @@ export function AdminSurveysPanel({
       triggerCsvDownload(filename, csv);
     } catch (e) {
       console.warn("Failed to download survey-only CSV:", e);
-      alert("Failed to download survey-only CSV.");
+      toast.error("Failed to download survey-only CSV.");
     }
   }
 
@@ -2079,13 +2135,13 @@ export function AdminSurveysPanel({
 
   async function handleDownloadMultiFeedCsv() {
     if (!survey?.survey_id) {
-      alert("Save the survey first.");
+      toast.error("Save the survey first.");
       return;
     }
 
     const feedIds = orderedLinkedFeedIdsFromSurvey(survey);
     if (!feedIds.length) {
-      alert("Link at least one feed first.");
+      toast.error("Link at least one feed first.");
       return;
     }
 
@@ -2111,7 +2167,7 @@ export function AdminSurveysPanel({
       const postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
       const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
       if (!safeRows.length) {
-        alert("No multi-feed participant data found yet.");
+        toast.error("No multi-feed participant data found yet.");
         return;
       }
 
@@ -2146,7 +2202,7 @@ export function AdminSurveysPanel({
       );
     } catch (e) {
       console.warn("Failed to build multi-feed CSV:", e);
-      alert("Failed to build multi-feed CSV.");
+      toast.error("Failed to build multi-feed CSV.");
     }
   }
 
@@ -2313,6 +2369,7 @@ export function AdminSurveysPanel({
             isSaving={savingSurvey}
             showSaveButton={!!survey}
             onDeleteSelectedSurvey={handleDeleteSurvey}
+            deletingSurvey={deletingSurvey}
             showDeleteButton={!!survey?.survey_id}
             onRenameSurvey={renameSurvey}
           />,
@@ -2321,7 +2378,11 @@ export function AdminSurveysPanel({
 
       <div style={{ minWidth: 0 }}>
         {!survey && (
-          <div style={{ color: "#6b7280" }}>Select or create a survey.</div>
+          <EmptyState
+            icon="📋"
+            title="No survey selected"
+            message="Pick a survey from the list, or create a new one to get started."
+          />
         )}
 
         {survey && (
@@ -2400,7 +2461,14 @@ export function AdminSurveysPanel({
               title="Survey details"
               right={
                 <div style={{ display: "flex", gap: 6 }}>
-                  <Button size="sm" variant="secondary" onClick={() => importFileRef.current?.click()}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      if (!(await guardDiscardCurrentSurvey())) return;
+                      importFileRef.current?.click();
+                    }}
+                  >
                     Import Survey
                   </Button>
                   <Button size="sm" variant="secondary" onClick={handleExportSurvey}>

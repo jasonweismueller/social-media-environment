@@ -31,7 +31,7 @@ import {
   loadCustomMeasureGroups,
   saveCustomMeasureGroups,
 } from "../utils";
-import { PageHeader, Card, Table, Th, Td, Button, Badge } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Button, Badge, useToast, useConfirm, EmptyState } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -510,6 +510,7 @@ function GroupEditor({ dataset, initial, onSave, onCancel }) {
 }
 
 function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }) {
+  const confirm = useConfirm();
   const [editorMode, setEditorMode] = useState(null); // null | "new" | groupId being edited
   const [saveError, setSaveError] = useState("");
 
@@ -533,8 +534,8 @@ function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }
     setEditorMode(null);
   };
 
-  const handleDelete = (id) => {
-    if (!confirm("Remove this custom group? This only removes the grouping, not any response data.")) return;
+  const handleDelete = async (id) => {
+    if (!(await confirm({ title: "Remove custom group?", message: "This only removes the grouping, not any response data." }))) return;
     persist(groups.filter((g) => g.id !== id));
   };
 
@@ -808,7 +809,7 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
   return (
     <Card title="Responses" subtitle={`${dataset.rows.length} response${dataset.rows.length === 1 ? "" : "s"} for this survey.`}>
       {visible.length === 0 ? (
-        <div className="subtle" style={{ fontSize: 13 }}>No responses yet.</div>
+        <EmptyState icon="🗒️" title="No responses yet" message="Responses will appear here as participants complete this survey." />
       ) : (
         <>
           <Table>
@@ -851,6 +852,7 @@ export function SurveyParticipantsPage({
   embed = false,
 }) {
   const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
+  const toast = useToast();
 
   // When nested as a tab inside AdminSurveysPanel, the survey is already
   // selected by the parent — this page just renders analysis for it,
@@ -1012,7 +1014,7 @@ export function SurveyParticipantsPage({
       const roster = await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" });
       const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
       if (!safeRows.length) {
-        alert("No survey responses found yet.");
+        toast.error("No survey responses found yet.");
         return;
       }
 
@@ -1036,7 +1038,7 @@ export function SurveyParticipantsPage({
       triggerCsvDownload(filename, csv);
     } catch (e) {
       console.error("Survey CSV download failed:", e);
-      alert("Failed to download CSV.");
+      toast.error("Failed to download CSV.");
     } finally {
       setDownloading(false);
     }
