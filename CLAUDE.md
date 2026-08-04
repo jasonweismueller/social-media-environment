@@ -2630,3 +2630,54 @@ behaves identically when actually invoked with a real session. The one real prod
 `profiles` rows; every "jasonw"/username save described above happened only against the mocked
 `fetch`, never against production. Worth a real click-through (set a real username through the
 live UI, confirm it round-trips through a real `list` call) next time there's admin access.
+
+### Real incident, same day: the new role selector caused a real self-lockout — fixed + hardened
+
+The elegant-role-selector follow-up above worked exactly as built, which is precisely how the
+incident happened: the real owner clicked their own account's new role control to try it out,
+selected "Viewer," and it applied immediately — same one-click-applies behavior the old `<select>`
+already had, just easier to trigger by accident with a bigger visible target. This instantly lost
+owner access to `/admin/users` itself (owner-gated), with no other owner account to undo it and no
+in-UI recovery path. Fixed immediately with a direct `supabase db query --linked` write
+(`update profiles set role='owner' where email='jason.weismueller@gmail.com'`) restoring access,
+confirmed via the same query's `select`.
+
+**Per direct request, hardened so this specific failure mode can't recur, in both the Edge
+Function (real enforcement) and the frontend (so it's never even offered, not just rejected after
+the fact):**
+
+- **`admin-users/index.ts`**: new `SOLE_OWNER_EMAIL` constant
+  (`jason.weismueller@gmail.com`, hardcoded — this was an explicit "only I can be owner" request,
+  not a general multi-owner design). `update` now rejects, before touching the database: any role
+  change on your own account ("You can't change your own role"); granting `owner` to anyone other
+  than `SOLE_OWNER_EMAIL` ("Only \<email\> can hold the owner role"); any role change at all on
+  `SOLE_OWNER_EMAIL`'s account, even by a hypothetical different caller ("The owner role is
+  permanently assigned to \<email\>"). Added the same shape of guard for `disabled` — you can't
+  disable your own account, and `SOLE_OWNER_EMAIL` can't be disabled by anyone — since an accidental
+  self-disable is the same class of lockout as the role one, just not the one that was actually hit
+  this time. `create` rejects `role: "owner"` for any email other than `SOLE_OWNER_EMAIL` up front,
+  before creating the Auth user. All of this sits *before* the password/username updates in the
+  `update` handler, so a request mixing an allowed field with a disallowed one fails atomically —
+  no partial password reset alongside a silently-dropped role change. Type-checked and redeployed.
+- **`components-admin-users.jsx`**: mirrors the same `SOLE_OWNER_EMAIL` constant (frontend-only
+  copy for UI purposes — the Edge Function above is the real enforcement, same "frontend gate is
+  UX, not the boundary" posture used throughout this file). New `NON_OWNER_ROLE_OPTIONS` (Viewer/
+  Editor only) is what the Add User modal always uses now — creating a new account can never be the
+  one email that's allowed to be owner, so offering the option at all would only ever error. In the
+  detail panel, the role `SegmentedControl` is greyed out entirely (not just missing the Owner
+  option) whenever the selected user is yourself or `SOLE_OWNER_EMAIL`, with a `title` tooltip
+  explaining which; the "Account enabled" `Toggle` and "Delete" button get the same treatment,
+  each with its own explanatory hint/tooltip text instead of a generic disabled state.
+
+**Verified**: `deno check` clean, redeployed (`dashboard_url` confirms a real deploy). Frontend
+parses clean. Live-rendered via the same fetch-mock-plus-fake-session technique as the section
+above: for the sole-owner account, the role control renders visibly greyed with all three pills
+present (Owner still shown, just unreachable) and the correct tooltip, Delete is disabled, and the
+enabled-toggle shows "You can't disable your own account"; for a different, non-owner account
+(`researcher1`), the role control renders fully enabled with only Viewer/Editor offered (no Owner
+segment at all) and Delete/enabled-toggle both active — confirming the restriction is scoped to
+exactly the one account it should be, not applied blanket to everyone. **Not verified**: the
+Edge Function's rejections themselves against a real request (would need a real owner JWT, same
+standing limitation as elsewhere in this file) — only the SQL-level fix and the frontend UI states
+were exercised directly; the reasoning in the deno-checked/deployed function code was not
+exercised end-to-end with a real HTTP call.

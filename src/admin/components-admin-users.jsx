@@ -38,6 +38,17 @@ const ROLE_OPTIONS = [
   { value: "editor", label: "Editor", hint: "Can edit posts, surveys, and feeds" },
   { value: "owner", label: "Owner", hint: "Full control, including user management" },
 ];
+// Mirrors admin-users/index.ts's own SOLE_OWNER_EMAIL constant — after a
+// real self-inflicted lockout (an owner used the role selector on their own
+// account and lost access to this very page), the backend now hard-rejects
+// any attempt to grant/revoke 'owner' outside this one account. This
+// frontend copy exists purely so the UI reflects that constraint up front
+// (greying out the impossible option) instead of only ever finding out
+// after a rejected request — the Edge Function is still the real
+// enforcement, same "frontend gate is UX only" posture as hasAdminRole
+// elsewhere in this file.
+const SOLE_OWNER_EMAIL = "jason.weismueller@gmail.com";
+const NON_OWNER_ROLE_OPTIONS = ROLE_OPTIONS.filter((o) => o.value !== "owner");
 const ROLE_TONE = { owner: "accent", editor: "neutral", viewer: "neutral" };
 const PLATFORMS = [
   { app: "fb", label: "Facebook" },
@@ -103,10 +114,11 @@ function ChoiceChip({ active, onClick, children, tone = "accent", disabled }) {
  * both the detail panel and the Add User modal, so the three roles (and
  * what each one means, via `title`) are visible at a glance instead of
  * hidden behind a dropdown. */
-function SegmentedControl({ options, value, onChange, disabled }) {
+function SegmentedControl({ options, value, onChange, disabled, title }) {
   return (
     <div
       role="radiogroup"
+      title={title}
       style={{
         display: "inline-flex",
         border: "1px solid var(--admin-border)",
@@ -500,7 +512,10 @@ function AddUserModal({ onClose, onCreated }) {
         </label>
         <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
           Role
-          <SegmentedControl options={ROLE_OPTIONS} value={role} onChange={setRole} />
+          {/* Owner is never offered here — only SOLE_OWNER_EMAIL can hold
+              that role, and creating a brand-new account can't ever be that
+              specific account. */}
+          <SegmentedControl options={NON_OWNER_ROLE_OPTIONS} value={role} onChange={setRole} />
         </label>
         <label style={{ display: "grid", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
           Password
@@ -634,6 +649,8 @@ export function AdminUsersPage() {
 
   const selectedUser = users.find((u) => u.email === selectedEmail) || null;
   const sortedUsers = useMemo(() => users.slice().sort((a, b) => a.email.localeCompare(b.email)), [users]);
+  const isSelf = !!selectedUser && selectedUser.email === me;
+  const isSoleOwner = !!selectedUser && selectedUser.email === SOLE_OWNER_EMAIL;
 
   const changeRole = async (user, role) => {
     if (role === user.role) return;
@@ -812,9 +829,16 @@ export function AdminUsersPage() {
 
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                       <SegmentedControl
-                        options={ROLE_OPTIONS}
+                        options={isSoleOwner ? ROLE_OPTIONS : NON_OWNER_ROLE_OPTIONS}
                         value={selectedUser.role}
-                        disabled={roleBusyEmail === selectedUser.email}
+                        disabled={roleBusyEmail === selectedUser.email || isSelf || isSoleOwner}
+                        title={
+                          isSelf
+                            ? "You can't change your own role"
+                            : isSoleOwner
+                            ? `The owner role is permanently assigned to ${SOLE_OWNER_EMAIL}`
+                            : undefined
+                        }
                         onChange={(role) => changeRole(selectedUser, role)}
                       />
                       <Button size="sm" variant="secondary" onClick={() => setResetPwUser(selectedUser)}>
@@ -823,9 +847,9 @@ export function AdminUsersPage() {
                       <Button
                         size="sm"
                         variant="danger"
-                        disabled={selectedUser.email === me}
+                        disabled={isSelf || isSoleOwner}
                         busy={deleteBusyEmail === selectedUser.email}
-                        title={selectedUser.email === me ? "You can't delete your own account" : "Delete user"}
+                        title={isSelf ? "You can't delete your own account" : isSoleOwner ? "The owner account can't be deleted" : "Delete user"}
                         onClick={() => deleteUser(selectedUser)}
                       >
                         Delete
@@ -836,9 +860,16 @@ export function AdminUsersPage() {
                   <div style={{ marginTop: 16, maxWidth: 360 }}>
                     <Toggle
                       label={selectedUser.disabled ? "Account disabled" : "Account enabled"}
-                      hint="A disabled account can't sign in"
+                      hint={
+                        isSelf
+                          ? "You can't disable your own account"
+                          : isSoleOwner
+                          ? "The owner account can't be disabled"
+                          : "A disabled account can't sign in"
+                      }
                       checked={!selectedUser.disabled}
                       busy={statusBusyEmail === selectedUser.email}
+                      disabled={isSelf || isSoleOwner}
                       onChange={() => toggleStatus(selectedUser)}
                     />
                   </div>

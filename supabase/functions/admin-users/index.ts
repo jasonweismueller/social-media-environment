@@ -18,6 +18,16 @@ import { corsHeaders, handlePreflight, jsonResponse } from "../_shared/cors.ts";
 
 const ROLES = ["viewer", "editor", "owner"];
 
+// Single hardcoded owner, by direct user request (2026-08-04) after a
+// self-inflicted lockout: an owner used the new role selector on their own
+// account and demoted themselves to viewer, which immediately lost them
+// access to this very page (owner-gated) with no other owner able to
+// reverse it — had to be fixed with a direct database write. Every check
+// below exists specifically to make that scenario permanently impossible:
+// nobody (including this account itself) can ever change this email's role
+// away from 'owner', and nobody else can ever be granted 'owner' at all.
+const SOLE_OWNER_EMAIL = "jason.weismueller@gmail.com";
+
 // Display-only handle (profiles.username, 20260801000017_profiles_username.sql)
 // — never used for sign-in, Auth stays email/password. Kept intentionally
 // restrictive (lowercase, no spaces) so it reads cleanly as a short label
@@ -99,6 +109,12 @@ Deno.serve(async (req: Request) => {
     if (!email || !password) {
       return jsonResponse({ ok: false, err: "email and password are required" }, { status: 400 });
     }
+    if (role === "owner" && email !== SOLE_OWNER_EMAIL) {
+      return jsonResponse(
+        { ok: false, err: `Only ${SOLE_OWNER_EMAIL} can hold the owner role — choose viewer or editor.` },
+        { status: 400 }
+      );
+    }
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
@@ -143,6 +159,37 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (targetErr) return jsonResponse({ ok: false, err: targetErr.message }, { status: 500 });
     if (!target) return jsonResponse({ ok: false, err: "user not found" }, { status: 404 });
+
+    const isSelf = email === (callerData.user.email || "").toLowerCase();
+    const isSoleOwner = email === SOLE_OWNER_EMAIL;
+
+    // Role-change guards — see SOLE_OWNER_EMAIL's own comment for why these
+    // exist. Checked before touching the password/username so a request
+    // that mixes an allowed field with a disallowed one fails atomically
+    // (no partial password reset alongside a rejected role change).
+    if (body?.role != null && ROLES.includes(body.role)) {
+      if (isSelf) {
+        return jsonResponse({ ok: false, err: "You can't change your own role." }, { status: 400 });
+      }
+      if (isSoleOwner) {
+        return jsonResponse(
+          { ok: false, err: `The owner role is permanently assigned to ${SOLE_OWNER_EMAIL}.` },
+          { status: 400 }
+        );
+      }
+      if (body.role === "owner") {
+        return jsonResponse(
+          { ok: false, err: `Only ${SOLE_OWNER_EMAIL} can hold the owner role.` },
+          { status: 400 }
+        );
+      }
+    }
+    if (body?.disabled === true) {
+      if (isSelf) return jsonResponse({ ok: false, err: "You can't disable your own account." }, { status: 400 });
+      if (isSoleOwner) {
+        return jsonResponse({ ok: false, err: `${SOLE_OWNER_EMAIL} can't be disabled.` }, { status: 400 });
+      }
+    }
 
     if (body?.password) {
       const { error: pwErr } = await admin.auth.admin.updateUserById(target.id, {
