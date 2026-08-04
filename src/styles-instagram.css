@@ -476,17 +476,21 @@ body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
   font-size: .9rem;
 }
 
+/* Deliberately NOT Instagram's brand gradient — the admin login is shared
+   across all three platforms (fb/ig/amz), not Instagram-specific, so it
+   uses the same neutral indigo as the rest of the admin dashboard
+   (--admin-accent in src/admin/ui/tokens.css). */
 .admin-login-wrap .card.admin-login-card .btn.primary {
   width: 100%;
   margin-top: 1rem;
-  background: linear-gradient(135deg, #ed4956, #d62976);
-  border: none;
+  background: #4f46e5;
+  border-color: #4f46e5;
   color: #fff;
-  box-shadow: 0 8px 20px rgba(214,41,118,.22);
 }
 
 .admin-login-wrap .card.admin-login-card .btn.primary:hover {
-  background: linear-gradient(135deg, #e03d6a, #c92d54);
+  background: #3730a3;
+  border-color: #3730a3;
   color: #fff;
 }
 

@@ -2,14 +2,12 @@
 import React, { useEffect, useState } from "react";
 import {
   hasAdminSession,
-  adminLogin,        // owner password
   adminLoginUser,    // email + password
   getAdminEmail,
   getAdminRole
 } from "../utils";
 
 export default function AdminLogin({ onAuth }) {
-  const [mode, setMode] = useState("admin"); // "admin" | "owner"
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
@@ -24,18 +22,10 @@ export default function AdminLogin({ onAuth }) {
   const submit = async () => {
     if (loading) return;
     setErr("");
-
-    if (mode === "admin") {
-      if (!email.trim() || !pw.trim()) return;
-    } else {
-      if (!pw.trim()) return;
-    }
+    if (!email.trim() || !pw.trim()) return;
 
     setLoading(true);
-    const res =
-      mode === "admin"
-        ? await adminLoginUser(email.trim(), pw.trim())
-        : await adminLogin(pw.trim());
+    const res = await adminLoginUser(email.trim(), pw.trim());
     setLoading(false);
 
     if (res?.ok) onAuth?.();
@@ -58,71 +48,27 @@ export default function AdminLogin({ onAuth }) {
     );
   }
 
-  // shared inline style to bulletproof the two toggle buttons
-  const toggleBtnStyle = {
-    height: 42,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    lineHeight: 1,
-    padding: "0 .75rem",
-    width: "100%",
-    whiteSpace: "nowrap",
-    margin: 0,
-  };
-
   return (
     <div className="admin-login-wrap">
       <div className="card admin-login-card">
         <h2 style={{ margin: 0, textAlign: "center" }}>Admin Login</h2>
 
-        {/* Mode toggle (NO className to avoid global CSS fights) */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 8,
-            marginTop: 12,
-            alignItems: "stretch",
-          }}
-        >
-          <button
-            type="button"
-            className={mode === "admin" ? "btn primary" : "btn"}
-            onClick={() => setMode("admin")}
-            style={toggleBtnStyle}
-          >
-            Sign in as Admin
-          </button>
-          <button
-            type="button"
-            className={mode === "owner" ? "btn primary" : "btn"}
-            onClick={() => setMode("owner")}
-            style={toggleBtnStyle}
-          >
-            Sign in as Owner
-          </button>
-        </div>
-
-        {/* Inputs */}
-        {mode === "admin" && (
-          <label style={{ display: "grid", gap: ".6rem", marginTop: "1rem" }}>
-            Email
-            <input
-              className="input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder="you@example.com"
-              autoFocus
-              style={{ width: "100%" }}
-            />
-          </label>
-        )}
+        <label style={{ display: "grid", gap: ".6rem", marginTop: "1rem" }}>
+          Email
+          <input
+            className="input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="you@example.com"
+            autoFocus
+            style={{ width: "100%" }}
+          />
+        </label>
 
         <label style={{ display: "grid", gap: ".6rem", marginTop: "1rem" }}>
-          {mode === "admin" ? "Password" : "Sign in as Owner"}
+          Password
           <div className="input-with-toggle" style={{ position: "relative" }}>
             <input
               className="input"
@@ -131,7 +77,6 @@ export default function AdminLogin({ onAuth }) {
               onChange={(e) => setPw(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
               placeholder="••••••••"
-              autoFocus={mode === "owner"}
               style={{ width: "100%", paddingRight: "2.25rem" }}
             />
             <button
@@ -165,7 +110,7 @@ export default function AdminLogin({ onAuth }) {
         <button
           className="btn primary"
           onClick={submit}
-          disabled={loading || (mode === "admin" ? !email.trim() || !pw.trim() : !pw.trim())}
+          disabled={loading || !email.trim() || !pw.trim()}
           style={{ width: "100%", marginTop: "1rem" }}
         >
           {loading ? "Signing in…" : "Sign in"}
