@@ -2788,7 +2788,12 @@ already-proven `chosen`-selection-and-post-loading code that was live before thi
 without the removed default-lookup branch — worth a real click-through next time there's a way
 to mock the initial-mount fetch, or admin access to confirm against real data.
 
-## Session handoff (2026-08-04, end of session) — read this first if picking up fresh
+## Session handoff (2026-08-04, end of session)
+
+**Superseded by the later 2026-08-04 session below** ("Session handoff (2026-08-04, later
+session)," at the very end of this file) — read that one first if picking up fresh; it supersedes
+the "highest priority" item called out at the end of this section too (same item, still open,
+carried forward rather than resolved). Left in place as history.
 
 **Everything from this session is committed and pushed.** `git status` clean, `HEAD` ==
 `origin/main` = `0f0afd7 remove default feed function`. This surprised the session itself partway
@@ -2812,4 +2817,292 @@ re-deriving this from five separate CLAUDE.md entries.
 restriction) was written and applied to the live database, but never exercised against a real
 restricted (non-owner) session — only verified by reading the policy SQL and by mocking the
 frontend. Unlike everything else unverified this session, this one is a real security boundary,
-not just UX polish, so it's the highest-priority thing to close out next.
+so it's the highest-priority thing to close out next. **Still true as of the later session below —
+this did not get picked up.**
+
+## Admin dashboard professionalization: browser dialogs → Toast/Confirm/Prompt system (2026-08-04)
+
+Prompted directly: "many of the responses are browser alerts, maybe those should be proper css
+styled messages?" Escalated (with direct user agreement at each step) into a much larger
+professionalization pass covering six areas total; this entry covers the first three, bundled
+into one commit (`52704dd`) since they were built together in one continuous thread.
+
+**Browser dialogs → themed equivalents.** `window.alert()`/`confirm()`/`prompt()` block the JS
+thread, can't be styled, and read as dev-tooling rather than product — 90 call sites across 15
+admin files (`components-admin-dashboard.jsx` 25, `components-admin-surveys.jsx` 26,
+`components-admin-media-{facebook,instagram}.jsx` 9+8, `components-admin-editor-{facebook,
+instagram}.jsx` 2+2, `components-admin-participants-{feed,survey}.jsx` 5+3,
+`AdminProjectPicker.jsx` 5, `components-admin-users.jsx` 4, `components-admin-surveys-editor.jsx`
+1, plus `utils-backend.js`'s `savePostsToBackend`). New shared primitives in `src/admin/ui/`:
+- **`Toast.jsx`** (`ToastProvider`/`useToast()`) — stacked, auto-dismissing (4.5s success/info, 7s
+  error) notifications replacing `alert()`. New `--admin-success-*` token group added to
+  `tokens.css` (didn't exist before — only danger/accent existed).
+- **`ConfirmDialog.jsx`** (`ConfirmProvider`/`useConfirm()`) — resolves to `true`/`false` like
+  `window.confirm`, so call sites just need `await confirm(...)` instead of a bare call; a `danger`
+  option renders the confirm button in the danger variant for destructive actions.
+- **`PromptDialog.jsx`** (`PromptProvider`/`usePrompt()`) — resolves to the entered string or
+  `null` on cancel, matching `window.prompt`'s contract.
+
+All three render through `Modal.jsx` and are mounted once in `AdminEntry.jsx`, wrapping the whole
+`/admin/*` route tree (so `AdminUsersPage`, which lives outside `AdminShell`, gets them too).
+Module-level functions that aren't React components (`exportFeedAsPdf` in
+`components-admin-dashboard.jsx`, `openPrintableSurveyDocument` in `components-admin-surveys.jsx`)
+can't call hooks — given an `onError`/`onFallback` callback param instead, threaded from the
+calling component's `toast.error`/`toast.info`.
+
+**Loading-state audit.** Found the codebase already had good `busy`/disabled feedback almost
+everywhere (Users page role/status/delete, survey save/delete/reset-balance, project
+create/delete) — the two real gaps were **Delete Feed** and **Delete Survey**, which had zero
+visual feedback during the async call. Added `deletingFeed`/`deletingSurvey` state, wired to the
+`Button` component's `busy` prop (also upgraded a couple of existing `disabled`-only buttons to
+`busy` for the spinner).
+
+**Empty states.** New `src/admin/ui/EmptyState.jsx` — icon + title + message + optional action,
+plus a `compact` text-only variant for the narrow Feeds/Surveys tree-sidebar lists. Replaced bare
+grey one-line text ("No feeds yet.", "Select a survey.") across: Feeds list, Surveys list, Posts
+list, Users list, Project picker (with a real "+ New project" action button), both "nothing
+selected" main panels (Feeds/Surveys), survey responses list, feed participant submissions list.
+
+**Unsaved-changes guard.** Post editor modal (`components-admin-dashboard.jsx`) and survey editor
+(`components-admin-surveys.jsx`, `AdminSurveysPanel`) now track a dirty snapshot (`JSON.stringify`
+comparison against a ref captured at open/load/save time) and confirm via `useConfirm()` before
+discarding: closing the post-editor modal, switching to a different survey, creating/copying/
+importing a new survey while one is open. Plus a `beforeunload` listener on both for tab close/
+refresh. Deliberately scoped to just these two "real editor" surfaces, not the broader
+"local `posts` array differs from last-published state" concept (a bigger, separate feature).
+
+**Verified live**: dev server was already running (reused, not restarted). All testing used a
+disposable fake admin session (`localStorage` `admin_token_v1` etc. — never real credentials) plus
+a monkey-patched `window.fetch` mocking every backend call, so zero real writes touched production
+data at any point. Confirmed via the real running app: `PromptDialog` renders themed and
+auto-focused for "New feed"/"New project," `ConfirmDialog` renders with the danger-styled button
+for "Delete feed"/"Delete project," and a forced-failure mock produced a visible, correctly-styled
+error toast (confirmed via direct DOM query — a screenshot taken slightly later missed it, since
+error toasts auto-dismiss after 7s and round-trip latency between tool calls eats into that).
+
+## Error boundaries, modal accessibility, SVG icon set (2026-08-04)
+
+Second round of the same professionalization thread, prompted by "what else." Bundled into commit
+`e5fc462`.
+
+**No error boundary anywhere.** A thrown error in one admin panel white-screened the *entire*
+dashboard, nav included. New `src/admin/ui/ErrorBoundary.jsx` (class component — React has no
+hook-based error boundary API), themed, with "Try again" (clears the caught error, re-renders the
+same children — enough for transient issues) and "Reload page" (harder reset). Wrapped
+individually around: each top-level `/admin/*` route in `AdminEntry.jsx` (Project picker, Platform
+picker, Users, Dashboard), and — separately, inside `AdminDashboard` — the Feeds panel and the
+Surveys panel each get their own boundary (keyed on `feedId` for the Feeds one), so a crash in one
+doesn't take the other, or the shell/nav, down with it. This granularity is the actual point: a
+single boundary around all of `AdminDashboard` would have unmounted the whole shell on any panel
+crash, defeating the purpose.
+
+**`Modal.jsx` gained focus trap + auto-focus + focus-return.** Tab/Shift+Tab now cycles within the
+open dialog instead of escaping to the page behind it; focus lands on the first focusable element
+(or respects a child's own `autoFocus`, e.g. `PromptDialog`'s input) on open; focus returns to
+whatever triggered the dialog on close. `ConfirmDialog`/`PromptDialog` inherit all of this for
+free since they render through `Modal`.
+
+**A real bug was found and fixed while verifying this, not while writing it.** The initial-focus
+effect had `useEffect(fn, [])` — fires once, tied to the component's true mount. But `Modal`
+resolves its portal target asynchronously (`portalTarget` starts `null`, set via a separate
+`useLayoutEffect`), so on the *first* commit the portal (and therefore `dialogRef.current`)
+doesn't exist yet — the effect fired on that first commit, found `dialogRef.current` null, and
+silently no-op'd forever (deps `[]` means it never runs again). Diagnosed by mounting a real
+`Modal` instance via a dynamically-imported module in the browser console (same technique as
+`patient-guarding-lovelace.md`'s manual verification work) and monkey-patching
+`HTMLElement.prototype.focus` to log every call — zero calls logged from inside the dialog,
+confirming the effect never actually focused anything. **Fix**: split into two effects — one for
+capturing "what was focused before" + the focus-restore-on-unmount cleanup (still `[]` deps, this
+part was never the problem), and a separate one for setting initial focus, keyed on `[portalTarget]`
+so it re-fires once the portal actually attaches. Re-verified after the fix: focus correctly lands
+on the dialog, Tab wraps forward from last→first element and Shift+Tab wraps backward from
+first→last, and closing returns focus to the triggering element — all confirmed via the same
+live-mounted-instance technique, not just code review.
+
+**New `src/admin/ui/icons.jsx`** — a small stroke-based SVG icon set (24×24 viewBox,
+`stroke="currentColor"`, `strokeWidth 1.8`, round caps/joins — same visual language as the
+existing `RepostIcon` in `ui-posts-instagram.jsx`), replacing ad-hoc emoji in admin chrome:
+platform picker (Facebook/Instagram/Amazon icons, now in tinted badge circles), Feeds/Surveys nav
+icons, `EmptyState`'s default icon, `ErrorBoundary`'s warning icon. Deliberately **not** applied to
+every emoji in the codebase — left alone: data-table boolean glyphs (✓/—, monochrome and
+appropriate for a data grid), code comments, and the "🎲 Fill with random content" test-data
+button (a niche dev/testing affordance, not structural chrome).
+
+## Button consistency sweep, image compression, and two bugs found from real user reports (2026-08-04)
+
+Third round, commit `a0fcb10`. The first two items are more of the same professionalization work;
+the last two are real production bugs the user hit and reported *while this session was still
+running*, found and fixed the same turn.
+
+**Button sweep**: 14 raw `<button className="btn ...">` (old global-CSS-class buttons, not the
+`Button` design-system component) converted to `Button` across `components-admin-dashboard.jsx`
+(post-editor modal Cancel/Save, session-expiring/expired banners, feeds-error banner) and
+`components-admin-participants-feed.jsx` (Refresh/Simulate/Clear/Download CSV/Details/Show more).
+**Deliberately left alone**: `components-admin-login.jsx` (the whole sign-in page renders *outside*
+any `.admin-shell` div — converting its buttons to `Button`, which depends on `--admin-*` CSS
+variables scoped to `.admin-shell`, would have broken their styling entirely without also
+restructuring the page; too high-stakes to risk on a consistency pass) and one
+`<label className="btn ghost">` in `components-admin-feeds.jsx` wrapping a hidden file input
+(`Button` renders a `<button>`, not a `<label>` — needed for real `<input type="file">` semantics).
+
+**New `src/utils/utils-image-compress.js`** — `compressImageFile(file, preset)`, client-side
+downscale + re-encode via `createImageBitmap` → `<canvas>` → `canvas.toBlob()`, run before every
+image upload reaches `uploadFileToS3ViaSigner`. Two presets deliberately mirror the exact numbers
+from the 2026-08-02 asset-maintenance pass (see that entry) rather than inventing new ones, so an
+upload-time-compressed image and a `sips`-script-compressed image look the same: `feed` (1400px
+long edge, quality 0.8) for post images/video posters, `avatar` (320px, quality 0.78) for avatars.
+Never upscales; passes the original through unchanged (never throws) for GIFs (would destroy
+animation), SVGs, decode failures, already-small-enough sources, or if the "compressed" result
+somehow isn't actually smaller. Wired into all 7 image upload call sites (`components-admin-media-
+{facebook,instagram}.jsx` image + poster uploads, `components-admin-editor-{facebook,
+instagram}.jsx` avatar uploads); the 2 video upload call sites deliberately untouched. **Verified
+live** with a synthetic 2800×1866 canvas-generated JPEG (avoids the source topic-pool image's CORS
+restriction on cross-origin `fetch()`, which blocked the first verification attempt): `feed` preset
+→ 1400×933, 73% smaller; `avatar` preset → 320×213, 97% smaller. Pass-through guards (GIF,
+already-small image) also confirmed to return the exact original `File` object unchanged.
+
+**Bug 1: SVG icons misaligned with adjacent text in the nav bar** (user-reported mid-session, from
+directly looking at the shipped icons.jsx work above). Root cause: `<svg>` defaults to
+`display: inline` with baseline alignment — unlike a text glyph, this reserves phantom space below
+the shape for a font descender it doesn't have, which a parent `align-items: center` doesn't
+correct for (it centers the *element*, whose own box already includes that phantom space). Fixed
+at the source in `icons.jsx`'s shared `Base` component: `style={{ display: "block", flexShrink: 0,
+...style }}` merged onto every icon (previously no `style` merging existed at all — a caller's
+`style` prop would have fully overridden the defaults rather than combining with them, latent bug
+fixed as part of the same change).
+
+**Bug 2: `PromptDialog`/`ConfirmDialog`/`Toast` rendered completely unstyled — "floating" text with
+no visible box** (user-reported: clicking "+" on Feeds to create a new feed). Root cause, confirmed
+via direct DOM inspection (`document.querySelectorAll('.admin-shell')`, checking `.contains()`
+against the provider's hidden anchor span) rather than guessed: `ToastProvider`/`ConfirmProvider`/
+`PromptProvider` are mounted once in `AdminEntry.jsx`, **above** (outside) every individual page's
+own `.admin-shell` div — `AdminProjectPicker`/`AdminPlatformPicker`/`AdminDashboard`/
+`components-admin-users.jsx` each render their *own* separate `.admin-shell` wrapper, and none of
+them is a common ancestor of the providers. So `anchorRef.current.closest(".admin-shell")`
+correctly found nothing (the anchor span is a DOM *sibling* of wherever the current page's shell
+div lives, not a descendant) and fell through to `document.body`, which has none of the
+`--admin-*` CSS custom properties `Modal`'s styles depend on — every `var(--admin-*)` reference
+silently resolved to nothing, producing unstyled markup. **Fix in `Modal.jsx`**: fall back to
+`document.querySelector(".admin-shell")` (search the whole document, not just ancestors) before
+finally falling back to `document.body` — safe because exactly one `.admin-shell` is ever mounted
+at a time (the pages that render one are mutually exclusive routes; see the "watch for" note in
+`~/.claude/plans/vigilant-mending-osprey.md` about this invariant). **A second, related bug found
+in the same investigation**: `ToastProvider` is long-lived (mounted once, never unmounts across
+navigation between admin pages), but its `portalTarget` was resolved *once* via
+`useLayoutEffect(fn, [])` on its own mount — meaning after navigating to a different admin page
+(each with a different, freshly-mounted `.admin-shell` div), the cached target would point at an
+already-unmounted, detached DOM node, and toasts would silently stop appearing. Fixed by removing
+the cached state entirely — `ToastProvider` now resolves `document.querySelector(".admin-shell") ||
+document.body` fresh, inline at render time, only when `toasts.length > 0` (which is also the only
+time it meaningfully re-renders, since nothing else about it changes across navigation). `Modal.jsx`
+itself didn't have this second problem — each dialog is a fresh component instance created when
+`state` goes non-null, not a long-lived wrapper, so its one-time-per-open resolution is correct as
+long as it finds *something* valid to portal into, which the `document.querySelector` fallback now
+guarantees. **Verified**: reproduced the exact real-world DOM shape (`.admin-shell` as a sibling,
+not ancestor, of the mount point) via a live-mounted `Modal` instance in the browser console —
+before the fix, computed style showed `background: rgba(0,0,0,0)`/`border-radius: 0px`/no shadow;
+after, `background: rgb(255,255,255)`, `border-radius: 14px`, a real `box-shadow` — confirming the
+fix against the actual failure mode, not just a plausible-looking DOM structure.
+
+## Survey feed-link fixes: unsaved-feed guard + orphaned-feed cleanup (2026-08-04)
+
+Fourth round, commit `f7de650` — a real production incident on a live study, reported by the user
+*while this session was running*, diagnosed against the live database and fixed the same turn.
+
+**The report**: clicking "Save Feed Setup" on **Study 3 - Main** (a real survey, `project_1`)
+failed with a raw Postgres error surfaced verbatim: `insert or update on table "feed_surveys"
+violates foreign key constraint "feed_surveys_feed_id_fkey"`.
+
+**Diagnosis, via `supabase db query --linked` against the live database (read-only)**: the
+survey's `linked_feed_ids` included `feed_14`, but `project_1::fb::feed_14` had no row in `feeds`
+at all — every other id in the list (`feed_13`, `feed_3`, `feed_4`, `feed_5`) existed fine.
+Root cause: creating a feed via "+ New feed" is pure client-state (`checksum: ""`, no
+`updated_at`) until "Save feed" is actually clicked at least once — nothing in the survey editor's
+Feed Setup picker distinguished a saved feed from an unsaved one, so nothing stopped the user from
+linking one that had never been persisted. **A second, worse detail found in the same query**:
+`feed_surveys` only had rows for `feed_3`/`feed_4`/`feed_5` — **not `feed_13`, despite `feed_13`
+being a perfectly valid, already-saved feed**. Because `supabaseLinkSurveyToFeeds`
+(`utils-backend-supabase.js`) inserts all new links in a single bulk `.insert()` call, and a
+multi-row Postgres insert is atomic, `feed_14`'s FK violation rolled back the *entire* batch —
+including `feed_13`, which had nothing wrong with it. This is why the fix needed to be
+per-feed-id-precise, not just "block the specific bad one": any future attempt would need to
+retry the *whole* batch cleanly once the blocking feed is resolved.
+
+**Fix, pass 1** (still commit `a0fcb10`, before the second incident below): `handleSaveFeedLinks`
+in `components-admin-surveys.jsx` now checks every selected feed's `updated_at` before calling the
+backend at all — if any selected feed exists locally but was never saved, blocks with a clear
+message naming it ("X hasn't been saved yet — open it in Feeds and click 'Save feed' first...")
+instead of round-tripping to get a database error. Each such feed also gets a visible "Not saved
+yet" badge directly in the picker. **Defense in depth**: `supabaseLinkSurveyToFeeds` also now
+catches Postgres error code `23503` (foreign_key_violation) specifically and rethrows a friendly
+message, in case this insert is ever reached by a path that skips the client-side check.
+
+**Fix, pass 2** (commit `f7de650`, same day, later): the user then **deleted** `feed_14` entirely
+(reasonable — it was never real) — but the survey's `linked_feed_ids` still referenced it, and
+now there was **no way to remove it through the UI at all**: the picker only ever renders a
+checkbox for each entry in the *current* `feeds` list, so a feed_id with zero matching feed object
+has no row to uncheck. This is a genuinely different case from pass 1's "exists but unsaved" — the
+`f && !f.updated_at` filter used there silently drops anything where `f` itself is `undefined`
+(no match found), so orphaned references slipped straight through that check unnoticed. **Fix**:
+new `orphanedFeedIds` computation (linked ids with *no* matching feed object at all, computed
+separately from the unsaved-check) plus a dedicated red warning panel in the Feed Setup tab
+listing each orphaned id (shown as the raw id, not a name — there's nothing to look up a name
+from) with its own **Remove** button, calling the same `toggleFeed(fid)` the checkboxes use (which
+doesn't care whether `f` exists, just whether the id is currently in `linked_feed_ids`). The
+pre-save guard now checks orphans *first*, with its own distinct message, before the
+unsaved-feed check.
+
+**Verified against the live incident's own data** (read-only queries only, `feed_surveys`/`feeds`/
+`surveys` all confirmed via `supabase db query --linked`, no writes made by Claude): confirmed
+`feed_13`/`feed_3`/`feed_4`/`feed_5` all exist and have real `updated_at` values (so the guard
+correctly lets them through), confirmed `feed_14` genuinely has zero rows in `feeds` (so
+`orphanedFeedIds` correctly flags it, not the "unsaved" path), and confirmed `toggleFeed`'s
+existing remove-when-present logic requires no changes to work for an orphaned id — it only ever
+operates on the id string, never dereferences the feed object. Not verified: an actual click
+through the real UI with a real admin session — same standing limitation as everywhere else in
+this file (no login). The user was given the exact next step (open Feeds, save `feed_14` — wait,
+correction, since it was deleted: remove it via the new panel, then retry Save Feed Setup) to
+confirm live on their end.
+
+## Test suite: started, then explicitly reverted (2026-08-04)
+
+Part of the same "what else to improve" discussion — `vitest`, `jsdom`, `@testing-library/react`,
+`@testing-library/jest-dom` were installed as devDependencies, no config or tests written yet, when
+the user said "stop for now... test suite not needed for now." **Fully reverted**: `npm uninstall`
+run for all four packages, then `git checkout -- package-lock.json` to clear residual transitive-
+dependency version churn from the install/uninstall round-trip (a harmless but real diff —
+`picomatch`/`tinyglobby` patch-version bumps, unrelated to the test packages themselves).
+Confirmed via `git status`/`git diff` on `package.json`/`package-lock.json`: clean, no trace left.
+**If this comes up again in a future session, it's not a new idea being proposed for the first
+time** — check whether the user's answer has actually changed before re-pitching it.
+
+## Session handoff (2026-08-04, later session) — read this first if picking up fresh
+
+**Everything described in the four sections above is committed and pushed.** `git status` clean,
+`HEAD` == `origin/main` = `f7de650 survey feed link issues fix`. Same auto-commit mechanism as
+every other session in this file (the user's GitHub Desktop app) — confirmed by checking, not
+assumed.
+
+This session started from direct user feedback ("many of the responses are browser alerts") and
+grew into a six-item "make the admin dashboard more professional" list through repeated "what else"
+follow-ups, three of which shipped (browser-dialog replacement + loading/empty states + unsaved-
+changes guards; error boundaries + modal accessibility + SVG icons; button consistency + image
+compression) and three of which didn't (test suite — actively reverted; staging environment —
+declined; Sentry — deferred pending the user creating an account). Along the way, the user reported
+three real bugs live while the session was still running (SVG icon misalignment, unstyled/floating
+dialogs, a `feed_surveys` foreign-key violation on a real study) — all found, root-caused against
+real evidence (live DOM inspection, live database queries), and fixed the same session, including a
+second pass on the FK issue once the user's own follow-up action (deleting the offending feed)
+turned "never saved" into "no longer exists," a meaningfully different bug requiring a different fix.
+
+**Full index, reading order, and the consolidated list of what's genuinely not done (not just
+unverified)**: `~/.claude/plans/vigilant-mending-osprey.md` — read that file's "Status" and "What's
+genuinely NOT done" sections rather than re-deriving this from four separate CLAUDE.md entries.
+
+**The one item worth flagging above the others, again**: `project_access` RLS is *still* not
+verified against a real restricted (non-owner) session — this was the top-priority open item at
+the end of the *previous* session too (see the "Session handoff (2026-08-04, end of session)"
+entry above this one) and did not get picked up this session either, despite the user's own "what
+else" prompts surfacing it again mid-session. Two sessions in a row have now ended with this as
+the highest-priority open item. If a third one does too, that's worth naming explicitly rather than
+just re-adding it to another list.

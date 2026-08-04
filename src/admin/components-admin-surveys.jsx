@@ -2048,7 +2048,7 @@ export function AdminSurveysPanel({
     const linkedIds = orderedLinkedFeedIdsFromSurvey(survey);
     const unsavedSelected = linkedIds
       .map((fid) => feeds.find((f) => String(f.feed_id) === String(fid)))
-      .filter((f) => f && !f.updated_at);
+      .filter((f) => f && !f.checksum);
     if (orphanedFeedIds.length) {
       toast.error(
         `${orphanedFeedIds.join(", ")} ${orphanedFeedIds.length === 1 ? "no longer exists" : "no longer exist"} — remove ${
@@ -3195,7 +3195,7 @@ export function AdminSurveysPanel({
                   const selectedIds = selectedFeedIds;
                   const isChecked = selectedIds.includes(f.feed_id);
                   const orderIndex = selectedIds.indexOf(f.feed_id);
-                  const isUnsaved = !f.updated_at;
+                  const isUnsaved = !f.checksum;
 
                   return (
                     <div key={f.feed_id} style={{ marginBottom: 8 }}>
