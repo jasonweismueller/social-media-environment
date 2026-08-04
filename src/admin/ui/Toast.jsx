@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const ToastContext = createContext(null);
@@ -93,13 +93,7 @@ function ToastItem({ toast, onDismiss }) {
  */
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
-  const anchorRef = useRef(null);
-  const [portalTarget, setPortalTarget] = useState(null);
   const timersRef = useRef(new Map());
-
-  useLayoutEffect(() => {
-    setPortalTarget(anchorRef.current?.closest(".admin-shell") || document.body);
-  }, []);
 
   const dismiss = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -153,9 +147,21 @@ export function ToastProvider({ children }) {
     </div>
   );
 
+  // Resolved fresh at render time rather than cached in state — this
+  // provider is mounted once at the top of the whole `/admin/*` tree and
+  // never unmounts across navigation, but each page (AdminProjectPicker,
+  // AdminDashboard, etc.) renders its own separate `.admin-shell` div, so a
+  // target resolved once on mount would go stale (pointing at an already
+  // -unmounted node) the moment the user navigates anywhere. Only matters
+  // when there's actually a toast to show, which is also the only time
+  // this component re-renders (its parent essentially never does), so this
+  // is cheap. Document-wide, not ancestor-based, since this provider isn't
+  // nested inside any page's `.admin-shell` — see Modal.jsx for the same
+  // reasoning.
+  const portalTarget = toasts.length > 0 ? document.querySelector(".admin-shell") || document.body : null;
+
   return (
     <ToastContext.Provider value={apiRef.current}>
-      <span ref={anchorRef} style={{ display: "none" }} />
       {children}
       {portalTarget && createPortal(stack, portalTarget)}
     </ToastContext.Provider>

@@ -3,3 +3,4 @@ export * from "./utils-backend";
 export * from "./utils-survey"
 export * from "./utils-insta"
 export * from "./utils-survey-analysis"
+export * from "./utils-image-compress"

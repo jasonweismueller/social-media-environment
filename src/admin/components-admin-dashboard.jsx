@@ -38,7 +38,7 @@ import { AdminSurveysPanel } from "./components-admin-surveys";
 import { AdminFeedsPanel } from "./components-admin-feeds";
 import { randomAvatarByKind } from "../avatar-utils";
 import { AdminShell } from "./AdminShell";
-import { Badge, RoleGate, useToast, useConfirm, usePrompt, ErrorBoundary } from "./ui";
+import { Badge, RoleGate, useToast, useConfirm, usePrompt, ErrorBoundary, Button } from "./ui";
 
 // Dynamically choose correct editor (FB or IG)
 import { genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB } from "./components-admin-editor-facebook";
@@ -1394,12 +1394,12 @@ export function AdminDashboard({
             </span>
           </div>
           <div className="actions">
-            <button className="btn ghost" onClick={() => setSessExpiringSec(null)}>
+            <Button variant="ghost" onClick={() => setSessExpiringSec(null)}>
               Dismiss
-            </button>
-            <button className="btn" onClick={keepAlive} disabled={touching}>
+            </Button>
+            <Button variant="secondary" onClick={keepAlive} busy={touching}>
               {touching ? "Refreshing…" : "Stay signed in"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1421,12 +1421,12 @@ export function AdminDashboard({
             <h3>Feed loading failed</h3>
             <p className="subtle">{feedsError}</p>
             <div className="admin-expired-actions">
-              <button className="btn" onClick={() => loadFeeds()}>
+              <Button variant="secondary" onClick={() => loadFeeds()}>
                 Try again
-              </button>
-              <button className="btn ghost" onClick={() => setFeedsError("")}>
+              </Button>
+              <Button variant="ghost" onClick={() => setFeedsError("")}>
                 Dismiss
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1594,20 +1594,20 @@ export function AdminDashboard({
           wide
           footer={
             <>
-              <button className="btn" onClick={closeEditing}>
+              <Button variant="secondary" onClick={closeEditing}>
                 Cancel
-              </button>
+              </Button>
               <RoleGate
                 min="editor"
                 elseRender={
-                  <button className="btn" disabled title="Viewer mode">
+                  <Button variant="primary" disabled title="Viewer mode">
                     Save
-                  </button>
+                  </Button>
                 }
               >
-                <button className="btn primary" onClick={saveEditing}>
+                <Button variant="primary" onClick={saveEditing}>
                   {isNew ? "Add" : "Save"}
-                </button>
+                </Button>
               </RoleGate>
             </>
           }
@@ -1632,18 +1632,18 @@ export function AdminDashboard({
               Your admin token has expired. Please re-authenticate to continue.
             </p>
             <div className="admin-expired-actions">
-              <button className="btn ghost" onClick={keepAlive} disabled={touching}>
+              <Button variant="ghost" onClick={keepAlive} busy={touching}>
                 {touching ? "Trying…" : "Try to refresh"}
-              </button>
-              <button
-                className="btn primary"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => {
                   setSessExpired(false);
                   onLogout?.();
                 }}
               >
                 Go to login
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -6,6 +6,7 @@ import {
   randomAvatarUrl,
   randomSVG,
   uploadFileToS3ViaSigner,
+  compressImageFile,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-instagram";
@@ -257,8 +258,9 @@ export function AdminPostEditor({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   try {
+                    const compressed = await compressImageFile(file, "avatar");
                     const { cdnUrl } = await uploadFileToS3ViaSigner({
-                      file,
+                      file: compressed,
                       projectId: projectId || "global",
                       feedId: feedId || "default",
                       prefix: "avatars",

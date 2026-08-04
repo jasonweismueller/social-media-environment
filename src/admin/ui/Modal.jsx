@@ -12,6 +12,17 @@ const FOCUSABLE_SELECTOR =
  * portaled past that boundary would render with no background/border/text
  * color at all.
  *
+ * Falls back to `document.querySelector(".admin-shell")` (search the whole
+ * page, not just ancestors) when there's no `.admin-shell` ancestor to find
+ * — `useConfirm()`/`usePrompt()`/`useToast()` are provided once at the top
+ * of the whole `/admin/*` tree (AdminEntry.jsx), above every individual
+ * page's own `.admin-shell` div (AdminProjectPicker, AdminDashboard, etc.
+ * each render their own), so `closest()` alone never finds one for a
+ * dialog triggered through those hooks — it'd silently fall through to
+ * `document.body` and render with no styling at all. Exactly one
+ * `.admin-shell` is ever mounted at a time (the routes that render one are
+ * mutually exclusive), so a document-wide query is safe here.
+ *
  * Also traps Tab focus within the dialog and returns focus to whatever
  * triggered it on close — `ConfirmDialog`/`PromptDialog` get this for free
  * since they render through this component.
@@ -23,7 +34,11 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480 
   const [portalTarget, setPortalTarget] = useState(null);
 
   useLayoutEffect(() => {
-    setPortalTarget(anchorRef.current?.closest(".admin-shell") || document.body);
+    setPortalTarget(
+      anchorRef.current?.closest(".admin-shell") ||
+        document.querySelector(".admin-shell") ||
+        document.body
+    );
   }, []);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 // components-admin-media.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { randomSVG, uploadFileToS3ViaSigner } from "../utils";
+import { randomSVG, uploadFileToS3ViaSigner, compressImageFile } from "../utils";
 import { EditorSection, Field } from "./components-admin-editor-ui";
 import { useToast } from "./ui";
 
@@ -255,8 +255,9 @@ function CarouselEditor({ images, setImages, feedId, isNew }) {
           if (el && typeof pct === "number") el.textContent = `Uploading… ${pct}% (${count + 1}/${picked.length})`;
         };
 
+        const compressed = await compressImageFile(f, "feed");
         const { cdnUrl } = await uploadFileToS3ViaSigner({
-          file: f,
+          file: compressed,
           feedId,
           prefix: "images",
           onProgress: setPct,
@@ -565,8 +566,9 @@ export function MediaFieldset({
                       if (el && typeof pct === "number") el.textContent = `Uploading… ${pct}%`;
                     };
 
+                    const compressed = await compressImageFile(f, "feed");
                     const { cdnUrl } = await uploadFileToS3ViaSigner({
-                      file: f,
+                      file: compressed,
                       feedId,
                       onProgress: setPct,
                       prefix: "images",
@@ -751,7 +753,8 @@ export function MediaFieldset({
 
                   try {
                     setUploadingPoster?.(true);
-                    const { cdnUrl } = await uploadFileToS3ViaSigner({ file: f, feedId, prefix: "posters" });
+                    const compressed = await compressImageFile(f, "feed");
+                    const { cdnUrl } = await uploadFileToS3ViaSigner({ file: compressed, feedId, prefix: "posters" });
                     setEditing((ed) => ({ ...ed, videoPosterUrl: cdnUrl }));
                     toast.success("Poster uploaded");
                   } catch (err) {

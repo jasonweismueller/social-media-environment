@@ -6,7 +6,7 @@ import React from "react";
 // system. Same visual language as the existing feed-facing icons (e.g.
 // RepostIcon in ui-posts-instagram.jsx): 24x24 viewBox, stroke="currentColor",
 // strokeWidth 1.8, round caps/joins, no fill.
-function Base({ children, size = 18, ...props }) {
+function Base({ children, size = 18, style, ...props }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -17,6 +17,12 @@ function Base({ children, size = 18, ...props }) {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
+      // SVGs default to `display: inline` with baseline alignment, which
+      // (unlike a text glyph) reserves extra space below the shape for a
+      // font-style descender it doesn't have — inside a flex row with
+      // align-items:center, that phantom space is enough to visibly shift
+      // the icon relative to adjacent text. `display: block` removes it.
+      style={{ display: "block", flexShrink: 0, ...style }}
       {...props}
     >
       {children}

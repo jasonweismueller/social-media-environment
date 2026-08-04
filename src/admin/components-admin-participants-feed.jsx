@@ -1086,7 +1086,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
         </div>
 
         <div className="modal-footer">
-          <button className="btn" onClick={onClose}>Close</button>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
         </div>
       </div>
     </div>,
@@ -1605,13 +1605,13 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
         </h4>
 
         <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap", alignItems: "center" }}>
-          <button
-            className="btn"
+          <Button
+            variant="secondary"
             onClick={() => refresh(false)}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Refresh
-          </button>
+          </Button>
 
           <select
             value={simMode}
@@ -1642,33 +1642,33 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
             title="Number of simulated participants"
           />
 
-          <button
-            className="btn"
+          <Button
+            variant="secondary"
             onClick={runSimulation}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
           >
             Simulate
-          </button>
+          </Button>
 
           {usingSimulated && (
-            <button
-              className="btn ghost"
+            <Button
+              variant="ghost"
               onClick={clearSimulation}
               style={{ padding: compact ? ".25rem .6rem" : undefined }}
             >
               Clear simulation
-            </button>
+            </Button>
           )}
 
-          <button
-            className="btn"
+          <Button
+            variant="secondary"
             onClick={downloadCsv}
             disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
             style={{ padding: compact ? ".25rem .6rem" : undefined }}
             title="Download this feed's participant/behavioural data"
           >
             Download Feed CSV
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1823,13 +1823,13 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
       )}
 
       <div style={{ marginTop: compact ? ".6rem" : "1rem" }}>
-        <button
-          className="btn ghost"
+        <Button
+          variant="ghost"
           onClick={() => setShowPerPost((v) => !v)}
           style={{ padding: compact ? ".25rem .6rem" : undefined }}
         >
           {showPerPost ? "Hide per-post interactions" : "Show per-post interactions"}
-        </button>
+        </Button>
       </div>
 
       {showPerPost && perPostList.length > 0 && (
@@ -1925,8 +1925,8 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
                     {ms(r.ms_enter_to_submit)}
                   </td>
                   <td style={{ padding: padCell, textAlign: "right" }}>
-                    <button
-                      className="btn ghost"
+                    <Button
+                      variant="ghost"
                       style={{ padding: compact ? ".25rem .6rem" : undefined }}
                       onClick={() => {
                         try {
@@ -1982,7 +1982,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
                       }}
                     >
                       Details
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -1991,13 +1991,13 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
 
           {visible.length < sorted.length && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: ".5rem" }}>
-              <button
-                className="btn"
+              <Button
+                variant="secondary"
                 onClick={() => setPageSize((s) => Math.min(s + 25, sorted.length))}
                 style={{ padding: compact ? ".3rem .75rem" : undefined }}
               >
                 Show more
-              </button>
+              </Button>
             </div>
           )}
         </>

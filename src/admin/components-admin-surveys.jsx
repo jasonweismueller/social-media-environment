@@ -2034,6 +2034,26 @@ export function AdminSurveysPanel({
       return;
     }
 
+    // A feed created via "+ New feed" is pure client state until its first
+    // "Save feed" — the `feeds` table (and therefore the feed_surveys FK
+    // this is about to insert against) only gets a row at that point. A
+    // never-saved feed still shows up in this picker (there's no other
+    // list to source it from), so catch it here with a clear message
+    // instead of letting a raw Postgres FK-violation string reach the
+    // admin — see CLAUDE.md for the real incident this was found from.
+    const unsavedSelected = orderedLinkedFeedIdsFromSurvey(survey)
+      .map((fid) => feeds.find((f) => String(f.feed_id) === String(fid)))
+      .filter((f) => f && !f.updated_at);
+    if (unsavedSelected.length) {
+      const names = unsavedSelected.map((f) => f.name || f.feed_id).join(", ");
+      toast.error(
+        `${names} ${unsavedSelected.length === 1 ? "hasn't" : "haven't"} been saved yet — open ${
+          unsavedSelected.length === 1 ? "it" : "each"
+        } in Feeds and click "Save feed" first, then save the feed setup again.`
+      );
+      return;
+    }
+
     setSavingLinks(true);
     try {
       const res = await linkSurveyToFeedsOnBackend({
@@ -3121,6 +3141,7 @@ export function AdminSurveysPanel({
                   const selectedIds = selectedFeedIds;
                   const isChecked = selectedIds.includes(f.feed_id);
                   const orderIndex = selectedIds.indexOf(f.feed_id);
+                  const isUnsaved = !f.updated_at;
 
                   return (
                     <div key={f.feed_id} style={{ marginBottom: 8 }}>
@@ -3165,6 +3186,23 @@ export function AdminSurveysPanel({
                           <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                             {f.name || f.feed_id}
                           </span>
+                          {isUnsaved && (
+                            <span
+                              title="This feed hasn't been saved yet — open it in Feeds and click &quot;Save feed&quot; before linking it to a survey."
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "var(--admin-danger-ink, #991b1b)",
+                                background: "var(--admin-danger-soft, #fef2f2)",
+                                border: "1px solid var(--admin-danger-border, #fecaca)",
+                                borderRadius: 999,
+                                padding: "1px 7px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              Not saved yet
+                            </span>
+                          )}
                           {feedId && f.feed_id === feedId && (
                             <span style={{ fontSize: 12, color: "#6b7280" }}>
                               (current)

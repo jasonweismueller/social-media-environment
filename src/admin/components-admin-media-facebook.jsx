@@ -3,6 +3,7 @@ import React from "react";
 import {
   randomSVG,
   uploadFileToS3ViaSigner,
+  compressImageFile,
   getProjectId as getProjectIdUtil, // fallback if prop not provided
 } from "../utils";
 import { EditorSection, Field, CheckRow } from "./components-admin-editor-ui";
@@ -117,8 +118,9 @@ export function MediaFieldset({
                   try {
                     setHeaderText("Uploading… 0%");
                     const setPct = (pct) => { if (typeof pct === "number") setHeaderText(`Uploading… ${pct}%`); };
+                    const compressed = await compressImageFile(f, "feed");
                     const { cdnUrl } = await uploadFileToS3ViaSigner({
-                      file: f,
+                      file: compressed,
                       feedId,
                       projectId: resolvedProjectId,
                       prefix: "images",
@@ -251,8 +253,9 @@ export function MediaFieldset({
                   if (!feedId) { toast.error("Select or create a feed before uploading."); e.target.value = ""; return; }
                   try {
                     setUploadingPoster?.(true);
+                    const compressed = await compressImageFile(f, "feed");
                     const { cdnUrl } = await uploadFileToS3ViaSigner({
-                      file: f,
+                      file: compressed,
                       feedId,
                       projectId: resolvedProjectId,
                       prefix: "posters",

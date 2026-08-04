@@ -385,7 +385,20 @@ export async function supabaseLinkSurveyToFeeds({ surveyId, feedIds, projectId, 
     const { error } = await supabase
       .from("feed_surveys")
       .insert(toLink.map((feed_id) => ({ feed_id, survey_id: surveyId })));
-    if (error) throw new Error(error.message);
+    if (error) {
+      // 23503 = foreign_key_violation. The client-side picker (Survey
+      // editor's Feed Setup tab) already blocks this by checking each
+      // feed's `updated_at`, but this is real production data (see
+      // CLAUDE.md for the incident it was found from) — worth a friendly
+      // message here too rather than trusting that check is the only path
+      // that can ever reach this insert.
+      if (error.code === "23503") {
+        throw new Error(
+          "One or more selected feeds haven't been saved yet — open each in Feeds and click \"Save feed\" first, then try again."
+        );
+      }
+      throw new Error(error.message);
+    }
   }
 
   const updatedDefinition = {

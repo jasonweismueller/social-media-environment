@@ -7,6 +7,7 @@ import {
   randomAvatarUrl,
   randomSVG,
   uploadFileToS3ViaSigner,
+  compressImageFile,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -358,8 +359,9 @@ export function AdminPostEditor({
                   try {
                     if (headerEl) headerEl.textContent = "Uploading… 0%";
 
+                    const compressed = await compressImageFile(f, "avatar");
                     const { cdnUrl } = await uploadFileToS3ViaSigner({
-                      file: f,
+                      file: compressed,
                       projectId: projectId || "global",
                       feedId: feedId || "default",
                       prefix: "avatars",
