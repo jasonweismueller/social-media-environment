@@ -65,26 +65,33 @@ presumably pushed via the user's GitHub Desktop app at some point after the note
 written; not something Claude did). So the "not yet done" list below is stale on its first bullet
 — leaving the rest in place since it's still accurate.
 
-**Still not done, needs the user**:
-- **First real promotion still hasn't happened.** `production` currently sits 1 commit behind
-  `main` (as of the "analysis hub, amazon improvement, data quality" commit) — every session's
-  work keeps landing on `main` (→ Netlify staging) as normal, but nothing has been merged forward
-  into `production` yet, so `studyfeed.org` is still serving whatever it was before any of this
-  staging work started. To ship: in GitHub Desktop, check out `production`, merge `main` into it
-  (Desktop shows this as an available action once `production` is checked out and behind `main`),
-  push — then switch back to `main` for normal day-to-day work.
+**Update 2026-08-05, later still**: the first real promotion *has* now happened — the user merged
+`main` into `production` and pushed (confirmed via `git log`/`git ls-remote`: `production` was at
+commit `7244dc6`, a descendant of the "analysis hub, amazon improvement, data quality" commit), and
+GitHub Actions' "Deploy to GitHub Pages" workflow ran against that push and completed successfully
+(confirmed via the public Actions API, no auth needed since the repo is public). So `studyfeed.org`
+should be serving that commit. **The Netlify site itself is also now identified** — user confirmed
+via screenshot: name `effervescent-trifle-c6afbc`, live at
+`https://effervescent-trifle-c6afbc.netlify.app`, Project configuration → Build & deploy →
+Continuous deployment confirms it's linked to this repo's GitHub source. (Netlify has since renamed
+"Site settings" to **"Project configuration"** — worth knowing if a future session or the user goes
+looking for the old name and can't find it.) Custom-domain (`staging.studyfeed.org`) and environment
+-variable setup (see below) were pointed out as the next manual steps but not confirmed done as of
+this note — check Project configuration → Domain management / Environment variables before assuming
+either is still outstanding.
+
+**Still not done, needs the user** (as of the note above; re-check before assuming still true):
 - Netlify site's environment variables are still unset (`VITE_SUPABASE_URL`/
   `VITE_SUPABASE_ANON_KEY`/`VITE_SENTRY_DSN`) — until set, the staging build falls back to the old
   GAS backend by default (safe accidental default, not real Supabase data, but also not yet a
   fully working staging site). Whether staging gets its own separate Supabase project (recommended
   — never share tables with real participant data) is still pending a cost check against the
-  user's actual current Supabase plan, which Claude can't see. Unconfirmed as of this note — Claude
-  has no Netlify dashboard access, so this couldn't be re-checked live; ask the user directly if it
-  still matters.
+  user's actual current Supabase plan, which Claude can't see.
 - No custom subdomain (e.g. `staging.studyfeed.org`) has been set up for the Netlify site as far as
-  any record here shows — it's presumably still on Netlify's own default `*.netlify.app` URL. That's
-  a manual step in the Netlify dashboard (add custom domain) + a DNS record with whoever hosts
-  `studyfeed.org`'s DNS, not something that happens automatically from a push.
+  any record here shows — it's presumably still on Netlify's own default `effervescent-trifle-
+  c6afbc.netlify.app` URL. That's a manual step in Project configuration → Domain management + a
+  DNS record with whoever hosts `studyfeed.org`'s DNS, not something that happens automatically
+  from a push.
 
 ## Architecture
 
@@ -3419,3 +3426,45 @@ these four) now scopes admin reads through `project_access` where relevant, with
 `anon` access left untouched everywhere it was already correct. Worth a full fresh
 `select tablename, policyname, cmd, roles, qual from pg_policies` sweep in a future session before
 assuming that's still true, the same way this entry itself only found these four by not assuming.
+
+## Staging gets its own Supabase project — `studyfeed-staging` (2026-08-05)
+
+Per direct user decision (offered the tradeoff explicitly: share production's Supabase project
+vs. a separate one; user chose separate, matching the "recommended" note this file already had on
+this exact question) — created a brand-new, empty Supabase project for the Netlify staging site to
+use, rather than pointing staging at production's real database.
+
+- **New project**: name `studyfeed-staging`, ref `hgctbgunlsesygzglbdv`, same org
+  (`paqkfpzvklettmoppoaw`) and region (`us-west-1`) as production. Created via
+  `supabase projects create` (CLI already authenticated in this sandbox — no dashboard step
+  needed). A fresh, randomly-generated database password was set at creation time and given to the
+  user once in chat to save themselves; not recorded anywhere in this repo.
+- **All 20 migrations from `supabase/migrations/` applied in order** (`supabase link
+  --project-ref hgctbgunlsesygzglbdv` then `supabase db query --linked -f <file>` per file, same
+  process this repo always uses — not `db push`) — zero errors. Verified after: all 13 expected
+  tables present (`select table_name from information_schema.tables`), and the database is
+  genuinely empty (0 rows in `projects`/`feeds`/`posts`/`profiles`) — this is a schema-only clone,
+  no production data was copied.
+- **CLI relinked back to production (`yrzqnlhbawzuzlrrocfd`) afterward**, confirmed via a
+  real-data sanity query (`select count(*) from projects` → 7, matching production's known project
+  count) — so a future session's `supabase db query --linked` defaults to production again, not
+  staging. **If a future session needs to touch the staging project specifically, it must
+  `supabase link --project-ref hgctbgunlsesygzglbdv` first and relink back to
+  `yrzqnlhbawzuzlrrocfd` when done, same as this one did** — there is no persistent "which project
+  is staging" state anywhere else.
+- **API keys** (anon/publishable — safe to expose client-side, same reasoning as production's
+  already-committed key; service_role was fetched too but deliberately not used or recorded
+  anywhere, same as production's own service_role) fetched via
+  `supabase projects api-keys --project-ref hgctbgunlsesygzglbdv` and handed to the user directly
+  to paste into the Netlify site's environment variables (`VITE_SUPABASE_URL`/
+  `VITE_SUPABASE_ANON_KEY`, matching the `sb_publishable_...` key format `.env.production` already
+  uses, not the legacy JWT-style anon key that project also issued) — not written into this repo's
+  `.env.production`, since that file is production's, not staging's; the Netlify site's own
+  dashboard is the only place staging's env vars live.
+- **`VITE_BACKEND=supabase` also needs to be set** on the Netlify site alongside the two Supabase
+  vars — without it, the build defaults to `gas` regardless of the other two being present (same
+  "unset env var disables the feature" convention noted elsewhere in this file).
+
+**Not done / worth knowing**: no data was seeded into the staging project — every table starts
+empty, so a fresh admin login there will show zero projects/feeds until someone creates test data
+directly against it. That's intentional (real isolation was the whole point), not an oversight.
