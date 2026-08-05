@@ -37,6 +37,33 @@ function resolveGroupFeedSequence(experimentGroups, previewGroupId, feedSequence
   return Array.isArray(feedSequenceIds) ? feedSequenceIds : [];
 }
 
+// A small pill toggle, matching the shape/weight of the editor's own
+// SecondaryPillButton — kept local here rather than shared, since this is
+// the only preview-only control that needs it.
+function PillToggleButton({ active, onClick, title, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      style={{
+        height: 34,
+        padding: "0 12px",
+        borderRadius: 999,
+        border: `1px solid ${active ? "var(--admin-accent-border)" : "var(--admin-border)"}`,
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+        color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function getPostIdForMatch(post) {
   return String(
     post?.id ?? post?.post_id ?? post?.postId ?? post?.meta?.post_id ?? ""
@@ -86,6 +113,7 @@ export function SurveyPreviewModal({
   linkedFeeds = [],
   linkedFeedPostsMap = {},
   feedSequenceIds = [],
+  initialQuestionId = null,
   onClose,
 }) {
   const toast = useToast();
@@ -96,6 +124,10 @@ export function SurveyPreviewModal({
   const [previewGroupId, setPreviewGroupId] = useState(experimentGroups[0]?.id ?? "");
   const [isMobile, setIsMobile] = useState(false);
   const [seedNonce, setSeedNonce] = useState(0);
+  // Defaults to matching real participant behavior (required questions
+  // block "Next"); the pill lets an admin turn that off to click through
+  // quickly without answering everything.
+  const [forceResponse, setForceResponse] = useState(true);
 
   const participantSeed = seedNonce === 0 ? "preview" : `preview-${seedNonce}`;
 
@@ -239,6 +271,18 @@ export function SurveyPreviewModal({
               Reshuffle
             </Button>
           )}
+
+          <PillToggleButton
+            active={forceResponse}
+            onClick={() => setForceResponse((v) => !v)}
+            title={
+              forceResponse
+                ? "Required questions block Next, matching real participant behavior. Click to click through freely."
+                : "Required questions are not enforced — click Next without answering."
+            }
+          >
+            {forceResponse ? "Force response: on" : "Force response: off"}
+          </PillToggleButton>
         </div>
 
         <Toggle label="Preview as mobile" checked={isMobile} onChange={setIsMobile} />
@@ -271,6 +315,9 @@ export function SurveyPreviewModal({
           onClearBanner={handleClearBanner}
           onPageChange={handlePageChange}
           submitting={false}
+          enforceRequired={forceResponse}
+          allowPageJump
+          initialQuestionId={initialQuestionId}
         />
       )}
     </Modal>

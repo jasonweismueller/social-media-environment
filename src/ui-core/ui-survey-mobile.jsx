@@ -1201,10 +1201,17 @@ export function SurveyScreenMobile({
   onClearBanner,
   onPageChange,
   submitting,
+  // See ui-survey.jsx's SurveyScreen for the rationale — same preview-only
+  // additions, mirrored here since this file is an independent duplicate,
+  // not a shared component.
+  enforceRequired = true,
+  allowPageJump = false,
+  initialQuestionId = null,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [delayRemaining, setDelayRemaining] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
+  const initialJumpDoneRef = useRef(false);
 
   // See ui-survey.jsx for the rationale: keep rendered question object
   // identity stable across response changes so child components (like the
@@ -1251,6 +1258,22 @@ export function SurveyScreenMobile({
   useEffect(() => {
     setCurrentPageIndex(0);
   }, [survey?.survey_id, feedId]);
+
+  // See ui-survey.jsx's SurveyScreen for the rationale.
+  useEffect(() => {
+    initialJumpDoneRef.current = false;
+  }, [survey?.survey_id, initialQuestionId]);
+
+  useEffect(() => {
+    if (!initialQuestionId || initialJumpDoneRef.current) return;
+    const idx = visiblePages.findIndex((page) =>
+      page.questions.some((q) => q.id === initialQuestionId)
+    );
+    if (idx >= 0) {
+      initialJumpDoneRef.current = true;
+      setCurrentPageIndex(idx);
+    }
+  }, [initialQuestionId, visiblePages]);
 
   useEffect(() => {
     if (visiblePages.length === 0) {
@@ -1318,6 +1341,7 @@ export function SurveyScreenMobile({
 
   const validateCurrentPage = useCallback(() => {
     if (!currentPage) return { ok: true, errors: {} };
+    if (!enforceRequired) return { ok: true, errors: {} };
 
     const pageErrors = {};
 
@@ -1347,7 +1371,7 @@ export function SurveyScreenMobile({
       ok: Object.keys(pageErrors).length === 0,
       errors: pageErrors,
     };
-  }, [currentPage, responses]);
+  }, [currentPage, responses, enforceRequired]);
 
   const goNext = useCallback(() => {
     if (isNextDelayed) {
@@ -1429,19 +1453,45 @@ export function SurveyScreenMobile({
                 </div>
               </div>
 
-              <div className="survey-progress" aria-hidden="true">
-                {visiblePages.map((page, idx) => (
-                  <div
-                    key={page.id || idx}
-                    className={`survey-progress-step ${
-                      idx < currentPageIndex
-                        ? "is-complete"
-                        : idx === currentPageIndex
-                          ? "is-current"
-                          : "is-upcoming"
-                    }`}
-                  />
-                ))}
+              <div className="survey-progress" aria-hidden={allowPageJump ? undefined : "true"}>
+                {visiblePages.map((page, idx) =>
+                  allowPageJump ? (
+                    <button
+                      key={page.id || idx}
+                      type="button"
+                      className={`survey-progress-step ${
+                        idx < currentPageIndex
+                          ? "is-complete"
+                          : idx === currentPageIndex
+                            ? "is-current"
+                            : "is-upcoming"
+                      }`}
+                      onClick={() => setCurrentPageIndex(idx)}
+                      title={`Jump to page ${idx + 1}`}
+                      aria-label={`Jump to page ${idx + 1}`}
+                      style={{
+                        padding: 0,
+                        margin: 0,
+                        cursor: "pointer",
+                        WebkitAppearance: "none",
+                        appearance: "none",
+                        font: "inherit",
+                        ...(idx === currentPageIndex ? {} : { border: "none" }),
+                      }}
+                    />
+                  ) : (
+                    <div
+                      key={page.id || idx}
+                      className={`survey-progress-step ${
+                        idx < currentPageIndex
+                          ? "is-complete"
+                          : idx === currentPageIndex
+                            ? "is-current"
+                            : "is-upcoming"
+                      }`}
+                    />
+                  )
+                )}
               </div>
             </>
           ) : (

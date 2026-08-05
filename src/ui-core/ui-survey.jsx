@@ -1515,10 +1515,20 @@ export function SurveyScreen({
   onClearBanner,
   onPageChange,
   submitting,
+  // Preview-only additions (default to the real participant-facing
+  // behavior, so no existing caller is affected): `enforceRequired=false`
+  // lets an admin click through without answering required questions;
+  // `allowPageJump` makes the progress dots clickable to jump straight to
+  // any page; `initialQuestionId` starts the screen on whichever page
+  // contains that question instead of page 1.
+  enforceRequired = true,
+  allowPageJump = false,
+  initialQuestionId = null,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [delayRemaining, setDelayRemaining] = useState(0);
   const projectId = propProjectId || getProjectId() || "";
+  const initialJumpDoneRef = useRef(false);
 
   // Rendered questions are only recomputed when the survey definition, feed,
   // or participant seed change — NOT on every response update. This keeps each
@@ -1569,6 +1579,26 @@ export function SurveyScreen({
   useEffect(() => {
     setCurrentPageIndex(0);
   }, [survey?.survey_id, feedId]);
+
+  // Jumps once to whichever page contains `initialQuestionId` (preview-only
+  // "preview this question" entry point) once that page is resolvable, then
+  // never again for this (survey, question) pairing — so a participant's own
+  // page navigation afterward isn't fought by this effect re-firing whenever
+  // `visiblePages` recomputes (e.g. on every response change).
+  useEffect(() => {
+    initialJumpDoneRef.current = false;
+  }, [survey?.survey_id, initialQuestionId]);
+
+  useEffect(() => {
+    if (!initialQuestionId || initialJumpDoneRef.current) return;
+    const idx = visiblePages.findIndex((page) =>
+      page.questions.some((q) => q.id === initialQuestionId)
+    );
+    if (idx >= 0) {
+      initialJumpDoneRef.current = true;
+      setCurrentPageIndex(idx);
+    }
+  }, [initialQuestionId, visiblePages]);
 
   useEffect(() => {
     if (visiblePages.length === 0) {
@@ -1637,6 +1667,7 @@ const isNextDelayed =
 
   const validateCurrentPage = useCallback(() => {
     if (!currentPage) return { ok: true, errors: {} };
+    if (!enforceRequired) return { ok: true, errors: {} };
 
     const pageErrors = {};
 
@@ -1669,7 +1700,7 @@ const isNextDelayed =
       ok: Object.keys(pageErrors).length === 0,
       errors: pageErrors,
     };
-  }, [currentPage, responses]);
+  }, [currentPage, responses, enforceRequired]);
 
  const goNext = useCallback(() => {
   if (isNextDelayed) {
@@ -1745,19 +1776,45 @@ const isNextDelayed =
                 </div>
               </div>
 
-              <div className="survey-progress" aria-hidden="true">
-                {visiblePages.map((page, idx) => (
-                  <div
-                    key={page.id || idx}
-                    className={`survey-progress-step ${
-                      idx < currentPageIndex
-                        ? "is-complete"
-                        : idx === currentPageIndex
-                          ? "is-current"
-                          : "is-upcoming"
-                    }`}
-                  />
-                ))}
+              <div className="survey-progress" aria-hidden={allowPageJump ? undefined : "true"}>
+                {visiblePages.map((page, idx) =>
+                  allowPageJump ? (
+                    <button
+                      key={page.id || idx}
+                      type="button"
+                      className={`survey-progress-step ${
+                        idx < currentPageIndex
+                          ? "is-complete"
+                          : idx === currentPageIndex
+                            ? "is-current"
+                            : "is-upcoming"
+                      }`}
+                      onClick={() => setCurrentPageIndex(idx)}
+                      title={`Jump to page ${idx + 1}`}
+                      aria-label={`Jump to page ${idx + 1}`}
+                      style={{
+                        padding: 0,
+                        margin: 0,
+                        cursor: "pointer",
+                        WebkitAppearance: "none",
+                        appearance: "none",
+                        font: "inherit",
+                        ...(idx === currentPageIndex ? {} : { border: "none" }),
+                      }}
+                    />
+                  ) : (
+                    <div
+                      key={page.id || idx}
+                      className={`survey-progress-step ${
+                        idx < currentPageIndex
+                          ? "is-complete"
+                          : idx === currentPageIndex
+                            ? "is-current"
+                            : "is-upcoming"
+                      }`}
+                    />
+                  )
+                )}
               </div>
             </>
           )}

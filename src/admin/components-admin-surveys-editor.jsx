@@ -2829,8 +2829,7 @@ function QuestionActions({
   updateQuestion,
   onDragStart,
   onDragEnd,
-  isCollapsed,
-  onToggleCollapsed,
+  onPreviewQuestion,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(q?.type);
 
@@ -2844,14 +2843,6 @@ function QuestionActions({
           height: INPUT_HEIGHT,
         }}
       >
-        <IconOnlyButton
-          onClick={onToggleCollapsed}
-          title={isCollapsed ? "Expand question" : "Collapse question"}
-          aria-label={isCollapsed ? "Expand question" : "Collapse question"}
-        >
-          <ChevronDownIcon size={12} open={!isCollapsed} />
-        </IconOnlyButton>
-
         <DragHandle
           onDragStart={(e) => onDragStart(e, q._editorId)}
           onDragEnd={onDragEnd}
@@ -2882,7 +2873,21 @@ function QuestionActions({
           ↓
         </button>
 
-        <IconOnlyButton onClick={() => duplicateQuestion(index)} title="Copy question">
+        {onPreviewQuestion && q?.id && (
+          <IconOnlyButton
+            onClick={() => onPreviewQuestion(q.id)}
+            title="Preview this question"
+            style={{ borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+          >
+            <EyeIcon size={16} />
+          </IconOnlyButton>
+        )}
+
+        <IconOnlyButton
+          onClick={() => duplicateQuestion(index)}
+          title="Copy question"
+          style={{ borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+        >
           <CopyIcon size={16} />
         </IconOnlyButton>
 
@@ -2916,6 +2921,7 @@ function CollapsedQuestionRow({
   onDragStart,
   onDragEnd,
   onToggleCollapsed,
+  onPreviewQuestion,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(type);
   const isPostReminder = type === POST_REMINDER_TYPE;
@@ -3071,11 +3077,33 @@ function CollapsedQuestionRow({
         >
           ↓
         </button>
+        {onPreviewQuestion && q?.id && (
+          <IconOnlyButton
+            onClick={() => onPreviewQuestion(q.id)}
+            title="Preview this question"
+            size={11}
+            style={{
+              width: 20,
+              height: 20,
+              flex: "0 0 auto",
+              borderColor: "var(--admin-border)",
+              background: "var(--admin-surface)",
+            }}
+          >
+            <EyeIcon size={11} />
+          </IconOnlyButton>
+        )}
         <IconOnlyButton
           onClick={() => duplicateQuestion(index)}
           title="Copy question"
           size={11}
-          style={{ width: 20, height: 20, flex: "0 0 auto" }}
+          style={{
+            width: 20,
+            height: 20,
+            flex: "0 0 auto",
+            borderColor: "var(--admin-border)",
+            background: "var(--admin-surface)",
+          }}
         >
           <CopyIcon size={11} />
         </IconOnlyButton>
@@ -3383,6 +3411,7 @@ function QuestionCard({
   onDragEnd,
   isCollapsed,
   onToggleCollapsed,
+  onPreviewQuestion,
 }) {
   const confirm = useConfirm();
   const type = q?.type;
@@ -3573,6 +3602,7 @@ function QuestionCard({
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
           onToggleCollapsed={onToggleCollapsed}
+          onPreviewQuestion={onPreviewQuestion}
         />
       ) : (
       <>
@@ -3587,21 +3617,33 @@ function QuestionCard({
             marginBottom: 8,
           }}
         >
-          <div style={{ width: 220, flexShrink: 0 }}>
-            <TopField label="Type">
-              <SelectInput
-                value={q.type}
-                onChange={(nextType) =>
-                  updateQuestion(index, computeQuestionAfterTypeChange(q, nextType, index))
-                }
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+            <TopField label="">
+              <IconOnlyButton
+                onClick={onToggleCollapsed}
+                title="Collapse question"
+                aria-label="Collapse question"
               >
-                {INSERTABLE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {QUESTION_TYPE_LABELS[t] || t}
-                  </option>
-                ))}
-              </SelectInput>
+                <ChevronDownIcon size={12} open />
+              </IconOnlyButton>
             </TopField>
+
+            <div style={{ width: 220, flexShrink: 0 }}>
+              <TopField label="Type">
+                <SelectInput
+                  value={q.type}
+                  onChange={(nextType) =>
+                    updateQuestion(index, computeQuestionAfterTypeChange(q, nextType, index))
+                  }
+                >
+                  {INSERTABLE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {QUESTION_TYPE_LABELS[t] || t}
+                    </option>
+                  ))}
+                </SelectInput>
+              </TopField>
+            </div>
           </div>
 
           <QuestionActions
@@ -3614,8 +3656,7 @@ function QuestionCard({
             updateQuestion={updateQuestion}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
-            isCollapsed={isCollapsed}
-            onToggleCollapsed={onToggleCollapsed}
+            onPreviewQuestion={onPreviewQuestion}
           />
         </div>
 
@@ -4855,7 +4896,18 @@ export function SurveyEditor({
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewQuestionId, setPreviewQuestionId] = useState(null);
   const [highlightedQuestionId, setHighlightedQuestionId] = useState(null);
+
+  function openPreview(questionId = null) {
+    setPreviewQuestionId(questionId);
+    setPreviewOpen(true);
+  }
+
+  function closePreview() {
+    setPreviewOpen(false);
+    setPreviewQuestionId(null);
+  }
   // Question cards start collapsed by default (per direct user feedback) —
   // same set of ids collapseAllQuestions() below would produce, just as the
   // initial state instead of a user action.
@@ -5181,7 +5233,7 @@ export function SurveyEditor({
 
           <Button
             variant="secondary"
-            onClick={() => setPreviewOpen(true)}
+            onClick={() => openPreview()}
             disabled={currentQuestions.length === 0}
             title="See exactly what a participant would see, including conditional questions and group variations"
           >
@@ -5197,7 +5249,8 @@ export function SurveyEditor({
           linkedFeeds={orderedLinkedFeeds}
           linkedFeedPostsMap={linkedFeedPostsMap}
           feedSequenceIds={feedSequenceIds}
-          onClose={() => setPreviewOpen(false)}
+          initialQuestionId={previewQuestionId}
+          onClose={closePreview}
         />
       )}
 
@@ -5250,6 +5303,7 @@ export function SurveyEditor({
               onDragEnd={handleQuestionDragEnd}
               isCollapsed={collapsedQuestionIds.has(q._editorId)}
               onToggleCollapsed={() => toggleQuestionCollapsed(q._editorId)}
+              onPreviewQuestion={openPreview}
             />
           </div>
           </React.Fragment>
