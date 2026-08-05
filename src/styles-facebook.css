@@ -537,6 +537,7 @@ body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
 .admin-login-wrap .card.admin-login-card h2 {
   font-size: 1.25rem;
   font-weight: 700;
+  padding-right: 0;
 }
 .admin-login-wrap .card.admin-login-card .subtle {
   font-size: .95rem;
