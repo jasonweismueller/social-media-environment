@@ -59,18 +59,32 @@ actually live** — `origin/production` doesn't exist yet, so GitHub Pages is st
 however it did before this change (i.e. still effectively `main`-triggered until the old workflow
 run history ages out and the new branch/trigger actually exists on GitHub).
 
-**Not yet done, needs the user**:
-- Push `main` (1 commit ahead) and publish/push the new `production` branch to `origin` —
-  GitHub Desktop should show `main` as ahead and `production` as a new local-only branch to
-  publish.
+**Update 2026-08-05, later same day**: `main` and `production` are now both pushed to `origin`
+(confirmed via `git branch -vv`/`git ls-remote` — both track `origin/main`/`origin/production`,
+presumably pushed via the user's GitHub Desktop app at some point after the note below was
+written; not something Claude did). So the "not yet done" list below is stale on its first bullet
+— leaving the rest in place since it's still accurate.
+
+**Still not done, needs the user**:
+- **First real promotion still hasn't happened.** `production` currently sits 1 commit behind
+  `main` (as of the "analysis hub, amazon improvement, data quality" commit) — every session's
+  work keeps landing on `main` (→ Netlify staging) as normal, but nothing has been merged forward
+  into `production` yet, so `studyfeed.org` is still serving whatever it was before any of this
+  staging work started. To ship: in GitHub Desktop, check out `production`, merge `main` into it
+  (Desktop shows this as an available action once `production` is checked out and behind `main`),
+  push — then switch back to `main` for normal day-to-day work.
 - Netlify site's environment variables are still unset (`VITE_SUPABASE_URL`/
   `VITE_SUPABASE_ANON_KEY`/`VITE_SENTRY_DSN`) — until set, the staging build falls back to the old
   GAS backend by default (safe accidental default, not real Supabase data, but also not yet a
   fully working staging site). Whether staging gets its own separate Supabase project (recommended
   — never share tables with real participant data) is still pending a cost check against the
-  user's actual current Supabase plan, which Claude can't see.
-- First real promotion (merge `main` → `production`, push) hasn't happened — `studyfeed.org` is
-  still serving whatever it was serving before this change, unaffected so far.
+  user's actual current Supabase plan, which Claude can't see. Unconfirmed as of this note — Claude
+  has no Netlify dashboard access, so this couldn't be re-checked live; ask the user directly if it
+  still matters.
+- No custom subdomain (e.g. `staging.studyfeed.org`) has been set up for the Netlify site as far as
+  any record here shows — it's presumably still on Netlify's own default `*.netlify.app` URL. That's
+  a manual step in the Netlify dashboard (add custom domain) + a DNS record with whoever hosts
+  `studyfeed.org`'s DNS, not something that happens automatically from a push.
 
 ## Architecture
 
