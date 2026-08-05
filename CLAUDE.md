@@ -3468,3 +3468,89 @@ use, rather than pointing staging at production's real database.
 **Not done / worth knowing**: no data was seeded into the staging project — every table starts
 empty, so a fresh admin login there will show zero projects/feeds until someone creates test data
 directly against it. That's intentional (real isolation was the whole point), not an oversight.
+
+## Staging fully wired up: Netlify domain/access, content copy, Edge Functions, and a real bug found (2026-08-05)
+
+Direct continuation of the "Staging gets its own Supabase project" work above, same session,
+working live with the user through their actual Netlify/Squarespace dashboards via screenshots.
+
+**Netlify side, done together with the user (Claude has no Netlify dashboard access, guided via
+chat)**:
+- `staging.studyfeed.org` added as a custom domain on the `effervescent-trifle-c6afbc` Netlify
+  site — required a TXT ownership-verification record plus a CNAME (`staging` →
+  `effervescent-trifle-c6afbc.netlify.app`), both added in Squarespace DNS (which fronts
+  `studyfeed.org`'s nameservers via Google Cloud DNS — Squarespace absorbed Google Domains).
+  Verified end-to-end: `dig`/`curl` confirmed DNS resolution and a valid Let's Encrypt cert
+  (`CN=staging.studyfeed.org`) once propagated.
+- **Project visibility** (Netlify's actual current term — not a separate "Visitor access" toggle
+  as first assumed) was `Private` by default, returning 401 on every request including real
+  launch-param URLs. Per direct user decision — matched to production's own access model, which
+  has no site-wide gate, just app-level logic (bare-URL 404, `/admin` requires real login) — set to
+  `Public`. Confirmed live via `curl`.
+- `VITE_BACKEND=supabase` / `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` added as Netlify
+  environment variables (values from the new `studyfeed-staging` project below), non-secret, all
+  scopes, same value for all contexts. Verified after a redeploy by fetching the live
+  `AdminEntry-*.js` chunk and confirming the new project's URL/key are baked in (and production's
+  are not) — same verification method already established in this file for the original GAS→
+  Supabase cutover.
+
+**Staging Supabase project (`studyfeed-staging`, ref `hgctbgunlsesygzglbdv`) populated and made
+usable**:
+- **First owner account created.** Same problem the original production cutover had: a fresh
+  Supabase project's `auth.users`/`profiles` are empty, so nothing could log in. User created an
+  account via the Supabase dashboard (Authentication → Users → Add user, `Auto Confirm User`
+  checked) using the same email as production; Claude does not create accounts/set passwords even
+  for infrastructure it fully controls, so this step had to be the user's, same as the "Prohibited"
+  rule already documents. The resulting `profiles` row defaulted to `role: 'viewer'` (via
+  `handle_new_auth_user`) — Claude then updated just that column to `'owner'` via direct SQL
+  (a data update, not account creation, so within what Claude does do), relinking the CLI to
+  staging and back to production immediately after, same discipline as every other cross-project
+  operation in this section.
+- **Edge Functions deployed** (`admin-users`, `save-survey`) — these live outside the database and
+  need their own per-project deploy; migrations alone don't touch them. Missing this was the actual
+  cause of the user's "Failed to send a request to the Edge Function" error on Manage Users.
+  Deployed via `supabase functions deploy <name> --project-ref hgctbgunlsesygzglbdv`; confirmed the
+  standard `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`/etc. secrets are auto-provisioned per-project
+  by Supabase (no manual secret-setting needed). The `admin-users` function's hardcoded
+  `SOLE_OWNER_EMAIL` (`jason.weismueller@gmail.com`, see the "self-lockout" incident earlier in
+  this file) matches the staging account too, since it's the same email — no conflict.
+- **Content copied from production, participant data deliberately excluded.** Direct user question
+  ("shouldn't staging just be a copy of production?") led to a real discussion: `participants`/
+  `survey_responses`/`experiment_assignments` hold real human-subjects data, potentially collected
+  under ethics/IRB approvals that don't necessarily contemplate a second copy existing in a second
+  environment — copying it would have undone the entire reason a separate project was created in
+  the first place, especially now that staging's Netlify access is `Public`, matching production.
+  User chose the middle ground: copy `projects`/`feeds`/`posts`/`surveys`/`feed_surveys`/
+  `experiment_groups` (real study *content*, not personal data) so staging has realistic material
+  to test against, while `participants`/`survey_responses`/`experiment_assignments` stay genuinely
+  empty. Mechanism: `select jsonb_agg(t) from public.<table> t` on production (piped through a
+  small Python extractor to pull the raw JSON out of the CLI's wrapper), then
+  `insert into public.<table> select * from jsonb_populate_recordset(null::public.<table>,
+  '<json>'::jsonb)` on staging — `jsonb_populate_recordset` matches the destination table's actual
+  composite row type automatically, so no manual column/type enumeration was needed even for
+  `posts` (~30 columns) or `surveys` (large `definition` jsonb blobs). Applied in FK order
+  (projects → feeds → posts, surveys → feed_surveys → experiment_groups). Verified after: every
+  content table's row count matches production exactly (7/51/391/13/28/21), every participant
+  table is genuinely 0. Scratch JSON/SQL files deleted from the sandbox afterward — real study
+  content shouldn't linger longer than the copy operation needed it to.
+
+**Real bug found and fixed along the way, unrelated to staging setup itself but only surfaced by
+it**: `listProjectsFromBackend()` (`utils-backend.js`) had a legacy fallback — inherited from the
+old GAS-backend era — that synthesized a fake `{project_id: "global", name: "Global"}` entry
+whenever the real project list came back empty. On production this was permanently dead code (7
+real projects, so the empty branch never ran); staging's genuinely-empty database was the first
+time it ever actually fired, and it silently defeated `AdminProjectPicker.jsx`'s already-built
+"No projects yet / + New project" empty state (that `projects.length === 0` branch could
+mathematically never be reached, since the function never actually returned an empty array).
+`components-admin-dashboard.jsx`'s own `loadProjects()` had an independent, duplicate copy of the
+exact same fallback (a second instance of this file's own "N places to update" duplicated-logic
+footgun) — fixed both call sites to just return/use the real (possibly empty) array. Verified via
+direct code reading of the resulting fallback chain (`desired`/`chosenId` still safely resolve to
+the literal string `"global"` as an internal sentinel when nothing is genuinely selected — that
+convention is fine and used throughout the codebase; the bug was specifically presenting it as a
+fake selectable project card, not the sentinel's existence). **Not yet click-tested live in the
+actual staging admin UI** — found and fixed via code reading prompted by the user's real report,
+same standing no-live-browser-click-through caveat as most of this file; worth confirming the
+"No projects yet" empty state (now moot for the freshly-content-populated staging project, but
+matters for any future genuinely-empty Supabase project) and the fixed project picker next time
+there's a chance to click through it for real.

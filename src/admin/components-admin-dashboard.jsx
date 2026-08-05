@@ -726,16 +726,13 @@ export function AdminDashboard({
 
     try {
       const [list, backendDefault] = await Promise.all([
-        listProjectsFromBackend({ signal: ctrl.signal }).catch(() => [
-          { project_id: "global", name: "Global" },
-        ]),
+        listProjectsFromBackend({ signal: ctrl.signal }).catch(() => []),
         getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
       ]);
 
       if (ctrl.signal.aborted) return;
 
-      const projList =
-        Array.isArray(list) && list.length ? list : [{ project_id: "global", name: "Global" }];
+      const projList = Array.isArray(list) ? list : [];
       setProjects(projList);
       setDefaultProjectId(backendDefault || null);
 

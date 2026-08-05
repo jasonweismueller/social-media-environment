@@ -3730,11 +3730,10 @@ export async function setWipePolicyOnBackend(wipeOnChange, { projectId = getProj
 export async function listProjectsFromBackend({ signal } = {}) {
   if (isSupabaseBackend()) {
     try {
-      const rows = await supabaseListProjects();
-      return rows.length ? rows : [{ project_id: "global", name: "Global" }];
+      return await supabaseListProjects();
     } catch (e) {
       console.warn("listProjectsFromBackend (supabase) failed:", e);
-      return [{ project_id: "global", name: "Global" }];
+      return [];
     }
   }
 
@@ -3745,14 +3744,10 @@ export async function listProjectsFromBackend({ signal } = {}) {
       { retries: 1, timeoutMs: 8000 }
     );
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return [{ project_id: "global", name: "Global" }];
-    }
-
-    return data;
+    return Array.isArray(data) ? data : [];
   } catch (e) {
     console.warn("listProjectsFromBackend failed:", e);
-    return [{ project_id: "global", name: "Global" }];
+    return [];
   }
 }
 
