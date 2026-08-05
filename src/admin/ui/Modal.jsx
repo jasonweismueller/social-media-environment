@@ -27,7 +27,7 @@ const FOCUSABLE_SELECTOR =
  * triggered it on close — `ConfirmDialog`/`PromptDialog` get this for free
  * since they render through this component.
  */
-export function Modal({ title, subtitle, onClose, children, footer, width = 480 }) {
+export function Modal({ title, subtitle, onClose, children, footer, width = 480, bodyRef }) {
   const anchorRef = useRef(null);
   const dialogRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
@@ -171,7 +171,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480 
           </button>
         </div>
 
-        <div style={{ padding: 20, overflowY: "auto" }}>{children}</div>
+        <div ref={bodyRef} style={{ padding: 20, overflowY: "auto" }}>{children}</div>
 
         {footer && (
           <div

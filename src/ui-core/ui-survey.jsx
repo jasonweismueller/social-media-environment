@@ -1513,6 +1513,7 @@ export function SurveyScreen({
   onSubmit,
   onPageValidationFail,
   onClearBanner,
+  onPageChange,
   submitting,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -1592,6 +1593,7 @@ const isNextDelayed =
 
   useLayoutEffect(() => {
     scrollSurveyPageToTop();
+    onPageChange?.(currentPageIndex);
   }, [currentPageIndex]);
 
   useEffect(() => {

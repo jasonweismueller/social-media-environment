@@ -1199,6 +1199,7 @@ export function SurveyScreenMobile({
   onSubmit,
   onPageValidationFail,
   onClearBanner,
+  onPageChange,
   submitting,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -1275,6 +1276,7 @@ export function SurveyScreenMobile({
 
   useLayoutEffect(() => {
     scrollSurveyPageToTop();
+    onPageChange?.(currentPageIndex);
   }, [currentPageIndex]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Modal, Button, Toggle, EmptyState, useToast } from "./ui";
 import { SurveyScreen, SurveyScreenMobile } from "../ui-core";
 import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
@@ -125,6 +125,16 @@ export function SurveyPreviewModal({
 
   const handleClearBanner = useCallback(() => setErrorMsg(""), []);
 
+  // Modal.jsx's own scrollable body div is the actual scroll container here
+  // (not window/document) — the survey engine's built-in page-turn scroll
+  // reset (`scrollSurveyPageToTop`, ui-survey.jsx) only targets window/
+  // document/`.survey-page`/`.survey-shell`, none of which apply inside a
+  // modal, so it silently no-ops here without this.
+  const modalBodyRef = useRef(null);
+  const handlePageChange = useCallback(() => {
+    if (modalBodyRef.current) modalBodyRef.current.scrollTop = 0;
+  }, []);
+
   const ScreenComponent = isMobile ? SurveyScreenMobile : SurveyScreen;
 
   return (
@@ -133,6 +143,7 @@ export function SurveyPreviewModal({
       subtitle={survey?.name || "Untitled survey"}
       onClose={onClose}
       width={880}
+      bodyRef={modalBodyRef}
     >
       <div
         style={{
@@ -216,6 +227,7 @@ export function SurveyPreviewModal({
           onSubmit={handleSubmit}
           onPageValidationFail={handlePageValidationFail}
           onClearBanner={handleClearBanner}
+          onPageChange={handlePageChange}
           submitting={false}
         />
       )}
