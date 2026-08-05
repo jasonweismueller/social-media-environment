@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, randomizeBioStats } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -285,6 +285,9 @@ export function PostCard({
   // used for non-interactive (static) post_reminder survey questions. The
   // real feed and interactive reminders don't pass this, so are unaffected.
   alwaysExpandText = false,
+  // Purely cosmetic entrance stagger — see ui-posts-facebook.jsx's
+  // `revealIndex`/`post-reveal-in` for the full rationale, mirrored here.
+  revealIndex = null,
 }) {
   const {
   id, author = "", avatarUrl = "", text = "", image, imageMode, images,
@@ -503,9 +506,25 @@ const timeLabel = useMemo(() => {
 }, [time, showTime, randTimesOn, id, runSeed, app, projectId, feedId]);
 
   // ---- Metrics and state ----
-  const baseLikes = useMemo(() => sumReactions(reactions), [reactions]);
-  const baseComments = Number(metrics?.comments || 0);
-  const baseShares = Number(metrics?.shares || 0);
+  // Opt-in per feed ("Realistic engagement counts", same flag as Facebook's
+  // — see fallbackEngagementStats in utils-core.js for the confound-safety
+  // rationale). Only ever fills in a number where the admin left the post's
+  // own likes/comments/shares blank — an explicitly-authored value always
+  // wins.
+  const realisticEngagementOn = !!effectiveFlags?.realistic_engagement;
+  const engagementFallback = useMemo(
+    () => (realisticEngagementOn ? fallbackEngagementStats(id) : null),
+    [realisticEngagementOn, id]
+  );
+  const explicitLikes = sumReactions(reactions);
+  const baseLikes = useMemo(
+    () => (explicitLikes > 0 ? explicitLikes : engagementFallback ? engagementFallback.likes : 0),
+    [explicitLikes, engagementFallback]
+  );
+  const explicitComments = Number(metrics?.comments || 0);
+  const baseComments = explicitComments > 0 ? explicitComments : engagementFallback ? engagementFallback.comments : 0;
+  const explicitShares = Number(metrics?.shares || 0);
+  const baseShares = explicitShares > 0 ? explicitShares : engagementFallback ? engagementFallback.shares : 0;
   const baseReposts = Number(metrics?.reposts || 0);
   const shouldShowGhosts = baseComments > 0;
 
@@ -803,9 +822,15 @@ const displayBio = useMemo(() => {
   return (
     <article
       ref={refFromTracker}
-      data-post-id={id}  
-      className="insta-card"
-      style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 12, overflow: "visible" }}
+      data-post-id={id}
+      className={revealIndex != null ? "insta-card post-reveal-in" : "insta-card"}
+      style={{
+        background: "#fff",
+        border: "1px solid var(--line)",
+        borderRadius: 12,
+        overflow: "visible",
+        ...(revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : null),
+      }}
     >
       {/* Header */}
       <header className="insta-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px" }}>
@@ -1911,7 +1936,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
       {isMobile && <StoryBar />}
 
       <main className="insta-feed">
-        {renderPosts.map((p) => (
+        {renderPosts.map((p, revealIndex) => (
          <PostCard
   key={p.id}
   post={p}
@@ -1923,6 +1948,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
   app={app}
   projectId={projectId}
   feedId={feedId}
+  revealIndex={revealIndex}
 />
         ))}
         <div ref={sentinelRef} aria-hidden="true" />

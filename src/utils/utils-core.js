@@ -368,6 +368,65 @@ export function fakeNamesList(postId, kindOrCount, countMaybe, maxShow = 5) {
   return names;
 }
 
+// Deterministic, plausible-looking engagement numbers for a post that has
+// no admin-authored reaction/comment/share counts of its own — a fallback,
+// not a replacement: any explicit `post.reactions`/`post.metrics` value an
+// admin actually set always wins (see call sites in ui-posts-*.jsx).
+//
+// Seeded purely by `postId` — deliberately NOT by participant, run, feed,
+// or project. Two things this buys:
+// 1. It matches reality: a real post's like count is a property of the
+//    post, not of who's looking at it, so it should be identical for every
+//    participant who sees that post.
+// 2. It stays confound-safe across experimental conditions. Control/
+//    Treatment/etc. variants of "the same" post in this codebase share the
+//    same bare `post.id` across different feeds (see the `posts.id`
+//    composite-key note in CLAUDE.md) — seeding off `post.id` alone means
+//    every condition's copy of that post gets the exact same numbers,
+//    so displayed "popularity" can never accidentally correlate with which
+//    arm a participant is in.
+const ENGAGEMENT_REACTION_WEIGHT_KEYS = ["like", "love", "care", "haha", "wow", "sad", "angry"];
+export function fallbackEngagementStats(postId) {
+  const seed = hashStrToInt_(`${postId || ""}::engagement-realism::v1`);
+  const rnd = mulberry32_(seed);
+
+  // Long-tail distribution: most posts land modest (single/low-double
+  // digits), a few read as more "viral" (low hundreds) — rnd()**2.2 skews
+  // heavily toward the low end before the +3..+18 floor keeps every post
+  // above a bare, suspicious-looking single digit.
+  const reactionsTotal = Math.round(Math.pow(rnd(), 2.2) * 380) + 3 + Math.round(rnd() * 15);
+  const commentsTotal = Math.round(reactionsTotal * (0.04 + rnd() * 0.12));
+  const sharesTotal = Math.round(reactionsTotal * (0.01 + rnd() * 0.05));
+
+  // Reaction mix: "like" and "love" dominate, the rest are a light garnish
+  // — matches the real-world shape of Facebook reaction distributions far
+  // better than an even split would.
+  const weights = {
+    like: 0.55 + rnd() * 0.2,
+    love: 0.14 + rnd() * 0.14,
+    care: rnd() * 0.07,
+    haha: rnd() * 0.07,
+    wow: rnd() * 0.04,
+    sad: rnd() * 0.025,
+    angry: rnd() * 0.025,
+  };
+  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+
+  const reactions = {};
+  let allocated = 0;
+  ENGAGEMENT_REACTION_WEIGHT_KEYS.forEach((key, i) => {
+    if (i === ENGAGEMENT_REACTION_WEIGHT_KEYS.length - 1) {
+      reactions[key] = Math.max(0, reactionsTotal - allocated);
+      return;
+    }
+    const v = Math.round((weights[key] / totalWeight) * reactionsTotal);
+    reactions[key] = v;
+    allocated += v;
+  });
+
+  return { reactions, comments: commentsTotal, shares: sharesTotal, likes: reactionsTotal };
+}
+
 export function neutralAvatarDataUrl(seed = "") {
   const s = String(seed || "");
   const palette = ["#0ea5e9","#22c55e","#a855f7","#f59e0b","#ef4444","#06b6d4","#84cc16","#6366f1"];

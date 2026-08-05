@@ -1442,6 +1442,12 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.randomize_bios !== "undefined" || typeof flags.random_bio !== "undefined") {
     out.random_bio = !!(flags.randomize_bios ?? flags.random_bio);
   }
+  // No legacy/GAS name — this flag postdates the Supabase cutover and has
+  // no GAS counterpart (same posture as custom measure groups elsewhere in
+  // this codebase), so there's only ever one key to check.
+  if (typeof flags.realistic_engagement !== "undefined") {
+    out.realistic_engagement = !!flags.realistic_engagement;
+  }
 
   return out;
 }
@@ -1453,6 +1459,7 @@ export function normalizeFlagsForRead(flags) {
   out.randomize_names = !!(out.randomize_names ?? out.random_name);
   out.randomize_images = !!(out.randomize_images ?? out.random_image);
   out.randomize_bios = !!(out.randomize_bios ?? out.random_bio);
+  out.realistic_engagement = !!out.realistic_engagement;
 
   delete out.random_time;
   delete out.random_avatar;

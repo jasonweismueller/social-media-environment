@@ -11,9 +11,11 @@ import {
   displayTimeForPost,
   getAvatarPool,
   pickDeterministic,
+  pickUniqueDeterministic,
   getImagePool,
   buildDeterministicAssignmentMap,
   randomizeBioStats,
+  fallbackEngagementStats,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
@@ -50,6 +52,13 @@ import {
 
 const DISPLAYED_POST_SNAPSHOT_PREFIX = "studyfeed:displayed_post_snapshot";
 const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot_latest";
+
+// Left rail decorative chrome — generic, fixed, identical for every
+// participant/condition (nothing here is randomized or content-dependent,
+// so there's nothing for it to confound). Real Facebook's own nav; no
+// personalization attempted since we have no real identity to reflect.
+const LEFT_RAIL_NAV_ITEMS = ["Friends", "Memories", "Saved", "Groups", "Video", "Marketplace"];
+const LEFT_RAIL_SHORTCUTS = ["Photography Club", "Local Marketplace", "Book Swap"];
 
 function snapshotKeyPart_(value) {
   return encodeURIComponent(String(value == null ? "" : value));
@@ -240,6 +249,13 @@ export function PostCard({
   // should behave exactly like the real feed) untouched, since neither
   // passes this prop.
   alwaysExpandText = false,
+  // Purely cosmetic entrance stagger (see the `post-reveal-in` CSS
+  // animation below) — which batch-position this card is in among the
+  // posts revealed together, so a batch cascades in instead of popping in
+  // all at once. Not passed by reminder call sites (post_reminder questions
+  // show one frozen post, nothing to cascade), so they render with no
+  // stagger — instant, exactly as before.
+  revealIndex = null,
 }) {
   const [reportAck, setReportAck] = useState(false);
   const [linkAck, setLinkAck] = useState(false);
@@ -539,8 +555,28 @@ export function PostCard({
   const showReactions = post.showReactions ?? false;
   const ALL_RX_KEYS = useMemo(() => Object.keys(REACTION_META), []);
 
-  const baseReactions = useMemo(
-    () => ({
+  // Opt-in per feed ("Realistic engagement counts" toggle, Feeds → Settings
+  // → Behavior) — fills in plausible reaction/comment/share numbers only
+  // where the admin left a post's own counts blank, never overriding an
+  // explicitly-authored value. See fallbackEngagementStats (utils-core.js)
+  // for why this can't introduce a between-condition confound.
+  const realisticEngagementOn = !!flags?.realistic_engagement;
+  const engagementFallback = useMemo(
+    () => (realisticEngagementOn ? fallbackEngagementStats(post.id) : null),
+    [realisticEngagementOn, post.id]
+  );
+
+  const baseReactions = useMemo(() => {
+    const explicit = post.reactions || {};
+    const hasExplicit = Object.values(explicit).some((v) => Number(v) > 0);
+    // Reaction *numbers* only ever fill in when reactions are already meant
+    // to be visible for this post (`showReactions`) — that toggle stays the
+    // real on/off switch; this only stops it from displaying a bare "0".
+    const source =
+      !hasExplicit && showReactions && engagementFallback
+        ? engagementFallback.reactions
+        : explicit;
+    return {
       like: 0,
       love: 0,
       care: 0,
@@ -548,10 +584,9 @@ export function PostCard({
       wow: 0,
       sad: 0,
       angry: 0,
-      ...(post.reactions || {}),
-    }),
-    [post.reactions]
-  );
+      ...source,
+    };
+  }, [post.reactions, showReactions, engagementFallback]);
 
   const liveReactions = useMemo(() => {
     const obj = { ...baseReactions };
@@ -559,10 +594,25 @@ export function PostCard({
     return obj;
   }, [baseReactions, myReaction]);
 
-  const baseCommentCount = Number(post.metrics?.comments) || 0;
+  const explicitCommentCount = Number(post.metrics?.comments) || 0;
+  // Comments/shares have no dedicated show/hide toggle of their own — they
+  // already display whenever nonzero regardless of `showReactions` — so the
+  // fallback applies independently of it too, matching that existing rule.
+  const baseCommentCount =
+    explicitCommentCount > 0
+      ? explicitCommentCount
+      : engagementFallback
+        ? engagementFallback.comments
+        : 0;
   const displayedCommentCount = baseCommentCount + participantComments;
 
-  const baseShareCount = Number(post.metrics?.shares) || 0;
+  const explicitShareCount = Number(post.metrics?.shares) || 0;
+  const baseShareCount =
+    explicitShareCount > 0
+      ? explicitShareCount
+      : engagementFallback
+        ? engagementFallback.shares
+        : 0;
   const [shareCountLocal, setShareCountLocal] = useState(0);
   const displayedShareCount = baseShareCount + shareCountLocal;
 
@@ -2064,7 +2114,8 @@ export function PostCard({
       ref={registerViewRef(post.id)}
       data-post-id={post.id}
       data-has-image={displayImage ? "1" : undefined}
-      className="card post-card"
+      className={revealIndex != null ? "card post-card post-reveal-in" : "card post-card"}
+      style={revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
     >
       {postContent}
 
@@ -2277,6 +2328,18 @@ export function Feed({
     company: new Map(),
   });
 
+  // Decorative "Contacts" rail — real-looking, but purely cosmetic: reuses
+  // the exact same avatar/name pools as real post authors (already loaded
+  // for the fetch below, no extra network cost), seeded distinctly ("rail-
+  // contacts" vs "female-avatars"/"female-names" etc.) so it never mirrors
+  // any specific post's assigned author. Confound-safe for the same reason
+  // author-name/avatar randomization already is: identical mechanism, same
+  // pool, seeded by run+participant — never by condition or content — so it
+  // can't correlate with which arm a participant is in. Stays fully inert
+  // (`.rail`'s own `pointer-events:none`/`aria-hidden`, unchanged below) —
+  // this only ever changes what it looks like, never what it does.
+  const [contacts, setContacts] = useState([]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -2309,6 +2372,24 @@ export function Feed({
           (p) => p.id
         ),
       });
+
+      const CONTACTS_COUNT = 14;
+      const contactSeedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
+      const namePool = [...FB_FEMALE_NAMES, ...FB_MALE_NAMES];
+      const avatarPool = [...femalePool, ...malePool];
+      setContacts(
+        Array.from({ length: CONTACTS_COUNT }, (_, i) => ({
+          id: `rail-contact-${i}`,
+          name:
+            pickUniqueDeterministic(namePool, i, [...contactSeedBase, "rail-contacts-name"]) ||
+            `Contact ${i + 1}`,
+          avatarUrl: pickUniqueDeterministic(avatarPool, i, [...contactSeedBase, "rail-contacts-avatar"]),
+          // ~30% online, deterministic per contact — matches the light
+          // sprinkling of green dots on a real contacts list rather than
+          // an implausible "everyone's online" look.
+          online: pickDeterministic([true, false, false, false], [...contactSeedBase, "rail-contacts-online", i]) === true,
+        }))
+      );
     })();
 
     return () => {
@@ -2318,35 +2399,34 @@ export function Feed({
 
   return (
     <div className="page">
-      <aside className="rail rail-left" aria-hidden="true" tabIndex={-1}>
-        <div className="ghost-card ghost-profile">
-          <div className="ghost-avatar xl" />
-          <div className="ghost-lines">
-            <div className="ghost-line w-60" />
-            <div className="ghost-line w-35" />
-          </div>
-        </div>
-        <div className="ghost-list">
-          {["Home", "AI", "Friends", "Events", "Memories", "Saved", "Groups", "Marketplace", "Feeds", "Video"].map((t, i) => (
-            <div key={i} className="ghost-item icon">
-              <div className="ghost-icon" />
-              <div className="ghost-line w-70" />
+      {/* Decorative surroundings only — `.rail`'s own pointer-events:none
+          (styles-facebook.css) plus aria-hidden/tabIndex=-1 here keep this
+          entirely inert. Real names/dates/content are never shown here (we
+          have no real identity to show), just the same generic, seeded-
+          random contact pool the right rail uses — see the `contacts`
+          effect above for the confound-safety rationale. */}
+      <aside className="rail rail-left rail--content" aria-hidden="true" tabIndex={-1}>
+        <div className="rail-real-list">
+          {LEFT_RAIL_NAV_ITEMS.map((label) => (
+            <div key={label} className="rail-real-item">
+              <span className="rail-real-icon" />
+              <span>{label}</span>
             </div>
           ))}
         </div>
-        <div className="ghost-title" />
-        <div className="ghost-list">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="ghost-item">
-              <div className="ghost-avatar sm" />
-              <div className="ghost-line w-60" />
+        <div className="rail-real-title">Your shortcuts</div>
+        <div className="rail-real-list">
+          {LEFT_RAIL_SHORTCUTS.map((label) => (
+            <div key={label} className="rail-real-item">
+              <span className="rail-real-icon rail-real-icon--shortcut" />
+              <span>{label}</span>
             </div>
           ))}
         </div>
       </aside>
 
       <main className="container feed">
-        {renderPosts.map((p) => {
+        {renderPosts.map((p, revealIndex) => {
           const assignedAuthor =
             p.authorType === "male"
               ? maleNameMap.get(p.id)
@@ -2377,6 +2457,7 @@ export function Feed({
               assignedAvatarUrl={assignedAvatarUrl || null}
               participantSeed={participantSeed}
               onDisplayedPostSnapshot={onDisplayedPostSnapshot}
+              revealIndex={revealIndex}
             />
           );
         })}
@@ -2395,27 +2476,20 @@ export function Feed({
         </div>
       </main>
 
-      <aside className="rail rail-right" aria-hidden="true" tabIndex={-1}>
-        <div className="ghost-card banner" />
-        <div className="ghost-card banner" />
-        <div className="ghost-card box">
-          <div className="ghost-line w-40" style={{ marginBottom: 8 }} />
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="ghost-row">
-              <div className="ghost-avatar sm" />
-              <div className="ghost-lines">
-                <div className="ghost-line w-70" />
-                <div className="ghost-line w-45" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="ghost-card box">
-          <div className="ghost-line w-35" style={{ marginBottom: 8 }} />
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="ghost-row">
-              <div className="ghost-avatar sm online" />
-              <div className="ghost-line w-60" />
+      <aside className="rail rail-right rail--content" aria-hidden="true" tabIndex={-1}>
+        <div className="rail-real-title">Contacts</div>
+        <div className="rail-real-list">
+          {contacts.map((c) => (
+            <div key={c.id} className="rail-real-item">
+              <span className="rail-contact-avatar-wrap">
+                {c.avatarUrl ? (
+                  <img src={c.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+                ) : (
+                  <span className="rail-contact-avatar rail-contact-avatar--blank" />
+                )}
+                {c.online && <span className="rail-contact-online-dot" />}
+              </span>
+              <span>{c.name}</span>
             </div>
           ))}
         </div>

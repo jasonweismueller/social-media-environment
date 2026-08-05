@@ -570,6 +570,13 @@ export function AdminDashboard({
     image: { backendField: "random_image", savingKey: "savingImg", readKeys: ["randomize_images", "random_image"], label: "Image" },
     name: { backendField: "random_name", savingKey: "savingNm", readKeys: ["randomize_names", "random_name"], label: "Name" },
     bio: { backendField: "random_bio", savingKey: "savingBio", readKeys: ["randomize_bios", "random_bio"], label: "Bio" },
+    // Opt-in per feed, defaults false for every feed that's never had it set
+    // (a brand-new jsonb key, same "new key = safe no-op for existing rows"
+    // posture as every other flag added here) — fills in plausible reaction/
+    // comment/share counts wherever a post's own admin-authored numbers are
+    // blank. See `fallbackEngagementStats` (utils-core.js) for why it's safe
+    // against experimental confounds.
+    engagement: { backendField: "realistic_engagement", savingKey: "savingEng", readKeys: ["realistic_engagement"], label: "Realistic engagement counts" },
   };
   const ALL_SAVING_KEYS = Object.values(FLAG_KINDS).map((k) => k.savingKey);
 

@@ -238,6 +238,39 @@ a:hover{text-decoration:underline}
 }
 .rail > *:first-child{margin-top:0 !important}
 
+/* The real (loaded) feed's own rails — sharp, full-opacity "real
+   surroundings" instead of the blurred loading-skeleton look above.
+   Deliberately a separate modifier, not a change to `.rail` itself: the
+   loading-skeleton usage of `.rail` (App-facebook.jsx, shown before the
+   real feed mounts) should stay blurred — that's a correct "still loading"
+   state, not something to fix. `pointer-events:none`/`user-select:none`
+   from `.rail` above still apply — this only ever changes appearance. */
+.rail--content{ filter:none; opacity:1; }
+.rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:14px 4px 6px; padding-top:4px; }
+.rail-real-list{ background:#fff; border:1px solid var(--line); border-radius:1rem; box-shadow:var(--shadow); padding:.4rem; }
+.rail-real-item{ display:flex; align-items:center; gap:.6rem; padding:.4rem .5rem; border-radius:.5rem; font-size:14px; color:#050505; }
+.rail-real-icon{ width:28px; height:28px; border-radius:8px; background:#e7f0ff; flex:0 0 auto; }
+.rail-real-icon--shortcut{ border-radius:8px; background:#eef2f7; }
+.rail-contact-avatar-wrap{ position:relative; width:32px; height:32px; flex:0 0 auto; }
+.rail-contact-avatar{ width:32px; height:32px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb; }
+.rail-contact-avatar--blank{ background:#e5e7eb; }
+.rail-contact-online-dot{ position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border:2px solid #fff; border-radius:999px; background:#22c55e; }
+
+/* Post entrance cascade ("interaction pacing" realism) — a batch of newly
+   revealed posts fades/slides in with a small per-post stagger instead of
+   snapping in all at once. Purely a CSS transition keyed on reveal order
+   (see `revealIndex` in ui-posts-facebook.jsx) — never on post content or
+   condition, so it can't itself become a confound; every post gets exactly
+   the same treatment. */
+@keyframes post-reveal-in{
+  from{ opacity:0; transform:translateY(8px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+.post-reveal-in{ animation: post-reveal-in .32s ease-out both; }
+@media (prefers-reduced-motion: reduce){
+  .post-reveal-in{ animation:none; }
+}
+
 /* Skeleton UI */
 .ghost-card{background:#fff;border:1px solid var(--line);border-radius:1rem;box-shadow:var(--shadow);margin-bottom:12px}
 .ghost-card.banner{height:180px}

@@ -326,6 +326,17 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Post entrance cascade ("interaction pacing" realism) — see the matching
+   comment in styles-facebook.css for the full rationale; identical here. */
+@keyframes post-reveal-in{
+  from{ opacity:0; transform:translateY(8px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+.post-reveal-in{ animation: post-reveal-in .32s ease-out both; }
+@media (prefers-reduced-motion: reduce){
+  .post-reveal-in{ animation:none; }
+}
+
 /* Report acknowledgment overlay */
 .ack-overlay{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:2000; pointer-events:none; animation: ackInOut 2.8s ease forwards; }
 .ack-overlay-box{ pointer-events:auto; background:#fff; border:1px solid var(--ig-line); border-radius:14px; box-shadow:var(--ig-shadow); padding:20px 24px; min-width:360px; max-width:480px; display:flex; align-items:center; gap:12px; text-align:left; }

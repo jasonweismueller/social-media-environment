@@ -143,6 +143,9 @@ function ReviewCard({
   runSeed,
   app,
   assignedReviewer,
+  // Purely cosmetic entrance stagger — see ui-posts-facebook.jsx's
+  // `revealIndex`/`post-reveal-in` for the full rationale, mirrored here.
+  revealIndex = null,
 }) {
   const id = getReviewId(review);
   const randNamesOn = !!flags?.randomize_names;
@@ -200,11 +203,12 @@ function ReviewCard({
 
   return (
     <article
-      className="amz-review"
+      className={revealIndex != null ? "amz-review post-reveal-in" : "amz-review"}
       data-post-id={id}
       data-review-id={id}
       data-has-image="0"
       ref={(el) => registerViewRef?.(id, el)}
+      style={revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
     >
       <header className="amz-review-head">
         <div className="amz-avatar" aria-hidden="true">
@@ -318,6 +322,7 @@ export function PostCard({
   runSeed,
   app,
   assignedReviewer,
+  revealIndex = null,
 }) {
   const normalizedReview = review || post || {};
 
@@ -351,6 +356,7 @@ export function PostCard({
       runSeed={runSeed}
       app={app}
       assignedReviewer={assignedReviewer}
+      revealIndex={revealIndex}
     />
   );
 }
@@ -441,6 +447,7 @@ export function Feed({
                 runSeed={runSeed}
                 app={app}
                 assignedReviewer={reviewerNameMap.get(id) || null}
+                revealIndex={idx}
               />
             );
           })}

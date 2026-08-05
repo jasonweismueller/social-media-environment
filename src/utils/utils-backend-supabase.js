@@ -698,6 +698,8 @@ const FLAG_PAIRS = [
   ["randomize_names", "random_name"],
   ["randomize_images", "random_image"],
   ["randomize_bios", "random_bio"],
+  // No legacy alias — postdates GAS, only one name ever existed.
+  ["realistic_engagement", "realistic_engagement"],
 ];
 
 export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {

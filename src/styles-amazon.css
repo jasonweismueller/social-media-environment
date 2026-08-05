@@ -308,6 +308,17 @@ a:hover{text-decoration:underline}
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Post entrance cascade ("interaction pacing" realism) — see the matching
+   comment in styles-facebook.css for the full rationale; identical here. */
+@keyframes post-reveal-in{
+  from{ opacity:0; transform:translateY(8px); }
+  to{ opacity:1; transform:translateY(0); }
+}
+.post-reveal-in{ animation: post-reveal-in .32s ease-out both; }
+@media (prefers-reduced-motion: reduce){
+  .post-reveal-in{ animation:none; }
+}
+
 /* Report acknowledgment overlay */
 .ack-overlay{
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
