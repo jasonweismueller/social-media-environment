@@ -3554,3 +3554,30 @@ same standing no-live-browser-click-through caveat as most of this file; worth c
 "No projects yet" empty state (now moot for the freshly-content-populated staging project, but
 matters for any future genuinely-empty Supabase project) and the fixed project picker next time
 there's a chance to click through it for real.
+
+## Session handoff (2026-08-05) — read this first if picking up fresh
+
+This was a very long session (started from "keep improving overnight" with two genuinely-ambiguous
+asks — "the live dashboard and suspicious participants implementations" — that had **no record
+anywhere** when investigated, so both were built from scratch as a reasonable interpretation, flag
+this if that turns out to be wrong). **Full index, verification status per item, and the accurate
+"what's actually left" list**: `~/.claude/plans/quiet-bridging-noether.md` — read that file's own
+sections rather than re-deriving this from the several section headers above it in this file
+(RLS work, participants hub, Amazon fix, data-quality flags, the full staging build-out, and the
+`listProjectsFromBackend` "global" project bug).
+
+**Git state, confirmed at end of session**: `main` and `production` both fully pushed to `origin`.
+`production` is exactly **one commit behind `main`** (missing only `a26d295 fix staging
+integration`, the `listProjectsFromBackend` bug fix + its own write-up) — check `git log
+production..main` first thing; if it still shows that one commit, promote it
+(`production` ← merge `main` → push) before assuming `studyfeed.org` has tonight's very last fix.
+Everything else from this session is already live on production.
+
+**The one thing worth doing first, now that it's actually possible**: staging
+(`staging.studyfeed.org`) is fully live, public, has a real owner login, and has real study content
+(no participant data) — this is the first time in this repo's history that an actual live
+click-through by a real logged-in admin has been possible without the standing "no login" caveat
+that appears throughout the rest of this file. Several things shipped this session were verified by
+code reading / isolated component mounts / direct function calls rather than a real click-through
+(see the plan file's "What's actually left" section, item 2, for the specific list) — worth
+spending real time there before piling on more unverified work.
