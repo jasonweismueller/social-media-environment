@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   makeEmptySurvey,
   makeQuestionByType,
   SURVEY_QUESTION_TYPES,
   VISIBLE_IF_ELIGIBLE_TYPES,
 } from "../utils";
-import { useConfirm } from "./ui";
+import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm } from "./ui";
 
 /* =========================
    Small helpers
@@ -464,10 +463,6 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       post_label: "",
       post_feed_id: "",
       next_delay_seconds: normalizePageDelaySeconds(q?.next_delay_seconds),
-      _showFeedVisibilityEditor: false,
-      _showFeedOverridesEditor: false,
-      _showGroupVisibilityEditor: false,
-      _showConditionalDisplayEditor: false,
       meta: q?.meta || {},
     };
   }
@@ -505,10 +500,6 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       (q?.apply_feed_randomization ?? q?.meta?.apply_feed_randomization ?? true) !== false,
     reminder_interactive:
       !!(q?.reminder_interactive ?? q?.meta?.reminder_interactive ?? false),
-    _showFeedVisibilityEditor: !!q?._showFeedVisibilityEditor,
-    _showFeedOverridesEditor: !!q?._showFeedOverridesEditor,
-    _showGroupVisibilityEditor: !!q?._showGroupVisibilityEditor,
-    _showConditionalDisplayEditor: !!q?._showConditionalDisplayEditor,
     meta: q?.meta || {},
   };
 }
@@ -787,27 +778,27 @@ function BlockBoundaryDivider({ boundary }) {
         margin: "18px 0 10px",
         padding: "7px 12px",
         borderRadius: 8,
-        background: "#eef2ff",
-        border: "1px solid #c7d2fe",
+        background: "var(--admin-accent-soft)",
+        border: "1px solid var(--admin-accent-border)",
       }}
     >
       <span
         style={{
           fontSize: 11,
           fontWeight: 800,
-          color: "#4338ca",
+          color: "var(--admin-accent-ink)",
           textTransform: "uppercase",
           letterSpacing: "0.04em",
         }}
       >
         Block {blockIndex + 1}
       </span>
-      <span style={{ fontSize: 12.5, fontWeight: 700, color: "#312e81" }}>{block.title}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--admin-accent-ink)" }}>{block.title}</span>
       {block.randomize_pages && (
-        <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600 }}>Pages randomised</span>
+        <span style={{ fontSize: 10.5, color: "var(--admin-accent)", fontWeight: 600 }}>Pages randomised</span>
       )}
       {groupCount > 0 && (
-        <span style={{ fontSize: 10.5, color: "#6366f1", fontWeight: 600 }}>
+        <span style={{ fontSize: 10.5, color: "var(--admin-accent)", fontWeight: 600 }}>
           Visible to {groupCount} group{groupCount === 1 ? "" : "s"}
         </span>
       )}
@@ -967,9 +958,6 @@ export function makeBackendQuestionFromType(type, index = 0) {
     post_feed_id: String(base?.post_feed_id ?? ""),
     apply_feed_randomization: base?.apply_feed_randomization !== false,
     reminder_interactive: !!base?.reminder_interactive,
-    _showFeedVisibilityEditor: false,
-    _showFeedOverridesEditor: false,
-    _showConditionalDisplayEditor: false,
     meta: base?.meta || {},
   };
 
@@ -1361,30 +1349,16 @@ function IconOnlyButton({
   children = null,
 }) {
   return (
-    <button
-      type="button"
+    <IconButton
       onClick={onClick}
       title={title}
       aria-label={title}
+      danger={danger}
       disabled={disabled}
-      style={{
-        width: INPUT_HEIGHT,
-        height: INPUT_HEIGHT,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 8,
-        border: `1px solid ${danger ? "#dc2626" : "#d1d5db"}`,
-        background: "#fff",
-        color: danger ? "#dc2626" : disabled ? "#9ca3af" : "#111827",
-        cursor: disabled ? "not-allowed" : "pointer",
-        padding: 0,
-        lineHeight: 1,
-        ...style,
-      }}
+      style={style}
     >
       {children || <TrashIcon size={size} />}
-    </button>
+    </IconButton>
   );
 }
 
@@ -1405,9 +1379,9 @@ function SecondaryPillButton({
         height: 34,
         padding: "0 12px",
         borderRadius: 999,
-        border: `1px solid ${active ? "#c7d2fe" : "#d1d5db"}`,
-        background: active ? "#eef2ff" : "#fff",
-        color: active ? "#4338ca" : disabled ? "#9ca3af" : "#111827",
+        border: `1px solid ${active ? "var(--admin-accent-border)" : "var(--admin-border)"}`,
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+        color: active ? "var(--admin-accent-ink)" : disabled ? "var(--admin-muted-2)" : "var(--admin-text)",
         fontSize: 12,
         fontWeight: 600,
         cursor: disabled ? "not-allowed" : "pointer",
@@ -1436,11 +1410,11 @@ function DragHandle({ onDragStart, onDragEnd }) {
         alignItems: "center",
         justifyContent: "center",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
-        background: "#fff",
+        border: "1px solid var(--admin-border)",
+        background: "var(--admin-surface)",
         cursor: "grab",
         fontSize: 15,
-        color: "#6b7280",
+        color: "var(--admin-muted)",
         userSelect: "none",
       }}
     >
@@ -1449,6 +1423,10 @@ function DragHandle({ onDragStart, onDragEnd }) {
   );
 }
 
+// Kept as a compact pill button rather than swapped to the shared `Toggle`
+// switch — this sits inline in QuestionActions' tight horizontal action bar
+// (chevron, drag handle, up/down, copy, delete), and Toggle's label+switch
+// layout wants to span a full settings-row width, which doesn't fit here.
 function RequiredToggleButton({ active, onClick, disabled = false }) {
   return (
     <button
@@ -1461,9 +1439,9 @@ function RequiredToggleButton({ active, onClick, disabled = false }) {
         minWidth: 92,
         padding: "0 12px",
         borderRadius: 8,
-        border: `1px solid ${active ? "#4f46e5" : "#d1d5db"}`,
-        background: active ? "#eef2ff" : "#fff",
-        color: active ? "#4338ca" : disabled ? "#9ca3af" : "#111827",
+        border: `1px solid ${active ? "var(--admin-accent)" : "var(--admin-border)"}`,
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+        color: active ? "var(--admin-accent-ink)" : disabled ? "var(--admin-muted-2)" : "var(--admin-text)",
         fontWeight: 600,
         cursor: disabled ? "not-allowed" : "pointer",
         whiteSpace: "nowrap",
@@ -1508,7 +1486,7 @@ function TextInput({ value, onChange, placeholder, style }) {
         height: INPUT_HEIGHT,
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         boxSizing: "border-box",
         ...style,
       }}
@@ -1530,7 +1508,7 @@ function NumberInput({ value, onChange, min, max, step = 1, style }) {
         height: INPUT_HEIGHT,
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         boxSizing: "border-box",
         ...style,
       }}
@@ -1549,7 +1527,7 @@ function TextAreaInput({ value, onChange, placeholder, rows = 3, style }) {
         width: "100%",
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         resize: "vertical",
         boxSizing: "border-box",
         ...style,
@@ -1569,8 +1547,8 @@ function SelectInput({ value, onChange, children, style, disabled = false }) {
         height: INPUT_HEIGHT,
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
-        background: "#fff",
+        border: "1px solid var(--admin-border)",
+        background: "var(--admin-surface)",
         boxSizing: "border-box",
         ...style,
       }}
@@ -1588,39 +1566,10 @@ function FieldBlock({ label, children, hint = "" }) {
       </div>
       {children}
       {hint ? (
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 4 }}>
           {hint}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function SectionCard({ title, children, right = null }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        background: "#fff",
-        padding: 16,
-        marginBottom: 18,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 12,
-        }}
-      >
-        <h4 style={{ margin: 0, fontSize: 16 }}>{title}</h4>
-        {right}
-      </div>
-      {children}
     </div>
   );
 }
@@ -1636,9 +1585,9 @@ function RichToolbarButton({ title, onMouseDown, active = false, children }) {
         width: 32,
         height: 32,
         borderRadius: 8,
-        border: `1px solid ${active ? "#4f46e5" : "#d1d5db"}`,
-        background: active ? "#eef2ff" : "#fff",
-        color: active ? "#4338ca" : "#111827",
+        border: `1px solid ${active ? "var(--admin-accent)" : "var(--admin-border)"}`,
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+        color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -1749,10 +1698,10 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
   return (
     <div
       style={{
-        border: `1px solid ${focused ? "#4f46e5" : "#d1d5db"}`,
+        border: `1px solid ${focused ? "var(--admin-accent)" : "var(--admin-border)"}`,
         borderRadius: 10,
         overflow: "hidden",
-        background: "#fff",
+        background: "var(--admin-surface)",
         boxShadow: focused ? "0 0 0 3px rgba(79,70,229,0.10)" : "none",
       }}
     >
@@ -1762,8 +1711,8 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
           gap: 6,
           alignItems: "center",
           padding: 8,
-          borderBottom: "1px solid #e5e7eb",
-          background: "#fafafa",
+          borderBottom: "1px solid var(--admin-border-subtle)",
+          background: "var(--admin-surface-alt)",
           flexWrap: "wrap",
         }}
       >
@@ -1829,7 +1778,7 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
               position: "absolute",
               left: 12,
               top: 12,
-              color: "#9ca3af",
+              color: "var(--admin-muted-2)",
               pointerEvents: "none",
               fontSize: 14,
             }}
@@ -1918,8 +1867,8 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           width: 22,
           height: 22,
           borderRadius: 999,
-          border: "1px solid #d1d5db",
-          background: "#fff",
+          border: "1px solid var(--admin-border)",
+          background: "var(--admin-surface)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -1946,8 +1895,8 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
             minWidth: 220,
             padding: 10,
             borderRadius: 10,
-            border: "1px solid #d1d5db",
-            background: "#fff",
+            border: "1px solid var(--admin-border)",
+            background: "var(--admin-surface)",
             boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
           }}
         >
@@ -1972,8 +1921,8 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
               width: "100%",
               padding: "6px 8px",
               borderRadius: 6,
-              border: "1px solid #d1d5db",
-              background: "#fff",
+              border: "1px solid var(--admin-border)",
+              background: "var(--admin-surface)",
               cursor: "pointer",
             }}
           >
@@ -2028,16 +1977,16 @@ function ItemTableEditor({
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 10,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{title}</div>
 
       {safeItems.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 8 }}>
           No items yet.
         </div>
       )}
@@ -2079,8 +2028,8 @@ function ItemTableEditor({
           marginTop: 10,
           padding: "8px 10px",
           borderRadius: 8,
-          border: "1px solid #d1d5db",
-          background: "#fff",
+          border: "1px solid var(--admin-border)",
+          background: "var(--admin-surface)",
           cursor: "pointer",
         }}
       >
@@ -2115,10 +2064,10 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 10,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
@@ -2126,7 +2075,7 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
       </div>
 
       {safeItems.length === 0 && (
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 8 }}>
           No rows yet.
         </div>
       )}
@@ -2169,8 +2118,8 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
           marginTop: 10,
           padding: "8px 10px",
           borderRadius: 8,
-          border: "1px solid #d1d5db",
-          background: "#fff",
+          border: "1px solid var(--admin-border)",
+          background: "var(--admin-surface)",
           cursor: "pointer",
         }}
       >
@@ -2203,11 +2152,11 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
     return (
       <div
         style={{
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--admin-border)",
           borderRadius: 10,
           padding: 12,
-          background: "#fafafa",
-          color: "#6b7280",
+          background: "var(--admin-surface-alt)",
+          color: "var(--admin-muted)",
           fontSize: 13,
         }}
       >
@@ -2220,10 +2169,10 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
       <div
@@ -2236,7 +2185,7 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
           flexWrap: "wrap",
         }}
       >
-        <div style={{ fontSize: 13, color: "#111827" }}>
+        <div style={{ fontSize: 13, color: "var(--admin-text)" }}>
           If no feeds are selected, this question is shown in all linked feeds.
         </div>
 
@@ -2247,8 +2196,8 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
             style={{
               padding: "6px 10px",
               borderRadius: 8,
-              border: "1px solid #d1d5db",
-              background: "#fff",
+              border: "1px solid var(--admin-border)",
+              background: "var(--admin-surface)",
               cursor: "pointer",
               fontSize: 12,
               fontWeight: 600,
@@ -2263,8 +2212,8 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
             style={{
               padding: "6px 10px",
               borderRadius: 8,
-              border: "1px solid #d1d5db",
-              background: "#fff",
+              border: "1px solid var(--admin-border)",
+              background: "var(--admin-surface)",
               cursor: "pointer",
               fontSize: 12,
               fontWeight: 600,
@@ -2323,10 +2272,10 @@ function QuestionGroupVisibilityEditor({ experimentGroups, value, onChange }) {
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
       <div
@@ -2339,7 +2288,7 @@ function QuestionGroupVisibilityEditor({ experimentGroups, value, onChange }) {
           flexWrap: "wrap",
         }}
       >
-        <div style={{ fontSize: 13, color: "#111827" }}>
+        <div style={{ fontSize: 13, color: "var(--admin-text)" }}>
           If no groups are selected, this question is shown to everyone.
         </div>
 
@@ -2349,8 +2298,8 @@ function QuestionGroupVisibilityEditor({ experimentGroups, value, onChange }) {
           style={{
             padding: "6px 10px",
             borderRadius: 8,
-            border: "1px solid #d1d5db",
-            background: "#fff",
+            border: "1px solid var(--admin-border)",
+            background: "var(--admin-surface)",
             cursor: "pointer",
             fontSize: 12,
             fontWeight: 600,
@@ -2472,11 +2421,11 @@ function ConditionalDisplayEditor({ eligibleSourceQuestions, value, onChange }) 
     return (
       <div
         style={{
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--admin-border)",
           borderRadius: 10,
           padding: 12,
-          background: "#fafafa",
-          color: "#6b7280",
+          background: "var(--admin-surface-alt)",
+          color: "var(--admin-muted)",
           fontSize: 13,
         }}
       >
@@ -2488,13 +2437,13 @@ function ConditionalDisplayEditor({ eligibleSourceQuestions, value, onChange }) 
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
-      <div style={{ fontSize: 13, color: "#111827", marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: "var(--admin-text)", marginBottom: 10 }}>
         Only show this question if an earlier answer matches a condition.
         Leave unset to always show it.
       </div>
@@ -2576,8 +2525,8 @@ function ConditionalDisplayEditor({ eligibleSourceQuestions, value, onChange }) 
             marginTop: 4,
             padding: "6px 10px",
             borderRadius: 8,
-            border: "1px solid #d1d5db",
-            background: "#fff",
+            border: "1px solid var(--admin-border)",
+            background: "var(--admin-surface)",
             cursor: "pointer",
             fontSize: 12,
             fontWeight: 600,
@@ -2610,11 +2559,11 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
     return (
       <div
         style={{
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--admin-border)",
           borderRadius: 10,
           padding: 12,
-          background: "#fafafa",
-          color: "#6b7280",
+          background: "var(--admin-surface-alt)",
+          color: "var(--admin-muted)",
           fontSize: 13,
         }}
       >
@@ -2626,13 +2575,13 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
-      <div style={{ fontSize: 13, color: "#111827", marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: "var(--admin-text)", marginBottom: 10 }}>
         Leave a field blank to use the default question text.
       </div>
 
@@ -2649,7 +2598,7 @@ function FeedOverridesEditor({ availableFeeds, value, onChange }) {
                 gap: 8,
               }}
             >
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--admin-text)" }}>
                 {feed?.name || feedId}
               </div>
 
@@ -2686,11 +2635,11 @@ function PostReminderEditor({
     return (
       <div
         style={{
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--admin-border)",
           borderRadius: 10,
           padding: 12,
-          background: "#fafafa",
-          color: "#6b7280",
+          background: "var(--admin-surface-alt)",
+          color: "var(--admin-muted)",
           fontSize: 13,
         }}
       >
@@ -2704,11 +2653,11 @@ function PostReminderEditor({
     return (
       <div
         style={{
-          border: "1px solid #d1d5db",
+          border: "1px solid var(--admin-border)",
           borderRadius: 10,
           padding: 12,
-          background: "#fafafa",
-          color: "#6b7280",
+          background: "var(--admin-surface-alt)",
+          color: "var(--admin-muted)",
           fontSize: 13,
         }}
       >
@@ -2721,10 +2670,10 @@ function PostReminderEditor({
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         padding: 12,
-        background: "#fafafa",
+        background: "var(--admin-surface-alt)",
       }}
     >
       <SelectInput
@@ -2767,7 +2716,7 @@ function PostReminderEditor({
       </SelectInput>
 
       {value ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--admin-muted)" }}>
           Selected: {label || value}
           {selectedPostFeedId ? ` · source feed: ${selectedPostFeedId}` : ""}
         </div>
@@ -2780,6 +2729,7 @@ function QuestionAdvancedFeedTools({
   q,
   linkedFeeds,
   experimentGroups,
+  openSubEditors,
   onToggleVisibilityEditor,
   onToggleOverridesEditor,
   onToggleGroupVisibilityEditor,
@@ -2804,7 +2754,7 @@ function QuestionAdvancedFeedTools({
     >
       <SecondaryPillButton
         onClick={onToggleVisibilityEditor}
-        active={!!q?._showFeedVisibilityEditor}
+        active={openSubEditors.has("feedVisibility")}
         title="Question display by linked feed"
         disabled={!hasLinkedFeeds}
       >
@@ -2813,12 +2763,12 @@ function QuestionAdvancedFeedTools({
           Display logic
           {visibleFeedCount > 0 ? ` (${visibleFeedCount})` : ""}
         </span>
-        <ChevronDownIcon size={12} open={!!q?._showFeedVisibilityEditor} />
+        <ChevronDownIcon size={12} open={openSubEditors.has("feedVisibility")} />
       </SecondaryPillButton>
 
       <SecondaryPillButton
         onClick={onToggleOverridesEditor}
-        active={!!q?._showFeedOverridesEditor}
+        active={openSubEditors.has("feedOverrides")}
         title="Alternative question text by linked feed"
         disabled={!hasLinkedFeeds}
       >
@@ -2827,13 +2777,13 @@ function QuestionAdvancedFeedTools({
           Alternative text
           {overrideCount > 0 ? ` (${overrideCount})` : ""}
         </span>
-        <ChevronDownIcon size={12} open={!!q?._showFeedOverridesEditor} />
+        <ChevronDownIcon size={12} open={openSubEditors.has("feedOverrides")} />
       </SecondaryPillButton>
 
       {hasExperimentGroups && (
         <SecondaryPillButton
           onClick={onToggleGroupVisibilityEditor}
-          active={!!q?._showGroupVisibilityEditor}
+          active={openSubEditors.has("groupVisibility")}
           title="Question display by experiment group"
         >
           <UsersIcon size={14} />
@@ -2841,22 +2791,22 @@ function QuestionAdvancedFeedTools({
             Group visibility
             {groupCount > 0 ? ` (${groupCount})` : ""}
           </span>
-          <ChevronDownIcon size={12} open={!!q?._showGroupVisibilityEditor} />
+          <ChevronDownIcon size={12} open={openSubEditors.has("groupVisibility")} />
         </SecondaryPillButton>
       )}
 
       <SecondaryPillButton
         onClick={onToggleConditionalDisplayEditor}
-        active={!!q?._showConditionalDisplayEditor}
+        active={openSubEditors.has("conditionalDisplay")}
         title="Only show this question if an earlier answer matches a condition"
       >
         <GitBranchIcon size={14} />
         <span>Conditional display{hasCondition ? " (1)" : ""}</span>
-        <ChevronDownIcon size={12} open={!!q?._showConditionalDisplayEditor} />
+        <ChevronDownIcon size={12} open={openSubEditors.has("conditionalDisplay")} />
       </SecondaryPillButton>
 
       {!hasLinkedFeeds && (
-        <span style={{ fontSize: 12, color: "#6b7280" }}>
+        <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>
           Link this survey to feeds first.
         </span>
       )}
@@ -3008,7 +2958,7 @@ function CollapsedQuestionRow({
 
       {!isDisplayOnly && (
         <span
-          style={{ fontSize: 11, color: "#9ca3af", flex: "0 0 auto", minWidth: 20 }}
+          style={{ fontSize: 11, color: "var(--admin-muted-2)", flex: "0 0 auto", minWidth: 20 }}
           title={`Question ${displayNumber}`}
         >
           {`Q${displayNumber}`}
@@ -3023,7 +2973,7 @@ function CollapsedQuestionRow({
         }
         style={{
           fontSize: 10,
-          color: isDuplicateId ? "#dc2626" : "#c1c7d0",
+          color: isDuplicateId ? "var(--admin-danger)" : "var(--admin-muted-2)",
           fontWeight: isDuplicateId ? 700 : 400,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           flex: "0 0 auto",
@@ -3040,8 +2990,8 @@ function CollapsedQuestionRow({
         title={fullType}
         style={{
           fontSize: 10,
-          color: "#6b7280",
-          background: "#f3f4f6",
+          color: "var(--admin-muted)",
+          background: "var(--admin-surface-alt)",
           borderRadius: 4,
           padding: "2px 6px",
           flex: "0 0 auto",
@@ -3058,7 +3008,7 @@ function CollapsedQuestionRow({
             width: 6,
             height: 6,
             borderRadius: "50%",
-            background: "#dc2626",
+            background: "var(--admin-danger)",
             flex: "0 0 auto",
           }}
         />
@@ -3067,7 +3017,7 @@ function CollapsedQuestionRow({
       {hasBrokenCondition ? (
         <span
           title="Its display condition references a question that's no longer available"
-          style={{ fontSize: 11, color: "#dc2626", flex: "0 0 auto" }}
+          style={{ fontSize: 11, color: "var(--admin-danger)", flex: "0 0 auto" }}
         >
           ⚠
         </span>
@@ -3090,7 +3040,7 @@ function CollapsedQuestionRow({
         <span
           style={{
             fontSize: 13,
-            color: "#111827",
+            color: "var(--admin-text)",
             display: "block",
             whiteSpace: "nowrap",
             overflow: "hidden",
@@ -3140,6 +3090,274 @@ function CollapsedQuestionRow({
   );
 }
 
+/* =========================
+   Per-type question body blocks
+   ========================= */
+// Each block below is a pure lift of QuestionCard's former flat
+// {isX && (...)} JSX — same markup, same update-composition logic, just
+// named and given only the raw values + plain callbacks it actually needs
+// (no `q`, no `index`, no `updateQuestion`), so extracting these didn't just
+// relocate the 21-prop soup one level down.
+
+function PostReminderEditorBlock({
+  availablePosts,
+  selectedFeedIds,
+  postId,
+  postLabel,
+  selectedPostFeedId,
+  applyFeedRandomization,
+  reminderInteractive,
+  onPostChange,
+  onApplyFeedRandomizationChange,
+  onReminderInteractiveChange,
+}) {
+  return (
+    <>
+      <FieldBlock
+        label="Post to show again"
+        hint="This will display the selected linked-feed post again in the survey — non-interactive by default, or interactive if turned on below."
+      >
+        <PostReminderEditor
+          availablePosts={availablePosts}
+          selectedFeedIds={selectedFeedIds}
+          value={postId}
+          label={postLabel}
+          selectedPostFeedId={selectedPostFeedId}
+          onChange={onPostChange}
+        />
+      </FieldBlock>
+
+      <FieldBlock
+        label="Randomization"
+        hint="On: the reminder shows the exact version of the post this participant saw (same randomized avatar, image, bio, and time as the feed, if those are turned on). Off: the reminder always shows the original, unrandomized post, the same for every participant."
+      >
+        <Toggle
+          label="Carry over the feed's randomize settings for this reminder"
+          checked={applyFeedRandomization}
+          onChange={onApplyFeedRandomizationChange}
+        />
+      </FieldBlock>
+
+      <FieldBlock
+        label="Interactivity"
+        hint="On: participants can like/comment/share/report this reminder post exactly like the real feed, and those interactions are recorded as answers to this question (visible as extra columns in the CSV export). Off (default): the reminder is view-only — no hover effects, nothing clickable. Available actions depend on the platform (Amazon posts only support helpful/report)."
+      >
+        <Toggle
+          label="Let participants interact with this reminder post (like, comment, share, report)"
+          checked={reminderInteractive}
+          onChange={onReminderInteractiveChange}
+        />
+      </FieldBlock>
+    </>
+  );
+}
+
+function ChoiceEditorBlock({ choices, onChange }) {
+  return (
+    <ItemTableEditor
+      title="Options"
+      items={choices}
+      onChange={onChange}
+      prefix="opt"
+      addLabel="Add option"
+    />
+  );
+}
+
+function MatrixEditorBlock({ rows, columns, questionId, onRowsChange, onColumnsChange }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <ItemTableEditor
+        title="Rows / items"
+        items={rows}
+        onChange={onRowsChange}
+        prefix={sanitizeQuestionId(questionId, "ROW")}
+        addLabel="Add row"
+        valuePlaceholder="Auto id"
+        labelPlaceholder="Item text"
+      />
+
+      <ItemTableEditor
+        title="Columns / scale points"
+        items={columns}
+        onChange={onColumnsChange}
+        prefix="col"
+        addLabel="Add column"
+        valuePlaceholder="Value"
+        labelPlaceholder="Label"
+      />
+    </div>
+  );
+}
+
+function BipolarEditorBlock({ rows, questionId, min, max, onRowsChange, onMinChange, onMaxChange }) {
+  return (
+    <>
+      <div style={{ marginBottom: 12 }}>
+        <BipolarRowTableEditor items={rows} questionId={questionId} onChange={onRowsChange} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, alignItems: "end" }}>
+        <FieldBlock label="Min">
+          <NumberInput value={min} min={1} max={100} onChange={onMinChange} />
+        </FieldBlock>
+
+        <FieldBlock label="Max">
+          <NumberInput value={max} min={2} max={100} onChange={onMaxChange} />
+        </FieldBlock>
+      </div>
+    </>
+  );
+}
+
+function SliderEditorBlock({ min, max, leftLabel, rightLabel, onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
+      <FieldBlock label="Min">
+        <NumberInput value={min} min={0} max={100} onChange={onMinChange} />
+      </FieldBlock>
+
+      <FieldBlock label="Max">
+        <NumberInput value={max} min={1} max={100} onChange={onMaxChange} />
+      </FieldBlock>
+
+      <FieldBlock label="Left label">
+        <TextInput value={leftLabel ?? ""} onChange={onLeftLabelChange} placeholder="e.g. Low" />
+      </FieldBlock>
+
+      <FieldBlock label="Right label">
+        <TextInput value={rightLabel ?? ""} onChange={onRightLabelChange} placeholder="e.g. High" />
+      </FieldBlock>
+    </div>
+  );
+}
+
+// Pure extraction of QuestionCard's former inline SelectInput.onChange body
+// — identical logic, just named and easy to find/extend, minus the _show*
+// copy-through lines that Stage 4 deleted (this file's QuestionCard no
+// longer stores that transient UI state on the question object at all).
+function computeQuestionAfterTypeChange(q, nextType, index) {
+  if (nextType === EDITOR_PAGE_BREAK_TYPE) {
+    return makePageBreakForEditor(index);
+  }
+
+  const next = makeBackendQuestionFromType(nextType, index);
+  const preservedId = sanitizeQuestionId(q.id, next.id);
+
+  let merged = {
+    ...next,
+    _editorId: q._editorId,
+    id: preservedId,
+    text: q.text || next.text,
+    required: isEditorDisplayOnlyType(nextType) ? false : !!q.required,
+    visible_if: q.visible_if || null,
+    visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
+    feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
+    post_id: nextType === POST_REMINDER_TYPE ? String(q.post_id || "") : "",
+    post_label: nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
+    post_feed_id: nextType === POST_REMINDER_TYPE ? String(q.post_feed_id || "") : "",
+    apply_feed_randomization:
+      nextType === POST_REMINDER_TYPE ? q.apply_feed_randomization !== false : true,
+    reminder_interactive:
+      nextType === POST_REMINDER_TYPE ? !!q.reminder_interactive : false,
+    meta: q.meta || {},
+  };
+
+  if (shouldAutoRewriteRowValues(merged)) {
+    merged = rewriteQuestionRowValues(merged, preservedId);
+  }
+
+  return merged;
+}
+
+// Mutually exclusive by construction (isChoice/isMatrix/isBipolar/isSlider/
+// isPostReminder in the old QuestionCard were derived from the same
+// mutually-exclusive `type` value) — a switch, not a uniform {type:
+// Component} map, since each block genuinely needs different props.
+function renderTypeSpecificFields({
+  type,
+  q,
+  index,
+  updateQuestion,
+  reminderFeedIds,
+  availablePostsForQuestion,
+}) {
+  switch (type) {
+    case POST_REMINDER_TYPE:
+      return (
+        <PostReminderEditorBlock
+          availablePosts={availablePostsForQuestion}
+          selectedFeedIds={reminderFeedIds}
+          postId={q.post_id}
+          postLabel={q.post_label}
+          selectedPostFeedId={q.post_feed_id || q?.meta?.post_feed_id || ""}
+          applyFeedRandomization={q.apply_feed_randomization !== false}
+          reminderInteractive={!!q.reminder_interactive}
+          onPostChange={(patch) => updateQuestion(index, patch)}
+          onApplyFeedRandomizationChange={(v) =>
+            updateQuestion(index, { apply_feed_randomization: v })
+          }
+          onReminderInteractiveChange={(v) =>
+            updateQuestion(index, { reminder_interactive: v })
+          }
+        />
+      );
+    case SURVEY_QUESTION_TYPES.SINGLE:
+    case SURVEY_QUESTION_TYPES.MULTI:
+    case SURVEY_QUESTION_TYPES.DROPDOWN:
+      return (
+        <ChoiceEditorBlock
+          choices={q.choices}
+          onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
+        />
+      );
+    case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
+    case SURVEY_QUESTION_TYPES.MATRIX_MULTI:
+      return (
+        <MatrixEditorBlock
+          rows={q.rows}
+          columns={q.columns}
+          questionId={q.id}
+          onRowsChange={(items) =>
+            updateQuestion(index, { rows: ensureMatrixRowsFromQuestionId(items, q.id) })
+          }
+          onColumnsChange={(items) =>
+            updateQuestion(index, { columns: ensureMatrixArray(items, "col") })
+          }
+        />
+      );
+    case SURVEY_QUESTION_TYPES.BIPOLAR:
+      return (
+        <BipolarEditorBlock
+          rows={q.rows}
+          questionId={q.id}
+          min={q.min}
+          max={q.max}
+          onRowsChange={(items) =>
+            updateQuestion(index, { rows: ensureBipolarRowArray(items, q.id) })
+          }
+          onMinChange={(v) => updateQuestion(index, { min: clampInt(v, 1, 100, q.min ?? 1) })}
+          onMaxChange={(v) => updateQuestion(index, { max: clampInt(v, 2, 100, q.max ?? 7) })}
+        />
+      );
+    case SURVEY_QUESTION_TYPES.SLIDER:
+      return (
+        <SliderEditorBlock
+          min={q.min}
+          max={q.max}
+          leftLabel={q.left_label}
+          rightLabel={q.right_label}
+          onMinChange={(v) => updateQuestion(index, { min: clampInt(v, 0, 100, q.min ?? 1) })}
+          onMaxChange={(v) => updateQuestion(index, { max: clampInt(v, 1, 100, q.max ?? 7) })}
+          onLeftLabelChange={(v) => updateQuestion(index, { left_label: v })}
+          onRightLabelChange={(v) => updateQuestion(index, { right_label: v })}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
 function QuestionCard({
   q,
   index,
@@ -3165,8 +3383,34 @@ function QuestionCard({
   isCollapsed,
   onToggleCollapsed,
 }) {
+  const confirm = useConfirm();
   const type = q?.type;
   const isPageBreak = type === EDITOR_PAGE_BREAK_TYPE;
+
+  // Which of the 4 advanced sub-editors are expanded — deliberately local
+  // component state, not stored on the question data object (as it used to
+  // be, via `_show*` fields). This is safe because `SurveyEditor`'s render
+  // loop keys each QuestionCard's wrapping fragment by the question's
+  // stable `_editorId`, so plain useState here already survives reorders
+  // and collapse/expand for free — no explicit keying needed.
+  const [openSubEditors, setOpenSubEditors] = useState(() => new Set());
+  function toggleSubEditor(key) {
+    setOpenSubEditors((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function removeQuestionWithConfirm(idx) {
+    const ok = await confirm({
+      title: isPageBreak ? "Delete this page break?" : "Delete this question?",
+      danger: true,
+      confirmLabel: "Delete",
+    });
+    if (ok) removeQuestion(idx);
+  }
 
   const isChoice =
     type === SURVEY_QUESTION_TYPES.SINGLE ||
@@ -3204,14 +3448,14 @@ function QuestionCard({
   const shellStyle = {
     position: "relative",
     border: isDragOver
-      ? "2px solid #6366f1"
-      : `1px solid ${isPageBreak ? "#9ca3af" : "#d1d5db"}`,
+      ? "2px solid var(--admin-accent)"
+      : `1px solid ${isPageBreak ? "var(--admin-muted-2)" : "var(--admin-border)"}`,
     borderStyle: isPageBreak ? "dashed" : "solid",
     borderRadius: 12,
     padding: 14,
     marginTop: 18,
     marginBottom: 26,
-    background: isDragging ? "#f8fafc" : isPageBreak ? "#f9fafb" : "#fff",
+    background: isDragging ? "var(--admin-surface-sunken)" : isPageBreak ? "var(--admin-surface-alt)" : "var(--admin-surface)",
     opacity: isDragging ? 0.65 : 1,
     boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
   };
@@ -3245,15 +3489,15 @@ function QuestionCard({
           onDragEnd={onDragEnd}
         />
 
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#4b5563", flex: "0 0 auto", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admin-muted)", flex: "0 0 auto", whiteSpace: "nowrap" }}>
           Page break
         </span>
 
-        <span style={{ fontSize: 12, color: "#9ca3af", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span style={{ fontSize: 12, color: "var(--admin-muted-2)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           Questions after this appear on the next page.
         </span>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6b7280", flex: "0 0 auto" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--admin-muted)", flex: "0 0 auto" }}>
           Delay
           <NumberInput
             value={q?.next_delay_seconds ?? 0}
@@ -3289,7 +3533,7 @@ function QuestionCard({
           </button>
 
           <IconOnlyButton
-            onClick={() => removeQuestion(index)}
+            onClick={() => removeQuestionWithConfirm(index)}
             title="Delete page break"
             danger
           />
@@ -3323,7 +3567,7 @@ function QuestionCard({
           isDuplicateId={isDuplicateId}
           hasBrokenCondition={hasBrokenCondition}
           moveQuestion={moveQuestion}
-          removeQuestion={removeQuestion}
+          removeQuestion={removeQuestionWithConfirm}
           duplicateQuestion={duplicateQuestion}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
@@ -3346,53 +3590,9 @@ function QuestionCard({
             <TopField label="Type">
               <SelectInput
                 value={q.type}
-                onChange={(nextType) => {
-                  if (nextType === EDITOR_PAGE_BREAK_TYPE) {
-                    updateQuestion(index, makePageBreakForEditor(index));
-                    return;
-                  }
-
-                  const next = makeBackendQuestionFromType(nextType, index);
-                  const preservedId = sanitizeQuestionId(q.id, next.id);
-
-                  let merged = {
-                    ...next,
-                    _editorId: q._editorId,
-                    id: preservedId,
-                    text: q.text || next.text,
-                    required: isEditorDisplayOnlyType(nextType)
-                      ? false
-                      : !!q.required,
-                    visible_if: q.visible_if || null,
-                    visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
-                    feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
-                    post_id: nextType === POST_REMINDER_TYPE ? String(q.post_id || "") : "",
-                    post_label:
-                      nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
-                    post_feed_id:
-                      nextType === POST_REMINDER_TYPE
-                        ? String(q.post_feed_id || "")
-                        : "",
-                    apply_feed_randomization:
-                      nextType === POST_REMINDER_TYPE
-                        ? q.apply_feed_randomization !== false
-                        : true,
-                    reminder_interactive:
-                      nextType === POST_REMINDER_TYPE
-                        ? !!q.reminder_interactive
-                        : false,
-                    _showFeedVisibilityEditor: !!q._showFeedVisibilityEditor,
-                    _showFeedOverridesEditor: !!q._showFeedOverridesEditor,
-                    _showConditionalDisplayEditor: !!q._showConditionalDisplayEditor,
-                    meta: q.meta || {},
-                  };
-
-                  if (shouldAutoRewriteRowValues(merged)) {
-                    merged = rewriteQuestionRowValues(merged, preservedId);
-                  }
-
-                  updateQuestion(index, merged);
-                }}
+                onChange={(nextType) =>
+                  updateQuestion(index, computeQuestionAfterTypeChange(q, nextType, index))
+                }
               >
                 {INSERTABLE_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -3408,7 +3608,7 @@ function QuestionCard({
             index={index}
             totalQuestions={totalQuestions}
             moveQuestion={moveQuestion}
-            removeQuestion={removeQuestion}
+            removeQuestion={removeQuestionWithConfirm}
             duplicateQuestion={duplicateQuestion}
             updateQuestion={updateQuestion}
             onDragStart={onDragStart}
@@ -3451,270 +3651,42 @@ function QuestionCard({
             updateQuestion(index, nextQuestion);
           }}
           placeholder="e.g. AUTH"
-          style={isDuplicateId ? { borderColor: "#dc2626" } : undefined}
+          style={isDuplicateId ? { borderColor: "var(--admin-danger)" } : undefined}
         />
         {isDuplicateId && (
-          <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4, fontWeight: 600 }}>
+          <div style={{ fontSize: 12, color: "var(--admin-danger)", marginTop: 4, fontWeight: 600 }}>
             ⚠ Another question already uses this ID.
           </div>
         )}
       </FieldBlock>
 
-      {isPostReminder && (
-        <FieldBlock
-          label="Post to show again"
-          hint="This will display the selected linked-feed post again in the survey — non-interactive by default, or interactive if turned on below."
-        >
-          <PostReminderEditor
-            availablePosts={availablePostsForQuestion}
-            selectedFeedIds={reminderFeedIds}
-            value={q.post_id}
-            label={q.post_label}
-            selectedPostFeedId={q.post_feed_id || q?.meta?.post_feed_id || ""}
-            onChange={(patch) => updateQuestion(index, patch)}
-          />
-        </FieldBlock>
-      )}
-
-      {isPostReminder && (
-        <FieldBlock
-          label="Randomization"
-          hint="On: the reminder shows the exact version of the post this participant saw (same randomized avatar, image, bio, and time as the feed, if those are turned on). Off: the reminder always shows the original, unrandomized post, the same for every participant."
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={q.apply_feed_randomization !== false}
-              onChange={(e) =>
-                updateQuestion(index, {
-                  apply_feed_randomization: e.target.checked,
-                })
-              }
-            />
-            <span>Carry over the feed's randomize settings for this reminder</span>
-          </label>
-        </FieldBlock>
-      )}
-
-      {isPostReminder && (
-        <FieldBlock
-          label="Interactivity"
-          hint="On: participants can like/comment/share/report this reminder post exactly like the real feed, and those interactions are recorded as answers to this question (visible as extra columns in the CSV export). Off (default): the reminder is view-only — no hover effects, nothing clickable. Available actions depend on the platform (Amazon posts only support helpful/report)."
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              cursor: "pointer",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={!!q.reminder_interactive}
-              onChange={(e) =>
-                updateQuestion(index, {
-                  reminder_interactive: e.target.checked,
-                })
-              }
-            />
-            <span>Let participants interact with this reminder post (like, comment, share, report)</span>
-          </label>
-        </FieldBlock>
-      )}
-
-      {isChoice && (
-        <ItemTableEditor
-          title="Options"
-          items={q.choices}
-          onChange={(items) =>
-            updateQuestion(index, { choices: ensureChoiceArray(items) })
-          }
-          prefix="opt"
-          addLabel="Add option"
-        />
-      )}
-
-      {isMatrix && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-          }}
-        >
-          <ItemTableEditor
-            title="Rows / items"
-            items={q.rows}
-            onChange={(items) =>
-              updateQuestion(index, {
-                rows: ensureMatrixRowsFromQuestionId(items, q.id),
-              })
-            }
-            prefix={sanitizeQuestionId(q.id, "ROW")}
-            addLabel="Add row"
-            valuePlaceholder="Auto id"
-            labelPlaceholder="Item text"
-          />
-
-          <ItemTableEditor
-            title="Columns / scale points"
-            items={q.columns}
-            onChange={(items) =>
-              updateQuestion(index, { columns: ensureMatrixArray(items, "col") })
-            }
-            prefix="col"
-            addLabel="Add column"
-            valuePlaceholder="Value"
-            labelPlaceholder="Label"
-          />
-        </div>
-      )}
-
-      {isBipolar && (
-        <>
-          <div style={{ marginBottom: 12 }}>
-            <BipolarRowTableEditor
-              items={q.rows}
-              questionId={q.id}
-              onChange={(items) =>
-                updateQuestion(index, {
-                  rows: ensureBipolarRowArray(items, q.id),
-                })
-              }
-            />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "120px 120px",
-              gap: 12,
-              alignItems: "end",
-            }}
-          >
-            <FieldBlock label="Min">
-              <NumberInput
-                value={q.min}
-                min={1}
-                max={100}
-                onChange={(v) =>
-                  updateQuestion(index, {
-                    min: clampInt(v, 1, 100, q.min ?? 1),
-                  })
-                }
-              />
-            </FieldBlock>
-
-            <FieldBlock label="Max">
-              <NumberInput
-                value={q.max}
-                min={2}
-                max={100}
-                onChange={(v) =>
-                  updateQuestion(index, {
-                    max: clampInt(v, 2, 100, q.max ?? 7),
-                  })
-                }
-              />
-            </FieldBlock>
-          </div>
-        </>
-      )}
-
-      {isSlider && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "120px 120px 1fr 1fr",
-            gap: 12,
-            alignItems: "end",
-          }}
-        >
-          <FieldBlock label="Min">
-            <NumberInput
-              value={q.min}
-              min={0}
-              max={100}
-              onChange={(v) =>
-                updateQuestion(index, {
-                  min: clampInt(v, 0, 100, q.min ?? 1),
-                })
-              }
-            />
-          </FieldBlock>
-
-          <FieldBlock label="Max">
-            <NumberInput
-              value={q.max}
-              min={1}
-              max={100}
-              onChange={(v) =>
-                updateQuestion(index, {
-                  max: clampInt(v, 1, 100, q.max ?? 7),
-                })
-              }
-            />
-          </FieldBlock>
-
-          <FieldBlock label="Left label">
-            <TextInput
-              value={q.left_label ?? ""}
-              onChange={(v) => updateQuestion(index, { left_label: v })}
-              placeholder="e.g. Low"
-            />
-          </FieldBlock>
-
-          <FieldBlock label="Right label">
-            <TextInput
-              value={q.right_label ?? ""}
-              onChange={(v) => updateQuestion(index, { right_label: v })}
-              placeholder="e.g. High"
-            />
-          </FieldBlock>
-        </div>
-      )}
+      {renderTypeSpecificFields({
+        type,
+        q,
+        index,
+        updateQuestion,
+        reminderFeedIds,
+        availablePostsForQuestion,
+      })}
 
       <QuestionAdvancedFeedTools
         q={q}
         linkedFeeds={linkedFeeds}
         experimentGroups={experimentGroups}
-        onToggleVisibilityEditor={() =>
-          updateQuestion(index, {
-            _showFeedVisibilityEditor: !q?._showFeedVisibilityEditor,
-          })
-        }
-        onToggleOverridesEditor={() =>
-          updateQuestion(index, {
-            _showFeedOverridesEditor: !q?._showFeedOverridesEditor,
-          })
-        }
-        onToggleGroupVisibilityEditor={() =>
-          updateQuestion(index, {
-            _showGroupVisibilityEditor: !q?._showGroupVisibilityEditor,
-          })
-        }
-        onToggleConditionalDisplayEditor={() =>
-          updateQuestion(index, {
-            _showConditionalDisplayEditor: !q?._showConditionalDisplayEditor,
-          })
-        }
+        openSubEditors={openSubEditors}
+        onToggleVisibilityEditor={() => toggleSubEditor("feedVisibility")}
+        onToggleOverridesEditor={() => toggleSubEditor("feedOverrides")}
+        onToggleGroupVisibilityEditor={() => toggleSubEditor("groupVisibility")}
+        onToggleConditionalDisplayEditor={() => toggleSubEditor("conditionalDisplay")}
       />
 
       {hasBrokenCondition && (
-        <div style={{ fontSize: 12, color: "#dc2626", marginTop: 6, fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: "var(--admin-danger)", marginTop: 6, fontWeight: 600 }}>
           ⚠ Its display condition references a question that's no longer available.
         </div>
       )}
 
-      {q?._showConditionalDisplayEditor && (
+      {openSubEditors.has("conditionalDisplay") && (
         <div style={{ marginTop: 12 }}>
           <FieldBlock
             label="Conditional display"
@@ -3731,7 +3703,7 @@ function QuestionCard({
         </div>
       )}
 
-      {q?._showGroupVisibilityEditor && (
+      {openSubEditors.has("groupVisibility") && (
         <div style={{ marginTop: 12 }}>
           <FieldBlock
             label="Experiment group visibility"
@@ -3750,7 +3722,7 @@ function QuestionCard({
         </div>
       )}
 
-      {q?._showFeedVisibilityEditor && (
+      {openSubEditors.has("feedVisibility") && (
         <div style={{ marginTop: 12 }}>
           <FieldBlock
             label="Feed visibility"
@@ -3777,7 +3749,7 @@ function QuestionCard({
         </div>
       )}
 
-      {q?._showFeedOverridesEditor && (
+      {openSubEditors.has("feedOverrides") && (
         <div style={{ marginTop: 12 }}>
           <FieldBlock
             label="Feed-specific question text"
@@ -3815,9 +3787,9 @@ function smallActionButtonStyle(disabled) {
     width: INPUT_HEIGHT,
     height: INPUT_HEIGHT,
     borderRadius: 8,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    color: disabled ? "#9ca3af" : "#111827",
+    border: "1px solid var(--admin-border)",
+    background: "var(--admin-surface)",
+    color: disabled ? "var(--admin-muted-2)" : "var(--admin-text)",
     cursor: disabled ? "not-allowed" : "pointer",
     padding: 0,
     display: "inline-flex",
@@ -3846,11 +3818,11 @@ function CompactDragHandle({ onDragStart, onDragEnd }) {
         alignItems: "center",
         justifyContent: "center",
         borderRadius: 5,
-        border: "1px solid #d1d5db",
-        background: "#fff",
+        border: "1px solid var(--admin-border)",
+        background: "var(--admin-surface)",
         cursor: "grab",
         fontSize: 10,
-        color: "#9ca3af",
+        color: "var(--admin-muted-2)",
         userSelect: "none",
       }}
     >
@@ -3867,9 +3839,9 @@ function compactArrowStyle(disabled) {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 4,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    color: disabled ? "#d1d5db" : "#4b5563",
+    border: "1px solid var(--admin-border)",
+    background: "var(--admin-surface)",
+    color: disabled ? "var(--admin-border)" : "var(--admin-muted)",
     cursor: disabled ? "not-allowed" : "pointer",
     padding: 0,
     lineHeight: 1,
@@ -3959,7 +3931,7 @@ function OutlineRow({
           margin: "3px 0",
           padding: "2px 5px",
           borderRadius: 5,
-          borderTop: isDragOver ? "2px solid #6366f1" : "1px dashed #9ca3af",
+          borderTop: isDragOver ? "2px solid var(--admin-accent)" : "1px dashed var(--admin-muted-2)",
           opacity: isDragging ? 0.5 : 1,
         }}
       >
@@ -3972,7 +3944,7 @@ function OutlineRow({
           style={{
             fontSize: 9,
             fontWeight: 700,
-            color: "#6b7280",
+            color: "var(--admin-muted)",
             textTransform: "uppercase",
             letterSpacing: 0.4,
           }}
@@ -4009,8 +3981,8 @@ function OutlineRow({
         gap: 5,
         padding: "2px 5px",
         borderRadius: 6,
-        border: isDragOver ? "2px solid #6366f1" : "1px solid #e5e7eb",
-        background: isDragging ? "#f8fafc" : "#fff",
+        border: isDragOver ? "2px solid var(--admin-accent)" : "1px solid var(--admin-border-subtle)",
+        background: isDragging ? "var(--admin-surface-sunken)" : "var(--admin-surface)",
         opacity: isDragging ? 0.6 : 1,
         marginBottom: 2,
       }}
@@ -4025,7 +3997,7 @@ function OutlineRow({
       <span
         style={{
           fontSize: 10,
-          color: "#9ca3af",
+          color: "var(--admin-muted-2)",
           flex: "0 0 auto",
           minWidth: 16,
         }}
@@ -4050,8 +4022,8 @@ function OutlineRow({
           height: 20,
           padding: "0 5px",
           borderRadius: 5,
-          border: isDuplicateId ? "1px solid #dc2626" : "1px solid #d1d5db",
-          color: isDuplicateId ? "#dc2626" : undefined,
+          border: isDuplicateId ? "1px solid var(--admin-danger)" : "1px solid var(--admin-border)",
+          color: isDuplicateId ? "var(--admin-danger)" : undefined,
           fontSize: 10,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
           boxSizing: "border-box",
@@ -4062,8 +4034,8 @@ function OutlineRow({
         title={fullType}
         style={{
           fontSize: 9,
-          color: "#6b7280",
-          background: "#f3f4f6",
+          color: "var(--admin-muted)",
+          background: "var(--admin-surface-alt)",
           borderRadius: 4,
           padding: "1px 4px",
           flex: "0 0 auto",
@@ -4080,7 +4052,7 @@ function OutlineRow({
             width: 5,
             height: 5,
             borderRadius: "50%",
-            background: "#dc2626",
+            background: "var(--admin-danger)",
             flex: "0 0 auto",
           }}
         />
@@ -4089,7 +4061,7 @@ function OutlineRow({
       {hasBrokenCondition ? (
         <span
           title="Its display condition references a question that's no longer available"
-          style={{ fontSize: 10, color: "#dc2626", flex: "0 0 auto" }}
+          style={{ fontSize: 10, color: "var(--admin-danger)", flex: "0 0 auto" }}
         >
           ⚠
         </span>
@@ -4112,7 +4084,7 @@ function OutlineRow({
         <span
           style={{
             fontSize: 11,
-            color: "#111827",
+            color: "var(--admin-text)",
             display: "block",
             whiteSpace: "nowrap",
             overflow: "hidden",
@@ -4159,6 +4131,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
   const groups = normalizeSurveyExperimentGroups(survey);
   const [expandedGroupIds, setExpandedGroupIds] = useState(() => new Set());
   const safeLinkedFeeds = Array.isArray(linkedFeeds) ? linkedFeeds : [];
+  const confirm = useConfirm();
 
   const applyGroups = useCallback(
     (nextGroups) => {
@@ -4218,6 +4191,16 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
     });
   }
 
+  async function deleteGroupWithConfirm(groupIndex) {
+    const ok = await confirm({
+      title: "Delete this experiment group?",
+      message: "Removes it from every block and question that references it.",
+      danger: true,
+      confirmLabel: "Delete",
+    });
+    if (ok) deleteGroup(groupIndex);
+  }
+
   function deleteGroup(groupIndex) {
     const removed = groups[groupIndex];
     const next = groups.filter((_, index) => index !== groupIndex);
@@ -4256,11 +4239,11 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
   }
 
   return (
-    <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+    <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--admin-border-subtle)", background: "var(--admin-surface-sunken)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Experiment groups</div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--admin-text)" }}>Experiment groups</div>
+          <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 2 }}>
             For between-subjects experiments: define groups here, then scope individual page blocks below to specific
             groups. Each participant is assigned to exactly one group automatically (evenly rotated), the first time
             they reach this survey. Leave this empty if you don't need group-scoped blocks — every block is shown to
@@ -4270,16 +4253,17 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
         <button
           type="button"
           onClick={addGroup}
-          style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #4f46e5", background: "#fff", color: "#4338ca", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+          style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid var(--admin-accent)", background: "var(--admin-surface)", color: "var(--admin-accent-ink)", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
         >
           + Add group
         </button>
       </div>
 
       {groups.length === 0 ? (
-        <div style={{ fontSize: 11, color: "#94a3b8", padding: "5px 4px" }}>
-          No experiment groups defined — all blocks are shown to every participant.
-        </div>
+        <EmptyState
+          compact
+          title="No experiment groups defined — all blocks are shown to every participant."
+        />
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {groups.map((group, groupIndex) => {
@@ -4293,25 +4277,25 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
             return (
               <div
                 key={group.id}
-                style={{ border: "1px solid #dbe3ef", borderRadius: 8, background: "#fff", overflow: "hidden" }}
+                style={{ border: "1px solid var(--admin-border-subtle)", borderRadius: 8, background: "var(--admin-surface)", overflow: "hidden" }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px" }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 60 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "var(--admin-muted)", minWidth: 60 }}>
                     Group {groupIndex + 1}
                   </div>
                   <input
                     value={group.name}
                     onChange={(e) => updateGroup(groupIndex, { name: e.target.value })}
                     placeholder={`Group ${groupIndex + 1}`}
-                    style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
+                    style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid var(--admin-border)", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
                   />
-                  <IconOnlyButton onClick={() => deleteGroup(groupIndex)} title="Delete group" danger>
+                  <IconOnlyButton onClick={() => deleteGroupWithConfirm(groupIndex)} title="Delete group" danger>
                     <TrashIcon size={12} />
                   </IconOnlyButton>
                 </div>
 
                 {safeLinkedFeeds.length > 0 && (
-                  <div style={{ borderTop: "1px solid #eef1f6", padding: "6px 8px", background: "#fafbfc" }}>
+                  <div style={{ borderTop: "1px solid var(--admin-border-subtle)", padding: "6px 8px", background: "var(--admin-surface-alt)" }}>
                     <button
                       type="button"
                       onClick={() => toggleExpanded(group.id)}
@@ -4325,7 +4309,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                         padding: "2px 0",
                         cursor: "pointer",
                         fontSize: 11,
-                        color: feedSeq.length ? "#1d4ed8" : "#6b7280",
+                        color: feedSeq.length ? "#1d4ed8" : "var(--admin-muted)",
                         textAlign: "left",
                       }}
                     >
@@ -4337,7 +4321,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
 
                     {isExpanded && (
                       <div style={{ marginTop: 6, paddingLeft: 4 }}>
-                        <div style={{ fontSize: 10.5, color: "#94a3b8", marginBottom: 6 }}>
+                        <div style={{ fontSize: 10.5, color: "var(--admin-muted-2)", marginBottom: 6 }}>
                           Leave unchecked to use the survey's own feed sequence for this group. Only applies to
                           participants who arrive via the plain survey link (not a specific feed's link) — group
                           assignment still happens first, round-robin, exactly as before.
@@ -4377,7 +4361,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                                     type="button"
                                     onClick={() => moveGroupFeed(groupIndex, fid, -1)}
                                     disabled={orderIndex <= 0}
-                                    style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+                                    style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid var(--admin-border)", background: "var(--admin-surface)", fontSize: 11 }}
                                   >
                                     ↑
                                   </button>
@@ -4385,7 +4369,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                                     type="button"
                                     onClick={() => moveGroupFeed(groupIndex, fid, 1)}
                                     disabled={orderIndex < 0 || orderIndex >= feedSeq.length - 1}
-                                    style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+                                    style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid var(--admin-border)", background: "var(--admin-surface)", fontSize: 11 }}
                                   >
                                     ↓
                                   </button>
@@ -4413,6 +4397,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
   // block added later is correctly collapsed by default too, with no extra
   // bookkeeping, unlike the previous inverted scheme this replaced.
   const [expandedBlockIds, setExpandedBlockIds] = useState(() => new Set());
+  const confirm = useConfirm();
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
   const blocks = normalizeSurveyPageBlocks(survey);
   const experimentGroups = normalizeSurveyExperimentGroups(survey);
@@ -4479,6 +4464,17 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     applyBlocks([...blocks, makePageBlock(blocks.length)]);
   }
 
+  async function deleteBlockWithConfirm(blockIndex) {
+    if (blocks.length <= 1) return;
+    const ok = await confirm({
+      title: "Delete this block?",
+      message: "Its pages will be merged into the previous block.",
+      danger: true,
+      confirmLabel: "Delete",
+    });
+    if (ok) deleteBlock(blockIndex);
+  }
+
   function deleteBlock(blockIndex) {
     if (blocks.length <= 1) return;
     const removed = blocks[blockIndex];
@@ -4536,18 +4532,18 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
   }
 
   return (
-    <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5e7eb", background: "#f8fafc" }}>
+    <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--admin-border-subtle)", background: "var(--admin-surface-sunken)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Page blocks</div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "var(--admin-text)" }}>Page blocks</div>
+          <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 2 }}>
             Blocks stay in this order. Only pages inside blocks marked for randomisation will be shuffled for participants.
             {experimentGroups.length > 0
               ? " Blocks with no experiment group checked are shown to everyone; check one or more groups to restrict a block to only those participants."
               : ""}
           </div>
         </div>
-        <button type="button" onClick={addBlock} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #4f46e5", background: "#fff", color: "#4338ca", fontWeight: 700, cursor: "pointer" }}>
+        <button type="button" onClick={addBlock} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid var(--admin-accent)", background: "var(--admin-surface)", color: "var(--admin-accent-ink)", fontWeight: 700, cursor: "pointer" }}>
           + Add block
         </button>
       </div>
@@ -4558,8 +4554,8 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
           const pageCount = block.page_ids.length;
 
           return (
-          <div key={block.id} style={{ border: "1px solid #dbe3ef", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f8fafc", borderBottom: isCollapsed ? "none" : "1px solid #e5e7eb" }}>
+          <div key={block.id} style={{ border: "1px solid var(--admin-border-subtle)", borderRadius: 10, background: "var(--admin-surface)", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "var(--admin-surface-sunken)", borderBottom: isCollapsed ? "none" : "1px solid var(--admin-border-subtle)" }}>
               <IconOnlyButton
                 onClick={() => toggleBlockExpanded(block.id)}
                 title={isCollapsed ? "Expand block" : "Collapse block"}
@@ -4567,17 +4563,17 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
               >
                 <ChevronDownIcon size={12} open={!isCollapsed} />
               </IconOnlyButton>
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", minWidth: 50 }}>Block {blockIndex + 1}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "var(--admin-muted)", minWidth: 50 }}>Block {blockIndex + 1}</div>
               <input
                 value={block.title}
                 onChange={(e) => updateBlock(blockIndex, { title: e.target.value })}
                 placeholder={`Block ${blockIndex + 1}`}
-                style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid #cbd5e1", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
+                style={{ flex: 1, minWidth: 120, height: 32, border: "1px solid var(--admin-border)", borderRadius: 7, padding: "0 9px", fontSize: 12 }}
               />
-              <div style={{ fontSize: 10, color: "#64748b", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 10, color: "var(--admin-muted)", whiteSpace: "nowrap" }}>
                 {pageCount} {pageCount === 1 ? "page" : "pages"}
               </div>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#334155", whiteSpace: "nowrap" }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--admin-text)", whiteSpace: "nowrap" }}>
                 <input
                   type="checkbox"
                   checked={!!block.randomize_pages}
@@ -4587,7 +4583,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
               </label>
               <IconOnlyButton onClick={() => moveBlock(blockIndex, blockIndex - 1)} title="Move block up" disabled={blockIndex === 0}>↑</IconOnlyButton>
               <IconOnlyButton onClick={() => moveBlock(blockIndex, blockIndex + 1)} title="Move block down" disabled={blockIndex === blocks.length - 1}>↓</IconOnlyButton>
-              <IconOnlyButton onClick={() => deleteBlock(blockIndex)} title="Delete block" danger disabled={blocks.length <= 1}><TrashIcon size={12} /></IconOnlyButton>
+              <IconOnlyButton onClick={() => deleteBlockWithConfirm(blockIndex)} title="Delete block" danger disabled={blocks.length <= 1}><TrashIcon size={12} /></IconOnlyButton>
             </div>
 
             {experimentGroups.length > 0 && (
@@ -4598,14 +4594,14 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
                   flexWrap: "wrap",
                   gap: 10,
                   padding: "6px 10px",
-                  borderBottom: isCollapsed ? "none" : "1px solid #e5e7eb",
-                  background: "#fbfbfe",
+                  borderBottom: isCollapsed ? "none" : "1px solid var(--admin-border-subtle)",
+                  background: "var(--admin-surface-alt)",
                 }}
               >
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--admin-muted)", whiteSpace: "nowrap" }}>
                   Visible to:
                 </span>
-                <span style={{ fontSize: 10, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 10, color: "var(--admin-muted-2)", whiteSpace: "nowrap" }}>
                   {(block.visible_to_group_ids || []).length === 0
                     ? "everyone"
                     : null}
@@ -4618,7 +4614,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
                       alignItems: "center",
                       gap: 5,
                       fontSize: 11,
-                      color: "#334155",
+                      color: "var(--admin-text)",
                       whiteSpace: "nowrap",
                     }}
                   >
@@ -4636,19 +4632,19 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
             {!isCollapsed ? (
             <div style={{ padding: 8, display: "grid", gap: 6 }}>
               {block.page_ids.length === 0 ? (
-                <div style={{ fontSize: 11, color: "#94a3b8", padding: "5px 4px" }}>No pages in this block.</div>
+                <EmptyState compact title="No pages in this block." />
               ) : (
                 block.page_ids.map((pageId, pageIndex) => {
                   const page = pageById.get(pageId);
                   const questionCount = Array.isArray(page?.questions) ? page.questions.length : 0;
                   return (
-                    <div key={pageId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
-                      <div style={{ width: 52, fontSize: 11, fontWeight: 800, color: "#64748b" }}>Page {page?._pageNumber || "?"}</div>
+                    <div key={pageId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--admin-border-subtle)", borderRadius: 8 }}>
+                      <div style={{ width: 52, fontSize: 11, fontWeight: 800, color: "var(--admin-muted)" }}>Page {page?._pageNumber || "?"}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--admin-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {String(page?.title || "").trim() || `Page ${page?._pageNumber || pageIndex + 1}`}
                         </div>
-                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{questionCount} {questionCount === 1 ? "question" : "questions"}</div>
+                        <div style={{ fontSize: 10, color: "var(--admin-muted-2)" }}>{questionCount} {questionCount === 1 ? "question" : "questions"}</div>
                       </div>
                       <IconOnlyButton onClick={() => movePageWithinBlock(blockIndex, pageIndex, pageIndex - 1)} title="Move page up within block" disabled={pageIndex === 0}>↑</IconOnlyButton>
                       <IconOnlyButton onClick={() => movePageWithinBlock(blockIndex, pageIndex, pageIndex + 1)} title="Move page down within block" disabled={pageIndex === block.page_ids.length - 1}>↓</IconOnlyButton>
@@ -4656,7 +4652,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
                         value={block.id}
                         onChange={(e) => movePageToBlock(pageId, blockIndex, e.target.value)}
                         title="Move page to another block"
-                        style={{ height: 30, border: "1px solid #cbd5e1", borderRadius: 7, fontSize: 11, padding: "0 6px", background: "#fff" }}
+                        style={{ height: 30, border: "1px solid var(--admin-border)", borderRadius: 7, fontSize: 11, padding: "0 6px", background: "var(--admin-surface)" }}
                       >
                         {blocks.map((optionBlock, optionIndex) => (
                           <option key={optionBlock.id} value={optionBlock.id}>Block {optionIndex + 1}</option>
@@ -4731,104 +4727,33 @@ function StudyOutlineModal({
   ).length;
   const pageCount = Math.max(1, pageBreakCount + 1);
 
-  useEffect(() => {
-    function handleEscape(e) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.45)",
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-      }}
+  return (
+    <Modal
+      title="Study overview"
+      subtitle={`${questionCount} ${questionCount === 1 ? "question" : "questions"} across ${pageCount} ${pageCount === 1 ? "page" : "pages"}. Drag to reorder, edit IDs inline, insert a page break, delete, or click question text to jump to it.`}
+      onClose={onClose}
+      width={860}
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Done
+        </Button>
+      }
     >
+      <ExperimentGroupsEditor survey={survey} onSurveyChange={onSurveyChange} linkedFeeds={linkedFeeds} />
+      <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
+
       <div
         style={{
-          background: "#fff",
-          borderRadius: 14,
-          width: "min(860px, 100%)",
-          maxHeight: "88vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+          padding: "6px 8px 14px",
+          borderTop: "1px solid var(--admin-border-subtle)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 12,
-            padding: "12px 16px",
-            borderBottom: "1px solid #e5e7eb",
-          }}
-        >
-          <div>
-            <h3 style={{ margin: 0, fontSize: 16 }}>Study overview</h3>
-            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
-              {questionCount} {questionCount === 1 ? "question" : "questions"} across {pageCount} {pageCount === 1 ? "page" : "pages"}. Drag to reorder, edit IDs inline, insert a page break, delete, or click question text to jump to it.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 30,
-              height: 30,
-              flex: "0 0 auto",
-              borderRadius: 7,
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        <div
-          style={{
-            flex: "1 1 auto",
-            minHeight: 0,
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
-          <ExperimentGroupsEditor survey={survey} onSurveyChange={onSurveyChange} linkedFeeds={linkedFeeds} />
-          <PageBlocksEditor survey={survey} onSurveyChange={onSurveyChange} />
-
-          <div
-            style={{
-              padding: "6px 8px 14px",
-              borderTop: "1px solid #e5e7eb",
-            }}
-          >
             <div
               style={{
                 padding: "8px 4px 6px",
                 fontSize: 12,
                 fontWeight: 800,
-                color: "#475569",
+                color: "var(--admin-muted)",
                 textTransform: "uppercase",
                 letterSpacing: "0.04em",
               }}
@@ -4848,7 +4773,7 @@ function StudyOutlineModal({
                   height: 34,
                   padding: "0 10px",
                   marginBottom: 8,
-                  border: "1px solid #cbd5e1",
+                  border: "1px solid var(--admin-border)",
                   borderRadius: 8,
                   fontSize: 12.5,
                 }}
@@ -4856,9 +4781,7 @@ function StudyOutlineModal({
             )}
 
             {currentQuestions.length === 0 ? (
-              <div style={{ color: "#6b7280", padding: "6px 4px" }}>
-                No questions yet.
-              </div>
+              <EmptyState compact title="No questions yet." />
             ) : (
               currentQuestions.map((item, i) => {
                 if (!matchesQuestionFilter(item, outlineFilter)) return null;
@@ -4889,11 +4812,14 @@ function StudyOutlineModal({
                   insertQuestionAt(i, EDITOR_PAGE_BREAK_TYPE, "below")
                 }
                 onDelete={async () => {
-                  if (item.type === EDITOR_PAGE_BREAK_TYPE) {
-                    removeQuestion(i);
-                    return;
-                  }
-                  if (await confirm({ title: "Delete this question?", danger: true, confirmLabel: "Delete" })) {
+                  const isBreak = item.type === EDITOR_PAGE_BREAK_TYPE;
+                  if (
+                    await confirm({
+                      title: isBreak ? "Delete this page break?" : "Delete this question?",
+                      danger: true,
+                      confirmLabel: "Delete",
+                    })
+                  ) {
                     removeQuestion(i);
                   }
                 }}
@@ -4909,37 +4835,7 @@ function StudyOutlineModal({
               })
             )}
           </div>
-        </div>
-
-        <div
-          style={{
-            padding: "12px 16px",
-            borderTop: "1px solid #e5e7eb",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            gap: 10,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 10,
-              border: "1px solid #4f46e5",
-              background: "#4f46e5",
-              color: "#fff",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+    </Modal>
   );
 }
 
@@ -5112,9 +5008,6 @@ export function SurveyEditor({
         post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
         apply_feed_randomization: sourceQuestion?.apply_feed_randomization !== false,
         reminder_interactive: !!sourceQuestion?.reminder_interactive,
-        _showFeedVisibilityEditor: !!sourceQuestion?._showFeedVisibilityEditor,
-        _showFeedOverridesEditor: !!sourceQuestion?._showFeedOverridesEditor,
-        _showConditionalDisplayEditor: !!sourceQuestion?._showConditionalDisplayEditor,
       };
 
       if (shouldAutoRewriteRowValues(copiedQuestion)) {
@@ -5227,77 +5120,44 @@ export function SurveyEditor({
           flexWrap: "wrap",
           padding: "12px 14px",
           marginBottom: 14,
-          border: "1px solid #dbe3ef",
+          border: "1px solid var(--admin-border-subtle)",
           borderRadius: 12,
-          background: "#f8fafc",
+          background: "var(--admin-surface-sunken)",
         }}
       >
         <div>
-          <div style={{ fontSize: 13, fontWeight: 750, color: "#111827" }}>
+          <div style={{ fontSize: 13, fontWeight: 750, color: "var(--admin-text)" }}>
             Study structure
           </div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 2 }}>
             {overviewQuestionCount} {overviewQuestionCount === 1 ? "question" : "questions"} · {overviewPageCount} {overviewPageCount === 1 ? "page" : "pages"} · {overviewBlockCount} {overviewBlockCount === 1 ? "block" : "blocks"}
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={collapseAllQuestions}
             disabled={currentQuestions.length === 0}
             title="Collapse every question to just its header row"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 9,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              color: currentQuestions.length === 0 ? "#9ca3af" : "#334155",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
-            }}
           >
             Collapse all
-          </button>
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={expandAllQuestions}
             disabled={currentQuestions.length === 0}
             title="Expand every question"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 9,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              color: currentQuestions.length === 0 ? "#9ca3af" : "#334155",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
-            }}
           >
             Expand all
-          </button>
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => setOutlineOpen(true)}
             disabled={currentQuestions.length === 0}
             title="See the whole study structure at once and reorder without scrolling"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 9,
-              border: "1px solid #4f46e5",
-              background: currentQuestions.length === 0 ? "#eef2ff" : "#4f46e5",
-              color: currentQuestions.length === 0 ? "#9ca3af" : "#fff",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: currentQuestions.length === 0 ? "not-allowed" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
           >
             <svg
               viewBox="0 0 24 24"
@@ -5315,12 +5175,12 @@ export function SurveyEditor({
               <line x1="4" y1="18" x2="20" y2="18" />
             </svg>
             Study overview
-          </button>
+          </Button>
         </div>
       </div>
 
-      <SectionCard title="Questions">
-        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 18 }}>
+      <Card title="Questions">
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 18 }}>
           Drag items by the dotted handle to reorder them. Use the + buttons on the borders
           to insert new questions, or use Study overview above for a compact, scroll-free view of the full study.
         </div>
@@ -5336,7 +5196,7 @@ export function SurveyEditor({
               borderRadius: 14,
               outline:
                 highlightedQuestionId === q._editorId
-                  ? "3px solid #6366f1"
+                  ? "3px solid var(--admin-accent)"
                   : "3px solid transparent",
               outlineOffset: 4,
               transition: "outline-color 0.2s ease",
@@ -5374,27 +5234,17 @@ export function SurveyEditor({
         ))}
 
         {currentQuestions.length === 0 && (
-          <div
-            style={{
-              position: "relative",
-              border: "1px dashed #d1d5db",
-              borderRadius: 12,
-              padding: 28,
-              background: "#fff",
-              textAlign: "center",
-              color: "#6b7280",
-            }}
-          >
-            No questions yet.
-            <div style={{ marginTop: 10 }}>
+          <EmptyState
+            title="No questions yet"
+            action={
               <InsertAtBorderButton
                 position="bottom"
                 onInsert={(nextType) => addQuestion(nextType)}
               />
-            </div>
-          </div>
+            }
+          />
         )}
-      </SectionCard>
+      </Card>
 
       {outlineOpen && (
         <StudyOutlineModal

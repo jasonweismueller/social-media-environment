@@ -1492,7 +1492,14 @@ export function AdminSurveysPanel({
   // list could render at all was why Surveys felt slow to open compared to
   // Feeds. Question counts now backfill per-row in the background instead
   // of blocking the initial paint.
-  async function loadAll() {
+  // Fetches the survey/feed lists only — no auto-select. Used by loadAll
+  // (mount) and also by the save/delete success paths, which already know
+  // exactly which survey should end up selected and must NOT route through
+  // handleSelectSurvey's discard guard (see handleSaveSurvey/handleDeleteSurvey
+  // — routing a post-save refresh through the guard compared stale pre-save
+  // React state against the already-updated snapshot ref and fired a bogus
+  // "Discard changes?" prompt right after a successful save).
+  async function refreshSurveyList() {
     setLoading(true);
     try {
       const incomingFeeds = Array.isArray(propFeeds) ? propFeeds : [];
@@ -1511,14 +1518,6 @@ export function AdminSurveysPanel({
       setFeeds(safeFeedList);
       setLoading(false);
 
-      // Auto-select the first survey, same as the Feeds list defaulting to
-      // its first/default feed — this only runs once per project (loadAll
-      // is only re-triggered by a projectId change, see the effect below),
-      // not on every visit to the Surveys tab.
-      if (safeSurveyList[0]?.survey_id) {
-        handleSelectSurvey(safeSurveyList[0].survey_id);
-      }
-
       safeSurveyList.forEach((s) => {
         if (!s?.survey_id) return;
         loadSurveyFromBackend(s.survey_id, { projectId })
@@ -1534,9 +1533,24 @@ export function AdminSurveysPanel({
           })
           .catch(() => {});
       });
+
+      return safeSurveyList;
     } catch (e) {
       console.warn("Failed to load surveys:", e);
       setLoading(false);
+      return [];
+    }
+  }
+
+  async function loadAll() {
+    const safeSurveyList = await refreshSurveyList();
+
+    // Auto-select the first survey, same as the Feeds list defaulting to
+    // its first/default feed — this only runs once per project (loadAll
+    // is only re-triggered by a projectId change, see the effect below),
+    // not on every visit to the Surveys tab.
+    if (safeSurveyList[0]?.survey_id) {
+      handleSelectSurvey(safeSurveyList[0].survey_id);
     }
   }
 
@@ -1571,9 +1585,9 @@ export function AdminSurveysPanel({
     return () => window.removeEventListener("beforeunload", handler);
   }, [survey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSelectSurvey(id) {
+  async function handleSelectSurvey(id, { skipGuard = false } = {}) {
     if (id === selectedSurveyId) return;
-    if (!(await guardDiscardCurrentSurvey())) return;
+    if (!skipGuard && !(await guardDiscardCurrentSurvey())) return;
     setSelectedSurveyId(id);
 
     if (!id) {
@@ -1939,7 +1953,10 @@ export function AdminSurveysPanel({
         setSurvey(editorFresh);
         savedSurveySnapshotRef.current = JSON.stringify(editorFresh);
 
-        await loadAll();
+        // Just refresh the sidebar list — the correct survey/id are already
+        // set directly above, so a reselect (and its discard guard) would be
+        // both unnecessary and, worse, wrong (see refreshSurveyList's comment).
+        await refreshSurveyList();
         toast.success("Survey saved");
       } else {
         toast.error(res?.err || "Failed to save survey");
@@ -1964,7 +1981,14 @@ export function AdminSurveysPanel({
         savedSurveySnapshotRef.current = null;
         setSelectedSurveyId(null);
         setLinkedFeedPostsMap({});
-        await loadAll();
+
+        // Pick a replacement survey without the discard guard — there's
+        // nothing left to discard, the survey we just confirmed deleting is
+        // already gone (same reasoning as handleSaveSurvey above).
+        const freshList = await refreshSurveyList();
+        if (freshList[0]?.survey_id) {
+          await handleSelectSurvey(freshList[0].survey_id, { skipGuard: true });
+        }
       } else {
         toast.error(res?.err || "Failed to delete survey");
       }
@@ -2090,7 +2114,7 @@ export function AdminSurveysPanel({
 
         setSurvey((prev) => {
           const currentDeliveryMode = normalizeDeliveryMode(prev?.delivery_mode);
-          return {
+          const nextSurvey = {
             ...prev,
             linked_feed_ids: orderedConfirmed,
             feed_sequence_ids:
@@ -2098,9 +2122,20 @@ export function AdminSurveysPanel({
                 ? []
                 : orderedConfirmed,
           };
+          // Record this as the new saved baseline — this action already
+          // persisted the link change to the backend above, so without this
+          // the survey would read as permanently "dirty" (spurious discard
+          // prompts on every subsequent switch/close) until an unrelated
+          // full "Save survey" happened to run.
+          savedSurveySnapshotRef.current = JSON.stringify(nextSurvey);
+          return nextSurvey;
         });
 
-        await loadAll();
+        // Refresh the sidebar list only — same reasoning as handleSaveSurvey:
+        // the correct survey state is already set directly above, so a
+        // reselect (and its discard guard) would compare stale pre-update
+        // state against the snapshot just written and fire a bogus prompt.
+        await refreshSurveyList();
         toast.success("Feeds linked");
       } else {
         toast.error(res?.err || "Failed to link feeds");

@@ -3581,3 +3581,169 @@ that appears throughout the rest of this file. Several things shipped this sessi
 code reading / isolated component mounts / direct function calls rather than a real click-through
 (see the plan file's "What's actually left" section, item 2, for the specific list) — worth
 spending real time there before piling on more unverified work.
+
+## Staging moved off Netlify onto GitHub Actions + Pages (2026-08-05)
+
+Prompted by a real complaint: Netlify's new credits-based pricing charges per build regardless of
+size, and this repo's auto-commit habit pushes to `main` many times a day — 11 separate commits
+landed on `main` in one day alone, each one a separate billable Netlify build, burning through half
+a 300-credit allotment before the day was over. GitHub Actions/Pages are unconditionally free for
+public repos no matter how often you push (which is exactly why `production` → `studyfeed.org` has
+never cost anything) — the fix mirrors that pattern for staging instead of working around Netlify's
+meter.
+
+**Mechanism**: new workflow `.github/workflows/deploy-staging.yml`, triggered on push to `main`
+(same trigger Netlify used) — builds via `npm run build` with `VITE_BACKEND`/`VITE_SUPABASE_URL`/
+`VITE_SUPABASE_ANON_KEY` set as real environment variables pointing at the **separate**
+`studyfeed-staging` Supabase project (ref `hgctbgunlsesygzglbdv`) — this override matters and isn't
+optional: Vite gives real process env vars priority over the committed `.env.production` file
+(which holds *production's* Supabase credentials), so without this the "staging" build would
+silently target the real production database. Writes a `CNAME` file (`staging.studyfeed.org`) into
+`dist/`, then force-pushes the built output to a new, separate repo (`jasonweismueller/
+studyfeed-staging`, empty except for this) via a PAT stored as the `STAGING_REPO_TOKEN` secret,
+using `peaceiris/actions-gh-pages@v4`. That repo's own GitHub Pages (Deploy from a branch → `main`)
+serves the result. DNS for `staging.studyfeed.org` was repointed from Netlify's CNAME target to
+`jasonweismueller.github.io`; the old Netlify team and all its projects were deleted afterward once
+the new setup was confirmed live end-to-end — flagged explicitly to the user first that this was a
+different, unrelated "studyfeed-staging" from the Supabase project of the same name, since a
+same-named Supabase-side delete confirmation dialog could easily be mistaken for the Netlify one and
+would have destroyed the staging database instead of just the hosting.
+
+**Verified live**: `staging.studyfeed.org` returns `200` served by `server: GitHub.com` (not
+Netlify); the deployed `AdminEntry-*.js` chunk was fetched directly and confirmed to bake in
+`hgctbgunlsesygzglbdv.supabase.co` (the staging project), not production's `yrzqnlhbawzuzlrrocfd` —
+same verification method this file already used for the original GAS→Supabase cutover. Confirmed
+again after the Netlify team deletion that the site was unaffected (still `200`, still GitHub
+Pages).
+
+## Survey question editor: save/discard bug fix + full redesign pass (2026-08-05)
+
+Per direct request to tackle the survey question/page-block editor
+(`src/admin/components-admin-surveys-editor.jsx`, ~5,400 lines before this pass) — the one major
+admin surface every prior redesign session deliberately skipped, per this file's own "Admin dashboard
+redesign" note. Scoped via a full plan (`~/.claude/plans/synthetic-sprouting-crescent.md`), preceded
+by an Explore pass mapping the file's structure and a Plan-agent design pass — user explicitly chose
+to include real internal restructuring of `QuestionCard`, not just a re-skin.
+
+### Bug fix, done first: false "Discard changes?" prompt on Save (`components-admin-surveys.jsx`)
+
+Reported mid-session: clicking "Save survey" popped a "Discard changes?" confirm — nonsensical
+mid-save. **Root cause**: `handleSaveSurvey` sets the correct post-save state directly, then called
+`await loadAll()` just to refresh the sidebar survey list. But `loadAll` unconditionally
+auto-selects the first survey in the refreshed list via `handleSelectSurvey`, which starts with a
+discard guard (`isSurveyDirty()`, a `JSON.stringify` snapshot comparison). Because `loadAll`/
+`handleSelectSurvey`/`isSurveyDirty` are plain (non-`useCallback`) closures, the copies invoked
+synchronously from inside `handleSaveSurvey` still saw the **pre-save** `survey`/`selectedSurveyId`
+React state (state hadn't re-rendered yet) while the snapshot ref (updates immediately, being a
+ref) already held the **post-save** JSON — guaranteeing a mismatch and a spurious dirty verdict,
+purely as a side effect of `loadAll()`'s auto-select path. The identical pattern was found latent in
+`handleDeleteSurvey` (not yet reported) and in `handleSaveFeedLinks` (the "Save feed links" button —
+which additionally never updated the snapshot ref at all on success, so it would have read as
+permanently dirty afterward regardless of this bug).
+
+**Fix**: extracted `refreshSurveyList()` (just fetches/sets the list, no auto-select) out of
+`loadAll()` (now mount-only: `refreshSurveyList()` + auto-select-first); `handleSelectSurvey` gained
+an optional `{ skipGuard }` param; `handleSaveSurvey`/`handleSaveFeedLinks` now call
+`refreshSurveyList()` directly (no reselect needed, correct state already set); `handleDeleteSurvey`
+calls `refreshSurveyList()` then reselects a replacement survey with `skipGuard: true` (nothing left
+to discard — the survey's already gone). `handleSaveFeedLinks` also gained the missing
+snapshot-ref update it never had. **Not click-tested live** — traced and fixed via direct code
+reading, verified via `@babel/parser` + grep confirming `loadAll()` is now only ever called from the
+mount effect and no call site still routes a post-save/delete refresh through the discard guard.
+
+### Redesign, 5 stages, all in `components-admin-surveys-editor.jsx` unless noted
+
+1. **Mechanical primitive swaps**: local `SectionCard` → shared `Card` (one call site — "Questions"
+   section); `IconOnlyButton` now delegates to `IconButton` (which gained a small additive `danger`
+   prop, passing through to `Button`'s existing `variant="danger"` — the one intentional touch
+   outside this file); raw "Collapse all"/"Expand all"/"Study overview"/outline-modal buttons →
+   `Button`; bespoke "No questions yet"/"No pages in this block."/"No experiment groups defined"
+   empty-state `<div>`s → `EmptyState` (full or `compact` variant depending on context); two
+   genuinely standalone post-reminder settings (each already inside its own `FieldBlock`) → real
+   `Toggle` switches. **Two planned `Toggle` conversions were deliberately reverted after checking
+   actual context**: `RequiredToggleButton` and the page-blocks "Randomise pages" checkbox both sit
+   inline in tight horizontal action bars (chevron/drag-handle/arrows/copy/delete) — `Toggle`'s
+   label+switch layout wants to span a full settings row and would have broken that compact
+   spacing, so both stayed as pill-button/checkbox, just re-skinned to tokens. Full file-wide
+   hardcoded-hex → `var(--admin-*)` token pass (~290 lines) via `sed`, mapping to the closest
+   existing token where no exact match existed (e.g. `#64748b`→`--admin-muted`); one deliberate
+   3-color blue badge (`#1d4ed8`/`#eff6ff`/`#bfdbfe`, a "linked feed" indicator with no equivalent
+   token and a genuinely different hue from the indigo accent) was left untouched rather than forced
+   into the wrong color family.
+2. **Confirm-dialog consistency**: wired the already-imported `useConfirm()` into the 4 delete
+   paths that had zero confirmation (`ExperimentGroupsEditor.deleteGroup`,
+   `PageBlocksEditor.deleteBlock`, `QuestionCard`'s question/page-break delete, both `QuestionActions`
+   and `CollapsedQuestionRow` for free since they receive the now-wrapped `removeQuestion`), and
+   removed `StudyOutlineModal`'s special-case that skipped confirmation specifically for page
+   breaks — now deletes confirm the same way everywhere.
+3. **`StudyOutlineModal` → shared `Modal`**: replaced the hand-rolled `createPortal(...,
+   document.body)` dialog (Escape-only, no focus trap/restore) with `Modal` — real accessibility
+   win, removed the now-dead local Escape listener and the unused `createPortal` import.
+4. **`QuestionCard`'s 4 `_show*` sub-editor flags moved off question data into local component
+   state.** Verified against the actual render loop first: `SurveyEditor`'s `.map()` already keys
+   each `QuestionCard`'s wrapping fragment by the question's stable `_editorId` (the existing
+   `collapsedQuestionIds` state already relies on exactly this), so plain `useState` inside
+   `QuestionCard` is automatically correctly "keyed" per question with zero new bookkeeping needed —
+   and collapsing doesn't unmount `QuestionCard` (renders `CollapsedQuestionRow` as an internal
+   branch instead), so the state survives expand/collapse too. Deleted the `_show*` copy-through
+   in the type-change handler, `duplicateQuestion`, and the defaults in
+   `normalizeQuestionForEditor`/`makeBackendQuestionFromType` — a genuine correctness fix, not just
+   relocation: duplicating a question with a sub-editor open no longer copies that transient UI flag
+   into the new question's persisted-shape object (previously harmless only because
+   `buildSavedQuestion`'s save-time whitelist never read `_show*` back out). Confirmed
+   `buildSavedQuestion` has zero diff overlap across the whole session's changes.
+5. **Extracted `QuestionCard`'s flat `{isChoice && (...)}`/`{isMatrix && (...)}`/etc. sequence**
+   (5 mutually-exclusive type flags, one of them — post-reminder — previously split across 3
+   separate scattered blocks) into 5 named components (`ChoiceEditorBlock`, `MatrixEditorBlock`,
+   `BipolarEditorBlock`, `SliderEditorBlock`, one consolidated `PostReminderEditorBlock`) dispatched
+   via a `switch`-based `renderTypeSpecificFields()` — not a uniform `{type: Component}` map, since
+   each block needs genuinely different props and a uniform map would've just relocated the
+   21-prop-soup problem one level down. Each extracted component takes only raw values + plain
+   callbacks, no `q`/`index`/`updateQuestion`. Pure lift of the existing JSX bodies — zero logic
+   changes. Also extracted the ~50-line inline type-change handler (buried in
+   `SelectInput.onChange`) into a named pure function, `computeQuestionAfterTypeChange(q, nextType,
+   index)`.
+
+**Footguns explicitly confirmed untouched**: `normalizeSurveyPageBlocks`/`reconcileSurveyPageBlocks`
+(page-block reconciliation, the "4 places" footgun), `normalizeSurveyExperimentGroups`/local
+`makeExperimentGroup` (experiment groups, the "5 places" footgun), and `ConditionalDisplayEditor`
+(`visible_if`) — checked via `git diff` showing zero overlapping hunks against any of these
+functions' line ranges across the entire session, not just eyeballed.
+
+**Verification**: every stage checked with `@babel/parser` plus manual diff review confirming every
+`value`/`onChange`/`checked` wire stayed byte-identical except at the specific call sites
+deliberately changed. **Also genuinely click-tested live, partially** — the sandbox's `npm run dev`
+was already running and working (the "Build/dev notes" section's "broken" framing is stale for this
+machine specifically; the user fixed the quarantine issue in an earlier session, see that section's
+own "Confirmed fixed" update). `SurveyEditor`/`QuestionCard` turned out to need zero backend
+mocking to test in isolation — they're pure `survey` prop + `onSurveyChange` callback, no direct
+backend calls — so a fabricated survey (all 6 question types, 2 experiment groups) was mounted
+directly via a cache-busted dynamic import of the real module, wrapped in the real
+`ConfirmProvider`/`ToastProvider`/`PromptProvider` inside a `.admin-shell` node. **Confirmed live**:
+`Card`/`Button`/`EmptyState` render correctly with proper tokens (screenshot); `ChoiceEditorBlock`/
+`MatrixEditorBlock` (Stage 5) render pixel-identical to the original layout; clicking a
+`SecondaryPillButton` ("Group visibility") correctly opens/closes its panel via the new local
+`openSubEditors` state (Stage 4), and — the actual point of Stage 4 — the live survey object was
+inspected afterward and confirmed to carry zero `_show*` keys on any question even after toggling a
+sub-editor open, which a pure code read couldn't prove as convincingly as watching it happen.
+
+**Not covered before verification got cut short**: Stage 2's confirm-on-delete dialogs, Stage 3's
+`Modal`-based Study Overview, and the Bipolar/Slider/PostReminder blocks specifically — a live
+`vite` HMR issue interrupted the session (see the gotcha below) before reaching them. Still only
+verified via `@babel/parser` + code tracing for those specific pieces.
+
+**New gotcha for future sessions attempting this same live-mount technique on this file**:
+`components-admin-surveys-editor.jsx` exports `INSERTABLE_TYPES` (a plain array) alongside its
+component exports, which Vite's React Fast Refresh treats as an inconsistent export set it can't
+hot-patch — every real edit to this file (or to `components-admin-surveys.jsx`, which has the same
+issue) triggers a full module invalidate-and-reload cycle instead of an in-place patch. If something
+else is actively touching either file on disk while a console-mounted test tree is holding a
+reference to the old module instance (e.g. another process/tool still saving edits), the dev server
+can cycle through repeated invalidate/reload passes back-to-back, and each one silently wipes any
+out-of-band React root mounted from a stale module snapshot — the mounted tree doesn't error, it
+just goes empty. This happened mid-verification here (two mounts in a row got wiped within ~1
+second of rendering, confirmed via matching "Could not Fast Refresh" console spam each time) — it's
+an environment/tooling artifact, not evidence of anything wrong with the code (the same mount had
+already rendered correctly, repeatedly, before the churn started). If this recurs, don't fight it by
+remounting repeatedly — either wait for whatever's touching the file to settle, or accept
+static-analysis verification for whatever wasn't reached in time.
