@@ -1,5 +1,6 @@
 export { Button, Spinner } from "./Button";
 export { IconButton } from "./IconButton";
+export { IconPillButton } from "./IconPillButton";
 export { Toggle } from "./Toggle";
 export { Card } from "./Card";
 export { Badge } from "./Badge";
@@ -26,6 +27,8 @@ export {
   IconFacebook,
   IconInstagram,
   IconCart,
+  IconShuffle,
+  IconEye,
 } from "./icons";
 export { ToastProvider, useToast } from "./Toast";
 export { ConfirmProvider, useConfirm } from "./ConfirmDialog";

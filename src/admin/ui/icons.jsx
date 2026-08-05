@@ -141,6 +141,26 @@ export function IconInstagram(props) {
   );
 }
 
+export function IconEye(props) {
+  return (
+    <Base {...props}>
+      <path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </Base>
+  );
+}
+
+export function IconShuffle(props) {
+  return (
+    <Base {...props}>
+      <path d="M4 6h3.5a3 3 0 0 1 2.4 1.2L15 15a3 3 0 0 0 2.4 1.2H20" />
+      <path d="M17 3l3 3-3 3" />
+      <path d="M4 18h3.5a3 3 0 0 0 2.4-1.2L11 15" />
+      <path d="M17 21l3-3-3-3" />
+    </Base>
+  );
+}
+
 export function IconCart(props) {
   return (
     <Base {...props}>

@@ -26,8 +26,18 @@ const FOCUSABLE_SELECTOR =
  * Also traps Tab focus within the dialog and returns focus to whatever
  * triggered it on close — `ConfirmDialog`/`PromptDialog` get this for free
  * since they render through this component.
+ *
+ * `fullScreen` swaps the centered fixed-width card for an edge-to-edge
+ * panel covering the whole viewport, everything else (portal target,
+ * focus trap, Escape-to-close, header/body/footer structure) unchanged.
+ * For content whose own layout depends on real viewport width — e.g. the
+ * feed preview's `.page` rail grid, which uses `@media` breakpoints keyed
+ * on `window.innerWidth`, not container width — a fixed-width boxed dialog
+ * would either clip it or force a mismatched layout; full-screen sidesteps
+ * that by giving it the real viewport to lay out against, same as the live
+ * participant page.
  */
-export function Modal({ title, subtitle, onClose, children, footer, width = 480, bodyRef }) {
+export function Modal({ title, subtitle, onClose, children, footer, width = 480, bodyRef, fullScreen = false }) {
   const anchorRef = useRef(null);
   const dialogRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
@@ -105,11 +115,11 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15, 23, 42, 0.45)",
+        background: fullScreen ? "var(--admin-bg, #f4f5f7)" : "rgba(15, 23, 42, 0.45)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
+        alignItems: fullScreen ? "stretch" : "center",
+        justifyContent: fullScreen ? "stretch" : "center",
+        padding: fullScreen ? 0 : 20,
         zIndex: 2000,
       }}
     >
@@ -121,13 +131,14 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
         tabIndex={-1}
         style={{
           width: "100%",
-          maxWidth: width,
-          maxHeight: "min(88vh, 720px)",
+          maxWidth: fullScreen ? "100%" : width,
+          height: fullScreen ? "100%" : undefined,
+          maxHeight: fullScreen ? "100%" : "min(88vh, 720px)",
           display: "flex",
           flexDirection: "column",
           background: "var(--admin-surface)",
-          borderRadius: "var(--admin-radius-lg)",
-          boxShadow: "var(--admin-shadow-md)",
+          borderRadius: fullScreen ? 0 : "var(--admin-radius-lg)",
+          boxShadow: fullScreen ? "none" : "var(--admin-shadow-md)",
           overflow: "hidden",
           outline: "none",
         }}
@@ -171,7 +182,16 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
           </button>
         </div>
 
-        <div ref={bodyRef} style={{ padding: 20, overflowY: "auto" }}>{children}</div>
+        <div
+          ref={bodyRef}
+          style={
+            fullScreen
+              ? { flex: 1, minHeight: 0, overflowY: "auto" }
+              : { padding: 20, overflowY: "auto" }
+          }
+        >
+          {children}
+        </div>
 
         {footer && (
           <div

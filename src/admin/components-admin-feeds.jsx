@@ -1,8 +1,9 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar, hasAdminRole, APP } from "../utils";
-import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus } from "./ui";
+import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus, IconEye } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
+import { FeedPreviewModal } from "./components-admin-feed-preview";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
 function feedListButtonStyle(isActive) {
@@ -268,6 +269,7 @@ export function AdminFeedsPanel({
   onLogout,
 }) {
   const [activeFeedTab, setActiveFeedTab] = useState("posts");
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Reset to the Posts tab whenever a different feed is selected — mirrors
   // AdminSurveysPanel's own tab-reset-on-selection effect.
@@ -277,15 +279,24 @@ export function AdminFeedsPanel({
 
   // Flags used to be lazily fetched only when the Randomize popover opened;
   // now that the toggles live in a dedicated Settings tab (not a popover),
-  // fetch them the first time that tab is actually viewed for this feed.
+  // fetch them the first time that tab is actually viewed for this feed —
+  // or the first time the feed preview is opened from the Posts tab, same
+  // idempotent call.
   useEffect(() => {
-    if (selectedFeedId && activeFeedTab === "settings") onLoadFlags(selectedFeedId);
-  }, [selectedFeedId, activeFeedTab, onLoadFlags]);
+    if (selectedFeedId && (activeFeedTab === "settings" || previewOpen)) onLoadFlags(selectedFeedId);
+  }, [selectedFeedId, activeFeedTab, previewOpen, onLoadFlags]);
 
   const rowKey = keyFor(projectId, selectedFeedId);
   const ff = feedFlags[rowKey] || {};
   const stats = feedStats[rowKey];
   const anyFlagBusy = allSavingKeys.some((k) => ff[k]);
+  const previewFlags = {
+    randomize_times: readFlagValue(ff, "time"),
+    randomize_avatars: readFlagValue(ff, "avatar"),
+    randomize_images: readFlagValue(ff, "image"),
+    randomize_names: readFlagValue(ff, "name"),
+    randomize_bios: readFlagValue(ff, "bio"),
+  };
 
   const { feedsSlot, feedsAddSlot } = useContext(AdminTreeSlotsContext);
 
@@ -376,6 +387,14 @@ export function AdminFeedsPanel({
                       >
                         ↻
                       </button>
+                      <IconButton
+                        size="sm"
+                        onClick={() => setPreviewOpen(true)}
+                        disabled={!posts.length}
+                        title={`See exactly what a participant would see for this ${contentUnitLabel.toLowerCase()}`}
+                      >
+                        <IconEye size={15} />
+                      </IconButton>
                       <RoleGate min="editor">
                         <IconButton size="sm" onClick={onOpenNewPost} title={`Add ${contentUnitLabel.toLowerCase()}`}>
                           <IconPlus size={15} />
@@ -606,6 +625,17 @@ export function AdminFeedsPanel({
                   </Card>
                 </RoleGate>
               </div>
+            )}
+
+            {previewOpen && (
+              <FeedPreviewModal
+                posts={posts}
+                flags={previewFlags}
+                projectId={projectId}
+                feedId={selectedFeedId}
+                feedName={selectedFeedName}
+                onClose={() => setPreviewOpen(false)}
+              />
             )}
           </>
         )}

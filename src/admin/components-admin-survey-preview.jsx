@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Modal, Toggle, EmptyState, useToast } from "./ui";
+import { Modal, Toggle, IconPillButton, IconShuffle, EmptyState, useToast } from "./ui";
 import { SurveyScreen, SurveyScreenMobile } from "../ui-core";
 import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
 
@@ -35,56 +35,6 @@ function resolveGroupFeedSequence(experimentGroups, previewGroupId, feedSequence
     return group.feed_sequence_ids;
   }
   return Array.isArray(feedSequenceIds) ? feedSequenceIds : [];
-}
-
-function ShuffleIcon({ size = 15 }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 6h3.5a3 3 0 0 1 2.4 1.2L15 15a3 3 0 0 0 2.4 1.2H20" />
-      <path d="M17 3l3 3-3 3" />
-      <path d="M4 18h3.5a3 3 0 0 0 2.4-1.2L11 15" />
-      <path d="M17 21l3-3-3-3" />
-    </svg>
-  );
-}
-
-// A round icon-only button, sized to match PillToggleButton's height —
-// Reshuffle is a one-off action, not a toggle, so an icon-only control fits
-// its semantics better than a labeled pill, and keeps the toolbar compact.
-function IconPillButton({ onClick, title, children }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      style={{
-        width: 34,
-        height: 34,
-        flexShrink: 0,
-        borderRadius: 999,
-        border: "1px solid var(--admin-border)",
-        background: "var(--admin-surface)",
-        color: "var(--admin-text)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
 }
 
 function getPostIdForMatch(post) {
@@ -247,12 +197,16 @@ export function SurveyPreviewModal({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 16,
           flexWrap: "wrap",
           marginBottom: 14,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        {/* Preview context — what's being previewed (which group, and a way
+            to re-roll any randomization) — grouped tightly on the left,
+            same 34px control height throughout so the select and the round
+            reshuffle button line up. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {experimentGroups.length > 0 && (
             <label
               style={{
@@ -268,9 +222,10 @@ export function SurveyPreviewModal({
                 value={previewGroupId}
                 onChange={(e) => setPreviewGroupId(e.target.value)}
                 style={{
+                  height: 34,
                   fontSize: 12,
-                  padding: "4px 6px",
-                  borderRadius: 6,
+                  padding: "0 8px",
+                  borderRadius: 8,
                   border: "1px solid var(--admin-border-subtle)",
                   background: "var(--admin-surface)",
                   color: "var(--admin-text)",
@@ -290,19 +245,22 @@ export function SurveyPreviewModal({
               onClick={() => setSeedNonce((n) => n + 1)}
               title="Re-shuffle randomized pages with a new seed"
             >
-              <ShuffleIcon size={15} />
+              <IconShuffle size={15} />
             </IconPillButton>
           )}
+        </div>
 
+        {/* Display options — how the preview behaves/renders — grouped
+            together on the right, instead of split across both ends. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
           <Toggle
             label="Force response"
             hint={forceResponse ? "Required questions block Next" : "Click through without answering"}
             checked={forceResponse}
             onChange={setForceResponse}
           />
+          <Toggle label="Preview as mobile" checked={isMobile} onChange={setIsMobile} />
         </div>
-
-        <Toggle label="Preview as mobile" checked={isMobile} onChange={setIsMobile} />
       </div>
 
       {postsStillLoading && (
