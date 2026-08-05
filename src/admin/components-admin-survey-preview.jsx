@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Modal, Button, Toggle, EmptyState, useToast } from "./ui";
+import { Modal, Toggle, EmptyState, useToast } from "./ui";
 import { SurveyScreen, SurveyScreenMobile } from "../ui-core";
 import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
 
@@ -37,26 +37,49 @@ function resolveGroupFeedSequence(experimentGroups, previewGroupId, feedSequence
   return Array.isArray(feedSequenceIds) ? feedSequenceIds : [];
 }
 
-// A small pill toggle, matching the shape/weight of the editor's own
-// SecondaryPillButton — kept local here rather than shared, since this is
-// the only preview-only control that needs it.
-function PillToggleButton({ active, onClick, title, children }) {
+function ShuffleIcon({ size = 15 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 6h3.5a3 3 0 0 1 2.4 1.2L15 15a3 3 0 0 0 2.4 1.2H20" />
+      <path d="M17 3l3 3-3 3" />
+      <path d="M4 18h3.5a3 3 0 0 0 2.4-1.2L11 15" />
+      <path d="M17 21l3-3-3-3" />
+    </svg>
+  );
+}
+
+// A round icon-only button, sized to match PillToggleButton's height —
+// Reshuffle is a one-off action, not a toggle, so an icon-only control fits
+// its semantics better than a labeled pill, and keeps the toolbar compact.
+function IconPillButton({ onClick, title, children }) {
   return (
     <button
       type="button"
       title={title}
+      aria-label={title}
       onClick={onClick}
       style={{
+        width: 34,
         height: 34,
-        padding: "0 12px",
+        flexShrink: 0,
         borderRadius: 999,
-        border: `1px solid ${active ? "var(--admin-accent-border)" : "var(--admin-border)"}`,
-        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
-        color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
-        fontSize: 12,
-        fontWeight: 600,
+        border: "1px solid var(--admin-border)",
+        background: "var(--admin-surface)",
+        color: "var(--admin-text)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
         cursor: "pointer",
-        whiteSpace: "nowrap",
       }}
     >
       {children}
@@ -263,26 +286,20 @@ export function SurveyPreviewModal({
           )}
 
           {hasRandomizedPageBlock && (
-            <Button
-              variant="secondary"
+            <IconPillButton
               onClick={() => setSeedNonce((n) => n + 1)}
               title="Re-shuffle randomized pages with a new seed"
             >
-              Reshuffle
-            </Button>
+              <ShuffleIcon size={15} />
+            </IconPillButton>
           )}
 
-          <PillToggleButton
-            active={forceResponse}
-            onClick={() => setForceResponse((v) => !v)}
-            title={
-              forceResponse
-                ? "Required questions block Next, matching real participant behavior. Click to click through freely."
-                : "Required questions are not enforced — click Next without answering."
-            }
-          >
-            {forceResponse ? "Force response: on" : "Force response: off"}
-          </PillToggleButton>
+          <Toggle
+            label="Force response"
+            hint={forceResponse ? "Required questions block Next" : "Click through without answering"}
+            checked={forceResponse}
+            onChange={setForceResponse}
+          />
         </div>
 
         <Toggle label="Preview as mobile" checked={isMobile} onChange={setIsMobile} />
