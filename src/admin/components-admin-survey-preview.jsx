@@ -37,6 +37,49 @@ function resolveGroupFeedSequence(experimentGroups, previewGroupId, feedSequence
   return Array.isArray(feedSequenceIds) ? feedSequenceIds : [];
 }
 
+function getPostIdForMatch(post) {
+  return String(
+    post?.id ?? post?.post_id ?? post?.postId ?? post?.meta?.post_id ?? ""
+  ).trim();
+}
+
+// A post_reminder's `post_id` is only unique *within* its own source feed —
+// the same bare post_id can validly exist across several feeds (e.g. a
+// template post duplicated into Control/Treatment/PL variant feeds, each
+// with different real content). The real participant-facing app never hits
+// this ambiguity because a real participant only ever has ONE feed's posts
+// loaded at a time. This preview aggregates every linked feed's posts
+// together (so any reminder can render without a live fetch), which
+// reintroduces exactly that collision: `getQuestionReminderPost`
+// (ui-survey.jsx) matches purely by post_id with no feed awareness, so two
+// reminders sharing a post_id but pointing at different feeds would both
+// resolve to whichever feed's copy happens to come first in the flattened
+// array. Fixed by resolving each reminder's post explicitly by
+// (post_feed_id, post_id) here and injecting it as `meta.post_snapshot` —
+// checked by `getQuestionReminderPost` before it ever falls back to the
+// ambiguous flattened `posts` array.
+function withResolvedReminderSnapshots(pages, linkedFeedPostsMap) {
+  return pages.map((page) => {
+    if (!Array.isArray(page?.questions) || !page.questions.length) return page;
+    return {
+      ...page,
+      questions: page.questions.map((q) => {
+        if (q?.type !== SURVEY_QUESTION_TYPES.POST_REMINDER) return q;
+        if (q?.meta?.post_snapshot) return q;
+        const feedId = String(q?.post_feed_id ?? q?.meta?.post_feed_id ?? "").trim();
+        const postId = String(q?.post_id ?? q?.meta?.post_id ?? "").trim();
+        if (!feedId || !postId) return q;
+        const feedPosts = Array.isArray(linkedFeedPostsMap?.[feedId])
+          ? linkedFeedPostsMap[feedId]
+          : [];
+        const match = feedPosts.find((p) => getPostIdForMatch(p) === postId);
+        if (!match) return q;
+        return { ...q, meta: { ...(q.meta || {}), post_snapshot: match } };
+      }),
+    };
+  });
+}
+
 export function SurveyPreviewModal({
   survey,
   experimentGroups = [],
@@ -56,15 +99,14 @@ export function SurveyPreviewModal({
 
   const participantSeed = seedNonce === 0 ? "preview" : `preview-${seedNonce}`;
 
-  const materializedPages = useMemo(
-    () =>
-      materializePagesFromBlocks(survey, survey?.page_blocks, {
-        participantSeed,
-        randomize: true,
-        assignedGroupId: previewGroupId,
-      }),
-    [survey, previewGroupId, participantSeed]
-  );
+  const materializedPages = useMemo(() => {
+    const pages = materializePagesFromBlocks(survey, survey?.page_blocks, {
+      participantSeed,
+      randomize: true,
+      assignedGroupId: previewGroupId,
+    });
+    return withResolvedReminderSnapshots(pages, linkedFeedPostsMap);
+  }, [survey, previewGroupId, participantSeed, linkedFeedPostsMap]);
 
   const previewSurvey = useMemo(
     () => ({
