@@ -6,6 +6,7 @@ import {
   VISIBLE_IF_ELIGIBLE_TYPES,
 } from "../utils";
 import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm } from "./ui";
+import { SurveyPreviewModal } from "./components-admin-survey-preview";
 
 /* =========================
    Small helpers
@@ -4853,6 +4854,7 @@ export function SurveyEditor({
   const [draggingQuestionId, setDraggingQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [highlightedQuestionId, setHighlightedQuestionId] = useState(null);
   // Question cards start collapsed by default (per direct user feedback) —
   // same set of ids collapseAllQuestions() below would produce, just as the
@@ -5176,8 +5178,28 @@ export function SurveyEditor({
             </svg>
             Study overview
           </Button>
+
+          <Button
+            variant="secondary"
+            onClick={() => setPreviewOpen(true)}
+            disabled={currentQuestions.length === 0}
+            title="See exactly what a participant would see, including conditional questions and group variations"
+          >
+            Preview
+          </Button>
         </div>
       </div>
+
+      {previewOpen && (
+        <SurveyPreviewModal
+          survey={survey}
+          experimentGroups={experimentGroups}
+          linkedFeeds={orderedLinkedFeeds}
+          linkedFeedPostsMap={linkedFeedPostsMap}
+          feedSequenceIds={feedSequenceIds}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
 
       <Card title="Questions">
         <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 18 }}>

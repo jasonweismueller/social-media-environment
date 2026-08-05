@@ -1,0 +1,224 @@
+import React, { useCallback, useMemo, useState } from "react";
+import { Modal, Button, Toggle, EmptyState, useToast } from "./ui";
+import { SurveyScreen, SurveyScreenMobile } from "../ui-core";
+import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
+
+// Deliberately all-false — a stable, deterministic preview default. Any
+// per-question `apply_feed_randomization` setting (post_reminder questions)
+// is respected as-is; this only supplies the fallback the reminder card uses
+// before its own (real, read-only) feed-flags fetch resolves.
+const PREVIEW_FLAGS = {
+  randomize_times: false,
+  randomize_avatars: false,
+  randomize_images: false,
+  randomize_names: false,
+  randomize_bios: false,
+};
+
+// Local, minimal check — deliberately not importing from
+// components-admin-surveys-editor.jsx (which imports this file) to avoid a
+// circular module dependency. `survey.pages[].questions[]` already holds
+// real question objects with a plain `.type` field on the editor's in-memory
+// survey shape, so no editor-specific flattening helper is needed here.
+function surveyHasPostReminderQuestion(survey) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  return pages.some(
+    (page) =>
+      Array.isArray(page?.questions) &&
+      page.questions.some((q) => q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER)
+  );
+}
+
+function resolveGroupFeedSequence(experimentGroups, previewGroupId, feedSequenceIds) {
+  const group = (experimentGroups || []).find((g) => g?.id === previewGroupId);
+  if (Array.isArray(group?.feed_sequence_ids) && group.feed_sequence_ids.length) {
+    return group.feed_sequence_ids;
+  }
+  return Array.isArray(feedSequenceIds) ? feedSequenceIds : [];
+}
+
+export function SurveyPreviewModal({
+  survey,
+  experimentGroups = [],
+  linkedFeeds = [],
+  linkedFeedPostsMap = {},
+  feedSequenceIds = [],
+  onClose,
+}) {
+  const toast = useToast();
+
+  const [responses, setResponses] = useState({});
+  const [errors, setErrors] = useState({});
+  const [errorMsg, setErrorMsg] = useState("");
+  const [previewGroupId, setPreviewGroupId] = useState(experimentGroups[0]?.id ?? "");
+  const [isMobile, setIsMobile] = useState(false);
+  const [seedNonce, setSeedNonce] = useState(0);
+
+  const participantSeed = seedNonce === 0 ? "preview" : `preview-${seedNonce}`;
+
+  const materializedPages = useMemo(
+    () =>
+      materializePagesFromBlocks(survey, survey?.page_blocks, {
+        participantSeed,
+        randomize: true,
+        assignedGroupId: previewGroupId,
+      }),
+    [survey, previewGroupId, participantSeed]
+  );
+
+  const previewSurvey = useMemo(
+    () => ({
+      ...survey,
+      experiment_assigned_group_id: previewGroupId,
+      pages: materializedPages,
+    }),
+    [survey, previewGroupId, materializedPages]
+  );
+
+  const hasRandomizedPageBlock = useMemo(
+    () =>
+      Array.isArray(survey?.page_blocks)
+        ? survey.page_blocks.some((b) => b?.randomize_pages)
+        : false,
+    [survey]
+  );
+
+  const relevantFeedIds = useMemo(
+    () => resolveGroupFeedSequence(experimentGroups, previewGroupId, feedSequenceIds),
+    [experimentGroups, previewGroupId, feedSequenceIds]
+  );
+
+  const feedId = relevantFeedIds.length ? relevantFeedIds[relevantFeedIds.length - 1] : "";
+
+  const hasPostReminder = useMemo(
+    () => surveyHasPostReminderQuestion(survey),
+    [survey]
+  );
+
+  const postsStillLoading =
+    hasPostReminder &&
+    relevantFeedIds.some((fid) => linkedFeedPostsMap[fid] === undefined);
+
+  const flattenedPosts = useMemo(
+    () => Object.values(linkedFeedPostsMap || {}).flat(),
+    [linkedFeedPostsMap]
+  );
+
+  const handleChange = useCallback((questionId, value) => {
+    setResponses((prev) => ({ ...prev, [questionId]: value }));
+    setErrors((prev) => {
+      if (!(questionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
+    });
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    toast.success("Preview complete — no data was recorded.");
+  }, [toast]);
+
+  const handlePageValidationFail = useCallback((pageErrors, message) => {
+    setErrors((prev) => ({ ...prev, ...(pageErrors || {}) }));
+    setErrorMsg(message || "");
+  }, []);
+
+  const handleClearBanner = useCallback(() => setErrorMsg(""), []);
+
+  const ScreenComponent = isMobile ? SurveyScreenMobile : SurveyScreen;
+
+  return (
+    <Modal
+      title="Survey preview"
+      subtitle={survey?.name || "Untitled survey"}
+      onClose={onClose}
+      width={880}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {experimentGroups.length > 0 && (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "var(--admin-muted)",
+              }}
+            >
+              Previewing as
+              <select
+                value={previewGroupId}
+                onChange={(e) => setPreviewGroupId(e.target.value)}
+                style={{
+                  fontSize: 12,
+                  padding: "4px 6px",
+                  borderRadius: 6,
+                  border: "1px solid var(--admin-border-subtle)",
+                  background: "var(--admin-surface)",
+                  color: "var(--admin-text)",
+                }}
+              >
+                {experimentGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {hasRandomizedPageBlock && (
+            <Button
+              variant="secondary"
+              onClick={() => setSeedNonce((n) => n + 1)}
+              title="Re-shuffle randomized pages with a new seed"
+            >
+              Reshuffle
+            </Button>
+          )}
+        </div>
+
+        <Toggle label="Preview as mobile" checked={isMobile} onChange={setIsMobile} />
+      </div>
+
+      {postsStillLoading && (
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 10 }}>
+          Loading linked feed posts…
+        </div>
+      )}
+
+      {materializedPages.length === 0 ? (
+        <EmptyState
+          title="Nothing to preview yet"
+          message="Add at least one question to see the participant view."
+        />
+      ) : (
+        <ScreenComponent
+          survey={previewSurvey}
+          posts={flattenedPosts}
+          responses={responses}
+          errors={errors}
+          errorMsg={errorMsg}
+          participantSeed={participantSeed}
+          feedId={feedId}
+          flags={PREVIEW_FLAGS}
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          onPageValidationFail={handlePageValidationFail}
+          onClearBanner={handleClearBanner}
+          submitting={false}
+        />
+      )}
+    </Modal>
+  );
+}

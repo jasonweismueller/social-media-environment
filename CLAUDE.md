@@ -3747,3 +3747,32 @@ an environment/tooling artifact, not evidence of anything wrong with the code (t
 already rendered correctly, repeatedly, before the churn started). If this recurs, don't fight it by
 remounting repeatedly — either wait for whatever's touching the file to settle, or accept
 static-analysis verification for whatever wasn't reached in time.
+
+## Session handoff (2026-08-05, end of session) — read this first if picking up fresh
+
+**Everything from this session is committed and pushed — to both `main` and `production`.**
+Confirmed via `git log`/`git status`: `de4cfc8 survey editor redesign` (the bug fix + all 5 redesign
+stages + this file's own updates, 4 files) is the tip of *both* `origin/main` and `origin/production`
+right now. **This means the parts of the redesign that were only verified via code tracing — Stage
+2's confirm dialogs, Stage 3's `Modal` swap, and the Bipolar/Slider/PostReminder extracted blocks —
+are already live on `studyfeed.org`, not sitting on staging waiting for a promotion step.** This
+wasn't a deliberate "ship it" decision by anyone; it's just this repo's existing auto-commit/push
+behavior landing on whichever branch happened to be checked out. Worth naming plainly rather than
+assuming there's a safety buffer that isn't actually there this time.
+
+**The one thing worth doing first**: `staging.studyfeed.org` (now on GitHub Pages, see the section
+above — same commit, since it also builds from `main`) is exactly the same code as production and
+has a real owner login with no participant data at risk. That's the lowest-risk place to actually
+finish the live verification this session didn't get to: open the Questions tab on a real or
+disposable survey there, delete a question/block/group and confirm the dialog fires, open Study
+Overview and confirm it's the new `Modal` (focus trap — Tab shouldn't escape it), and check a
+bipolar/slider/post-reminder question's fields render and save correctly. Full context on exactly
+what was and wasn't confirmed live: `~/.claude/plans/synthetic-sprouting-crescent.md`'s "Status"
+section at the top — read that before re-deriving verification state from the narrative above.
+
+**Other open threads, not part of this session's work, surfaced earlier but not acted on**: the
+"next big improvement" discussion that led into this session identified two other concrete
+candidates, left as useful context for a future session — an admin audit/activity log (no action
+history exists anywhere despite several real incidents in this repo's history that one would have
+made faster to diagnose) and Amazon reviews never rendering their configured images (a real,
+scoped, previously-flagged gap, not attempted here).
