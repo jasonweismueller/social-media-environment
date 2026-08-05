@@ -1,0 +1,57 @@
+name: Deploy to Staging (GitHub Pages)
+
+# staging.studyfeed.org — replaces the old Netlify-based staging deploy
+# (see CLAUDE.md "Staging environment"). studyfeed.org itself is untouched
+# by this file — it only ever deploys from the `production` branch via
+# deploy.yml.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: staging-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project (staging backend)
+        run: npm run build
+        env:
+          # These override .env.production's values for this build only —
+          # Vite gives real process env vars priority over committed .env
+          # files — so this is what keeps staging pointed at the separate
+          # studyfeed-staging Supabase project instead of real production
+          # data. Both values are the public/publishable kind (safe to
+          # commit, same reasoning as .env.production's own committed key).
+          VITE_BACKEND: supabase
+          VITE_SUPABASE_URL: https://hgctbgunlsesygzglbdv.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_T1-0LA91VBhlbGjrC0CI1g_EdZK6FrK
+
+      - name: Add custom domain
+        run: echo "staging.studyfeed.org" > dist/CNAME
+
+      - name: Push build to studyfeed-staging
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.STAGING_REPO_TOKEN }}
+          external_repository: jasonweismueller/studyfeed-staging
+          publish_branch: main
+          publish_dir: ./dist
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
