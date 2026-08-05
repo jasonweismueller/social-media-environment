@@ -3776,3 +3776,160 @@ candidates, left as useful context for a future session — an admin audit/activ
 history exists anywhere despite several real incidents in this repo's history that one would have
 made faster to diagnose) and Amazon reviews never rendering their configured images (a real,
 scoped, previously-flagged gap, not attempted here).
+
+## Survey editor: participant-view "Preview" feature (2026-08-05)
+
+Picked up the admin audit/log vs. "preview" fork from the prior session's own "what next" list —
+user chose preview. Full design rationale and file-by-file breakdown, produced via a proper
+Explore → Plan → Review cycle before any code was written: `~/.claude/plans/purrfect-wiggling-quill.md`
+(its own "Status" section at the top supersedes this entry's implementation details if the two ever
+drift — read that first).
+
+**What it is**: a "Preview" button in the survey editor's toolbar
+(`components-admin-surveys-editor.jsx`, next to "Study overview") that opens a modal rendering the
+survey exactly as a participant would see it — including live `visible_if` branching, experiment-
+group-gated blocks/questions, group-varied feed sequences, and page-block randomization — fed
+directly from the in-memory (possibly unsaved) survey object currently being edited. No backend
+writes of any kind: submitting inside the preview shows a toast and does nothing else.
+
+**Why this was low-risk to build, and why zero changes were needed to the survey engine itself**:
+`SurveyScreen`/`SurveyScreenMobile` (`src/ui-core/ui-survey.jsx`/`ui-survey-mobile.jsx`) turned out
+to already be fully controlled, presentation-only components — `survey`/`responses`/`errors` in,
+`onChange`/`onSubmit`/etc. callbacks out, with the only backend calls anywhere in either file being
+two **read-only** GETs inside `PostReminderCard` (`loadPostByIdFromBackend`/`fetchFeedFlags`). All
+real submission logic (`sendSurveyResponseToBackend`, experiment-group assignment consumption) lives
+entirely in the App-*.jsx layer, completely outside these two components — so mounting them
+standalone with a no-op `onSubmit` is safe by construction, not by careful avoidance. Same mirrors-
+the-real-renderer pattern the post editors' `PreviewPane` already established for a single
+`PostCard` (`components-admin-editor-ui.jsx`), just generalized to a whole survey.
+
+**New file**: `src/admin/components-admin-survey-preview.jsx` (`SurveyPreviewModal`) — owns all
+preview-only state locally (`responses`, `errors`, a group selector shown only when
+`experiment_groups.length > 0`, a desktop/mobile toggle, a "Reshuffle" button shown only when the
+survey has a `randomize_pages` block). Calls the existing, unmodified `materializePagesFromBlocks`/
+`isQuestionVisible` (`utils-survey.js`) — the same pure functions the real participant app already
+uses — with zero conversion needed from the editor's in-memory survey shape (extra editor-only
+fields like `_editorId` are simply ignored by `normalizeSurvey`). `participantSeed` is a fixed
+`"preview"` base (reproducible across reopens) with an optional numeric suffix bumped by
+"Reshuffle" (demonstrates randomization on demand without silently reshuffling on every open).
+**Integration**: `SurveyEditor` gained one `previewOpen` boolean and passes down `experimentGroups`/
+`orderedLinkedFeeds`/`linkedFeedPostsMap`/`feedSequenceIds` it already computes — no new props
+threaded through `AdminSurveysPanel` at all.
+
+**Two real bugs found and fixed after the initial implementation, both from direct user testing —
+not from Claude's own verification, which had already passed on fabricated data**:
+
+1. **Next-button page turns didn't scroll the modal back to the top.** Root cause:
+   `scrollSurveyPageToTop()` (defined identically in `ui-survey.jsx`/`ui-survey-mobile.jsx`) only
+   resets `window`/`document.documentElement`/`document.body` scroll plus `.survey-page`/
+   `.survey-shell` elements by class selector — all correct for the real participant-facing page
+   (which genuinely is the whole browser viewport, confirmed via `.survey-page{min-height:100vh}`
+   in the stylesheets), but none of that exists inside a modal, whose actual scroll container is
+   `Modal.jsx`'s own internal body `<div style={{overflowY:"auto"}}>`. **Fixed additively**: gave
+   `SurveyScreen`/`SurveyScreenMobile` an optional `onPageChange` callback prop (fires from the
+   existing `useLayoutEffect(() => {...}, [currentPageIndex])`, harmless no-op for every existing
+   caller since none of the three `App-*.jsx` files pass it), gave the shared `Modal.jsx` an
+   optional `bodyRef` prop (attaches to that internal body div, same non-breaking addition), and
+   wired `SurveyPreviewModal` to reset `bodyRef.current.scrollTop = 0` on every page change.
+   Verified live: scrolled the modal 400px down, clicked Next, confirmed it snapped back to 0.
+
+2. **Post-reminder questions showed the wrong feed's post when switching experiment groups — found
+   via a real production survey, and the actual root cause was genuinely surprising.** User reported
+   on the real, live survey "Survey 1 - Main" (`survey_t9919ylm52omnt277u3`, `project_1`): a block
+   ("Treatment/Control Feed") visible to everyone, containing 3 separate pages
+   (`randomize_pages: true`), each with one post_reminder question gated to a different pair of 6
+   experiment groups (CONTROL→group1/4, PL→group3/6, PS→group2/5) — switching the preview's group
+   selector kept showing CONTROL's post regardless of which group was selected. Confirmed first
+   that the *real* participant link (refreshed repeatedly to get fresh random group assignments)
+   correctly varied per group — ruling out a survey-configuration problem and confirming this was
+   preview-specific. Extensive isolated reproduction with fabricated data (matching group count,
+   the 3-separate-pages-not-1-page-with-3-questions shape, `apply_feed_randomization` on) all
+   worked correctly — the bug only reproduced once the *real* survey's actual data was pulled
+   directly (read-only, anon-key REST call against the `studyfeed-staging` Supabase project,
+   `https://hgctbgunlsesygzglbdv.supabase.co`, credentials already sitting in
+   `.github/workflows/deploy-staging.yml` — same "reads are safe, no login needed" posture used
+   throughout this file) and inspected question-by-question. **Real root cause**: CONTROL, PL, and
+   PS all reference the *exact same bare `post_id`* (`77el6ugqvsomgan170e`), differing only in
+   `post_feed_id` (feed_5/feed_4/feed_3 respectively) — this is precisely the "template post
+   duplicated across Control/Treatment/PL feed variants" pattern the `posts.id` composite-key
+   migration (see the 2026-08-02 "Real production data-completeness incident" entry above) exists
+   to handle at the database level. `getQuestionReminderPost` (`ui-survey.jsx`/`-mobile.jsx`,
+   near-duplicate pair) matches a supplied post *purely by bare `post_id`*, with zero feed
+   disambiguation — harmless in real participant delivery, since a real participant's `posts` prop
+   (`orderedPosts` in every `App-*.jsx`) only ever holds one feed's posts at a time. But
+   `SurveyPreviewModal` deliberately aggregates *every* linked feed's posts together
+   (`Object.values(linkedFeedPostsMap).flat()`, so any reminder renders without needing a live
+   fetch) — reintroducing the exact collision the database fix was built to prevent, one layer up,
+   in a brand-new client-side consumer nothing else in the codebase has. **Fixed entirely within
+   `components-admin-survey-preview.jsx`** — no changes to the survey engine or database: new
+   `withResolvedReminderSnapshots()` walks the materialized pages and, for every `post_reminder`
+   question, resolves its specific post by the *pair* `(post_feed_id, post_id)` and injects it as
+   `question.meta.post_snapshot`, which `getQuestionReminderPost` already checks *before* ever
+   falling back to the ambiguous flattened array. **Verified** by rebuilding the exact real 6-group/
+   3-page/shared-post_id structure and confirming all six groups now resolve to their own correct,
+   distinct post variant. **Audited the rest of the codebase for the same bug class, per direct
+   follow-up question** — grepped for the specific pattern that caused it (combining multiple
+   feeds' posts into one array before matching by bare id). Confirmed it exists **only** in
+   `SurveyPreviewModal`; every other post-lookup path already requires `(feed_id, post_id)` together
+   (`loadPostByIdFromBackend`/`supabaseLoadPostById`, fixed during the original collision incident)
+   or only ever has one feed's posts in scope at a time in real delivery. No further changes needed
+   anywhere else.
+
+**Known, accepted limitations, not addressed (flagged in the plan, not silently dropped)**: no
+flags on/off toggle for previewing post-reminder randomization (defaults all-false, deterministic);
+can't replay a *specific* real participant's actual randomized avatar/image snapshot (would need
+that session's own `getDisplayedPostSnapshot` localStorage entry, meaningless for a synthetic
+preview session); a `post_reminder` question renders through whichever platform's `PostCard` the
+currently-loaded admin bundle resolves, which may not exactly match delivery for a survey linked to
+feeds across multiple platforms.
+
+**Verification approach and its real limit**: every behavior above — `visible_if` live-updating,
+block- and question-level group gating, group-varied feed sequences, page randomization + reshuffle
+(stable by default, changes on demand), zero-network-call submission safety (confirmed via a
+`fetch` spy), empty/loading states, both bugfixes — was exercised against the real running dev
+server (`npm run dev`, confirmed working in this environment) via direct component mounts
+(cache-busted dynamic imports into a scratch `.admin-shell` node, fabricated data for most cases and
+the real pulled survey data for the collision bug specifically). **Not verified: an actual
+click-through by a real logged-in admin** — same standing limitation as everywhere else in this
+file. Nothing above was driven through the real rendered `/admin/*` UI end to end.
+
+**Git/deploy status at session end**: `main` and `origin/main` in sync at
+`dc5d057 Update components-admin-survey-preview.jsx` (the collision fix, stacked on
+`1117f6a survey preview changes` [scroll fix] on `f2a63a1 survey preview` [original feature], on top
+of `de4cfc8 survey editor redesign`) — pushed by the user's own GitHub Desktop app after this
+session, confirmed via the public GitHub API, not pushed by Claude (no push credentials in this
+sandbox, same as always). `staging.studyfeed.org`'s GitHub Actions deploy
+(`.github/workflows/deploy-staging.yml`) confirmed built and deployed `dc5d057` successfully — the
+full feature, both fixes included, is live on staging. **`production`/`studyfeed.org` is 3 commits
+behind `main`** (`git log production..main`: `f2a63a1`/`1117f6a`/`dc5d057`) — this entire feature is
+**not live on the real site yet**; shipping it needs the same deliberate `production` ← merge
+`main` → push promotion documented in this file's own "Deployment" section, which nothing in this
+session did automatically.
+
+## Session handoff (2026-08-05, later session — survey preview feature) — read this first if picking up fresh
+
+**Survey preview feature is implemented, twice-bugfixed, and live on staging — but not yet on
+production.** If continuing this specific thread, the two concrete next steps, in order of value:
+
+1. **A real click-through on `staging.studyfeed.org`** with a real admin login — every verification
+   this session did was via direct component mounts with fabricated (or real-but-manually-pulled)
+   data, never by actually clicking the "Preview" button inside the real running admin editor.
+   Staging now has real content and no participant-data risk, making it the lowest-risk place to
+   close that gap (same opportunity flagged, but not acted on, at the end of the prior session's own
+   handoff above).
+2. **Promote to production**, if the feature is wanted live on `studyfeed.org` — `main` is 3 commits
+   ahead of `production` right now (see the git/deploy status just above). Not done automatically;
+   needs the explicit merge-and-push step this repo has always required for production releases.
+
+**The debugging pattern worth remembering from this session, if a future "the preview doesn't match
+real delivery" report comes in again**: fabricated test data can pass every check while a real
+survey still fails, if the real survey has a data shape Claude didn't think to fabricate (here: two
+post_reminder questions sharing one bare `post_id` across different feeds). When isolated
+reproduction attempts keep passing but a user's real report keeps failing, pulling the actual
+real data directly (read-only, anon-key, no login needed — same technique used here against the
+`studyfeed-staging` Supabase project) is far more productive than continuing to guess at more
+synthetic variations.
+
+**Other open threads, still not picked up, carried forward from the prior session's own handoff**:
+an admin audit/activity log, and Amazon reviews never rendering their configured images. Neither was
+touched this session either.
