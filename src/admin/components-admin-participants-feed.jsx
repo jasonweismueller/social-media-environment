@@ -1,6 +1,5 @@
 /// components-admin-participants-feed.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   loadParticipantsRoster,
   summarizeRoster,
@@ -14,7 +13,7 @@ import {
   wipeParticipantsOnBackend,
   median,
 } from "../utils";
-import { PageHeader, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Modal, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : elseRender ?? null;
@@ -1007,11 +1006,18 @@ function IntegerField({ value, onChange, style, title }) {
 /* --------------------------- stat card ----------------------------- */
 export function StatCard({ title, value, sub, compact = false }) {
   return (
-    <div className="card" style={{ padding: compact ? ".5rem .75rem" : ".75rem 1rem" }}>
-      <div style={{ fontSize: compact ? ".75rem" : ".8rem", color: "#6b7280" }}>{title}</div>
-      <div style={{ fontSize: compact ? "1.1rem" : "1.25rem", fontWeight: 700 }}>{value}</div>
+    <div
+      style={{
+        padding: compact ? "10px 12px" : "12px 14px",
+        borderRadius: "var(--admin-radius-md, 10px)",
+        border: "1px solid var(--admin-border-subtle)",
+        background: "var(--admin-surface)",
+      }}
+    >
+      <div style={{ fontSize: compact ? 11 : 12, color: "var(--admin-muted)" }}>{title}</div>
+      <div style={{ fontSize: compact ? 17 : 19, fontWeight: 700, color: "var(--admin-text)" }}>{value}</div>
       {sub ? (
-        <div style={{ fontSize: compact ? ".75rem" : ".8rem", color: "#6b7280", marginTop: 4 }}>
+        <div style={{ fontSize: compact ? 11 : 12, color: "var(--admin-muted)", marginTop: 4 }}>
           {sub}
         </div>
       ) : null}
@@ -1025,80 +1031,67 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
   const perPost = submission?.perPost || [];
   const showSavedCol = isIGApp();
 
-  return createPortal(
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal modal-wide">
-        <div className="modal-head">
-          <h3 style={{ margin: 0, fontWeight: 600 }}>Submission Details</h3>
-          <button className="dots" aria-label="Close" onClick={onClose}>×</button>
-        </div>
+  return (
+    <Modal
+      title="Submission details"
+      subtitle={
+        <>
+          <span>{submission?.participant_id || "—"}</span>
+          <span className="subtle"> · </span>
+          <span style={{ fontFamily: "monospace" }}>{submission?.session_id || "—"}</span>
+          <span className="subtle"> · {submission?.submitted_at_iso || "—"}</span>
+          <span className="subtle"> · {ms(submission?.ms_enter_to_submit)} to submit</span>
+        </>
+      }
+      onClose={onClose}
+      width={860}
+      footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+    >
+      {perPost.length === 0 ? (
+        <EmptyState compact icon={IconNote} title="No per-post data" message="No per-post interaction fields were found for this submission." />
+      ) : (
+        <Table>
+          <thead>
+            <tr>
+              <Th>Post ID</Th>
+              <Th>Name</Th>
+              <Th style={{ textAlign: "center" }}>Reacted</Th>
+              <Th style={{ textAlign: "center" }}>Expandable</Th>
+              <Th style={{ textAlign: "center" }}>Expanded</Th>
+              <Th style={{ textAlign: "center" }}>Commented</Th>
+              {showSavedCol && <Th style={{ textAlign: "center" }}>Saved</Th>}
+              <Th style={{ textAlign: "center" }}>Shared</Th>
+              <Th style={{ textAlign: "center" }}>Reported</Th>
+              <Th style={{ textAlign: "right" }}>Dwell (s)</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {perPost.map((p) => {
+              const dwellSeconds = Number.isFinite(p?.dwell_s)
+                ? Number(p.dwell_s)
+                : Number.isFinite(p?.dwell_ms)
+                  ? Number(p.dwell_ms) / 1000
+                  : 0;
 
-        <div className="modal-body">
-          <div className="subtle" style={{ marginBottom: ".5rem" }}>
-            <div><strong>Participant:</strong> {submission?.participant_id || "—"}</div>
-            <div><strong>Session:</strong> <span style={{ fontFamily: "monospace" }}>{submission?.session_id || "—"}</span></div>
-            <div><strong>Submitted At:</strong> {submission?.submitted_at_iso || "—"}</div>
-            <div><strong>Time to submit:</strong> {ms(submission?.ms_enter_to_submit)}</div>
-          </div>
-
-          {perPost.length === 0 ? (
-            <div className="card" style={{ padding: "1rem" }}>
-              No per-post interaction fields found for this submission.
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".9rem" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                    <th style={{ textAlign: "left", padding: ".4rem .25rem" }}>Post ID</th>
-                    <th style={{ textAlign: "left", padding: ".4rem .25rem" }}>Name</th>
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Reacted</th>
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expandable</th>
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Expanded</th>
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Commented</th>
-                    {showSavedCol && <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Saved</th>}
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Shared</th>
-                    <th style={{ textAlign: "center", padding: ".4rem .25rem" }}>Reported</th>
-                    <th style={{ textAlign: "right", padding: ".4rem .25rem" }}>Dwell (s)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perPost.map((p) => {
-                    const dwellSeconds = Number.isFinite(p?.dwell_s)
-                      ? Number(p.dwell_s)
-                      : Number.isFinite(p?.dwell_ms)
-                        ? Number(p.dwell_ms) / 1000
-                        : 0;
-
-                    return (
-                      <tr key={p.post_id} style={{ borderBottom: "1px solid var(--line)" }}>
-                        <td style={{ padding: ".35rem .25rem", fontFamily: "monospace" }}>{p.post_id}</td>
-                        <td style={{ padding: ".35rem .25rem" }}>{p.name || "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reacted ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expandable ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.expanded ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.commented ? "✓" : "—"}</td>
-                        {showSavedCol && (
-                          <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.saved ? "✓" : "—"}</td>
-                        )}
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.shared ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "center" }}>{p.reported ? "✓" : "—"}</td>
-                        <td style={{ padding: ".35rem .25rem", textAlign: "right" }}>{sShort(dwellSeconds)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <div className="modal-footer">
-          <Button variant="secondary" onClick={onClose}>Close</Button>
-        </div>
-      </div>
-    </div>,
-    document.body
+              return (
+                <tr key={p.post_id}>
+                  <Td style={{ fontFamily: "monospace" }}>{p.post_id}</Td>
+                  <Td>{p.name || "—"}</Td>
+                  <Td style={{ textAlign: "center" }}>{p.reacted ? "✓" : "—"}</Td>
+                  <Td style={{ textAlign: "center" }}>{p.expandable ? "✓" : "—"}</Td>
+                  <Td style={{ textAlign: "center" }}>{p.expanded ? "✓" : "—"}</Td>
+                  <Td style={{ textAlign: "center" }}>{p.commented ? "✓" : "—"}</Td>
+                  {showSavedCol && <Td style={{ textAlign: "center" }}>{p.saved ? "✓" : "—"}</Td>}
+                  <Td style={{ textAlign: "center" }}>{p.shared ? "✓" : "—"}</Td>
+                  <Td style={{ textAlign: "center" }}>{p.reported ? "✓" : "—"}</Td>
+                  <Td style={{ textAlign: "right" }}>{sShort(dwellSeconds)}</Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      )}
+    </Modal>
   );
 }
 
@@ -1117,10 +1110,6 @@ export function FeedParticipantsPage({
   const IG = isIGApp();
   const AMZ = isAmazonApp();
   const sourceKey = feedId || "noid";
-  // This page is always full-density (not embedded compact elsewhere like
-  // the old shared panel was) — keeping this constant lets the existing
-  // spacing/font-size ternaries below stay untouched.
-  const compact = false;
 
   const [rows, setRows] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -1146,6 +1135,10 @@ export function FeedParticipantsPage({
   const [usingSimulated, setUsingSimulated] = useState(false);
 
   const [simMode, setSimMode] = useState("random");
+  // Its own section, collapsed by default — this is a testing/dev tool, not
+  // part of the everyday "check on my study" workflow the rest of the page
+  // serves, so it shouldn't compete for attention with real data.
+  const [simOpen, setSimOpen] = useState(false);
 
   const [simConfig, setSimConfig] = useState(() => ({
     ...DEFAULT_SIM_CONFIG,
@@ -1395,12 +1388,17 @@ export function FeedParticipantsPage({
       .map(([day, count]) => ({ day, count }));
   }, [effectiveRows]);
 
-  const padCell = compact ? ".3rem .25rem" : ".4rem .25rem";
-  const fsTable = compact ? ".85rem" : ".9rem";
-  const wrapperPad = compact ? ".75rem 1rem" : "1rem";
-  const headerGap = compact ? ".35rem" : ".5rem";
-  const statsGap = compact ? ".4rem" : ".5rem";
-  const inputStyle = { width: "100%" };
+  const inputStyle = {
+    width: "100%",
+    height: 32,
+    padding: "0 8px",
+    borderRadius: 8,
+    border: "1px solid var(--admin-border-subtle)",
+    background: "var(--admin-surface)",
+    color: "var(--admin-text)",
+    fontSize: 13,
+  };
+  const selectStyle = { ...inputStyle, width: "auto" };
 
   const updateControlled = (key, value) => {
     setSimConfig((prev) => ({
@@ -1646,487 +1644,495 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
           </>
         }
         actions={
-          <RoleGate min="owner">
+          <>
+            <Button size="sm" variant="secondary" onClick={() => refresh(false)}>
+              Refresh
+            </Button>
+
             <Button
               size="sm"
-              variant="danger"
-              disabled={!feedId}
-              title="Delete the participants sheet for this feed (cannot be undone)"
-              onClick={async () => {
-                if (!feedId) return;
-                const okGo = await confirm({
-                  title: "Wipe all participants?",
-                  message: `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`,
-                  danger: true,
-                  confirmLabel: "Wipe",
-                });
-                if (!okGo) return;
-                const ok = await wipeParticipantsOnBackend(feedId, { projectId });
-                if (ok) {
-                  await refresh(false);
-                  toast.success("Participants wiped.");
-                } else {
-                  toast.error("Failed to wipe participants. Please re-login and try again.");
-                  onLogout?.();
-                }
-              }}
+              variant={liveOn ? "primary" : "secondary"}
+              onClick={() => setLiveOn((v) => !v)}
+              disabled={usingSimulated || !feedId}
+              title={usingSimulated ? "Not available while viewing simulated data" : "Auto-refresh this page every 20s"}
             >
-              Wipe
+              {liveOn ? "● Live" : "Go live"}
             </Button>
-          </RoleGate>
+
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={downloadCsv}
+              disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
+              title="Download this feed's participant/behavioural data"
+            >
+              Download Feed CSV
+            </Button>
+
+            <RoleGate min="owner">
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={!feedId}
+                title="Delete the participants sheet for this feed (cannot be undone)"
+                onClick={async () => {
+                  if (!feedId) return;
+                  const okGo = await confirm({
+                    title: "Wipe all participants?",
+                    message: `Wipe ALL participants for feed "${feedName || feedId}"?\n\nThis deletes the sheet and cannot be undone.`,
+                    danger: true,
+                    confirmLabel: "Wipe",
+                  });
+                  if (!okGo) return;
+                  const ok = await wipeParticipantsOnBackend(feedId, { projectId });
+                  if (ok) {
+                    await refresh(false);
+                    toast.success("Participants wiped.");
+                  } else {
+                    toast.error("Failed to wipe participants. Please re-login and try again.");
+                    onLogout?.();
+                  }
+                }}
+              >
+                Wipe
+              </Button>
+            </RoleGate>
+          </>
         }
       />
 
-    <div className="card" style={{ padding: wrapperPad }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: headerGap, flexWrap: "wrap" }}>
-        <h4 style={{ margin: 0, fontSize: compact ? "1rem" : "1.05rem" }}>
-          Feed engagement
-          <span className="subtle"> · {APP} · {projectId || "global"}</span>
-        </h4>
-
-        <div style={{ display: "flex", gap: headerGap, flexWrap: "wrap", alignItems: "center" }}>
-          <Button
-            variant="secondary"
-            onClick={() => refresh(false)}
-            style={{ padding: compact ? ".25rem .6rem" : undefined }}
-          >
-            Refresh
-          </Button>
-
-          <Button
-            variant={liveOn ? "primary" : "secondary"}
-            onClick={() => setLiveOn((v) => !v)}
-            disabled={usingSimulated || !feedId}
-            title={usingSimulated ? "Not available while viewing simulated data" : "Auto-refresh this page every 20s"}
-            style={{ padding: compact ? ".25rem .6rem" : undefined }}
-          >
-            {liveOn ? "● Live" : "Go live"}
-          </Button>
-
-          {liveOn && (
-            <span className="subtle" style={{ fontSize: ".78rem" }}>
-              {lastRefreshedAt ? `Updated ${formatSecondsAgo(Date.now() - lastRefreshedAt)}` : "Updating…"}
-            </span>
-          )}
-
-          <select
-            value={simMode}
-            onChange={(e) => setSimMode(e.target.value)}
-            style={{
-              padding: compact ? ".25rem .45rem" : ".35rem .55rem",
-              border: "1px solid var(--line)",
-              borderRadius: 8,
-              fontSize: compact ? ".85rem" : ".9rem",
-              background: "var(--card, white)",
-            }}
-            title="Simulation mode"
-          >
-            <option value="random">Random</option>
-            <option value="controlled">Controlled</option>
-          </select>
-
-          <IntegerField
-            value={simCount}
-            onChange={setSimCount}
-            style={{
-              width: 86,
-              padding: compact ? ".25rem .45rem" : ".35rem .55rem",
-              border: "1px solid var(--line)",
-              borderRadius: 8,
-              fontSize: compact ? ".85rem" : ".9rem",
-            }}
-            title="Number of simulated participants"
-          />
-
-          <Button
-            variant="secondary"
-            onClick={runSimulation}
-            style={{ padding: compact ? ".25rem .6rem" : undefined }}
-          >
-            Simulate
-          </Button>
-
-          {usingSimulated && (
-            <Button
-              variant="ghost"
-              onClick={clearSimulation}
-              style={{ padding: compact ? ".25rem .6rem" : undefined }}
-            >
-              Clear simulation
-            </Button>
-          )}
-
-          <Button
-            variant="secondary"
-            onClick={downloadCsv}
-            disabled={!feedId || (!usingSimulated && !rows?.length) || (usingSimulated && !effectiveRows?.length)}
-            style={{ padding: compact ? ".25rem .6rem" : undefined }}
-            title="Download this feed's participant/behavioural data"
-          >
-            Download Feed CSV
-          </Button>
+      {liveOn && (
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 12 }}>
+          {lastRefreshedAt ? `Updated ${formatSecondsAgo(Date.now() - lastRefreshedAt)}` : "Updating…"}
         </div>
-      </div>
+      )}
 
-      {simMode === "controlled" && (
-        <div
-          className="card"
-          style={{
-            marginTop: ".6rem",
-            padding: ".75rem",
-            border: "1px solid var(--line)",
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: ".5rem" }}>Controlled simulation settings</div>
-          <div className="subtle" style={{ marginBottom: ".6rem" }}>
-            Controlled mode uses exact whole-person counts based on your sample size. Mixes are kept at 100%.
+      <Card
+        title="Feed engagement"
+        subtitle={`${APP} · ${projectId || "global"}${usingSimulated ? " · viewing simulated data" : ""}`}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+          <StatCard title="Total" value={nfCompact.format(summary?.counts?.total ?? (effectiveRows?.length || 0))} />
+          <StatCard title="Completed" value={nfCompact.format(summary?.counts?.completed ?? 0)} sub={`${(((summary?.counts?.completionRate ?? 0) * 100).toFixed(1))}% completion`} />
+          <StatCard title="Avg time to submit" value={ms(summary?.timing?.avgEnterToSubmit)} />
+          <StatCard title="Median time to submit" value={ms(summary?.timing?.medEnterToSubmit)} />
+          <StatCard title="Avg last interaction" value={ms(summary?.timing?.avgEnterToLastInteraction)} />
+          <StatCard title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
+        </div>
+
+        {submissionsByDay.length > 1 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--admin-text)" }}>
+              Submissions over time
+            </div>
+            <SubmissionsTimeChart data={submissionsByDay} />
           </div>
+        )}
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-              gap: ".5rem .75rem",
-            }}
-          >
-            <PercentField label="Reacted %" value={simConfig.controlled.reactedRate} onChange={(v) => updateControlled("reactedRate", v)} style={inputStyle} />
-
-            {caps.hasExpandable && (
-              <PercentField label="Expanded %" value={simConfig.controlled.expandedRate} onChange={(v) => updateControlled("expandedRate", v)} style={inputStyle} />
-            )}
-
-            <PercentField label="Commented %" value={simConfig.controlled.commentedRate} onChange={(v) => updateControlled("commentedRate", v)} style={inputStyle} />
-
-            {caps.hasSaved && (
-              <PercentField label="Saved %" value={simConfig.controlled.savedRate} onChange={(v) => updateControlled("savedRate", v)} style={inputStyle} />
-            )}
-
-            {caps.hasShare && (
-              <PercentField label="Shared %" value={simConfig.controlled.sharedRate} onChange={(v) => updateControlled("sharedRate", v)} style={inputStyle} />
-            )}
-
-            <PercentField label="Reported %" value={simConfig.controlled.reportedRate} onChange={(v) => updateControlled("reportedRate", v)} style={inputStyle} />
-
-            {caps.hasCta && (
-              <PercentField label="CTA clicked %" value={simConfig.controlled.ctaClickedRate} onChange={(v) => updateControlled("ctaClickedRate", v)} style={inputStyle} />
-            )}
-
-            {caps.hasBio && (
-              <>
-                <PercentField label="Bio opened %" value={simConfig.controlled.bioOpenedRate} onChange={(v) => updateControlled("bioOpenedRate", v)} style={inputStyle} />
-                <PercentField label="Bio URL clicked %" value={simConfig.controlled.bioUrlClickedRate} onChange={(v) => updateControlled("bioUrlClickedRate", v)} style={inputStyle} />
-              </>
-            )}
-
-            {caps.hasMention && (
-              <PercentField label="Mention clicked %" value={simConfig.controlled.mentionClickedRate} onChange={(v) => updateControlled("mentionClickedRate", v)} style={inputStyle} />
-            )}
-
-            {caps.hasNote && (
-              <>
-                <PercentField label="Note opened %" value={simConfig.controlled.noteOpenedRate} onChange={(v) => updateControlled("noteOpenedRate", v)} style={inputStyle} />
-                <PercentField label="Note details %" value={simConfig.controlled.noteViewDetailsRate} onChange={(v) => updateControlled("noteViewDetailsRate", v)} style={inputStyle} />
-                <PercentField label="Note link clicked %" value={simConfig.controlled.noteLinkClickedRate} onChange={(v) => updateControlled("noteLinkClickedRate", v)} style={inputStyle} />
-                <PercentField label="Note helpful rated %" value={simConfig.controlled.noteHelpfulRatedRate} onChange={(v) => updateControlled("noteHelpfulRatedRate", v)} style={inputStyle} />
-              </>
-            )}
+        {engagementChartData.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: "var(--admin-text)" }}>
+              Engagement by post
+            </div>
+            <EngagementBarChart data={engagementChartData} />
           </div>
+        )}
+      </Card>
 
-          <div style={{ marginTop: ".75rem", fontWeight: 600 }}>
-            Reaction mix <span className="subtle">({Object.values(simConfig.controlled.reactionMix).reduce((a, b) => a + (Number(b) || 0), 0)} total)</span>
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
-              gap: ".5rem",
-              marginTop: ".35rem",
-            }}
-          >
-            {REACTION_KEYS.map((k) => (
-              <MixField
-                key={k}
-                label={k}
-                value={Number(simConfig.controlled.reactionMix[k] || 0)}
-                onChange={(v) => updateControlledMix("reactionMix", k, v)}
-                style={inputStyle}
-              />
-            ))}
-          </div>
+      <Card
+        title="Simulate participants"
+        subtitle="Generate fake rows for testing charts and CSV exports — never mixed into real data"
+        style={{ marginTop: 16 }}
+        actions={
+          <Button size="sm" variant="ghost" onClick={() => setSimOpen((v) => !v)}>
+            {simOpen ? "Hide" : "Show"}
+          </Button>
+        }
+      >
+        {simOpen ? (
+          <>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--admin-muted)" }}>
+                Mode
+                <select
+                  value={simMode}
+                  onChange={(e) => setSimMode(e.target.value)}
+                  style={selectStyle}
+                  title="Simulation mode"
+                >
+                  <option value="random">Random</option>
+                  <option value="controlled">Controlled</option>
+                </select>
+              </label>
 
-          {caps.hasNote && (
-            <>
-              <div style={{ marginTop: ".75rem", fontWeight: 600 }}>
-                Note helpful mix <span className="subtle">({Object.values(simConfig.controlled.noteHelpfulMix).reduce((a, b) => a + (Number(b) || 0), 0)} total)</span>
-              </div>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--admin-muted)" }}>
+                Participants
+                <IntegerField
+                  value={simCount}
+                  onChange={setSimCount}
+                  style={{ ...inputStyle, width: 86 }}
+                  title="Number of simulated participants"
+                />
+              </label>
+
+              <Button variant="secondary" onClick={runSimulation}>
+                Simulate
+              </Button>
+
+              {usingSimulated && (
+                <Button variant="ghost" onClick={clearSimulation}>
+                  Clear simulation
+                </Button>
+              )}
+            </div>
+
+            {simMode === "controlled" && (
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                  gap: ".5rem",
-                  marginTop: ".35rem",
+                  marginTop: 14,
+                  padding: 14,
+                  borderRadius: "var(--admin-radius-md, 10px)",
+                  border: "1px solid var(--admin-border-subtle)",
+                  background: "var(--admin-surface-alt)",
                 }}
               >
-                {NOTE_HELPFUL_KEYS.map((k) => (
-                  <MixField
-                    key={k}
-                    label={k}
-                    value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
-                    onChange={(v) => updateControlledMix("noteHelpfulMix", k, v)}
-                    style={inputStyle}
-                  />
-                ))}
+                <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 13, color: "var(--admin-text)" }}>
+                  Controlled simulation settings
+                </div>
+                <div className="subtle" style={{ marginBottom: 12, fontSize: 12 }}>
+                  Controlled mode uses exact whole-person counts based on your sample size. Mixes are kept at 100%.
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                    gap: "10px 12px",
+                  }}
+                >
+                  <PercentField label="Reacted %" value={simConfig.controlled.reactedRate} onChange={(v) => updateControlled("reactedRate", v)} style={inputStyle} />
+
+                  {caps.hasExpandable && (
+                    <PercentField label="Expanded %" value={simConfig.controlled.expandedRate} onChange={(v) => updateControlled("expandedRate", v)} style={inputStyle} />
+                  )}
+
+                  <PercentField label="Commented %" value={simConfig.controlled.commentedRate} onChange={(v) => updateControlled("commentedRate", v)} style={inputStyle} />
+
+                  {caps.hasSaved && (
+                    <PercentField label="Saved %" value={simConfig.controlled.savedRate} onChange={(v) => updateControlled("savedRate", v)} style={inputStyle} />
+                  )}
+
+                  {caps.hasShare && (
+                    <PercentField label="Shared %" value={simConfig.controlled.sharedRate} onChange={(v) => updateControlled("sharedRate", v)} style={inputStyle} />
+                  )}
+
+                  <PercentField label="Reported %" value={simConfig.controlled.reportedRate} onChange={(v) => updateControlled("reportedRate", v)} style={inputStyle} />
+
+                  {caps.hasCta && (
+                    <PercentField label="CTA clicked %" value={simConfig.controlled.ctaClickedRate} onChange={(v) => updateControlled("ctaClickedRate", v)} style={inputStyle} />
+                  )}
+
+                  {caps.hasBio && (
+                    <>
+                      <PercentField label="Bio opened %" value={simConfig.controlled.bioOpenedRate} onChange={(v) => updateControlled("bioOpenedRate", v)} style={inputStyle} />
+                      <PercentField label="Bio URL clicked %" value={simConfig.controlled.bioUrlClickedRate} onChange={(v) => updateControlled("bioUrlClickedRate", v)} style={inputStyle} />
+                    </>
+                  )}
+
+                  {caps.hasMention && (
+                    <PercentField label="Mention clicked %" value={simConfig.controlled.mentionClickedRate} onChange={(v) => updateControlled("mentionClickedRate", v)} style={inputStyle} />
+                  )}
+
+                  {caps.hasNote && (
+                    <>
+                      <PercentField label="Note opened %" value={simConfig.controlled.noteOpenedRate} onChange={(v) => updateControlled("noteOpenedRate", v)} style={inputStyle} />
+                      <PercentField label="Note details %" value={simConfig.controlled.noteViewDetailsRate} onChange={(v) => updateControlled("noteViewDetailsRate", v)} style={inputStyle} />
+                      <PercentField label="Note link clicked %" value={simConfig.controlled.noteLinkClickedRate} onChange={(v) => updateControlled("noteLinkClickedRate", v)} style={inputStyle} />
+                      <PercentField label="Note helpful rated %" value={simConfig.controlled.noteHelpfulRatedRate} onChange={(v) => updateControlled("noteHelpfulRatedRate", v)} style={inputStyle} />
+                    </>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13, color: "var(--admin-text)" }}>
+                  Reaction mix <span className="subtle" style={{ fontWeight: 400 }}>({Object.values(simConfig.controlled.reactionMix).reduce((a, b) => a + (Number(b) || 0), 0)} total)</span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+                    gap: 10,
+                    marginTop: 6,
+                  }}
+                >
+                  {REACTION_KEYS.map((k) => (
+                    <MixField
+                      key={k}
+                      label={k}
+                      value={Number(simConfig.controlled.reactionMix[k] || 0)}
+                      onChange={(v) => updateControlledMix("reactionMix", k, v)}
+                      style={inputStyle}
+                    />
+                  ))}
+                </div>
+
+                {caps.hasNote && (
+                  <>
+                    <div style={{ marginTop: 14, fontWeight: 700, fontSize: 13, color: "var(--admin-text)" }}>
+                      Note helpful mix <span className="subtle" style={{ fontWeight: 400 }}>({Object.values(simConfig.controlled.noteHelpfulMix).reduce((a, b) => a + (Number(b) || 0), 0)} total)</span>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                        gap: 10,
+                        marginTop: 6,
+                      }}
+                    >
+                      {NOTE_HELPFUL_KEYS.map((k) => (
+                        <MixField
+                          key={k}
+                          label={k}
+                          value={Number(simConfig.controlled.noteHelpfulMix[k] || 0)}
+                          onChange={(v) => updateControlledMix("noteHelpfulMix", k, v)}
+                          style={inputStyle}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-            </>
-          )}
-        </div>
-      )}
+            )}
 
-      {usingSimulated && (
-        <div className="subtle" style={{ marginTop: ".5rem", fontSize: compact ? ".78rem" : ".84rem" }}>
-          Currently viewing {effectiveRows.length} simulated rows.
-        </div>
-      )}
+            {usingSimulated && (
+              <div style={{ marginTop: 12, fontSize: 12, color: "var(--admin-muted)" }}>
+                Currently viewing {effectiveRows.length} simulated rows.
+              </div>
+            )}
+          </>
+        ) : (
+          usingSimulated && (
+            <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
+              Viewing {effectiveRows.length} simulated rows —{" "}
+              <button
+                type="button"
+                onClick={clearSimulation}
+                style={{ border: "none", background: "none", padding: 0, color: "var(--admin-accent)", cursor: "pointer", font: "inherit" }}
+              >
+                clear
+              </button>{" "}
+              to go back to real data.
+            </div>
+          )
+        )}
+      </Card>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-          gap: statsGap,
-          marginTop: compact ? ".5rem" : ".75rem",
-        }}
+      <Card
+        title="Per-post interactions"
+        style={{ marginTop: 16 }}
+        actions={
+          <Button size="sm" variant="ghost" onClick={() => setShowPerPost((v) => !v)}>
+            {showPerPost ? "Hide" : "Show"}
+          </Button>
+        }
       >
-        <StatCard compact={compact} title="Total" value={nfCompact.format(summary?.counts?.total ?? (effectiveRows?.length || 0))} />
-        <StatCard compact={compact} title="Completed" value={nfCompact.format(summary?.counts?.completed ?? 0)} sub={`${(((summary?.counts?.completionRate ?? 0) * 100).toFixed(1))}% completion`} />
-        <StatCard compact={compact} title="Avg time to submit" value={ms(summary?.timing?.avgEnterToSubmit)} />
-        <StatCard compact={compact} title="Median time to submit" value={ms(summary?.timing?.medEnterToSubmit)} />
-        <StatCard compact={compact} title="Avg last interaction" value={ms(summary?.timing?.avgEnterToLastInteraction)} />
-        <StatCard compact={compact} title="Median last interaction" value={ms(summary?.timing?.medEnterToLastInteraction)} />
-      </div>
-
-      {submissionsByDay.length > 1 && (
-        <div style={{ marginTop: "1rem" }}>
-          <h5 style={{ margin: "0 0 .35rem", fontSize: "1rem" }}>Submissions over time</h5>
-          <SubmissionsTimeChart data={submissionsByDay} />
-        </div>
-      )}
-
-      {engagementChartData.length > 0 && (
-        <div style={{ marginTop: "1rem" }}>
-          <h5 style={{ margin: "0 0 .35rem", fontSize: "1rem" }}>Engagement by post</h5>
-          <EngagementBarChart data={engagementChartData} />
-        </div>
-      )}
-
-      <div style={{ marginTop: compact ? ".6rem" : "1rem" }}>
-        <Button
-          variant="ghost"
-          onClick={() => setShowPerPost((v) => !v)}
-          style={{ padding: compact ? ".25rem .6rem" : undefined }}
-        >
-          {showPerPost ? "Hide per-post interactions" : "Show per-post interactions"}
-        </Button>
-      </div>
-
-      {showPerPost && perPostList.length > 0 && (
-        <div style={{ marginTop: ".5rem", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: fsTable }}>
+        {!showPerPost ? (
+          <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
+            Hidden — click Show for the reacted/expanded/commented/etc. breakdown per post.
+          </div>
+        ) : perPostList.length === 0 ? (
+          <EmptyState compact icon={IconNote} title="No data yet" message="Per-post interaction totals will appear here once there are submissions." />
+        ) : (
+          <Table>
             <thead>
-              <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th style={{ textAlign: "left", padding: padCell }}>Post ID</th>
-                <th style={{ textAlign: "left", padding: padCell }}>Name</th>
+              <tr>
+                <Th>Post ID</Th>
+                <Th>Name</Th>
                 {AMZ ? (
                   <>
-                    <th style={{ textAlign: "right", padding: padCell }}>Helpful</th>
-                    <th style={{ textAlign: "right", padding: padCell }}>Read more</th>
-                    <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
+                    <Th style={{ textAlign: "right" }}>Helpful</Th>
+                    <Th style={{ textAlign: "right" }}>Read more</Th>
+                    <Th style={{ textAlign: "right" }}>Reported</Th>
                   </>
                 ) : (
                   <>
-                    <th style={{ textAlign: "right", padding: padCell }}>Reacted</th>
-                    <th style={{ textAlign: "right", padding: padCell }}>Expandable</th>
-                    <th style={{ textAlign: "right", padding: padCell }}>Expanded</th>
-                    <th style={{ textAlign: "right", padding: padCell }}>Commented</th>
-                    {IG && <th style={{ textAlign: "right", padding: padCell }}>Saved</th>}
-                    <th style={{ textAlign: "right", padding: padCell }}>Shared</th>
-                    <th style={{ textAlign: "right", padding: padCell }}>Reported</th>
+                    <Th style={{ textAlign: "right" }}>Reacted</Th>
+                    <Th style={{ textAlign: "right" }}>Expandable</Th>
+                    <Th style={{ textAlign: "right" }}>Expanded</Th>
+                    <Th style={{ textAlign: "right" }}>Commented</Th>
+                    {IG && <Th style={{ textAlign: "right" }}>Saved</Th>}
+                    <Th style={{ textAlign: "right" }}>Shared</Th>
+                    <Th style={{ textAlign: "right" }}>Reported</Th>
                   </>
                 )}
-                <th style={{ textAlign: "right", padding: padCell }}>Avg dwell (s)</th>
+                <Th style={{ textAlign: "right" }}>Avg dwell (s)</Th>
               </tr>
             </thead>
             <tbody>
               {perPostList.map((p) => (
-                <tr key={p.id} style={{ borderBottom: "1px solid var(--line)" }}>
-                  <td style={{ padding: padCell, fontFamily: "monospace" }}>{p.id}</td>
-                  <td style={{ padding: padCell }}>{p.name || "—"}</td>
+                <tr key={p.id}>
+                  <Td style={{ fontFamily: "monospace" }}>{p.id}</Td>
+                  <Td>{p.name || "—"}</Td>
                   {AMZ ? (
                     <>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reviewHelpful || 0)}</td>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reviewReadMore || 0)}</td>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reviewReported || p.reported || 0)}</td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reviewHelpful || 0)}</Td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reviewReadMore || 0)}</Td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reviewReported || p.reported || 0)}</Td>
                     </>
                   ) : (
                     <>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reacted)}</td>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expandable)}</td>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.expanded)}</td>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.commented)}</td>
-                      {IG && <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.saved)}</td>}
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.shared)}</td>
-                      <td style={{ padding: padCell, textAlign: "right" }}>{nfCompact.format(p.reported)}</td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reacted)}</Td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.expandable)}</Td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.expanded)}</Td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.commented)}</Td>
+                      {IG && <Td style={{ textAlign: "right" }}>{nfCompact.format(p.saved)}</Td>}
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.shared)}</Td>
+                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reported)}</Td>
                     </>
                   )}
-                  <td style={{ padding: padCell, textAlign: "right" }}>{sShort(p.avgDwellS)}</td>
+                  <Td style={{ textAlign: "right" }}>{sShort(p.avgDwellS)}</Td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
-      )}
+          </Table>
+        )}
+      </Card>
 
-      <h5 style={{ margin: compact ? ".75rem 0 .4rem" : "1rem 0 .5rem", fontSize: compact ? ".95rem" : "1rem" }}>
-        Latest submissions
-      </h5>
+      <Card title="Latest submissions" style={{ marginTop: 16 }}>
+        {visible.length === 0 ? (
+          <EmptyState compact icon={IconNote} title="No submissions yet" message="Real or simulated participant rows will appear here." />
+        ) : (
+          <>
+            <Table style={{ tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: "28%" }} />
+                <col style={{ width: "26%" }} />
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "14%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <Th>Participant</Th>
+                  <Th>Submitted At</Th>
+                  <Th style={{ textAlign: "right" }}>Time to Submit</Th>
+                  <Th>Flags</Th>
+                  <Th />
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((r) => (
+                  <tr key={r.session_id}>
+                    <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {r.participant_id || "—"}
+                    </Td>
+                    <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {r.submitted_at_iso || "—"}
+                    </Td>
+                    <Td style={{ textAlign: "right" }}>
+                      {ms(r.ms_enter_to_submit)}
+                    </Td>
+                    <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {(qualityFlagsBySession.get(r.session_id) || []).map((f) => (
+                        <span
+                          key={f.key}
+                          title={f.detail}
+                          style={{
+                            display: "inline-block",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "var(--admin-warning-ink, #b45309)",
+                            background: "var(--admin-warning-soft, #fef3c7)",
+                            border: "1px solid var(--admin-warning-border, #fde68a)",
+                            borderRadius: 999,
+                            padding: "1px 7px",
+                            marginRight: 4,
+                            cursor: "help",
+                          }}
+                        >
+                          {f.label}
+                        </span>
+                      ))}
+                    </Td>
+                    <Td style={{ textAlign: "right" }}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          try {
+                            const perPostHash = extractPerPostFromRosterRow(r) || {};
+                            const names = nameStore;
 
-      {visible.length === 0 ? (
-        <EmptyState compact icon={IconNote} title="No submissions yet" message="Real or simulated participant rows will appear here." />
-      ) : (
-        <>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: fsTable }}>
-            <colgroup>
-              <col style={{ width: "28%" }} />
-              <col style={{ width: "26%" }} />
-              <col style={{ width: "14%" }} />
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "14%" }} />
-            </colgroup>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                <th style={{ textAlign: "left", padding: padCell }}>Participant</th>
-                <th style={{ textAlign: "left", padding: padCell }}>Submitted At</th>
-                <th style={{ textAlign: "right", padding: padCell }}>Time to Submit</th>
-                <th style={{ textAlign: "left", padding: padCell }}>Flags</th>
-                <th style={{ textAlign: "right", padding: padCell }} />
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((r) => (
-                <tr key={r.session_id} style={{ borderBottom: "1px solid var(--line)" }}>
-                  <td style={{ padding: padCell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {r.participant_id || "—"}
-                  </td>
-                  <td style={{ padding: padCell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {r.submitted_at_iso || "—"}
-                  </td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>
-                    {ms(r.ms_enter_to_submit)}
-                  </td>
-                  <td style={{ padding: padCell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {(qualityFlagsBySession.get(r.session_id) || []).map((f) => (
-                      <span
-                        key={f.key}
-                        title={f.detail}
-                        style={{
-                          display: "inline-block",
-                          fontSize: ".72rem",
-                          fontWeight: 600,
-                          color: "#b45309",
-                          background: "#fef3c7",
-                          border: "1px solid #fde68a",
-                          borderRadius: 999,
-                          padding: "1px 7px",
-                          marginRight: 4,
-                          cursor: "help",
+                            const perPost = Object.entries(perPostHash).map(([post_id, rawAgg]) => {
+                              const agg = rawAgg || {};
+
+                              const dwell_s = Number.isFinite(agg.dwell_s)
+                                ? Number(agg.dwell_s)
+                                : Number.isFinite(agg.dwell_ms)
+                                  ? Number(agg.dwell_ms) / 1000
+                                  : 0;
+
+                              const rawComment = String(agg.comment_text || "").trim();
+                              const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
+
+                              return {
+                                post_id,
+                                name: names[post_id] || "",
+                                reacted: Number(agg.reacted) === 1,
+                                expandable: Number(agg.expandable) === 1,
+                                expanded: Number(agg.expanded) === 1,
+                                commented: Number(agg.commented) === 1 || hasRealComment,
+                                saved: IG ? Number(agg.saved) === 1 : false,
+                                shared: !!(
+                                  agg.shared ||
+                                  (
+                                    agg.share_target &&
+                                    String(agg.share_target).trim() &&
+                                    !String(agg.share_target).trim().startsWith("[Ljava.lang.Object;@")
+                                  )
+                                ),
+                                reported: Number(agg.reported) === 1,
+                                comment_text: rawComment,
+                                dwell_s,
+                              };
+                            });
+
+                            setDetailSubmission({
+                              session_id: r.session_id,
+                              participant_id: r.participant_id ?? null,
+                              submitted_at_iso: r.submitted_at_iso ?? null,
+                              ms_enter_to_submit: r.ms_enter_to_submit ?? null,
+                              perPost,
+                            });
+                            setDetailOpen(true);
+                          } catch (err) {
+                            console.error("Participant Details build failed:", err, r);
+                            toast.error("Failed to open details (see console).");
+                          }
                         }}
                       >
-                        {f.label}
-                      </span>
-                    ))}
-                  </td>
-                  <td style={{ padding: padCell, textAlign: "right" }}>
-                    <Button
-                      variant="ghost"
-                      style={{ padding: compact ? ".25rem .6rem" : undefined }}
-                      onClick={() => {
-                        try {
-                          const perPostHash = extractPerPostFromRosterRow(r) || {};
-                          const names = nameStore;
+                        Details
+                      </Button>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
 
-                          const perPost = Object.entries(perPostHash).map(([post_id, rawAgg]) => {
-                            const agg = rawAgg || {};
+            {visible.length < sorted.length && (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                <Button variant="secondary" onClick={() => setPageSize((s) => Math.min(s + 25, sorted.length))}>
+                  Show more
+                </Button>
+              </div>
+            )}
+          </>
+        )}
 
-                            const dwell_s = Number.isFinite(agg.dwell_s)
-                              ? Number(agg.dwell_s)
-                              : Number.isFinite(agg.dwell_ms)
-                                ? Number(agg.dwell_ms) / 1000
-                                : 0;
-
-                            const rawComment = String(agg.comment_text || "").trim();
-                            const hasRealComment = !!(rawComment && !/^[-—\s]+$/.test(rawComment));
-
-                            return {
-                              post_id,
-                              name: names[post_id] || "",
-                              reacted: Number(agg.reacted) === 1,
-                              expandable: Number(agg.expandable) === 1,
-                              expanded: Number(agg.expanded) === 1,
-                              commented: Number(agg.commented) === 1 || hasRealComment,
-                              saved: IG ? Number(agg.saved) === 1 : false,
-                              shared: !!(
-                                agg.shared ||
-                                (
-                                  agg.share_target &&
-                                  String(agg.share_target).trim() &&
-                                  !String(agg.share_target).trim().startsWith("[Ljava.lang.Object;@")
-                                )
-                              ),
-                              reported: Number(agg.reported) === 1,
-                              comment_text: rawComment,
-                              dwell_s,
-                            };
-                          });
-
-                          setDetailSubmission({
-                            session_id: r.session_id,
-                            participant_id: r.participant_id ?? null,
-                            submitted_at_iso: r.submitted_at_iso ?? null,
-                            ms_enter_to_submit: r.ms_enter_to_submit ?? null,
-                            perPost,
-                          });
-                          setDetailOpen(true);
-                        } catch (err) {
-                          console.error("Participant Details build failed:", err, r);
-                          toast.error("Failed to open details (see console).");
-                        }
-                      }}
-                    >
-                      Details
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {visible.length < sorted.length && (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: ".5rem" }}>
-              <Button
-                variant="secondary"
-                onClick={() => setPageSize((s) => Math.min(s + 25, sorted.length))}
-                style={{ padding: compact ? ".3rem .75rem" : undefined }}
-              >
-                Show more
-              </Button>
-            </div>
-          )}
-        </>
-      )}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: ".5rem" }}>
-        {error ? <div style={{ color: "crimson", fontSize: ".85rem" }}>{error}</div> : <span />}
-        {loading && !usingSimulated && <div className="subtle" style={{ fontSize: ".85rem" }}>Refreshing…</div>}
-      </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+          {error ? <div style={{ color: "var(--admin-danger-ink, crimson)", fontSize: 12 }}>{error}</div> : <span />}
+          {loading && !usingSimulated && <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>Refreshing…</div>}
+        </div>
+      </Card>
 
       <ParticipantDetailModal
         open={detailOpen}
@@ -2136,7 +2142,6 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
         }}
         submission={detailSubmission}
       />
-    </div>
     </>
   );
 }
