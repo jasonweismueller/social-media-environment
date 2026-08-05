@@ -125,6 +125,14 @@ function makeGroupId() {
 function MiniHistogram({ nums, binCount = 8, height = 56 }) {
   const bins = useMemo(() => histogramBins(nums, binCount), [nums, binCount]);
   if (!bins.length) return null;
+  if (bins.length === 1 && bins[0].noVariation) {
+    return (
+      <div className="subtle" style={{ fontSize: 12, height, display: "flex", alignItems: "center" }}>
+        No variation yet — every response so far is {bins[0].x0.toFixed(1)} ({bins[0].count}{" "}
+        response{bins[0].count === 1 ? "" : "s"}).
+      </div>
+    );
+  }
   const max = Math.max(...bins.map((b) => b.count), 1);
 
   return (
@@ -259,7 +267,7 @@ function DemographicsSection({ dataset, demographics }) {
                   <span>Mean <strong>{fmtNum(summary.mean)}</strong></span>
                   <span>SD <strong>{fmtNum(summary.sd)}</strong></span>
                   <span>Median <strong>{fmtNum(summary.median)}</strong></span>
-                  <span>Range <strong>{summary.min ?? "—"}–{summary.max ?? "—"}</strong></span>
+                  <span>Range <strong>{summary.min != null && summary.max != null ? `${summary.min}–${summary.max}` : "—"}</strong></span>
                 </div>
                 {summary.n > 1 && (
                   <div style={{ maxWidth: 360 }}>
@@ -306,12 +314,22 @@ function CompositeMeasureBlock({ dataset, composite, summary, actions }) {
         <span>Mean <strong>{fmtNum(summary.mean)}</strong></span>
         <span>SD <strong>{fmtNum(summary.sd)}</strong></span>
         <span>Median <strong>{fmtNum(summary.median)}</strong></span>
-        <span>Range <strong>{summary.min ?? "—"}–{summary.max ?? "—"}</strong></span>
+        <span>Range <strong>{summary.min != null && summary.max != null ? `${summary.min}–${summary.max}` : "—"}</strong></span>
         <span>
           Cronbach's α{" "}
           <strong>{summary.reliability ? fmtNum(summary.reliability.alpha) : "—"}</strong>
+          {summary.reliability?.lowN && (
+            <span title="Reliability estimates from this few respondents aren't meaningful yet — treat as provisional." style={{ marginLeft: 4, color: "var(--admin-warning, #b45309)", cursor: "help" }}>
+              ⚠
+            </span>
+          )}
         </span>
       </div>
+      {summary.nAnswered > 0 && summary.nAnswered < 10 && (
+        <div className="subtle" style={{ fontSize: 11.5, marginTop: 4 }}>
+          Only {summary.nAnswered} response{summary.nAnswered === 1 ? "" : "s"} so far — early numbers, treat as provisional.
+        </div>
+      )}
 
       {scores.length > 1 && (
         <div style={{ marginTop: 8, maxWidth: 320 }}>
@@ -639,12 +657,17 @@ function TextResponsesBlock({ dataset, items }) {
   );
 }
 
-function MeasuresSection({ dataset, measures, defaultOpen = true }) {
+const MEASURES_PAGE_SIZE = 6;
+
+function MeasuresSection({ dataset, measures, defaultOpen = false }) {
   // Seeded once from defaultOpen, then fully user-controlled — otherwise a
   // sibling re-render (e.g. adding a custom group elsewhere on the page)
   // would re-evaluate defaultOpen and snap this back shut/open, fighting a
-  // manual toggle.
+  // manual toggle. Collapsed by default regardless of custom groups —
+  // rendering every measure's chart/table at once is the main source of
+  // "too much at once" on a survey with more than a handful of questions.
   const [open, setOpen] = useState(defaultOpen);
+  const [visibleCount, setVisibleCount] = useState(MEASURES_PAGE_SIZE);
 
   const hasAny =
     measures.composites.length ||
@@ -657,6 +680,17 @@ function MeasuresSection({ dataset, measures, defaultOpen = true }) {
     measures.standaloneNumeric.length +
     measures.standaloneCategorical.length +
     measures.textItems.length;
+
+  // Flatten composites + standalone numeric/categorical into one ordered
+  // list so "show first N" is a single, simple slice — text items (already
+  // their own paginated/collapsed blocks) render separately, unpaginated.
+  const blocks = [
+    ...measures.composites.map((m) => ({ kind: "composite", ...m })),
+    ...measures.standaloneNumeric.map((m) => ({ kind: "numeric", ...m })),
+    ...measures.standaloneCategorical.map((m) => ({ kind: "categorical", ...m })),
+  ];
+  const visibleBlocks = blocks.slice(0, visibleCount);
+  const remaining = blocks.length - visibleBlocks.length;
 
   return (
     <Card
@@ -671,43 +705,47 @@ function MeasuresSection({ dataset, measures, defaultOpen = true }) {
             {totalCount} auto-detected item{totalCount === 1 ? "" : "s"}
           </summary>
           <div style={{ marginTop: 10 }}>
-          {measures.composites.map(({ composite, summary }) => (
-            <CompositeMeasureBlock key={composite.id} dataset={dataset} composite={composite} summary={summary} />
-          ))}
+          {visibleBlocks.map((b) =>
+            b.kind === "composite" ? (
+              <CompositeMeasureBlock key={`c:${b.composite.id}`} dataset={dataset} composite={b.composite} summary={b.summary} />
+            ) : b.kind === "numeric" ? (
+              <div
+                key={`n:${b.item.questionId}`}
+                style={{ marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid var(--admin-border-subtle)" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{b.item.questionText}</div>
+                  <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>N = {b.summary.nAnswered}/{b.summary.nTotal}</div>
+                </div>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 4, fontSize: 12.5 }}>
+                  <span>Mean <strong>{fmtNum(b.summary.mean)}</strong></span>
+                  <span>SD <strong>{fmtNum(b.summary.sd)}</strong></span>
+                  <span>Median <strong>{fmtNum(b.summary.median)}</strong></span>
+                  <span>Range <strong>{b.summary.min != null && b.summary.max != null ? `${b.summary.min}–${b.summary.max}` : "—"}</strong></span>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={`cat:${b.item.questionId}::${b.item.itemKey}`}
+                style={{ marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid var(--admin-border-subtle)" }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
+                  {b.item.questionText}
+                  {b.item.isComposite ? ` — ${b.item.itemLabel}` : ""}
+                  <span style={{ fontWeight: 400, fontSize: 11, color: "var(--admin-muted)", marginLeft: 8 }}>
+                    N = {b.summary.nAnswered}/{b.summary.nTotal}
+                  </span>
+                </div>
+                <CategoryBarList options={b.summary.options} />
+              </div>
+            )
+          )}
 
-          {measures.standaloneNumeric.map(({ item, summary }) => (
-            <div
-              key={item.questionId}
-              style={{ marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid var(--admin-border-subtle)" }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{item.questionText}</div>
-                <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>N = {summary.nAnswered}/{summary.nTotal}</div>
-              </div>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 4, fontSize: 12.5 }}>
-                <span>Mean <strong>{fmtNum(summary.mean)}</strong></span>
-                <span>SD <strong>{fmtNum(summary.sd)}</strong></span>
-                <span>Median <strong>{fmtNum(summary.median)}</strong></span>
-                <span>Range <strong>{summary.min ?? "—"}–{summary.max ?? "—"}</strong></span>
-              </div>
-            </div>
-          ))}
-
-          {measures.standaloneCategorical.map(({ item, summary }) => (
-            <div
-              key={`${item.questionId}::${item.itemKey}`}
-              style={{ marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid var(--admin-border-subtle)" }}
-            >
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
-                {item.questionText}
-                {item.isComposite ? ` — ${item.itemLabel}` : ""}
-                <span style={{ fontWeight: 400, fontSize: 11, color: "var(--admin-muted)", marginLeft: 8 }}>
-                  N = {summary.nAnswered}/{summary.nTotal}
-                </span>
-              </div>
-              <CategoryBarList options={summary.options} />
-            </div>
-          ))}
+          {remaining > 0 && (
+            <Button variant="ghost" onClick={() => setVisibleCount((n) => n + MEASURES_PAGE_SIZE)}>
+              Show {Math.min(remaining, MEASURES_PAGE_SIZE)} more ({remaining} remaining)
+            </Button>
+          )}
 
           {measures.textItems.length > 0 && <TextResponsesBlock dataset={dataset} items={measures.textItems} />}
           </div>
@@ -717,14 +755,38 @@ function MeasuresSection({ dataset, measures, defaultOpen = true }) {
   );
 }
 
+const GROUP_COMPARISON_PAGE_SIZE = 8;
+
+function TestCaveat({ text }) {
+  return (
+    <span title={text} style={{ marginLeft: 4, color: "var(--admin-warning, #b45309)", cursor: "help" }}>
+      ⚠
+    </span>
+  );
+}
+
 function GroupComparisonSection({ comparison }) {
+  const [numericVisible, setNumericVisible] = useState(GROUP_COMPARISON_PAGE_SIZE);
+  const [catVisible, setCatVisible] = useState(GROUP_COMPARISON_PAGE_SIZE);
+
   if (!comparison) return null;
+
+  const tinyGroup = comparison.groups.some((g) => g.n > 0 && g.n < 5);
+  const visibleNumeric = comparison.numericComparisons.slice(0, numericVisible);
+  const visibleCat = comparison.categoricalComparisons.slice(0, catVisible);
 
   return (
     <Card
       title="Group comparison"
       subtitle={`Between-subjects groups: ${comparison.groups.map((g) => `${g.name} (n=${g.n})`).join(" · ")}`}
     >
+      {tinyGroup && (
+        <div className="subtle" style={{ fontSize: 12, marginBottom: 12 }}>
+          ⚠ At least one group still has fewer than 5 responses — comparisons below are early and
+          may swing a lot as more data comes in.
+        </div>
+      )}
+
       {comparison.numericComparisons.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Measures — mean ± SD (n)</div>
@@ -739,7 +801,7 @@ function GroupComparisonSection({ comparison }) {
               </tr>
             </thead>
             <tbody>
-              {comparison.numericComparisons.map((c) => (
+              {visibleNumeric.map((c) => (
                 <tr key={c.key}>
                   <Td>{c.label}</Td>
                   {c.perGroup.map((g, i) => (
@@ -749,10 +811,14 @@ function GroupComparisonSection({ comparison }) {
                     {!c.test ? (
                       "—"
                     ) : c.test.type === "welch_t" ? (
-                      <span>t({fmtNum(c.test.df, 1)}) = {fmtNum(c.test.t)}, {formatPValue(c.test.p)}</span>
+                      <span>
+                        t({fmtNum(c.test.df, 1)}) = {fmtNum(c.test.t)}, {formatPValue(c.test.p)}
+                        {c.test.lowN && <TestCaveat text="Small group sizes — treat this test as provisional." />}
+                      </span>
                     ) : (
                       <span>
                         F({c.test.dfBetween},{c.test.dfWithin}) = {fmtNum(c.test.F)}, {formatPValue(c.test.p)}
+                        {c.test.lowN && <TestCaveat text="Small group sizes — treat this test as provisional." />}
                       </span>
                     )}
                   </Td>
@@ -760,13 +826,18 @@ function GroupComparisonSection({ comparison }) {
               ))}
             </tbody>
           </Table>
+          {comparison.numericComparisons.length > numericVisible && (
+            <Button variant="ghost" onClick={() => setNumericVisible((n) => n + GROUP_COMPARISON_PAGE_SIZE)}>
+              Show more ({comparison.numericComparisons.length - numericVisible} remaining)
+            </Button>
+          )}
         </div>
       )}
 
       {comparison.categoricalComparisons.length > 0 && (
         <div>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Categorical variables</div>
-          {comparison.categoricalComparisons.map((c) => (
+          {visibleCat.map((c) => (
             <details key={c.key} style={{ marginBottom: 10 }}>
               <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
                 {c.questionText}
@@ -774,6 +845,9 @@ function GroupComparisonSection({ comparison }) {
                 {c.test && (
                   <span style={{ fontWeight: 400, color: "var(--admin-muted)", marginLeft: 8, fontSize: 12 }}>
                     χ²({c.test.df}) = {fmtNum(c.test.chisq)}, {formatPValue(c.test.p)}
+                    {c.test.lowExpectedCounts && (
+                      <TestCaveat text="Some cells have very few expected responses — this test isn't reliable yet." />
+                    )}
                   </span>
                 )}
               </summary>
@@ -789,10 +863,64 @@ function GroupComparisonSection({ comparison }) {
               </div>
             </details>
           ))}
+          {comparison.categoricalComparisons.length > catVisible && (
+            <Button variant="ghost" onClick={() => setCatVisible((n) => n + GROUP_COMPARISON_PAGE_SIZE)}>
+              Show more ({comparison.categoricalComparisons.length - catVisible} remaining)
+            </Button>
+          )}
         </div>
       )}
     </Card>
   );
+}
+
+function FlagBadge({ label, detail }) {
+  return (
+    <span
+      title={detail}
+      style={{
+        display: "inline-block",
+        fontSize: ".72rem",
+        fontWeight: 600,
+        color: "#b45309",
+        background: "#fef3c7",
+        border: "1px solid #fde68a",
+        borderRadius: 999,
+        padding: "1px 7px",
+        marginRight: 4,
+        cursor: "help",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// Straight-lining check: did this participant give the exact same answer to
+// every item of a composite scale (>= 3 items, so a 2-item "composite" isn't
+// flagged just for happening to agree with itself)? A conservative, purely
+// client-side heuristic over data already loaded — nothing sent anywhere,
+// nothing auto-excluded, just a hint for the researcher to look closer.
+// Incomplete composites (any item left blank) are skipped rather than
+// flagged, since a blank isn't "the same answer."
+function computeStraightLineFlags(dataset, row) {
+  const flags = [];
+  for (const composite of dataset.composites) {
+    if (composite.items.length < 3) continue;
+    const vals = composite.items.map((it) => {
+      const v = getRawItemValue(row.responses, it);
+      return v == null || v === "" ? null : String(v);
+    });
+    if (vals.some((v) => v == null)) continue;
+    if (vals.every((v) => v === vals[0])) {
+      flags.push({
+        key: `straightline:${composite.id}`,
+        label: "Straight-lining",
+        detail: `Gave the identical answer to all ${composite.items.length} items in "${composite.label}".`,
+      });
+    }
+  }
+  return flags;
 }
 
 function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
@@ -805,6 +933,15 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
     [dataset.rows]
   );
   const visible = sorted.slice(0, pageSize);
+
+  const flagsBySession = useMemo(() => {
+    const out = new Map();
+    sorted.forEach((r) => {
+      const flags = computeStraightLineFlags(dataset, r);
+      if (flags.length) out.set(r.session_id || r.participant_id, flags);
+    });
+    return out;
+  }, [dataset, sorted]);
 
   return (
     <Card title="Responses" subtitle={`${dataset.rows.length} response${dataset.rows.length === 1 ? "" : "s"} for this survey.`}>
@@ -819,6 +956,7 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
                 <Th>Session</Th>
                 <Th>Submitted</Th>
                 {hasGroups && <Th>Group</Th>}
+                <Th>Flags</Th>
               </tr>
             </thead>
             <tbody>
@@ -828,6 +966,11 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
                   <Td style={{ fontFamily: "monospace", fontSize: 11.5 }}>{r.session_id || "—"}</Td>
                   <Td>{r.submitted_at_iso || "—"}</Td>
                   {hasGroups && <Td>{groupNameById.get(r.experiment_group_id) || r.experiment_group_id || "—"}</Td>}
+                  <Td>
+                    {(flagsBySession.get(r.session_id || r.participant_id) || []).map((f) => (
+                      <FlagBadge key={f.key} label={f.label} detail={f.detail} />
+                    ))}
+                  </Td>
                 </tr>
               ))}
             </tbody>
@@ -1138,7 +1281,7 @@ export function SurveyParticipantsPage({
               setGroups={setCustomGroups}
             />
             {measures && (
-              <MeasuresSection dataset={dataset} measures={measures} defaultOpen={customGroups.length === 0} />
+              <MeasuresSection dataset={dataset} measures={measures} />
             )}
             <GroupComparisonSection comparison={groupComparison} />
             <ResponsesSection

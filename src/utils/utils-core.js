@@ -249,6 +249,32 @@ export function displayTimeForPost(post, { randomize, seedParts=[] } = {}){
   return `${hours}h`;
 }
 
+const AMAZON_REVIEW_MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+// Amazon review dates are an absolute "Reviewed in the United States on
+// <date>" line, unlike Facebook/Instagram's relative "2h" style — displayTimeForPost's
+// format doesn't fit here, so this is a separate helper. Picks a stable,
+// deterministic date within a ~2-year window ending at a fixed anchor (not
+// wall-clock "today"), so the date a given participant sees for a given
+// review doesn't drift if their session happens to straddle midnight or the
+// study runs across many days/months.
+export function displayReviewDateForAmazon(review, { randomize, seedParts = [] } = {}) {
+  const fallback = "Reviewed in the United States on January 1, 2025";
+  const stored = review?.review_date || review?.date || review?.time || fallback;
+  if (!randomize) return stored;
+
+  const seed = [...seedParts, review?.id ?? review?.review_id ?? review?.post_id ?? ""].join("::");
+  const r = rng(seed);
+  const ANCHOR_UTC_MS = Date.UTC(2025, 5, 1); // fixed reference point, not Date.now()
+  const daysAgo = Math.floor(r() * 730); // up to ~2 years back
+  const d = new Date(ANCHOR_UTC_MS - daysAgo * 86400000);
+  const label = `${AMAZON_REVIEW_MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  return `Reviewed in the United States on ${label}`;
+}
+
 /* --------------------- Reactions helpers ---------------------------------- */
 export const REACTION_META = {
   like:  { emoji: "👍", label: "Like"  },

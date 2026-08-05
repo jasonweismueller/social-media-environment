@@ -173,3 +173,22 @@ export const FB_MALE_NAMES = [
   "Parker Reed","Gavin Cole","Brent Sanders","Mason Phillips",
   "Tucker Harris","Rowan Martinez","Leo Rivers"
 ];
+
+// -----------------------------
+// AMAZON REVIEWER DISPLAY NAMES
+// -----------------------------
+// Real Amazon reviewer names are almost always "First Last-initial." (or a
+// bare first name/username) rather than a full last name — a distinct
+// convention from FB/IG's full-name pools above, so this gets its own list
+// rather than reusing one of them.
+export const AMAZON_REVIEWER_NAMES = [
+  "Sarah M.","James K.","Amanda R.","Michael T.","Jennifer L.","David P.",
+  "Lisa H.","Robert C.","Karen W.","Christopher B.","Nancy D.","Daniel G.",
+  "Emily F.","Mark S.","Patricia N.","Steven A.","Linda J.","Kevin O.",
+  "Barbara E.","Brian V.","Susan Q.","Jason Y.","Donna I.","Eric Z.",
+  "Michelle U.","Timothy X.","Carol M.","Jeffrey R.","Sandra K.","Ryan L.",
+  "Angela T.","Gary P.","Deborah H.","Scott C.","Cynthia W.","Larry B.",
+  "Kathleen D.","Justin G.","Rebecca F.","Adam S.","Amy N.","Nicole A.",
+  "Jacob J.","Stephanie O.","Tyler E.","Melissa V.","Brandon Q.","Laura Y.",
+  "Andrew I.","Rachel Z."
+];

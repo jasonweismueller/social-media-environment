@@ -4,6 +4,8 @@
 // can keep the existing project/feed/survey/session logging architecture.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { displayReviewDateForAmazon, buildDeterministicAssignmentMap } from "../utils";
+import { AMAZON_REVIEWER_NAMES } from "./names";
 
 function asNum(value, fallback = 0) {
   const n = Number(value);
@@ -59,15 +61,6 @@ function getReviewText(review) {
 
 function getReviewRating(review) {
   return clamp(asNum(review?.rating ?? review?.stars ?? review?.star_rating, 5), 1, 5);
-}
-
-function getReviewDate(review) {
-  return String(
-    review?.review_date ||
-      review?.date ||
-      review?.time ||
-      "Reviewed in the United States on January 1, 2025"
-  );
 }
 
 function getHelpfulCount(review) {
@@ -146,13 +139,22 @@ function ReviewCard({
   participantSeed,
   onDisplayedPostSnapshot,
   alwaysExpandText = false,
+  flags,
+  runSeed,
+  app,
+  assignedReviewer,
 }) {
   const id = getReviewId(review);
-  const author = getReviewAuthor(review);
+  const randNamesOn = !!flags?.randomize_names;
+  const author = randNamesOn && assignedReviewer ? assignedReviewer : getReviewAuthor(review);
   const title = getReviewTitle(review);
   const text = getReviewText(review);
   const rating = getReviewRating(review);
-  const date = getReviewDate(review);
+  const randTimesOn = !!(flags?.randomize_times ?? flags?.random_time);
+  const date = displayReviewDateForAmazon(review, {
+    randomize: randTimesOn,
+    seedParts: [runSeed || "run", app || "amz", projectId || "global", feedId || ""],
+  });
   const helpfulCount = getHelpfulCount(review);
   const verified = review?.verified_purchase !== false && review?.verified !== false;
   const variant = String(review?.variant || review?.product_variant || review?.format || "").trim();
@@ -309,6 +311,13 @@ export function PostCard({
   // survey questions. The real feed and interactive reminders don't pass
   // this, so are unaffected.
   alwaysExpandText = false,
+  // Not passed by survey post-reminder call sites (same as before this
+  // change) — reminders intentionally keep showing the post's real stored
+  // reviewer/date, a frozen snapshot, not the live feed's randomized pick.
+  flags,
+  runSeed,
+  app,
+  assignedReviewer,
 }) {
   const normalizedReview = review || post || {};
 
@@ -338,6 +347,10 @@ export function PostCard({
       participantSeed={participantSeed}
       onDisplayedPostSnapshot={onDisplayedPostSnapshot}
       alwaysExpandText={alwaysExpandText}
+      flags={flags}
+      runSeed={runSeed}
+      app={app}
+      assignedReviewer={assignedReviewer}
     />
   );
 }
@@ -353,11 +366,35 @@ export function Feed({
   participantSeed,
   onDisplayedPostSnapshot,
   submitButtonLabel = "Submit",
+  // Feed-level randomize flags (randomize_names/randomize_times, same shape
+  // FB/IG already receive) — Amazon previously accepted these props from
+  // App-amazon.jsx (which already fetches and passes them) but never
+  // consumed them, so the admin's "Randomize names"/"Randomize times"
+  // toggles were a silent no-op for Amazon feeds specifically.
+  flags,
+  runSeed,
+  app,
 }) {
   const STEP = 8;
   const FIRST_PAINT = Math.min(10, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST_PAINT);
   const sentinelRef = useRef(null);
+
+  // Deterministic per-review reviewer-name assignment, same
+  // buildDeterministicAssignmentMap pattern FB/IG already use for author
+  // names — stable across re-renders/scrolling (keyed on review id + the
+  // run/app/project/feed seed, not on render order), and only used at all
+  // when flags.randomize_names is actually on (see ReviewCard).
+  const reviewerNameMap = useMemo(
+    () =>
+      buildDeterministicAssignmentMap(
+        posts,
+        AMAZON_REVIEWER_NAMES,
+        [runSeed || "run", app || "amz", projectId || "proj", feedId || "feed", "reviewer-names"],
+        (p) => getReviewId(p) || null
+      ),
+    [posts, runSeed, app, projectId, feedId]
+  );
 
   useEffect(() => {
     setVisibleCount(Math.min(FIRST_PAINT, posts.length || 0));
@@ -400,6 +437,10 @@ export function Feed({
                 feedId={feedId}
                 participantSeed={participantSeed}
                 onDisplayedPostSnapshot={onDisplayedPostSnapshot}
+                flags={flags}
+                runSeed={runSeed}
+                app={app}
+                assignedReviewer={reviewerNameMap.get(id) || null}
               />
             );
           })}

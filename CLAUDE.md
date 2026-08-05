@@ -3154,3 +3154,254 @@ entry above this one) and did not get picked up this session either, despite the
 else" prompts surfacing it again mid-session. Two sessions in a row have now ended with this as
 the highest-priority open item. If a third one does too, that's worth naming explicitly rather than
 just re-adding it to another list.
+
+## `project_access` RLS finally verified live; Sentry + `visible_if` editor shipped, undocumented (2026-08-05)
+
+Picking this up fresh found three real pieces of work already committed to `main`
+(`bc84bb7`, `4aea139`, plus `ff36b48`/`f32e4be` unrelated to this section) that were never
+written up here — the CLAUDE.md update at `9e813f6` only covered the production-branch-gate work,
+not these. Reconstructed from the migrations' own comments + git diffs, then independently
+re-verified rather than taken on faith.
+
+**`project_access` RLS gap — closed, and now actually verified against a real restricted session
+(the item flagged as highest-priority across three straight session handoffs).** Two more
+migrations landed after `20260801000016_project_access.sql` first shipped:
+- `20260801000018_fix_projects_write_policy_select_leak.sql` — found and fixed a real bug:
+  `projects_write_editors` was a single `for all` policy, and in Postgres a `for all` USING
+  clause also governs SELECT; permissive policies for the same command OR together, so this was
+  silently re-granting every editor/owner full unrestricted SELECT on `projects` regardless of
+  `project_access`, completely undoing the restriction. Split into
+  `projects_insert_editors`/`projects_update_editors`/`projects_delete_editors`, mirroring how
+  `feeds`'s write policies were already split (which is why `feeds` never had this bug).
+- `20260801000019_scope_content_tables_by_project_access.sql` — found a second, worse leak:
+  `posts_select_public`/`surveys_select_public` were `to authenticated, anon using (true)` —
+  *any* signed-in admin, restricted or not, had unrestricted read access to every post's full
+  content and every survey's full `definition` across every project (worse than the
+  ids/projects leak above — real content, not just names). `participants_select_admins`/
+  `survey_responses_select_admins` were `authenticated`-only (no anon leak, correctly) but had no
+  `project_access` scoping at all. Fixed: `posts`/`surveys` split into `_select_anon` (unchanged,
+  participant-facing) + `_select_admins` (now `has_project_app_access`/`has_project_access`
+  scoped); `participants`/`survey_responses` gained the same scoping on their existing
+  authenticated-only policy.
+
+**Verified for real this time** (previous two sessions only reviewed the SQL/mocked the
+frontend). A disposable `editor`-role test account already existed from whatever session did this
+work (`jason.weismueller+rlscheck@gmail.com` — a real Supabase Auth + `profiles` row, left in
+place; flagging its existence here since nothing documented it and a future session could mistake
+it for an unexplained account. Deliberately not deleted — it's a genuinely useful fixture for any
+future project_access check and poses no elevated risk by itself, since `project_access` having
+zero rows for it just means "same as before this feature existed," not de facto restricted).
+Ran, inside a transaction that only committed a temporary `project_access` row (immediately
+deleted after, confirmed 0 rows remaining): scoped that editor account to `project_1` only, then
+— via `set local role authenticated; set local request.jwt.claims`, simulating its real session
+end to end through Postgres, not a mock — confirmed `projects`/`feeds`/`posts`/`surveys`/
+`participants`/`survey_responses` **all** returned rows for `project_1` only, nothing from any of
+the other 6 real projects. This closes the item three straight session-handoff notes flagged as
+"the highest-priority thing to close out" — it's done and genuinely confirmed now, not just
+written and hoped-for.
+
+**Sentry error monitoring shipped** (`src/utils/utils-sentry.js`, called from `initSentry()` in
+all three `main-*.jsx` entry points before first render). Deliberately minimal: `tracesSampleRate:
+0` (error tracking only, no perf tracing/session replay — real bundle weight, not asked for) and
+`sendDefaultPii: false` made explicit rather than left to the SDK default, specifically because
+this is a human-subjects research tool and a crash report should never bundle more than the error
+itself. `VITE_SENTRY_DSN` is set in the committed `.env.production` (a DSN, not a secret — same
+"safe to expose client-side" reasoning as the Supabase anon key already committed there) — so this
+is live in production already, not just scaffolded.
+
+**`visible_if` conditional-question-display editor UI shipped** — the exact feature
+`~/.claude/plans/peaceful-jumping-haven.md` scoped (that plan predates this entry; treat it as
+superseded/completed history, not a pending task). New `ConditionalDisplayEditor` in
+`components-admin-surveys-editor.jsx`, `VISIBLE_IF_ELIGIBLE_TYPES` in `utils-survey.js`, orphan
+cleanup on question delete, and a broken-condition warning badge (mirroring the existing
+duplicate-id badge pattern) — all confirmed present and wired via direct grep (not just trusting
+the commit happened), and all touched files parse clean. Not click-tested live (same standing
+no-admin-login limitation as everywhere else in this file).
+
+**Lesson for future sessions, stated plainly**: a "Update CLAUDE.md" commit message doesn't
+guarantee the file was updated to cover *everything* since the last one — this specific gap
+existed because `9e813f6` bundled a `CLAUDE.md` update with unrelated work (the production-branch
+gate) and simply didn't reach back to the two commits before it. When picking up a session, diff
+`git log` against what CLAUDE.md actually narrates rather than assuming the two are in sync just
+because a recent "Update CLAUDE.md" commit exists.
+
+## Amazon: "Randomize names"/"Randomize times" were silent no-ops, fixed; irrelevant toggles hidden (2026-08-05)
+
+Investigated per direct request ("the amazon changes you talked about — no randomization, etc.").
+No record of a prior specific plan for this was found anywhere (git history, `~/.claude/plans/`,
+memory) — so this is a from-scratch investigation and fix, not a resumed plan; noting that plainly
+since the phrasing implied one existed.
+
+**Root cause, confirmed by reading the code, not guessed**: `App-amazon.jsx` already fetches all 5
+feed randomize flags (`fetchFeedFlags`) and already passes `flags`/`runSeed`/`app` down to its
+`<Feed>` (`FBFeed`) call site — but `Feed`/`PostCard`/`ReviewCard` in `ui-posts-amazon.jsx` never
+declared those props in their signatures at all, so React silently dropped them and every review's
+`author`/`date` always rendered the raw stored field, completely ignoring the flags. The admin
+"Randomize names"/"Randomize times" toggles on an Amazon feed were real, saved to the backend, and
+visibly flipped in the UI — just had zero effect on what participants actually saw. (Avatar/Image/
+Bio toggles were already known no-ops for Amazon per this file's Architecture section — no photo
+avatars, `data-has-image="0"` hardcoded with no image rendering anywhere, and no bio-hover UI at
+all — those three were always cosmetic dead switches, not a regression.)
+
+**Fix**:
+- `src/ui-posts/names.jsx` — new `AMAZON_REVIEWER_NAMES` pool (~50 entries), "First Last-initial."
+  style matching real Amazon's reviewer-name convention — a deliberately different shape from
+  FB/IG's full-name pools (`FB_FEMALE_NAMES` etc.), not a reuse of them.
+- `src/utils/utils-core.js` — new `displayReviewDateForAmazon(review, {randomize, seedParts})`,
+  parallel to the existing `displayTimeForPost` but producing Amazon's absolute
+  `"Reviewed in the United States on <Month D, YYYY>"` format instead of FB's relative `"2h"` —
+  the two formats don't overlap, so this needed its own helper rather than extending the existing
+  one. Deterministic per review id + seed, picked from a **fixed 2025-06-01 anchor** (not
+  `Date.now()`) going back up to ~2 years, specifically so the date a participant sees for a given
+  review doesn't drift if their session or the study's data-collection window straddles a real
+  calendar date change.
+- `src/ui-posts/ui-posts-amazon.jsx` — `Feed` now builds a deterministic reviewer-name assignment
+  map via the same `buildDeterministicAssignmentMap` helper FB/IG already use for author names
+  (seeded on run+app+project+feed+review-id, stable across re-renders, varies across different
+  runs/participants — confirmed live, see below), and threads `flags`/`runSeed`/`app`/
+  `assignedReviewer` through `PostCard`/`ReviewCard`. `ReviewCard` now reads
+  `flags.randomize_names`/`flags.randomize_times` (same field names FB/IG already use) and swaps
+  in the assigned name / randomized date only when each flag is actually on — flags off (the
+  default, and every feed's state before this fix) renders byte-identical to before, so this is
+  additive, not a behavior change for existing non-randomized Amazon feeds. Removed the now-dead
+  `getReviewDate` helper (its one call site was replaced; `displayReviewDateForAmazon`'s
+  non-randomize branch already reproduces its exact fallback chain).
+  Survey post-reminder call sites deliberately don't pass `flags`/`runSeed`/`assignedReviewer` (same
+  as before this fix) — reminders show the post's real frozen stored reviewer/date, not a randomized
+  live-feed pick, matching how reminders already behave for FB/IG.
+- `src/admin/components-admin-feeds.jsx` — the Feed Settings "Behavior" card now hides
+  Avatar/Image/Bio toggles specifically when `APP === "amz"` (Time/Name stay, since those now
+  genuinely work) — so an admin editing an Amazon feed no longer sees three switches that visibly
+  do nothing.
+
+**Verified live**, not just unit-tested: mounted the real `Feed` export (dynamic-imported from the
+running dev server, same technique used throughout this file — `ReactDOMClient.createRoot`, not a
+mock) with 4 fabricated reviews. With `flags: {randomize_names:false, randomize_times:false}`,
+rendered reviewer names/dates were the raw stored values unchanged (`RAW_AUTHOR_1`.., literal
+January 1-4 2025 dates) — confirming zero behavior change for feeds with randomization off. With
+both flags `true`, rendered names came from `AMAZON_REVIEWER_NAMES` (e.g. "Melissa V.", "Jacob J.")
+and dates were distinct plausible values spread across 2023-2025, all four reviews different from
+each other and from the raw stored dates. Also directly confirmed via console: the same review id +
+seed always produces the same assigned name/date (`stableAcrossRerender: true`), and a different
+`runSeed` produces a different assignment (`differsAcrossRun: true`) — matching the exact
+determinism contract FB/IG's own name/time randomization already relies on. All touched files
+parse clean. **Not verified**: an actual admin click-through toggling the flags in the real UI
+(same standing no-login limitation as everywhere else in this file) — the Feeds Behavior card's
+Amazon-specific toggle filtering was confirmed correct by direct code/parse review only, not
+rendered live.
+
+**Known, larger, deliberately out-of-scope gap found along the way**: Amazon reviews configured
+with an image via the admin's `MediaFieldset` never render that image to participants at all —
+`ReviewCard` hardcodes `data-has-image="0"` and has no `<img>` anywhere in its markup. This is a
+separate, much bigger feature (building actual review-image display) than "wire up the randomize
+toggles that already exist," so it wasn't attempted here — flagging it explicitly rather than
+scope-creeping into it silently.
+
+## New: data-quality flags + a "Go live" auto-refresh mode (2026-08-05)
+
+Per direct request to add "suspicious participants" and "live dashboard" functionality that had
+apparently been discussed — **neither was found anywhere** (git history, `~/.claude/plans/`,
+memory, code) when picked up fresh, so both were built from scratch against a reasonable reading
+of the phrase rather than a resumed spec. Flagging that plainly rather than pretending otherwise;
+if the original intent was different, this is a starting point to adjust, not a completed spec.
+
+**Data-quality flags — transparent, conservative, never auto-excludes anything.** Two independent
+pieces, both purely client-side over data already loaded (no new backend calls, no new stored
+fields):
+- **Feed Participants** (`components-admin-participants-feed.jsx`) — new "Flags" column on the
+  "Latest submissions" table. Two heuristics: **Very fast** (`ms_enter_to_submit` under a hard
+  4s floor, or under 25% of this feed's own median completion time — whichever catches it; the
+  relative check adapts to feeds of very different lengths, the floor catches short feeds where
+  the relative threshold alone would be too lenient) and **Repeat ID** (the same non-blank
+  `participant_id` appears more than once for this feed — usually a re-entry/re-submission, not
+  two different people). Each badge has a hover tooltip explaining exactly why it fired.
+- **Survey Participants** (`components-admin-participants-survey.jsx`) — new "Flags" column on the
+  Responses table: **Straight-lining**, computed via new `computeStraightLineFlags(dataset, row)`
+  — for every auto-detected composite scale with ≥3 items, checks whether a response gave the
+  *exact same* value to every item. Incomplete composites (any item left blank) are skipped
+  rather than flagged, since a blank isn't "the same answer" — avoids a false-positive class that
+  would otherwise dominate early low-N data.
+
+Both are deliberately named "flags," not "suspicious"/"fraud"/"exclude" — this is real participant
+data from paid studies, and a false positive read as an accusation is a worse failure mode than a
+missed one. Thresholds are loose on purpose (biased toward under-flagging); no row is hidden,
+disabled, or excluded from any export — this is a hint for the researcher to look closer, full
+stop.
+
+**"Go live" auto-refresh** (`components-admin-participants-feed.jsx`, Feed Participants toolbar) —
+a toggle next to the existing "Refresh" button. Off by default (no surprise background network
+traffic on a page just sitting open in a background tab). When on: silently re-polls the roster
+every 20s, shows "Updated Xs ago"/"Updated Xm ago" next to the button, and disables itself while
+viewing simulated data (nothing live to poll for there). This was scoped as an extension of the
+existing single-feed Feed Participants page rather than a new standalone multi-feed monitoring
+page/nav item — a full cross-project "live dashboard" would be a much larger, riskier addition
+(new route, new nav entry, likely new aggregate backend queries) to build unprompted from a
+half-remembered request; if a dedicated always-on multi-feed monitoring view turns out to be what
+was actually wanted, that's a clear, well-scoped follow-up rather than something to have guessed
+at building tonight.
+
+**Verified live**, not just read for correctness:
+- Straight-lining: called `buildAnalysisDataset` (the real function) against a fabricated 3-item
+  matrix question and three response rows (straight-lined / normal / incomplete) via a cache-busted
+  console import of the running dev server's own module — confirmed the straight-lined row alone
+  produced a flag, matching the production logic exactly (same dataset shape, same
+  `getRawItemValue` call).
+- "Go live": mounted the real `FeedParticipantsPage` (via `ReactDOMClient.createRoot`, wrapped in
+  the real `ToastProvider`/`ConfirmProvider`, inside a `.admin-shell` node for correct CSS token
+  scope — same technique this file already documents using elsewhere) with a faked admin session
+  and a mocked `fetch` returning an empty roster (no real backend/data touched). Confirmed: the
+  "Go live" button renders, clicking it flips the label to "● Live", the "Updated Xs ago" status
+  text appears and reads "Updated 0s ago" immediately after the triggered refresh, and the 20-second
+  polling interval is genuinely registered (spied on `window.setInterval`, confirmed a real call
+  with `20000`ms) — not just a UI label with no actual polling behind it.
+- Feed Participants' "Very fast"/"Repeat ID" flags were verified by direct code review of the
+  (simple, easily-traced) threshold logic rather than a live render — lower risk than the
+  straight-lining/composite logic above, which had more moving parts worth actually exercising.
+
+**Not verified**: an actual click-through by a real logged-in admin against real accumulating
+participant data (same standing no-login limitation as everywhere else in this file) — worth
+watching a real study collect a few responses with "Go live" on, and checking whether the flag
+thresholds feel right (too noisy / not noisy enough) against real response patterns, next time
+there's admin access.
+
+## RLS audit continued: experiment_groups/feed_surveys/custom_measure_groups/experiment_assignments were still leaking across projects (2026-08-05)
+
+Direct continuation of tonight's earlier RLS work (see "`project_access` RLS finally verified
+live" above) — re-audited every table's `pg_policies` from scratch instead of assuming the two
+migrations already applied covered everything. They didn't: four tables added later
+(`20260801000015`, after `project_access` itself in `20260801000016`) never got the same
+treatment and had the identical bug classes already fixed elsewhere:
+
+- **`experiment_groups_select_public`** and **`feed_surveys_select_public`** were both
+  `to authenticated, anon using (true)` — the exact same shape `20260801000019` fixed for
+  posts/surveys. Any signed-in admin, restricted or not, could read every project's experiment-group
+  definitions and feed↔survey links across every project, not just their own. (The `anon` half is
+  legitimate and untouched — real participants need it: `supabaseLoadSurveyDefinition` merges
+  `experiment_groups` onto the survey object on load, and `feed_surveys` is how a feed resolves its
+  linked survey.)
+- **`custom_measure_groups_select_admins`** and **`experiment_assignments_select_admins`** were
+  already correctly `authenticated`-only (no anon leak) but had no `project_access` scoping at all —
+  same gap `20260801000019` closed for `participants`/`survey_responses`.
+
+**New migration `20260801000020_scope_experiment_and_custom_group_tables_by_project_access.sql`**,
+applied live. None of these four tables carry their own `project_id` column (all key off
+`survey_id`), so each admin-facing policy scopes via `exists (select 1 from surveys s where
+s.id = X.survey_id and has_project_access(s.project_id))` rather than a direct column check.
+
+**Verified against a real restricted session**, same technique as the earlier RLS entry (temporary
+`project_access` row on the disposable `+rlscheck` editor account, scoped to `project_1` only,
+`set local role authenticated` + `request.jwt.claims`, cleaned up after — 0 rows left in
+`project_access` when done): confirmed `experiment_groups`/`feed_surveys` visible to that session
+only ever belonged to `project_1` (18 and 28 rows respectively, both scoped correctly), and
+`experiment_assignments` returned 42 rows, also all `project_1`-scoped by construction (the query
+joins through `surveys.project_id`, so an unscoped leak would have shown other projects' rows in the
+same result). `custom_measure_groups` returned 0 — double-checked as owner that the real total across
+the *entire* database is genuinely 0 (nobody has saved one yet, a newer feature — see "Survey
+Participants analysis hub" custom-groups entry — not a false-negative from an overly strict policy).
+
+This should be the last table-level gap in this specific audit — every table this session checked
+(`projects`/`feeds`/`posts`/`surveys`/`participants`/`survey_responses` from the earlier entry, plus
+these four) now scopes admin reads through `project_access` where relevant, with participant-facing
+`anon` access left untouched everywhere it was already correct. Worth a full fresh
+`select tablename, policyname, cmd, roles, qual from pg_policies` sweep in a future session before
+assuming that's still true, the same way this entry itself only found these four by not assuming.

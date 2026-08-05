@@ -63,21 +63,29 @@ export function summarizeNumeric(nums) {
   };
 }
 
+// A fixed 8-bin histogram looks broken (mostly-empty, "toothy") at the low N
+// typical of early data collection — scale the bin count down instead of
+// spreading a handful of points across 8 slots. `noVariation: true` lets
+// callers render "no variation in responses yet" instead of a single
+// full-width bar, which otherwise reads identically to a rendering bug.
 export function histogramBins(nums, binCount = 8) {
   const clean = (nums || []).filter((v) => Number.isFinite(v));
   if (!clean.length) return [];
   const min = Math.min(...clean);
   const max = Math.max(...clean);
-  if (min === max) return [{ x0: min, x1: max, count: clean.length }];
-  const width = (max - min) / binCount;
-  const bins = Array.from({ length: binCount }, (_, i) => ({
+  if (min === max) {
+    return [{ x0: min, x1: max, count: clean.length, noVariation: true }];
+  }
+  const effectiveBinCount = Math.max(1, Math.min(binCount, clean.length - 1));
+  const width = (max - min) / effectiveBinCount;
+  const bins = Array.from({ length: effectiveBinCount }, (_, i) => ({
     x0: min + i * width,
     x1: min + (i + 1) * width,
     count: 0,
   }));
   clean.forEach((v) => {
     let idx = Math.floor((v - min) / width);
-    if (idx >= binCount) idx = binCount - 1;
+    if (idx >= effectiveBinCount) idx = effectiveBinCount - 1;
     if (idx < 0) idx = 0;
     bins[idx].count += 1;
   });
@@ -257,6 +265,10 @@ export function welchTTest(a, b) {
     sdB: Math.sqrt(vb),
     nA: na.length,
     nB: nb.length,
+    // Below this, the test is mathematically valid but not a meaningful
+    // estimate — a soft caveat flag, not a hard cutoff (a researcher
+    // watching a pilot trickle in may still want to see where things stand).
+    lowN: na.length < 10 || nb.length < 10,
   };
 }
 
@@ -288,7 +300,8 @@ export function oneWayAnova(groups) {
   const F = msWithin > 0 ? msBetween / msWithin : null;
   const p = F != null ? fDistPValue(F, dfBetween, dfWithin) : null;
 
-  return { groupStats, F, p, dfBetween, dfWithin };
+  const lowN = N < 10 || groupStats.some((g) => g.n < 3);
+  return { groupStats, F, p, dfBetween, dfWithin, lowN };
 }
 
 export function chiSquareTest(table) {
@@ -302,9 +315,17 @@ export function chiSquareTest(table) {
   if (!grandTotal) return null;
 
   let chisq = 0;
+  // Standard chi-square validity rule of thumb: the test isn't reliable when
+  // any cell's expected count falls below 5 (Cochran's rule) — very common
+  // with small-N/many-category cross-tabs early in data collection. We still
+  // compute the statistic (a researcher may want to see it), but flag it so
+  // the UI can show a caveat instead of presenting the p-value with full
+  // confidence.
+  let minExpected = Infinity;
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
       const expected = (rowTotals[i] * colTotals[j]) / grandTotal;
+      if (expected < minExpected) minExpected = expected;
       if (expected > 0) chisq += (table[i][j] - expected) ** 2 / expected;
     }
   }
@@ -313,7 +334,7 @@ export function chiSquareTest(table) {
   if (df <= 0) return null;
   const p = chiSquarePValue(chisq, df);
 
-  return { chisq, df, p, n: grandTotal };
+  return { chisq, df, p, n: grandTotal, lowExpectedCounts: minExpected < 5 };
 }
 
 export function cronbachAlpha(itemMatrix) {
@@ -334,7 +355,10 @@ export function cronbachAlpha(itemMatrix) {
   const sumItemVar = itemVariances.reduce((a, b) => a + b, 0);
   const alpha = (k / (k - 1)) * (1 - sumItemVar / totalVariance);
 
-  return { alpha, n, k };
+  // n>=2 is the mathematical minimum, but an alpha computed off a handful of
+  // respondents is not a meaningful reliability estimate (can even come out
+  // negative) — flag rather than hide, same reasoning as welchTTest/oneWayAnova.
+  return { alpha, n, k, lowN: n < 10 };
 }
 
 /* =========================

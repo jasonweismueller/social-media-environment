@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { pravatar, hasAdminRole } from "../utils";
+import { pravatar, hasAdminRole, APP } from "../utils";
 import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus } from "./ui";
 import { FeedParticipantsPage } from "./components-admin-participants-feed";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
@@ -529,7 +529,16 @@ export function AdminFeedsPanel({
                         checked={!!randomize}
                         onChange={onSetRandomize}
                       />
-                      {Object.entries(flagKinds).map(([kind, { label, savingKey }]) => (
+                      {/* Amazon reviews have no photo avatars and no rendered
+                          product/review images at all (letter-in-a-circle
+                          avatar only, ui-posts-amazon.jsx), and no bio-hover
+                          card — those 3 toggles are permanent no-ops there,
+                          so hide them rather than let an admin flip a switch
+                          that visibly does nothing. Time/Name randomization
+                          both work for Amazon (reviewer name + review date). */}
+                      {Object.entries(flagKinds)
+                        .filter(([kind]) => APP !== "amz" || kind === "time" || kind === "name")
+                        .map(([kind, { label, savingKey }]) => (
                         <Toggle
                           key={kind}
                           label={label}

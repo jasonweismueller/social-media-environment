@@ -12,6 +12,7 @@ import {
   readPostNames,
   hasAdminRole,
   wipeParticipantsOnBackend,
+  median,
 } from "../utils";
 import { PageHeader, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 
@@ -39,6 +40,13 @@ const FB_ONLY = [
 ];
 
 const sShort = (n) => (Number.isFinite(Number(n)) ? `${Math.round(Number(n))}s` : "—");
+
+const formatSecondsAgo = (msElapsed) => {
+  const s = Math.max(0, Math.round(Number(msElapsed) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  return `${m}m ago`;
+};
 
 function selectAllOnFocus(e) {
   try {
@@ -1119,6 +1127,15 @@ export function FeedParticipantsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // "Live" mode — silently re-polls the roster on an interval so a
+  // researcher watching a study collect data doesn't have to keep clicking
+  // Refresh by hand. Off by default (no surprise background network traffic
+  // on a page that's just sitting open in a tab); pauses itself while
+  // viewing simulated data, since there's nothing live to poll for.
+  const [liveOn, setLiveOn] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+  const [, forceTick] = useState(0);
+
   const [pageSize, setPageSize] = useState(25);
   const [showPerPost, setShowPerPost] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -1193,6 +1210,7 @@ export function FeedParticipantsPage({
         setRows(data);
         if (!usingSimulated) computeSummaryIdle(data);
         saveCache(data, pid);
+        setLastRefreshedAt(Date.now());
       }
     } catch (e) {
       if (e?.name !== "AbortError") setError("Failed to load participants");
@@ -1213,6 +1231,24 @@ export function FeedParticipantsPage({
     return () => abortRef.current?.abort?.();
   }, [feedId, projectId]);
 
+  // Poll silently every 20s while "Live" is on. Stops itself the moment the
+  // toggle flips off, the feed/project changes, or the component unmounts —
+  // never leaves a stray interval polling a feed that's no longer on screen.
+  useEffect(() => {
+    if (!liveOn || usingSimulated || !feedId) return undefined;
+    const id = setInterval(() => refresh(true), 20000);
+    return () => clearInterval(id);
+  }, [liveOn, usingSimulated, feedId, projectId]);
+
+  // Separate 1s tick purely to keep the "Updated Xs ago" label fresh — does
+  // not touch the network, just forces a re-render so the elapsed-time text
+  // updates. Only runs while Live is on, so it costs nothing otherwise.
+  useEffect(() => {
+    if (!liveOn) return undefined;
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [liveOn]);
+
   const effectiveRows = useMemo(
     () => (usingSimulated ? (simRows || []) : (rows || [])),
     [usingSimulated, simRows, rows]
@@ -1230,6 +1266,50 @@ export function FeedParticipantsPage({
   }, [effectiveRows]);
 
   const visible = useMemo(() => sorted.slice(0, pageSize), [sorted, pageSize]);
+
+  // Lightweight, transparent data-quality flags — computed client-side from
+  // what's already loaded, never hidden/auto-excluded. Two conservative,
+  // explainable heuristics rather than a black-box score: a completion time
+  // that's implausibly fast, and the same non-blank participant id appearing
+  // more than once for this feed (usually a re-submission/re-entry rather
+  // than two distinct people). Thresholds are deliberately loose (biased
+  // toward under-flagging) since this is a hint for a researcher to look
+  // closer, not a verdict.
+  const qualityFlagsBySession = useMemo(() => {
+    const out = new Map();
+    if (!effectiveRows?.length) return out;
+
+    const times = effectiveRows
+      .map((r) => Number(r.ms_enter_to_submit))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    const medMs = times.length ? median(times) : null;
+    const fastFloorMs = 4000; // below this, essentially nobody can have read anything
+    const fastRelativeMs = medMs != null ? medMs * 0.25 : null;
+
+    const idCounts = new Map();
+    effectiveRows.forEach((r) => {
+      const pid = String(r.participant_id || "").trim();
+      if (!pid) return;
+      idCounts.set(pid, (idCounts.get(pid) || 0) + 1);
+    });
+
+    effectiveRows.forEach((r) => {
+      const flags = [];
+      const t = Number(r.ms_enter_to_submit);
+      if (Number.isFinite(t) && t > 0) {
+        if (t < fastFloorMs || (fastRelativeMs != null && t < fastRelativeMs)) {
+          flags.push({ key: "fast", label: "Very fast", detail: `Submitted in ${ms(t)} — unusually quick for this feed.` });
+        }
+      }
+      const pid = String(r.participant_id || "").trim();
+      if (pid && (idCounts.get(pid) || 0) > 1) {
+        flags.push({ key: "dup", label: "Repeat ID", detail: `Participant ID "${pid}" appears ${idCounts.get(pid)} times for this feed.` });
+      }
+      if (flags.length) out.set(r.session_id || `${pid}::${r.submitted_at_iso}`, flags);
+    });
+
+    return out;
+  }, [effectiveRows]);
 
   const avgDwellSByPost = useMemo(() => {
     const acc = new Map();
@@ -1613,6 +1693,22 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
             Refresh
           </Button>
 
+          <Button
+            variant={liveOn ? "primary" : "secondary"}
+            onClick={() => setLiveOn((v) => !v)}
+            disabled={usingSimulated || !feedId}
+            title={usingSimulated ? "Not available while viewing simulated data" : "Auto-refresh this page every 20s"}
+            style={{ padding: compact ? ".25rem .6rem" : undefined }}
+          >
+            {liveOn ? "● Live" : "Go live"}
+          </Button>
+
+          {liveOn && (
+            <span className="subtle" style={{ fontSize: ".78rem" }}>
+              {lastRefreshedAt ? `Updated ${formatSecondsAgo(Date.now() - lastRefreshedAt)}` : "Updating…"}
+            </span>
+          )}
+
           <select
             value={simMode}
             onChange={(e) => setSimMode(e.target.value)}
@@ -1899,16 +1995,18 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
         <>
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: fsTable }}>
             <colgroup>
-              <col style={{ width: "36%" }} />
-              <col style={{ width: "34%" }} />
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "26%" }} />
+              <col style={{ width: "14%" }} />
               <col style={{ width: "18%" }} />
-              <col style={{ width: "12%" }} />
+              <col style={{ width: "14%" }} />
             </colgroup>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--line)" }}>
                 <th style={{ textAlign: "left", padding: padCell }}>Participant</th>
                 <th style={{ textAlign: "left", padding: padCell }}>Submitted At</th>
                 <th style={{ textAlign: "right", padding: padCell }}>Time to Submit</th>
+                <th style={{ textAlign: "left", padding: padCell }}>Flags</th>
                 <th style={{ textAlign: "right", padding: padCell }} />
               </tr>
             </thead>
@@ -1923,6 +2021,28 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
                   </td>
                   <td style={{ padding: padCell, textAlign: "right" }}>
                     {ms(r.ms_enter_to_submit)}
+                  </td>
+                  <td style={{ padding: padCell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {(qualityFlagsBySession.get(r.session_id) || []).map((f) => (
+                      <span
+                        key={f.key}
+                        title={f.detail}
+                        style={{
+                          display: "inline-block",
+                          fontSize: ".72rem",
+                          fontWeight: 600,
+                          color: "#b45309",
+                          background: "#fef3c7",
+                          border: "1px solid #fde68a",
+                          borderRadius: 999,
+                          padding: "1px 7px",
+                          marginRight: 4,
+                          cursor: "help",
+                        }}
+                      >
+                        {f.label}
+                      </span>
+                    ))}
                   </td>
                   <td style={{ padding: padCell, textAlign: "right" }}>
                     <Button
