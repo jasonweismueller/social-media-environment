@@ -776,12 +776,18 @@ function TopRailReal() {
         <div className="trp-left">
           <span className="trp-real-logo">
             <TrpIcon size={20} stroke="#fff" strokeWidth={2.5}>
-              <path d="M15 8.5h2V5h-2a4 4 0 0 0-4 4v2H9v3.5h2V21h3.5v-6.5H17l.5-3.5h-3V9a.5.5 0 0 1 .5-.5Z" fill="#fff" stroke="none" />
+              {/* The raw glyph's own visual bounding box (x:[9,17.5],
+                  y:[5,21]) isn't centered within the 24x24 viewBox it's
+                  drawn in — shifted to actually sit in the middle of the
+                  circle instead of looking off to one side. */}
+              <g transform="translate(-1.25,-1)">
+                <path d="M15 8.5h2V5h-2a4 4 0 0 0-4 4v2H9v3.5h2V21h3.5v-6.5H17l.5-3.5h-3V9a.5.5 0 0 1 .5-.5Z" fill="#fff" stroke="none" />
+              </g>
             </TrpIcon>
           </span>
           <span className="trp-real-search">
             <TrpIcon size={15} stroke="#65676b"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m20 20-4.3-4.3" /></TrpIcon>
-            Search Facebook
+            Search
           </span>
         </div>
 
