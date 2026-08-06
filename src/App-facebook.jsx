@@ -49,6 +49,14 @@ import {
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
+// Direct file import (not the per-app `./ui-posts` barrel) — this app is
+// unambiguously Facebook, and `PageWithRails` below needs the exact same
+// seeded-contacts builder + left-rail label lists `Feed`'s own rails use
+// (ui-posts-facebook.jsx), so the two "realistic surroundings" renderers
+// (this file's `PageWithRails`, the one actually wrapping the live
+// participant feed, and `Feed`'s own rails, only reachable when `Feed` is
+// mounted standalone e.g. the admin's Feed Preview) can't drift apart.
+import { buildRailContacts, LEFT_RAIL_NAV_ITEMS, LEFT_RAIL_SHORTCUTS } from "./ui-posts/ui-posts-facebook";
 import {
   ParticipantOverlay,
   ThankYouOverlay,
@@ -794,7 +802,7 @@ function RailStack({ children }) {
   );
 }
 
-function PageWithRails({ children }) {
+function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
   const [rightCount, setRightCount] = useState(12);
 
   useEffect(() => {
@@ -826,6 +834,31 @@ function PageWithRails({ children }) {
     return () => window.removeEventListener("resize", compute);
   }, []);
 
+  // This component — not `Feed`'s own internal rails (ui-posts-facebook.jsx)
+  // — is what actually wraps the live participant feed (see its call site
+  // below), so "Realistic surroundings" has to be implemented here to have
+  // any visible effect. `Feed`'s own rails are only reachable when `Feed` is
+  // mounted standalone (e.g. the admin's Feed Preview) — both now share the
+  // identical `buildRailContacts` generator so they can't drift apart.
+  const realisticOn = !!flags?.realistic_surroundings;
+  const [contacts, setContacts] = useState([]);
+
+  useEffect(() => {
+    if (!realisticOn) return undefined;
+    let cancelled = false;
+    (async () => {
+      const [femalePool, malePool] = await Promise.all([
+        getAvatarPool("female"),
+        getAvatarPool("male"),
+      ]);
+      if (cancelled) return;
+      setContacts(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: rightCount }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [realisticOn, rightCount, runSeed, app, projectId, feedId]);
+
   return (
     <div
       className="page"
@@ -835,31 +868,74 @@ function PageWithRails({ children }) {
         columnGap: "var(--gap)",
       }}
     >
-      <aside className="rail rail-left" aria-hidden="true">
-        <RailStack>
-          <RailBanner tall />
-          <RailBox largeAvatar />
-          <RailList rows={5} />
-          <RailBox />
-          <RailBanner />
-        </RailStack>
-      </aside>
+      {realisticOn ? (
+        <aside className="rail rail-left rail--content" aria-hidden="true">
+          <div className="rail-real-list">
+            {LEFT_RAIL_NAV_ITEMS.map((label) => (
+              <div key={label} className="rail-real-item">
+                <span className="rail-real-icon" />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="rail-real-title">Your shortcuts</div>
+          <div className="rail-real-list">
+            {LEFT_RAIL_SHORTCUTS.map((label) => (
+              <div key={label} className="rail-real-item">
+                <span className="rail-real-icon rail-real-icon--shortcut" />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-left" aria-hidden="true">
+          <RailStack>
+            <RailBanner tall />
+            <RailBox largeAvatar />
+            <RailList rows={5} />
+            <RailBox />
+            <RailBanner />
+          </RailStack>
+        </aside>
+      )}
 
       <div className="container feed">{children}</div>
 
-      <aside className="rail rail-right" aria-hidden="true">
-        <RailStack>
-          <RailBanner tall />
-          {Array.from({ length: rightCount }).map((_, i) =>
-            i % 3 === 1 ? (
-              <RailList key={i} rows={4} />
-            ) : (
-              <RailBox key={i} largeAvatar={i % 5 === 0} />
-            )
-          )}
-          <RailBanner />
-        </RailStack>
-      </aside>
+      {realisticOn ? (
+        <aside className="rail rail-right rail--content" aria-hidden="true">
+          <div className="rail-real-title">Contacts</div>
+          <div className="rail-real-list">
+            {contacts.map((c) => (
+              <div key={c.id} className="rail-real-item">
+                <span className="rail-contact-avatar-wrap">
+                  {c.avatarUrl ? (
+                    <img src={c.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+                  ) : (
+                    <span className="rail-contact-avatar rail-contact-avatar--blank" />
+                  )}
+                  {c.online && <span className="rail-contact-online-dot" />}
+                </span>
+                <span>{c.name}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-right" aria-hidden="true">
+          <RailStack>
+            <RailBanner tall />
+            {Array.from({ length: rightCount }).map((_, i) =>
+              i % 3 === 1 ? (
+                <RailList key={i} rows={4} />
+              ) : (
+                <RailBox key={i} largeAvatar={i % 5 === 0} />
+              )
+            )}
+            <RailBanner />
+          </RailStack>
+        </aside>
+      )}
     </div>
   );
 }
@@ -2992,7 +3068,7 @@ export default function App() {
                   )}
                 </div>
               ) : requiresFeedStage ? (
-                <PageWithRails>
+                <PageWithRails flags={flags} runSeed={runSeed} app={APP} projectId={projectId} feedId={activeFeedId}>
                   <div
                     style={{
                       position: "relative",

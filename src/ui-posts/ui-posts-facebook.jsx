@@ -57,8 +57,36 @@ const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot
 // participant/condition (nothing here is randomized or content-dependent,
 // so there's nothing for it to confound). Real Facebook's own nav; no
 // personalization attempted since we have no real identity to reflect.
-const LEFT_RAIL_NAV_ITEMS = ["Friends", "Memories", "Saved", "Groups", "Video", "Marketplace"];
-const LEFT_RAIL_SHORTCUTS = ["Photography Club", "Local Marketplace", "Book Swap"];
+export const LEFT_RAIL_NAV_ITEMS = ["Friends", "Memories", "Saved", "Groups", "Video", "Marketplace"];
+export const LEFT_RAIL_SHORTCUTS = ["Photography Club", "Local Marketplace", "Book Swap"];
+
+// Decorative "Contacts" rail generator — real-looking, but purely cosmetic:
+// reuses the exact same avatar/name pools as real post authors, seeded
+// distinctly ("rail-contacts" vs "female-avatars"/"female-names" etc.) so it
+// never mirrors any specific post's assigned author. Confound-safe for the
+// same reason author-name/avatar randomization already is: identical
+// mechanism, same pool, seeded by run+participant — never by condition or
+// content. Exported so `App-facebook.jsx`'s own separate `PageWithRails`
+// (the one actually wrapping the live participant feed — this file's own
+// `Feed.rail-right` is only reachable when `Feed` is mounted standalone,
+// e.g. the admin's Feed Preview) can build an identical contacts list
+// instead of hand-rolling a second copy of this logic.
+export function buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count = 14 }) {
+  const contactSeedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
+  const namePool = [...FB_FEMALE_NAMES, ...FB_MALE_NAMES];
+  const avatarPool = [...(femalePool || []), ...(malePool || [])];
+  return Array.from({ length: count }, (_, i) => ({
+    id: `rail-contact-${i}`,
+    name:
+      pickUniqueDeterministic(namePool, i, [...contactSeedBase, "rail-contacts-name"]) ||
+      `Contact ${i + 1}`,
+    avatarUrl: pickUniqueDeterministic(avatarPool, i, [...contactSeedBase, "rail-contacts-avatar"]),
+    // ~30% online, deterministic per contact — matches the light sprinkling
+    // of green dots on a real contacts list rather than an implausible
+    // "everyone's online" look.
+    online: pickDeterministic([true, false, false, false], [...contactSeedBase, "rail-contacts-online", i]) === true,
+  }));
+}
 
 function snapshotKeyPart_(value) {
   return encodeURIComponent(String(value == null ? "" : value));
@@ -2373,22 +2401,8 @@ export function Feed({
         ),
       });
 
-      const CONTACTS_COUNT = 14;
-      const contactSeedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
-      const namePool = [...FB_FEMALE_NAMES, ...FB_MALE_NAMES];
-      const avatarPool = [...femalePool, ...malePool];
       setContacts(
-        Array.from({ length: CONTACTS_COUNT }, (_, i) => ({
-          id: `rail-contact-${i}`,
-          name:
-            pickUniqueDeterministic(namePool, i, [...contactSeedBase, "rail-contacts-name"]) ||
-            `Contact ${i + 1}`,
-          avatarUrl: pickUniqueDeterministic(avatarPool, i, [...contactSeedBase, "rail-contacts-avatar"]),
-          // ~30% online, deterministic per contact — matches the light
-          // sprinkling of green dots on a real contacts list rather than
-          // an implausible "everyone's online" look.
-          online: pickDeterministic([true, false, false, false], [...contactSeedBase, "rail-contacts-online", i]) === true,
-        }))
+        buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: 14 })
       );
     })();
 

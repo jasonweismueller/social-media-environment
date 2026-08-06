@@ -4215,3 +4215,60 @@ test earlier in this session, since all of those constructed the `flags` object 
 directly to `<Feed>`, skipping this function entirely — worth remembering before trusting a
 component-level test as proof a feature works end-to-end through the real fetch→normalize→render
 pipeline.
+
+## Second bug, same morning: "realistic surroundings" reached `Feed` correctly but rendered invisibly — a second, separate rail implementation actually controls the live page
+
+After the `normalizeFlags` fix above, the user reported still seeing only ghost rails on the real
+site (engagement counts and pacing were confirmed working by this point). Root cause was a second,
+independent bug, only found by directly measuring the *rendered* rail elements (`getBoundingClientRect`)
+rather than just checking for the right CSS class in the DOM — the class was correct, but the element
+carrying it had `width: 0` and was invisible.
+
+**Root cause**: `Feed`'s own internal rails (`ui-posts-facebook.jsx`, the ones built and fixed
+earlier this session) are **not** what the live participant page actually shows. `App-facebook.jsx`
+has a second, entirely separate rail implementation, `PageWithRails` (its own `.rail-left`/
+`.rail-right` asides, built from `RailBox`/`RailBanner`/`RailList` ghost primitives, with its own
+dynamically-computed right-rail item count based on viewport height) — and it **wraps** `<FBFeed>`
+directly at `PageWithRails`'s real call site. So the actual DOM has `Feed`'s own `<div className="page">`
+(with its own rails) nested *inside* `PageWithRails`'s already-existing middle `.container.feed`
+column — meaning `Feed`'s own rail grid gets squeezed into a ~700px-wide space with essentially zero
+room for its own rail columns, rendering it real, correct, and completely invisible. The rails a real
+participant actually sees are `PageWithRails`'s, which nothing earlier this session had touched at
+all. This is, once again, the same class of near-duplicate-implementation footgun this file already
+has a name for — just one file deeper than usual (`App-facebook.jsx` duplicating `ui-posts-
+facebook.jsx`'s own rail concept, not the more common three-`App-*.jsx` duplication).
+
+**Fix**: extracted the seeded-contacts generator out of `Feed`'s effect into an exported
+`buildRailContacts({femalePool, malePool, runSeed, app, projectId, feedId, count})` (plus exported
+`LEFT_RAIL_NAV_ITEMS`/`LEFT_RAIL_SHORTCUTS`) in `ui-posts-facebook.jsx`, so there's exactly one
+implementation of "what the realistic contacts list looks like," not two. `Feed`'s own effect now
+calls this shared function instead of the logic it used to own directly. `PageWithRails` gained
+`flags`/`runSeed`/`app`/`projectId`/`feedId` props (threaded from its real call site, which already
+had all of them in scope for the `<FBFeed>` right below it) and now conditionally renders real
+left-nav/contacts content via the same shared builder + the same `.rail-real-*` CSS classes `Feed`'s
+rails already used, or its original `RailBox`/`RailBanner`/`RailList` ghost stack, gated on
+`flags?.realistic_surroundings` — identical on/off contract as `Feed`'s own rails. `Feed`'s own
+internal rails are left as they are (not dead code — they're exactly what renders correctly for the
+admin's standalone Feed Preview feature, which doesn't go through `PageWithRails` at all); they're
+just genuinely inert weight in the live participant path specifically, which is harmless (zero-width,
+`aria-hidden`, non-interactive either way).
+
+**Verified against the real bundled app both ways** (same fetch-interception technique as the first
+bug fix — only the one Supabase `feeds?select=flags` request faked, everything else hit the real
+backend, real consent flow clicked through without submitting): queried every `.rail-left`/
+`.rail-right` element's actual `getBoundingClientRect()` and `display`, not just its class list, to
+distinguish the genuinely-visible one from the invisible nested one. With the flag on: the
+visible-and-310px-wide rail shows real nav labels and real randomized contact names
+("Griffin Moore", "Victoria Fields", ...); confirmed via screenshot too, not just computed geometry.
+With the flag off: the visible rail is plain `rail rail-left`/`rail rail-right`, no `rail--content`
+modifier — byte-for-byte the original ghost behavior, confirming zero regression for every feed that
+hasn't opted in.
+
+**Lesson, stated plainly since it cost real back-and-forth**: confirming a CSS class is present on
+*some* element matching a selector is not the same as confirming that element is what the user
+actually sees. `document.querySelector` returns the *first* match, silently hiding the existence of
+a second one — this file's own earlier verification note about the pre-load skeleton sharing the same
+class names should have been the tell that this exact ambiguity was already a known risk in this
+component, and it was almost missed a second time here for a different, unrelated pair of duplicate
+elements. When verifying a visual feature end-to-end, measure the rendered box (`getBoundingClientRect`
++ computed `display`), not just presence-of-class-in-DOM.
