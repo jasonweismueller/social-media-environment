@@ -47,6 +47,8 @@ import {
   loadPostByIdFromBackend,
   assignExperimentGroup,
   useParticipantTheme,
+  hasCompletedStudyLocally,
+  markStudyCompletedLocally,
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
@@ -1051,6 +1053,22 @@ export default function App() {
     !onAdmin ? getSurveyIdFromUrl() : ""
   );
 
+  // Courtesy guard against an honest participant reloading/double-clicking
+  // after a successful submit and silently re-entering the whole flow only
+  // to hit the real (server-side) duplicate-submission rejection at the very
+  // end — see markStudyCompletedLocally's own comment in utils-core.js. Read
+  // once, synchronously, from whichever launch param this page actually
+  // loaded with.
+  const [alreadyCompleted] = useState(() =>
+    !onAdmin &&
+    hasCompletedStudyLocally({
+      app: APP,
+      projectId: getProjectIdUtil() || "",
+      feedId: getFeedIdFromUrl(),
+      surveyId: getSurveyIdFromUrl(),
+    })
+  );
+
   const [posts, setPosts] = useState([]);
   const [feedPhase, setFeedPhase] = useState("idle");
   const [feedError, setFeedError] = useState("");
@@ -1065,8 +1083,11 @@ export default function App() {
   // for a launch link missing feed/survey params entirely.
   const [feedNotFound, setFeedNotFound] = useState(false);
   useEffect(() => {
-    if (feedNotFound) document.title = "404 Not Found";
-  }, [feedNotFound]);
+    if (feedNotFound && !alreadyCompleted) document.title = "404 Not Found";
+  }, [feedNotFound, alreadyCompleted]);
+  useEffect(() => {
+    if (alreadyCompleted) document.title = "Already completed";
+  }, [alreadyCompleted]);
 
   const [contentPhase, setContentPhase] = useState("idle");
   const [surveyOnlyPrereqPhase, setSurveyOnlyPrereqPhase] = useState("idle");
@@ -2431,9 +2452,15 @@ export default function App() {
     }
 
     if (!linkedSurvey && surveyPhase === "idle") {
+      markStudyCompletedLocally({
+        app: APP,
+        projectId,
+        feedId: activeFeedId,
+        surveyId: activeSurveyId,
+      });
       setSubmitted(true);
     }
-  }, [feedSubmitted, linkedSurvey, surveyPhase]);
+  }, [feedSubmitted, linkedSurvey, surveyPhase, projectId, activeFeedId, activeSurveyId]);
 
   useEffect(() => {
     if (
@@ -2600,6 +2627,13 @@ export default function App() {
   }, []);
 
   const finalizeStudyCompletion = useCallback(() => {
+    markStudyCompletedLocally({
+      app: APP,
+      projectId,
+      feedId: activeFeedId,
+      surveyId: activeSurveyId,
+    });
+
     const shouldRedirect =
       linkedSurvey &&
       completionConfig.mode === "redirect" &&
@@ -2617,7 +2651,7 @@ export default function App() {
     }
 
     setSubmitted(true);
-  }, [linkedSurvey, completionConfig]);
+  }, [linkedSurvey, completionConfig, projectId, activeFeedId, activeSurveyId]);
 
   const handleSurveySubmit = useCallback(async () => {
     if (!linkedSurvey) return;
@@ -3025,6 +3059,41 @@ export default function App() {
     } :
     loadingNextStageOverlay ? { title: "Loading questions…", subtitle: "Preparing the next stage" } :
     null;
+
+  // A courtesy guard, not the real security boundary (that's server-side —
+  // see markStudyCompletedLocally's comment in utils-core.js): this browser
+  // already completed this exact launch link once. Checked (and rendered)
+  // before feedNotFound below, deliberately — if a feed is ever deleted
+  // *after* a participant completed it, they should still see "already
+  // completed," not a confusing 404. (The boot fetch itself still runs in
+  // the background either way — not worth threading this into that async
+  // chain just to skip one wasted request for a rare edge case.)
+  if (!onAdmin && alreadyCompleted) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "100vh",
+          fontFamily:
+            "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+          color: "#444",
+          textAlign: "center",
+          padding: 24,
+          boxSizing: "border-box",
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: "0 0 8px" }}>Already completed</h1>
+          <p style={{ fontSize: 15, margin: 0, color: "#777" }}>
+            It looks like you've already completed this study on this device. If you believe
+            this is a mistake, please contact the researcher.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // A feed-based launch link whose feed_id doesn't match any real feed in
   // the project — same static 404 index.html's own bootstrap script shows

@@ -230,6 +230,42 @@ export function buildSurveyShareUrl(surveyOrId, extra = {}) {
   });
 }
 
+/* ============================ local completion guard ============================ */
+// A courtesy accident-guard, not a security boundary — the real protection
+// against duplicate/spammed submissions is server-side (Postgres triggers +
+// unique constraints on participants/survey_responses, see
+// 20260801000021_submission_abuse_guards.sql). This just stops an honest
+// participant who reloads/double-clicks after a successful submit from
+// silently re-entering the whole feed+survey flow only to hit that server
+// rejection at the very end. Scoped to whichever launch param they actually
+// arrived with (feed_id takes priority — that's what "reloading this link"
+// means), per app+project, so a different study never gets blocked by this.
+const STUDY_COMPLETION_KEY_PREFIX = "study_completed_v1";
+
+function studyCompletionKey({ app, projectId, feedId, surveyId }) {
+  const scope = feedId ? `feed::${feedId}` : surveyId ? `survey::${surveyId}` : "";
+  if (!scope) return "";
+  return `${STUDY_COMPLETION_KEY_PREFIX}::${app || ""}::${projectId || ""}::${scope}`;
+}
+
+export function hasCompletedStudyLocally({ app, projectId, feedId, surveyId } = {}) {
+  const key = studyCompletionKey({ app, projectId, feedId, surveyId });
+  if (!key) return false;
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markStudyCompletedLocally({ app, projectId, feedId, surveyId } = {}) {
+  const key = studyCompletionKey({ app, projectId, feedId, surveyId });
+  if (!key) return;
+  try {
+    localStorage.setItem(key, "1");
+  } catch {}
+}
+
 /* ============================ RNG + time display ============================ */
 function seedToInt(s){
   let h = 2166136261 >>> 0;
