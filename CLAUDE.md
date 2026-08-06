@@ -4583,3 +4583,141 @@ itself, the survey editor's Pre-feed/Participants/Launch & completion tabs, and 
 Participants / Survey Participants analysis-hub pages. All built from the same shared token-based
 primitives already verified elsewhere in this session, so low risk — but flagged rather than
 silently assumed correct.
+
+## Dark mode for participants (feed + survey), admin-controlled, synced into previews (2026-08-06)
+
+Direct follow-up to the admin dashboard's own dark mode (previous session): "create a dark mode
+option for the survey and the feed too... I want to be able to control whether people even get the
+option... consider feed preview and survey preview and how the admin dashboard being in dark mode
+will affect the preview." Scoped via a real plan (Explore → design → `AskUserQuestion` for the two
+genuinely open UX calls → written plan → `ExitPlanMode` approval) before any code:
+`~/.claude/plans/valiant-stirring-kernighan.md`.
+
+**Two new independent opt-in flags, same "empty means unchanged, no GAS counterpart" posture as
+every prior flag added this project** — per this project's own standing rule that new participant-
+facing behavior must be its own independent opt-in toggle, never bundled/default-on, and the
+identical precedent set by `realistic_engagement`/`realistic_pacing`/`realistic_surroundings`:
+- **Feed-level `allow_dark_mode`** — added to `normalizeFlagsForStore`/`normalizeFlagsForRead`
+  (`utils-backend.js`), `FLAG_PAIRS` (`utils-backend-supabase.js`), a new `dark` entry in
+  `FLAG_KINDS` (`components-admin-dashboard.jsx`, surfaced automatically in Feeds → Settings →
+  Behavior), and — critically, done proactively this time rather than found by a bug report —
+  each of the three `App-*.jsx` files' own local `normalizeFlags()`. This is the *exact* footgun
+  the "three realism flags did nothing for real participants" postmortem (2026-08-06, earlier
+  session) already named: a flag can round-trip correctly through the backend and the admin UI
+  while silently never reaching `<Feed>`, because each `App-*.jsx` rebuilds the flags object from
+  a hardcoded whitelist. Unlike avatar/image/bio/engagement/surroundings, dark mode works
+  identically on all three apps, so it's the one flag *not* excluded in
+  `components-admin-feeds.jsx`'s Amazon filter.
+- **Survey-level `allow_dark_mode`** — a new flat field alongside `completion_mode` in
+  `makeEmptySurvey`/`normalizeSurvey`/`frontendSurveyToBackend` (`utils-survey.js`) and the
+  `save-survey` Edge Function's independent re-implementation (`survey-sanitize.ts`, sanitize +
+  output) — **deployed** (`supabase functions deploy save-survey --project-ref
+  yrzqnlhbawzuzlrrocfd`, `deno check` clean first). Surfaced in the Survey editor's Setup tab as a
+  new "Participant appearance" field. No Code.gs change — postdates the GAS cutover, Supabase-only,
+  same posture as custom measure groups.
+
+**Shared theme utility + toggle, genuinely cross-app** (per direct user choice: a small floating
+icon button, not integrated per-platform-topbar):
+- `src/utils/utils-participant-theme.js` — `useParticipantTheme(allowed)`, mirrors
+  `useAdminTheme.js`'s shape but is a fully separate implementation/storage key
+  (`participant_theme_v1`) — participants and admins must never share one. The stored *preference*
+  stays independent of `allowed`; only the returned `isDark` is gated by it — this is what makes a
+  participant's choice made during the feed reappear automatically on a survey that also allows
+  dark mode (confirmed as the desired behavior via `AskUserQuestion`), while a survey that doesn't
+  allow it always forces light regardless of what was picked earlier.
+- `src/ui-core/ParticipantThemeToggle.jsx` — presentation-only, fully controlled (no storage of its
+  own), so the same component serves two different drivers: `useParticipantTheme()` for real
+  participant pages, and local preview-only state for the admin's Feed/Survey preview (deliberately
+  never touching the real `participant_theme_v1` key). `position="fixed"` for real pages,
+  `position="absolute"` for embedding inside a preview panel.
+- **Single computed value per `App-*.jsx` covers both feed and survey-only direct-launch, with zero
+  changes needed inside `ui-survey.jsx`/`ui-survey-mobile.jsx`**: `stageAllowsDark = !onAdmin &&
+  ((shouldShowSurvey || shouldShowPreface) ? linkedSurvey?.allow_dark_mode : flags.allow_dark_mode)`,
+  feeding one `useParticipantTheme()` call and one `document.body.classList.toggle("dark-mode",
+  isDark)` effect (same shape as the existing `survey-mode` class effect), plus one conditionally-
+  rendered `<ParticipantThemeToggle>` near the top of each app's JSX return.
+
+**CSS: a `.dark-mode` class re-theming the existing base tokens, plus two real, non-obvious CSS
+bugs found and fixed only by testing live, not by code review**:
+- Each stylesheet gained a `.dark-mode{ --bg:...; --card:...; --text:...; ... }` block (Instagram:
+  `--ig-*`, pure black like real Instagram's own dark mode; Amazon: both its generic block *and*
+  its separate, actually-used `--amz-*` block, since `.amz-*` review-card classes don't reference
+  the generic tokens at all) plus a hardcoded-color sweep on high-traffic surfaces (survey
+  card/nav/inputs/matrix/errors, the generic comment/share modal, Facebook's realistic-surroundings
+  rails/topbar) — same methodology as the admin dashboard's own dark-mode audit, scoped to primary
+  surfaces rather than every line across ~9,000 combined CSS lines.
+- **Bug 1 — `color` is inherited as an already-resolved value, not re-evaluated per descendant.**
+  A real participant page puts `.dark-mode` on `<body>`, which already declares
+  `color:var(--text)` and re-resolves correctly. But the admin's Feed/Survey preview applies
+  `.dark-mode` to a wrapper `<div>` *nested inside* the (always-light) real page body — background
+  colors re-themed correctly (`.card` declares its own `background:var(--card)`), but text stayed
+  the real body's light color, since nothing re-declared `color` inside the wrapper's subtree.
+  Confirmed live (a `.card` inside such a wrapper: background `#242526`, text still `#111827`)
+  before fixing. Fix: each `.dark-mode` block now also sets `color:var(--text); background:
+  var(--bg)` directly (redundant-but-harmless when already on `<body>`, load-bearing for the
+  wrapper-div case).
+- **Bug 2 — worse, and not preview-specific: the `--survey-*` bridge (Facebook/Amazon only,
+  Instagram doesn't have this indirection) is declared once on `:root`, e.g. `--survey-text:
+  var(--text, #111827)`.** Since `:root` (`<html>`) never carries `.dark-mode`, `--survey-text`'s
+  computed value gets permanently baked to the light default the instant it's declared — that baked
+  literal is what inherits everywhere below, completely bypassing any later `.dark-mode` override
+  of the underlying `--text`, **regardless of whether `.dark-mode` ends up on `<body>` or a
+  wrapper**. This would have silently broken survey question/page-title/description text color for
+  every real participant, not just previews — caught only because live verification checked an
+  actual survey mount, not just the feed. Fix: redeclare the whole bridge
+  (`--survey-blue`/`-blue-dark`/`-blue-soft`/`-bg`/`-card`/`-line`/`-text`/`-muted`) under
+  `.dark-mode` too, in both `styles-facebook.css` and `styles-amazon.css`, so each variable
+  resolves fresh wherever `.dark-mode` actually lives, against the already-overridden base tokens
+  declared in the same rule.
+- **A third, structural bug, Instagram-only**: `ui-posts-instagram.jsx`'s post `<article>` used an
+  **inline** `style={{ background: "#fff", border: "1px solid var(--line)" }}` (the latter
+  referencing a variable that doesn't even exist in this stylesheet — only `--ig-line` does).
+  Inline styles have higher specificity than any CSS class, so no `.dark-mode .insta-card{...}`
+  rule could ever have overridden it — Instagram's feed was structurally incapable of going dark
+  until this line itself referenced the real, themeable `--ig-card`/`--ig-line` variables directly.
+  Found only by mounting the real component and querying computed background, not by reading the
+  CSS. A handful of other hardcoded `background:"#fff"` inline styles in the same file (mobile
+  comment sheet, comment list, comment input bar) were fixed the same way; finer secondary colors
+  within those same panels (border/placeholder-text greys) were left as light-only, matching this
+  session's "primary surfaces, not every corner" scope.
+
+**Preview sync** (`components-admin-feed-preview.jsx`, `components-admin-survey-preview.jsx`): per
+the user's own framing — the preview should visually match the admin dashboard's *current* theme,
+independent of whether the feed/survey's own flag is on (this is about not blinding an admin
+working in dark mode with a bright preview panel, not about simulating exactly what a participant
+would see). `useAdminTheme()` seeds a local `previewIsDark` (overridable by hand once the real
+`ParticipantThemeToggle` is clicked, which only renders when the flag is genuinely on — so an admin
+can also test the actual widget, starting from wherever the admin-theme mirror put it). **A second
+portal gap found and fixed**: comment/share dialogs (real `PostCard` UI) portal straight to
+`document.body`, bypassing the wrapper `<div>` entirely — so both preview modals also toggle
+`body.dark-mode` for as long as they're open (safe: the participant-facing `stageAllowsDark` above
+is unconditionally `false` whenever `onAdmin` is true, so there's never a competing effect fighting
+over `body.dark-mode`).
+
+**Verified live**, dev server confirmed working in this environment (per "Build/dev notes" — no
+Docker/quarantine issues hit): mounted the real `Feed` component per app (`?app=fb/ig/amz`, cache-
+free module URLs — this dev server doesn't append Vite's `?t=` cache-busting query, unlike some
+past sessions' notes about this same technique) with fabricated posts and `allow_dark_mode: true`,
+confirmed each app's post card background *and* text color round-trip correctly light→dark→light
+via the real `ParticipantThemeToggle` click (not just class presence — actual `getComputedStyle`
+before/after, which is what caught both CSS bugs above). Same technique for a fabricated
+single-question survey (`SurveyScreen`, `allow_dark_mode: true` on the survey object) — confirmed
+question title color, card background, and input background all correctly flip. `FeedPreviewModal`/
+`SurveyPreviewModal` mounted directly (wrapped in the real `ToastProvider`/`ConfirmProvider`) with
+`admin_theme_v1` forced to `"dark"` via `localStorage` (the real key `useAdminTheme.js` reads) —
+confirmed three cases: admin-dark + flag-off → preview dark, no toggle; admin-dark + flag-on →
+preview dark, toggle present; admin-light + flag-on → preview light by default, toggle click flips
+it independently. All touched files parse clean (`@babel/parser`); all three stylesheets' brace
+counts balanced. Dev server's own logs showed zero errors throughout. Test DOM nodes and
+`localStorage` keys cleaned up afterward.
+
+**Not verified**: an actual click-through by a real logged-in admin (standing limitation throughout
+this file) — toggling the two new flags for a real feed/survey through the real `/admin/*` UI, and
+watching a real participant session carry a dark-mode choice from feed into survey. `staging.
+studyfeed.org` (real content, no participant-data risk, real login) remains the right place for
+that, same as every other feature this file has flagged this way. The `save-survey` Edge Function
+was deployed to **production** (`yrzqnlhbawzuzlrrocfd`) only — not to the separate
+`studyfeed-staging` project (`hgctbgunlsesygzglbdv`); if a click-through on staging tries to save a
+survey with dark mode toggled and it doesn't persist, that's why — redeploy there too
+(`supabase functions deploy save-survey --project-ref hgctbgunlsesygzglbdv`) before assuming
+something's actually broken.
