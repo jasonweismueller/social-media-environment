@@ -86,6 +86,14 @@ function safeFileStem(value = "survey") {
   );
 }
 
+// Local date (not UTC) so a CSV downloaded late at night still gets the
+// filename date the admin actually sees on their own clock.
+function todayStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function triggerCsvDownload(filename, csv) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -1396,7 +1404,7 @@ export function SurveyParticipantsPage({
       });
 
       const csv = buildCsv(normalizedRows, header, header);
-      const filename = `${safeFileStem(survey?.name || surveyId)}_survey_responses${usingSimulated ? "_SIMULATED" : ""}.csv`;
+      const filename = `${safeFileStem(survey?.name || surveyId)}_responses_${todayStamp()}${usingSimulated ? "_SIMULATED" : ""}.csv`;
       triggerCsvDownload(filename, csv);
     } catch (e) {
       console.error("Survey CSV download failed:", e);

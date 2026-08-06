@@ -277,6 +277,14 @@ function safeFileStem(value = "survey") {
   );
 }
 
+// Local date (not UTC) so a CSV downloaded late at night still gets the
+// filename date the admin actually sees on their own clock.
+function todayStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -2180,11 +2188,7 @@ export function AdminSurveysPanel({
       });
 
       const csv = buildCsv(normalizedRows, header, header);
-      const filename = `${
-        slugifySurveyName(survey.name || survey.survey_id || "survey")
-          .replace(/[^\w\s-]/g, "")
-          .replace(/\s+/g, "_") || "survey"
-      }_responses.csv`;
+      const filename = `${safeFileStem(survey.name || survey.survey_id)}_responses_${todayStamp()}.csv`;
 
       triggerCsvDownload(filename, csv);
     } catch (e) {
@@ -2258,14 +2262,9 @@ export function AdminSurveysPanel({
         projectId,
       });
       const csv = buildCsv(normalizedRows, header, labels);
-      const safeName = slugifySurveyName(survey.name || survey.survey_id)
-        .replace(/[^\\w-]+/g, "_")
-        .replace(/_+/g, "_") || survey.survey_id;
+      const filename = `${safeFileStem(survey.name || survey.survey_id)}_multi_feed_responses_${todayStamp()}.csv`;
 
-      triggerCsvDownload(
-        `${safeName}_multi_feed_survey_responses.csv`,
-        csv
-      );
+      triggerCsvDownload(filename, csv);
     } catch (e) {
       console.warn("Failed to build multi-feed CSV:", e);
       toast.error("Failed to build multi-feed CSV.");
