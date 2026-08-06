@@ -1296,6 +1296,10 @@ export function makeEmptySurvey(overrides = {}) {
     delivery_mode: normalizeSurveyDeliveryMode(
       safeOverrides.delivery_mode
     ),
+
+    // Opt-in per survey, whether participants get a dark-mode toggle on
+    // survey pages at all — same posture as feeds' allow_dark_mode flag.
+    allow_dark_mode: !!safeOverrides.allow_dark_mode,
   };
 }
 
@@ -1412,6 +1416,8 @@ export function normalizeSurvey(raw = {}) {
     delivery_mode: normalizeSurveyDeliveryMode(
       safeRaw.delivery_mode
     ),
+
+    allow_dark_mode: !!safeRaw.allow_dark_mode,
   };
 }
 
@@ -1467,6 +1473,8 @@ export function frontendSurveyToBackend(survey = {}) {
       s.feed_sequence_ids.length
         ? s.feed_sequence_ids
         : s.linked_feed_ids,
+
+    allow_dark_mode: s.allow_dark_mode,
   };
 }
 

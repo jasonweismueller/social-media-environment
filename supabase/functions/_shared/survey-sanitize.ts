@@ -884,6 +884,8 @@ export function normalizeSurvey(raw: any = {}): any {
     completion_redirect_url: normalizeRichSurveyField(safeRaw.completion_redirect_url, ""),
 
     delivery_mode: normalizeSurveyDeliveryMode(safeRaw.delivery_mode),
+
+    allow_dark_mode: !!safeRaw.allow_dark_mode,
   };
 }
 
@@ -929,5 +931,7 @@ export function frontendSurveyToBackend(survey: any = {}): any {
 
     feed_sequence_ids:
       Array.isArray(s.feed_sequence_ids) && s.feed_sequence_ids.length ? s.feed_sequence_ids : s.linked_feed_ids,
+
+    allow_dark_mode: s.allow_dark_mode,
   };
 }

@@ -1457,6 +1457,11 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.realistic_surroundings !== "undefined") {
     out.realistic_surroundings = !!flags.realistic_surroundings;
   }
+  // Opt-in per feed, whether participants get a dark-mode toggle at all —
+  // same no-GAS-counterpart posture as the three realistic_* flags above.
+  if (typeof flags.allow_dark_mode !== "undefined") {
+    out.allow_dark_mode = !!flags.allow_dark_mode;
+  }
 
   return out;
 }
@@ -1471,6 +1476,7 @@ export function normalizeFlagsForRead(flags) {
   out.realistic_engagement = !!out.realistic_engagement;
   out.realistic_pacing = !!out.realistic_pacing;
   out.realistic_surroundings = !!out.realistic_surroundings;
+  out.allow_dark_mode = !!out.allow_dark_mode;
 
   delete out.random_time;
   delete out.random_avatar;

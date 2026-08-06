@@ -705,6 +705,7 @@ const FLAG_PAIRS = [
   ["realistic_engagement", "realistic_engagement"],
   ["realistic_pacing", "realistic_pacing"],
   ["realistic_surroundings", "realistic_surroundings"],
+  ["allow_dark_mode", "allow_dark_mode"],
 ];
 
 export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {

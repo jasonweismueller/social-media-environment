@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Modal, Toggle, IconPillButton, IconShuffle, EmptyState, useToast } from "./ui";
-import { SurveyScreen, SurveyScreenMobile } from "../ui-core";
+import { Modal, Toggle, IconPillButton, IconShuffle, EmptyState, useToast, useAdminTheme } from "./ui";
+import { SurveyScreen, SurveyScreenMobile, ParticipantThemeToggle } from "../ui-core";
 import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
 
 // Deliberately all-false — a stable, deterministic preview default. Any
@@ -103,6 +103,18 @@ export function SurveyPreviewModal({
   const [forceResponse, setForceResponse] = useState(true);
 
   const participantSeed = seedNonce === 0 ? "preview" : `preview-${seedNonce}`;
+
+  // Mirrors the admin dashboard's own current theme by default (so a
+  // preview opened from a dark dashboard doesn't blind the admin with a
+  // bright panel), independent of the survey's own allow_dark_mode flag —
+  // that flag only controls whether the real ParticipantThemeToggle
+  // renders below, for testing the actual participant-facing widget.
+  // Deliberately local state, not the real participant_theme_v1 storage —
+  // opening a preview must never touch (or be affected by) a real
+  // participant's stored preference.
+  const { theme: adminTheme } = useAdminTheme();
+  const [manualDark, setManualDark] = useState(null); // null = still mirroring admin theme
+  const previewIsDark = manualDark !== null ? manualDark : adminTheme === "dark";
 
   const materializedPages = useMemo(() => {
     const pages = materializePagesFromBlocks(survey, survey?.page_blocks, {
@@ -275,6 +287,7 @@ export function SurveyPreviewModal({
           message="Add at least one question to see the participant view."
         />
       ) : (
+        <div className={previewIsDark ? "dark-mode" : ""} style={{ position: "relative" }}>
         <ScreenComponent
           survey={previewSurvey}
           posts={flattenedPosts}
@@ -294,6 +307,14 @@ export function SurveyPreviewModal({
           allowPageJump
           initialQuestionId={initialQuestionId}
         />
+        {survey?.allow_dark_mode && (
+          <ParticipantThemeToggle
+            isDark={previewIsDark}
+            onToggle={() => setManualDark(!previewIsDark)}
+            position="absolute"
+          />
+        )}
+        </div>
       )}
     </Modal>
   );

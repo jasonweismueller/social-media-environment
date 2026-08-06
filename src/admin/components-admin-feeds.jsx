@@ -558,9 +558,11 @@ export function AdminFeedsPanel({
                           Pacing (post-loading cascade) also genuinely works
                           for Amazon reviews; "engagement" (reactions/
                           comments/shares) and "surroundings" (Facebook-only
-                          rails) don't apply there and stay excluded. */}
+                          rails) don't apply there and stay excluded. Dark
+                          mode works identically on every app, so it's not
+                          excluded either. */}
                       {Object.entries(flagKinds)
-                        .filter(([kind]) => APP !== "amz" || kind === "time" || kind === "name" || kind === "pacing")
+                        .filter(([kind]) => APP !== "amz" || kind === "time" || kind === "name" || kind === "pacing" || kind === "dark")
                         .map(([kind, { label, savingKey }]) => (
                         <Toggle
                           key={kind}

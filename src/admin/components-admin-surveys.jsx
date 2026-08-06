@@ -39,7 +39,7 @@ import {
   normalizeQuestionForEditor,
 } from "./components-admin-surveys-editor";
 
-import { Card as AdminUiCard, Tabs, Button, useToast, useConfirm, usePrompt, EmptyState, IconClipboard } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, Toggle, useToast, useConfirm, usePrompt, EmptyState, IconClipboard } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -2605,6 +2605,17 @@ export function AdminSurveysPanel({
                     Survey only (skip feed)
                   </option>
                 </SelectInput>
+              </FieldBlock>
+
+              <FieldBlock
+                label="Participant appearance"
+                hint="Opt-in — off by default. When on, participants see a small toggle to switch the survey between light and dark."
+              >
+                <Toggle
+                  label="Allow dark mode for participants"
+                  checked={!!survey.allow_dark_mode}
+                  onChange={(v) => setSurvey({ ...survey, allow_dark_mode: v })}
+                />
               </FieldBlock>
             </SectionCard>
             )}

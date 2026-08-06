@@ -4,7 +4,7 @@
    NOTE: Your original file is preserved; new/changed bits are clearly marked.
    ========================================================================== */
 
-/* ================= IG Light Theme (variables only, no dark mode) ================= */
+/* ================= IG Light Theme (variables only) ================= */
 :root{
   /* IG palette */
   --ig-bg: #fafafa;
@@ -46,6 +46,23 @@
   --vol-base: rgba(255,255,255,.25);
   --vol-fill: #fff;
   --vol-val: 100;
+}
+
+/* Participant-facing dark mode. Opt-in per feed/survey (allow_dark_mode
+   flag) — applied via a `dark-mode` class on <body> for a real participant
+   page, or on a wrapper div for the admin's Feed/Survey preview. Real
+   Instagram's own dark mode is pure black, not dark grey. */
+.dark-mode{
+  --ig-bg:#000000; --ig-card:#000000; --ig-text:#f5f5f5; --ig-muted:#a8a8a8; --ig-line:#262626;
+  --ig-shadow:0 1px 2px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.5);
+  --ig-like-bg:#3a1f22;
+}
+
+/* Floating dark-mode toggle button (ParticipantThemeToggle.jsx) — see the
+   identical rule + comment in styles-facebook.css for why this is a real
+   class instead of a generic inline var(--card)/var(--text). */
+.pt-theme-toggle{
+  background:var(--ig-card); color:var(--ig-text); border-color:var(--ig-line);
 }
 
 /* ============= Base ============= */
@@ -319,6 +336,18 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .textarea{width:100%;border:1px solid var(--ig-line);border-radius:.75rem;padding:.75rem;font-size:1rem;outline:none}
 .textarea:focus{border-color:var(--ig-accent);box-shadow:0 0 0 3px rgba(237,73,86,.15)}
 .modal.modal-compact{max-width:460px;width:calc(100vw - 56px);text-align:center;padding:32px 28px}
+
+/* Dark-mode overrides for generic chrome that hardcodes light colors
+   instead of deriving from --ig-*: inputs/buttons, the comment/share
+   modal (shared by all three apps), and the "..." overflow-menu button. */
+.dark-mode .input, .dark-mode .select{ background:var(--ig-card); color:var(--ig-text); }
+.dark-mode .btn{ background:var(--ig-card); color:var(--ig-text); }
+.dark-mode .btn:hover{ background:#1c1c1c; }
+.dark-mode .dots{ color:var(--ig-muted); }
+.dark-mode .dots:hover:not(:disabled){ background:#262626; }
+.dark-mode .modal{ background:var(--ig-card); }
+.dark-mode .modal-footer{ background:var(--ig-card); }
+.dark-mode .textarea{ background:var(--ig-card); color:var(--ig-text); }
 
 .spinner-ring{
   width:42px;height:42px;margin:0 auto 14px;border-radius:50%;
@@ -2272,6 +2301,111 @@ body.survey-mode .rail-right {
 
 .survey-progress-step.is-upcoming{
   background: #eceff3;
+}
+
+/* Dark-mode overrides for the survey UI above. Unlike Facebook's survey
+   bridge (which derives everything from --bg/--card/etc. with fallbacks),
+   this IG survey CSS hardcodes its own light-only colors throughout, so
+   each one needs an explicit dark counterpart here rather than picking one
+   up automatically from the .dark-mode variable block further up this
+   file. */
+.dark-mode .survey-head{
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.5), rgba(0,0,0,.3)),
+    var(--ig-gradient);
+}
+.dark-mode .survey-question{
+  border-color: var(--ig-line);
+  background: linear-gradient(180deg, #161616, #101010);
+  box-shadow: 0 1px 2px rgba(0,0,0,.3);
+}
+.dark-mode .survey-info-block{
+  border-color: rgba(237,73,86,.3);
+  background: linear-gradient(180deg, #2a1418, #1a0e10);
+  color: #ff8fa3;
+  box-shadow: 0 4px 14px rgba(0,0,0,.3);
+}
+.dark-mode .survey-input,
+.dark-mode .survey-textarea,
+.dark-mode .survey-select{
+  background: #1c1c1c;
+  border-color: var(--ig-line);
+}
+.dark-mode .survey-option{
+  border-color: #333;
+  background: #1c1c1c;
+}
+.dark-mode .survey-option:hover{
+  border-color: #444;
+  background: #232323;
+}
+.dark-mode .survey-option span{
+  color: var(--ig-text);
+}
+.dark-mode .survey-matrix{
+  border-color: #333;
+  background: #161616;
+}
+.dark-mode .survey-matrix-table thead th{
+  background: linear-gradient(180deg, #1e1e1e, #161616);
+  color: var(--ig-muted);
+  border-bottom-color: #2a2a2a;
+}
+.dark-mode .survey-matrix-table thead th:first-child{
+  border-right-color: #2a2a2a;
+}
+.dark-mode .survey-bipolar-matrix .survey-matrix-table thead th:last-child{
+  border-left-color: #2a2a2a;
+}
+.dark-mode .survey-matrix-table tbody td{
+  border-bottom-color: #262626;
+}
+.dark-mode .survey-matrix-table tbody td:first-child{
+  background: #1a1a1a;
+  color: var(--ig-text);
+  border-right-color: #262626;
+}
+.dark-mode .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  background: #1a1a1a;
+  color: var(--ig-text);
+  border-left-color: #262626;
+}
+.dark-mode .survey-question.has-error{
+  background: linear-gradient(180deg, #2a1013, #1a0a0c);
+}
+.dark-mode .survey-question.has-error .survey-input,
+.dark-mode .survey-question.has-error .survey-textarea,
+.dark-mode .survey-question.has-error .survey-select{
+  background: #1c1c1c;
+}
+.dark-mode .survey-question.has-error .survey-option{
+  background: #241416;
+  border-color: #5a2a30;
+}
+.dark-mode .survey-question.has-error .survey-info-block{
+  background: linear-gradient(180deg, #2a1418, #1a0e10);
+}
+.dark-mode .survey-error-banner{
+  background: #2a1013;
+  border-color: #5a2a30;
+  color: #ff8f8f;
+}
+.dark-mode .survey-post-reminder-status{
+  background: var(--ig-card);
+  border-color: var(--ig-line);
+}
+.dark-mode .survey-nav-btn{
+  background: #1c1c1c;
+  border-color: #3a3a3a;
+  color: var(--ig-text);
+}
+.dark-mode .survey-nav-btn:hover:not(:disabled){
+  background: #242424;
+  border-color: #4a4a4a;
+}
+.dark-mode .survey-progress-step,
+.dark-mode .survey-progress-step.is-upcoming{
+  background: #2a2a2a;
 }
 
 @media (max-width: 700px){

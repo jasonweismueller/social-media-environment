@@ -8,6 +8,7 @@ import { getApp } from "../utils/utils-backend";
 
 export * from "./ui-survey";
 export * from "./ui-survey-mobile";
+export * from "./ParticipantThemeToggle";
 
 const app = (typeof window !== "undefined" ? getApp() : "fb");
 

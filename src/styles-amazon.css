@@ -21,6 +21,23 @@
   --menu-max-items: 7;
 }
 
+/* Participant-facing dark mode. Opt-in per feed/survey (allow_dark_mode
+   flag) — applied via a `dark-mode` class on <body> for a real participant
+   page, or on a wrapper div for the admin's Feed/Survey preview. This
+   generic block only backs the shared --survey-* bridge and any leftover
+   generic chrome; the actual review-card look comes from the separate
+   --amz-* block further down this file, overridden below it too. */
+.dark-mode{
+  --bg:#18191a; --card:#242526; --text:#e4e6eb; --muted:#b0b3b8; --line:#3e4042;
+  --blue:#2d88ff; --blue-ink:#5aa5ff; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 12px rgba(0,0,0,.4);
+}
+
+/* Floating dark-mode toggle button (ParticipantThemeToggle.jsx) — see the
+   identical rule + comment in styles-facebook.css. */
+.pt-theme-toggle{
+  background:var(--amz-card, var(--card)); color:var(--amz-text, var(--text)); border-color:var(--amz-line, var(--line));
+}
+
 /* ============= Base ============= */
 *{box-sizing:border-box}
 html,body,#root{height:100%}
@@ -301,6 +318,19 @@ a:hover{text-decoration:underline}
 .textarea{width:100%;border:1px solid var(--line);border-radius:.75rem;padding:.75rem;font-size:1rem;outline:none}
 .textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,119,242,.15)}
 .modal.modal-compact{max-width:460px;width:calc(100vw - 56px);text-align:center;padding:32px 28px}
+
+/* Dark-mode overrides for generic chrome that hardcodes light colors
+   instead of deriving from --bg/--card/etc.: inputs/buttons, the
+   comment/share modal (shared by all three apps), and the "..." overflow
+   menu button. */
+.dark-mode .input, .dark-mode .select{ background:var(--card); color:var(--text); }
+.dark-mode .btn{ background:var(--card); color:var(--text); }
+.dark-mode .btn:hover{ background:#2f3031; }
+.dark-mode .dots{ color:var(--muted); }
+.dark-mode .dots:hover:not(:disabled){ background:#3a3b3c; }
+.dark-mode .modal{ background:var(--card); }
+.dark-mode .modal-footer{ background:var(--card); }
+.dark-mode .textarea{ background:var(--card); color:var(--text); }
 
 .spinner-ring{
   width:42px;height:42px;margin:0 auto 14px;border-radius:50%;
@@ -2125,6 +2155,10 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   --survey-muted: var(--muted, #6b7280);
 }
 
+.dark-mode{
+  --survey-blue-soft: rgba(45,136,255,.16);
+}
+
 /* Full-page / survey-only mode */
 body.survey-mode .top-rail-placeholder,
 body.survey-mode .ig-topbar,
@@ -2758,6 +2792,100 @@ body.survey-mode .rail-right{
   text-align:center;
 }
 
+/* Dark-mode overrides for the survey UI above — identical rationale and
+   values to the equivalent block in styles-facebook.css (this section is a
+   byte-for-byte copy of the same "FACEBOOK SURVEY THEME" bridge). */
+.dark-mode .survey-page{
+  background:
+    radial-gradient(900px 460px at -5% -10%, rgba(24,119,242,.10), transparent 60%),
+    radial-gradient(900px 460px at 105% 110%, rgba(59,130,246,.12), transparent 60%),
+    linear-gradient(#141516, var(--survey-bg));
+}
+.dark-mode .survey-card{
+  background:rgba(36,37,38,.98);
+  box-shadow:0 8px 30px rgba(0,0,0,.35);
+}
+.dark-mode .survey-head{
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.3)),
+    linear-gradient(135deg, #1877f2, #3b82f6);
+}
+.dark-mode .survey-page-meta{
+  border-bottom-color:#3e4042;
+}
+.dark-mode .survey-progress-step{
+  background:#3a3b3c;
+}
+.dark-mode .survey-nav-btn{
+  border-color:#3e4042;
+  background:var(--card);
+}
+.dark-mode .survey-nav-btn:hover:not(:disabled){
+  background:#3a3b3c;
+  border-color:#4e5052;
+}
+.dark-mode .survey-question{
+  border-color:#3e4042;
+  background:linear-gradient(180deg, #242526, #1e1f20);
+  box-shadow:0 1px 2px rgba(0,0,0,.3);
+}
+.dark-mode .survey-info-block{
+  border-color:rgba(88,166,255,.3);
+  background:linear-gradient(180deg, #1a2634, #16202c);
+  color:#8ab4f8;
+}
+.dark-mode .survey-input,
+.dark-mode .survey-textarea,
+.dark-mode .survey-select{
+  background:#3a3b3c;
+}
+.dark-mode .survey-option{
+  border-color:#3e4042;
+  background:#3a3b3c;
+}
+.dark-mode .survey-option:hover{
+  border-color:#4e5052;
+  background:#242526;
+}
+.dark-mode .survey-matrix{
+  border-color:#3e4042;
+  background:#242526;
+}
+.dark-mode .survey-matrix-table thead th{
+  background:linear-gradient(180deg, #2a2b2c, #242526);
+  color:var(--survey-muted);
+  border-bottom-color:#3e4042;
+}
+.dark-mode .survey-matrix-table thead th:first-child{
+  border-right-color:#3e4042;
+}
+.dark-mode .survey-matrix-table tbody td{
+  border-bottom-color:#3a3b3c;
+}
+.dark-mode .survey-matrix-table tbody td:first-child{
+  background:#2a2b2c;
+  border-right-color:#3a3b3c;
+}
+.dark-mode .survey-bipolar-matrix .survey-matrix-table thead th:last-child,
+.dark-mode .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  border-left-color:#3e4042;
+}
+.dark-mode .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  background:#2a2b2c;
+}
+.dark-mode .survey-question.has-error{
+  background:linear-gradient(180deg, #242526, #1a2634);
+}
+.dark-mode .survey-error-banner{
+  border-color:#5a2a30;
+  background:#2a1013;
+  color:#ff8f8f;
+}
+.dark-mode .survey-post-reminder-status{
+  border-color:#3e4042;
+  background:var(--card);
+}
+
 /* Mobile survey layout */
 @media (max-width:700px){
   .survey-page{
@@ -3077,6 +3205,19 @@ body.survey-mode .rail-right{
   --amz-shadow:0 2px 5px rgba(15,17,17,.15);
 }
 
+/* Dark mode for the actual review-card chrome (the --amz-* variables above
+   are what real .amz-* classes use, not the generic --bg/--card block near
+   the top of this file). Orange/link/button accents kept as-is — Amazon's
+   yellow button and teal link read fine on a dark background. */
+.dark-mode{
+  --amz-bg:#0f1111;
+  --amz-card:#1a1c1c;
+  --amz-text:#e8e8e8;
+  --amz-muted:#a8adad;
+  --amz-line:#3a3d3d;
+  --amz-shadow:0 2px 5px rgba(0,0,0,.4);
+}
+
 /* Do not show the Amazon Reviews logo/header rail on the admin page. */
 body.admin-mode .top-rail-placeholder,
 body.admin-mode .nav,
@@ -3200,7 +3341,33 @@ body:not(.admin-mode) .btn.primary:hover{background:var(--amz-button-hover);}
 .amz-submit-btn:hover:not(:disabled){background:var(--amz-button-hover);}
 .amz-submit-btn:disabled,.amz-helpful-btn:disabled,.amz-report-btn:disabled,.amz-read-more:disabled{opacity:.58;cursor:not-allowed;}
 
-
+/* Dark-mode overrides for the review-card chrome above — every .amz-*
+   selector here hardcodes its own light color instead of deriving from a
+   variable (the --amz-* block earlier in this file is defined but mostly
+   unused by these rules), so each needs an explicit dark counterpart.
+   Star/link/button accent colors are kept as-is — they read fine on dark. */
+.dark-mode .amz-page{ background:var(--amz-bg); }
+.dark-mode .amz-reviews-summary{ border-right-color:var(--amz-line); color:var(--amz-text); }
+.dark-mode .amz-summary-rating-text{ color:var(--amz-text); }
+.dark-mode .amz-summary-count,
+.dark-mode .amz-summary-note{ color:var(--amz-muted); }
+.dark-mode .amz-summary-note{ border-top-color:var(--amz-line); }
+.dark-mode .amz-review{ border-bottom-color:var(--amz-line); color:var(--amz-text); }
+.dark-mode .amz-avatar{ background:#3a3d3d; color:var(--amz-text); }
+.dark-mode .amz-reviewer-name,
+.dark-mode .amz-review-title,
+.dark-mode .amz-review-text{ color:var(--amz-text); }
+.dark-mode .amz-review-date,
+.dark-mode .amz-variant,
+.dark-mode .amz-helpful-line,
+.dark-mode .amz-end{ color:var(--amz-muted); }
+.dark-mode .amz-helpful-btn{
+  border-color:var(--amz-line); background:var(--amz-card); color:var(--amz-text);
+  box-shadow:0 2px 5px rgba(0,0,0,.25);
+}
+.dark-mode .amz-helpful-btn:hover:not(:disabled){ background:#242727; }
+.dark-mode .amz-helpful-btn.is-active{ background:#0d2a2d; }
+.dark-mode .amz-submit-btn{ box-shadow:0 2px 5px rgba(0,0,0,.25); }
 
 /* Amazon review page mobile adjustments */
 @media (max-width:900px){

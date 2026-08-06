@@ -46,6 +46,7 @@ import {
   loadPostByIdFromBackend,
   assignExperimentGroup,
   materializePagesFromBlocks,
+  useParticipantTheme,
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
@@ -62,6 +63,7 @@ import {
   reminderFlagsFetchCache,
   getReminderPostFeedId,
   getReminderApp,
+  ParticipantThemeToggle,
 } from "./ui-core";
 
 import { AdminEntry } from "./admin/AdminEntry";
@@ -156,6 +158,7 @@ function normalizeFlags(raw) {
     realistic_engagement: truthy(f.realistic_engagement ?? false),
     realistic_pacing: truthy(f.realistic_pacing ?? false),
     realistic_surroundings: truthy(f.realistic_surroundings ?? false),
+    allow_dark_mode: truthy(f.allow_dark_mode ?? false),
   };
 }
 
@@ -1983,6 +1986,29 @@ export default function App() {
     };
   }, [shouldShowSurvey, shouldShowPreface]);
 
+  // Dark mode is opt-in per stage: the feed's own allow_dark_mode flag
+  // while browsing the feed, the linked survey's own allow_dark_mode flag
+  // once on a preface/question page — the survey's setting always wins for
+  // what actually renders there, regardless of what the feed allowed.
+  // useParticipantTheme keeps a participant's chosen preference around
+  // underneath this gate, so a choice made during the feed reappears
+  // automatically on a survey that also allows dark mode, with no extra
+  // click needed.
+  const stageAllowsDark =
+    !onAdmin &&
+    ((shouldShowSurvey || shouldShowPreface)
+      ? !!linkedSurvey?.allow_dark_mode
+      : !!flags.allow_dark_mode);
+  const { isDark: participantIsDark, toggle: toggleParticipantTheme } = useParticipantTheme(stageAllowsDark);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("dark-mode", participantIsDark);
+    return () => {
+      document.body.classList.remove("dark-mode");
+    };
+  }, [participantIsDark]);
+
   useEffect(() => {
     if (!shouldShowSurvey && !shouldShowPreface) return;
     scrollSurveyViewToTop();
@@ -2698,6 +2724,10 @@ export default function App() {
     <Router>
       <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
         <RouteAwareTopbar />
+
+        {stageAllowsDark && (
+          <ParticipantThemeToggle isDark={participantIsDark} onToggle={toggleParticipantTheme} />
+        )}
 
         <Routes>
           <Route

@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { Modal, IconPillButton, IconShuffle, EmptyState, useToast } from "./ui";
+import { Modal, IconPillButton, IconShuffle, EmptyState, useToast, useAdminTheme } from "./ui";
 import { Feed } from "../ui-posts";
 import { APP } from "../utils";
+import { ParticipantThemeToggle } from "../ui-core";
 
 const PREVIEW_NOOP = () => {};
 
@@ -25,11 +26,26 @@ export function FeedPreviewModal({ posts = [], flags = {}, projectId = "", feedI
   const [seedNonce, setSeedNonce] = useState(0);
   const runSeed = seedNonce === 0 ? "preview" : `preview-${seedNonce}`;
 
-  const hasAnyRandomize = useMemo(() => Object.values(flags || {}).some(Boolean), [flags]);
+  const hasAnyRandomize = useMemo(
+    () => Object.entries(flags || {}).some(([k, v]) => k !== "allow_dark_mode" && v),
+    [flags]
+  );
 
   const handleSubmit = () => {
     toast.success("Preview complete — no data was recorded.");
   };
+
+  // Mirrors the admin dashboard's own current theme by default (so a
+  // preview opened from a dark dashboard doesn't blind the admin with a
+  // bright panel), independent of the feed's own allow_dark_mode flag —
+  // that flag only controls whether the real ParticipantThemeToggle
+  // renders below, for testing the actual participant-facing widget.
+  // Deliberately local state, not the real participant_theme_v1 storage —
+  // opening a preview must never touch (or be affected by) a real
+  // participant's stored preference.
+  const { theme: adminTheme } = useAdminTheme();
+  const [manualDark, setManualDark] = useState(null); // null = still mirroring admin theme
+  const previewIsDark = manualDark !== null ? manualDark : adminTheme === "dark";
 
   return (
     <Modal
@@ -68,20 +84,29 @@ export function FeedPreviewModal({ posts = [], flags = {}, projectId = "", feedI
           />
         </div>
       ) : (
-        <Feed
-          posts={posts}
-          registerViewRef={PREVIEW_NOOP}
-          disabled={false}
-          log={PREVIEW_NOOP}
-          flags={flags}
-          runSeed={runSeed}
-          app={APP}
-          projectId={projectId}
-          feedId={feedId}
-          participantSeed="preview"
-          onDisplayedPostSnapshot={PREVIEW_NOOP}
-          onSubmit={handleSubmit}
-        />
+        <div className={previewIsDark ? "dark-mode" : ""} style={{ position: "relative", minHeight: "100%" }}>
+          <Feed
+            posts={posts}
+            registerViewRef={PREVIEW_NOOP}
+            disabled={false}
+            log={PREVIEW_NOOP}
+            flags={flags}
+            runSeed={runSeed}
+            app={APP}
+            projectId={projectId}
+            feedId={feedId}
+            participantSeed="preview"
+            onDisplayedPostSnapshot={PREVIEW_NOOP}
+            onSubmit={handleSubmit}
+          />
+          {flags?.allow_dark_mode && (
+            <ParticipantThemeToggle
+              isDark={previewIsDark}
+              onToggle={() => setManualDark(!previewIsDark)}
+              position="absolute"
+            />
+          )}
+        </div>
       )}
     </Modal>
   );

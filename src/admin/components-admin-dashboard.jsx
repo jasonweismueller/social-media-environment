@@ -583,6 +583,11 @@ export function AdminDashboard({
     // above (new jsonb key, false for every feed that's never set it).
     pacing: { backendField: "realistic_pacing", savingKey: "savingPace", readKeys: ["realistic_pacing"], label: "Realistic post-loading pacing" },
     surroundings: { backendField: "realistic_surroundings", savingKey: "savingSurr", readKeys: ["realistic_surroundings"], label: "Realistic surroundings (Facebook rails)" },
+    // Whether participants get a dark-mode toggle for this feed at all —
+    // opt-in, works identically on all three apps (unlike avatar/image/bio
+    // and engagement/surroundings above), see components-admin-feeds.jsx's
+    // Amazon filter.
+    dark: { backendField: "allow_dark_mode", savingKey: "savingDark", readKeys: ["allow_dark_mode"], label: "Allow dark mode for participants" },
   };
   const ALL_SAVING_KEYS = Object.values(FLAG_KINDS).map((k) => k.savingKey);
 

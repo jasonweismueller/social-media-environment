@@ -21,6 +21,25 @@
   --menu-max-items: 7;
 }
 
+/* Participant-facing dark mode. Opt-in per feed/survey (allow_dark_mode
+   flag) — applied via a `dark-mode` class on <body> for a real participant
+   page, or on a wrapper div for the admin's Feed/Survey preview. Every
+   selector below already derives from these five base variables (directly,
+   or through the --survey-* bridge further down), so overriding them here
+   is enough to re-theme the whole app with no other changes needed. */
+.dark-mode{
+  --bg:#18191a; --card:#242526; --text:#e4e6eb; --muted:#b0b3b8; --line:#3e4042;
+  --blue:#2d88ff; --blue-ink:#5aa5ff; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 12px rgba(0,0,0,.4);
+}
+
+/* Floating dark-mode toggle button (ParticipantThemeToggle.jsx) — colors
+   come from a real class, not generic inline var(--card) etc., since
+   Instagram's stylesheet never defines --card/--text (only --ig-card/
+   --ig-text), so a shared inline style would silently fail to theme there. */
+.pt-theme-toggle{
+  background:var(--card); color:var(--text); border-color:var(--line);
+}
+
 /* ============= Base ============= */
 *{box-sizing:border-box}
 html,body,#root{height:100%}
@@ -251,6 +270,12 @@ a:hover{text-decoration:underline}
 .rail-real-item{ display:flex; align-items:center; gap:.6rem; padding:.4rem .5rem; border-radius:.5rem; font-size:14px; color:#050505; }
 .rail-real-icon{ width:28px; height:28px; border-radius:999px; background:#e7f0ff; flex:0 0 auto; }
 .rail-real-icon--shortcut{ background:#8a8d91; }
+
+/* Dark-mode overrides — only visible when "realistic surroundings" is also
+   on, but should still look right when combined with dark mode. */
+.dark-mode .rail-real-list{ background:var(--card); }
+.dark-mode .rail-real-item{ color:var(--text); }
+.dark-mode .rail-real-icon{ background:#2a3a52; }
 .rail-contact-avatar-wrap{ position:relative; width:32px; height:32px; flex:0 0 auto; }
 .rail-contact-avatar{ width:32px; height:32px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb; }
 .rail-contact-avatar--blank{ background:#e5e7eb; }
@@ -349,6 +374,19 @@ a:hover{text-decoration:underline}
 .textarea{width:100%;border:1px solid var(--line);border-radius:.75rem;padding:.75rem;font-size:1rem;outline:none}
 .textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,119,242,.15)}
 .modal.modal-compact{max-width:460px;width:calc(100vw - 56px);text-align:center;padding:32px 28px}
+
+/* Dark-mode overrides for generic chrome that hardcodes light colors
+   instead of deriving from --bg/--card/etc.: inputs/buttons, the
+   comment/share modal (shared by all three apps), and the "..." overflow
+   menu button. */
+.dark-mode .input, .dark-mode .select{ background:var(--card); color:var(--text); }
+.dark-mode .btn{ background:var(--card); color:var(--text); }
+.dark-mode .btn:hover{ background:#2f3031; }
+.dark-mode .dots{ color:var(--muted); }
+.dark-mode .dots:hover:not(:disabled){ background:#3a3b3c; }
+.dark-mode .modal{ background:var(--card); }
+.dark-mode .modal-footer{ background:var(--card); }
+.dark-mode .textarea{ background:var(--card); color:var(--text); }
 
 .spinner-ring{
   width:42px;height:42px;margin:0 auto 14px;border-radius:50%;
@@ -547,6 +585,13 @@ a:hover{text-decoration:underline}
 .trp-real-btn{ position:relative; width:40px; height:40px; border-radius:999px; background:#e4e6eb; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
 .trp-real-badge{ position:absolute; top:-3px; right:-3px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:#e41e3f; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
 .trp-real-avatar{ width:40px; height:40px; border-radius:999px; background:#d1d5db; flex:0 0 auto; }
+
+.dark-mode .top-rail-placeholder{ background:var(--card); }
+.dark-mode .trp-real-search{ background:#3a3b3c; color:var(--muted); }
+.dark-mode .trp-real-tab{ color:var(--muted); }
+.dark-mode .trp-real-btn{ background:#3a3b3c; }
+.dark-mode .trp-real-avatar{ background:#3a3b3c; }
+.dark-mode .trp-real-badge{ border-color:var(--card); }
 
 /* Keep feed + rails aligned under the top rail */
 .page { padding-top: var(--feed-gap); }
@@ -2167,6 +2212,14 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   --survey-muted: var(--muted, #6b7280);
 }
 
+/* --survey-blue-soft is the one survey-bridge variable above that isn't
+   derived from a base token with a fallback — everything else in this
+   block re-themes for free once .dark-mode overrides --bg/--card/etc.
+   above, this one needs its own explicit dark value. */
+.dark-mode{
+  --survey-blue-soft: rgba(45,136,255,.16);
+}
+
 /* Full-page / survey-only mode */
 body.survey-mode .top-rail-placeholder,
 body.survey-mode .ig-topbar,
@@ -2798,6 +2851,102 @@ body.survey-mode .rail-right{
   font-size:.92rem;
   line-height:1.4;
   text-align:center;
+}
+
+/* Dark-mode overrides for the survey UI above. --survey-* variables
+   already re-theme most of it for free (see the .dark-mode block earlier
+   in this file); everything below hardcodes its own light-only color
+   instead of deriving from a variable, so each needs an explicit dark
+   counterpart here. */
+.dark-mode .survey-page{
+  background:
+    radial-gradient(900px 460px at -5% -10%, rgba(24,119,242,.10), transparent 60%),
+    radial-gradient(900px 460px at 105% 110%, rgba(59,130,246,.12), transparent 60%),
+    linear-gradient(#141516, var(--survey-bg));
+}
+.dark-mode .survey-card{
+  background:rgba(36,37,38,.98);
+  box-shadow:0 8px 30px rgba(0,0,0,.35);
+}
+.dark-mode .survey-head{
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.3)),
+    linear-gradient(135deg, #1877f2, #3b82f6);
+}
+.dark-mode .survey-page-meta{
+  border-bottom-color:#3e4042;
+}
+.dark-mode .survey-progress-step{
+  background:#3a3b3c;
+}
+.dark-mode .survey-nav-btn{
+  border-color:#3e4042;
+  background:var(--card);
+}
+.dark-mode .survey-nav-btn:hover:not(:disabled){
+  background:#3a3b3c;
+  border-color:#4e5052;
+}
+.dark-mode .survey-question{
+  border-color:#3e4042;
+  background:linear-gradient(180deg, #242526, #1e1f20);
+  box-shadow:0 1px 2px rgba(0,0,0,.3);
+}
+.dark-mode .survey-info-block{
+  border-color:rgba(88,166,255,.3);
+  background:linear-gradient(180deg, #1a2634, #16202c);
+  color:#8ab4f8;
+}
+.dark-mode .survey-input,
+.dark-mode .survey-textarea,
+.dark-mode .survey-select{
+  background:#3a3b3c;
+}
+.dark-mode .survey-option{
+  border-color:#3e4042;
+  background:#3a3b3c;
+}
+.dark-mode .survey-option:hover{
+  border-color:#4e5052;
+  background:#242526;
+}
+.dark-mode .survey-matrix{
+  border-color:#3e4042;
+  background:#242526;
+}
+.dark-mode .survey-matrix-table thead th{
+  background:linear-gradient(180deg, #2a2b2c, #242526);
+  color:var(--survey-muted);
+  border-bottom-color:#3e4042;
+}
+.dark-mode .survey-matrix-table thead th:first-child{
+  border-right-color:#3e4042;
+}
+.dark-mode .survey-matrix-table tbody td{
+  border-bottom-color:#3a3b3c;
+}
+.dark-mode .survey-matrix-table tbody td:first-child{
+  background:#2a2b2c;
+  border-right-color:#3a3b3c;
+}
+.dark-mode .survey-bipolar-matrix .survey-matrix-table thead th:last-child,
+.dark-mode .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  border-left-color:#3e4042;
+}
+.dark-mode .survey-bipolar-matrix .survey-matrix-table tbody td:last-child{
+  background:#2a2b2c;
+}
+.dark-mode .survey-question.has-error{
+  background:linear-gradient(180deg, #242526, #1a2634);
+}
+.dark-mode .survey-error-banner{
+  border-color:#5a2a30;
+  background:#2a1013;
+  color:#ff8f8f;
+}
+.dark-mode .survey-post-reminder-status{
+  border-color:#3e4042;
+  background:var(--card);
 }
 
 /* Mobile survey layout */
