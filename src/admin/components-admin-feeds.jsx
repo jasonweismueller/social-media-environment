@@ -554,9 +554,13 @@ export function AdminFeedsPanel({
                           card — those 3 toggles are permanent no-ops there,
                           so hide them rather than let an admin flip a switch
                           that visibly does nothing. Time/Name randomization
-                          both work for Amazon (reviewer name + review date). */}
+                          both work for Amazon (reviewer name + review date).
+                          Pacing (post-loading cascade) also genuinely works
+                          for Amazon reviews; "engagement" (reactions/
+                          comments/shares) and "surroundings" (Facebook-only
+                          rails) don't apply there and stay excluded. */}
                       {Object.entries(flagKinds)
-                        .filter(([kind]) => APP !== "amz" || kind === "time" || kind === "name")
+                        .filter(([kind]) => APP !== "amz" || kind === "time" || kind === "name" || kind === "pacing")
                         .map(([kind, { label, savingKey }]) => (
                         <Toggle
                           key={kind}

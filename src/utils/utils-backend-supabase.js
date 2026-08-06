@@ -698,8 +698,13 @@ const FLAG_PAIRS = [
   ["randomize_names", "random_name"],
   ["randomize_images", "random_image"],
   ["randomize_bios", "random_bio"],
-  // No legacy alias — postdates GAS, only one name ever existed.
+  // No legacy alias — these postdate GAS, only one name each ever existed.
+  // Kept as three independent flags (not bundled into one "realism" switch)
+  // per direct instruction: a researcher must be able to turn each on/off
+  // separately per feed, nothing should become standard/always-on.
   ["realistic_engagement", "realistic_engagement"],
+  ["realistic_pacing", "realistic_pacing"],
+  ["realistic_surroundings", "realistic_surroundings"],
 ];
 
 export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {

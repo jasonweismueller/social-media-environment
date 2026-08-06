@@ -1948,7 +1948,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
   app={app}
   projectId={projectId}
   feedId={feedId}
-  revealIndex={revealIndex}
+  revealIndex={flags?.realistic_pacing ? revealIndex : null}
 />
         ))}
         <div ref={sentinelRef} aria-hidden="true" />

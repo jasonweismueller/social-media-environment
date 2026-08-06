@@ -1442,11 +1442,20 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.randomize_bios !== "undefined" || typeof flags.random_bio !== "undefined") {
     out.random_bio = !!(flags.randomize_bios ?? flags.random_bio);
   }
-  // No legacy/GAS name — this flag postdates the Supabase cutover and has
+  // No legacy/GAS name — these flags postdate the Supabase cutover and have
   // no GAS counterpart (same posture as custom measure groups elsewhere in
-  // this codebase), so there's only ever one key to check.
+  // this codebase), so there's only ever one key to check each. Each one is
+  // independently opt-in, deliberately never bundled — per direct
+  // instruction, no realism feature should become "standard" behavior; a
+  // researcher must be able to turn each on or off separately per feed.
   if (typeof flags.realistic_engagement !== "undefined") {
     out.realistic_engagement = !!flags.realistic_engagement;
+  }
+  if (typeof flags.realistic_pacing !== "undefined") {
+    out.realistic_pacing = !!flags.realistic_pacing;
+  }
+  if (typeof flags.realistic_surroundings !== "undefined") {
+    out.realistic_surroundings = !!flags.realistic_surroundings;
   }
 
   return out;
@@ -1460,6 +1469,8 @@ export function normalizeFlagsForRead(flags) {
   out.randomize_images = !!(out.randomize_images ?? out.random_image);
   out.randomize_bios = !!(out.randomize_bios ?? out.random_bio);
   out.realistic_engagement = !!out.realistic_engagement;
+  out.realistic_pacing = !!out.realistic_pacing;
+  out.realistic_surroundings = !!out.realistic_surroundings;
 
   delete out.random_time;
   delete out.random_avatar;

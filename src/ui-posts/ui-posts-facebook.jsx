@@ -2397,33 +2397,71 @@ export function Feed({
     };
   }, [femalePosts, malePosts, companyPosts, runSeed, app, projectId, feedId]);
 
+  // Opt-in per feed ("Realistic surroundings", Feeds → Settings →
+  // Behavior) — off by default, same as every other realism toggle in this
+  // codebase. Off renders the original generic blurred/desaturated ghost
+  // skeleton exactly as before this feature existed; on swaps in the real-
+  // looking (still fully inert) nav/contacts content below. Never a mix of
+  // the two, so a study's surroundings stay whatever the researcher chose,
+  // never silently upgraded.
+  const realisticSurroundingsOn = !!flags?.realistic_surroundings;
+
   return (
     <div className="page">
-      {/* Decorative surroundings only — `.rail`'s own pointer-events:none
-          (styles-facebook.css) plus aria-hidden/tabIndex=-1 here keep this
-          entirely inert. Real names/dates/content are never shown here (we
-          have no real identity to show), just the same generic, seeded-
-          random contact pool the right rail uses — see the `contacts`
-          effect above for the confound-safety rationale. */}
-      <aside className="rail rail-left rail--content" aria-hidden="true" tabIndex={-1}>
-        <div className="rail-real-list">
-          {LEFT_RAIL_NAV_ITEMS.map((label) => (
-            <div key={label} className="rail-real-item">
-              <span className="rail-real-icon" />
-              <span>{label}</span>
+      {realisticSurroundingsOn ? (
+        /* Decorative surroundings only — `.rail`'s own pointer-events:none
+           (styles-facebook.css) plus aria-hidden/tabIndex=-1 here keep this
+           entirely inert. Real names/dates/content are never shown here (we
+           have no real identity to show), just the same generic, seeded-
+           random contact pool the right rail uses — see the `contacts`
+           effect above for the confound-safety rationale. */
+        <aside className="rail rail-left rail--content" aria-hidden="true" tabIndex={-1}>
+          <div className="rail-real-list">
+            {LEFT_RAIL_NAV_ITEMS.map((label) => (
+              <div key={label} className="rail-real-item">
+                <span className="rail-real-icon" />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="rail-real-title">Your shortcuts</div>
+          <div className="rail-real-list">
+            {LEFT_RAIL_SHORTCUTS.map((label) => (
+              <div key={label} className="rail-real-item">
+                <span className="rail-real-icon rail-real-icon--shortcut" />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-left" aria-hidden="true" tabIndex={-1}>
+          <div className="ghost-card ghost-profile">
+            <div className="ghost-avatar xl" />
+            <div className="ghost-lines">
+              <div className="ghost-line w-60" />
+              <div className="ghost-line w-35" />
             </div>
-          ))}
-        </div>
-        <div className="rail-real-title">Your shortcuts</div>
-        <div className="rail-real-list">
-          {LEFT_RAIL_SHORTCUTS.map((label) => (
-            <div key={label} className="rail-real-item">
-              <span className="rail-real-icon rail-real-icon--shortcut" />
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-      </aside>
+          </div>
+          <div className="ghost-list">
+            {["Home", "AI", "Friends", "Events", "Memories", "Saved", "Groups", "Marketplace", "Feeds", "Video"].map((t, i) => (
+              <div key={i} className="ghost-item icon">
+                <div className="ghost-icon" />
+                <div className="ghost-line w-70" />
+              </div>
+            ))}
+          </div>
+          <div className="ghost-title" />
+          <div className="ghost-list">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="ghost-item">
+                <div className="ghost-avatar sm" />
+                <div className="ghost-line w-60" />
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
 
       <main className="container feed">
         {renderPosts.map((p, revealIndex) => {
@@ -2457,7 +2495,7 @@ export function Feed({
               assignedAvatarUrl={assignedAvatarUrl || null}
               participantSeed={participantSeed}
               onDisplayedPostSnapshot={onDisplayedPostSnapshot}
-              revealIndex={revealIndex}
+              revealIndex={flags?.realistic_pacing ? revealIndex : null}
             />
           );
         })}
@@ -2476,24 +2514,52 @@ export function Feed({
         </div>
       </main>
 
-      <aside className="rail rail-right rail--content" aria-hidden="true" tabIndex={-1}>
-        <div className="rail-real-title">Contacts</div>
-        <div className="rail-real-list">
-          {contacts.map((c) => (
-            <div key={c.id} className="rail-real-item">
-              <span className="rail-contact-avatar-wrap">
-                {c.avatarUrl ? (
-                  <img src={c.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
-                ) : (
-                  <span className="rail-contact-avatar rail-contact-avatar--blank" />
-                )}
-                {c.online && <span className="rail-contact-online-dot" />}
-              </span>
-              <span>{c.name}</span>
-            </div>
-          ))}
-        </div>
-      </aside>
+      {realisticSurroundingsOn ? (
+        <aside className="rail rail-right rail--content" aria-hidden="true" tabIndex={-1}>
+          <div className="rail-real-title">Contacts</div>
+          <div className="rail-real-list">
+            {contacts.map((c) => (
+              <div key={c.id} className="rail-real-item">
+                <span className="rail-contact-avatar-wrap">
+                  {c.avatarUrl ? (
+                    <img src={c.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+                  ) : (
+                    <span className="rail-contact-avatar rail-contact-avatar--blank" />
+                  )}
+                  {c.online && <span className="rail-contact-online-dot" />}
+                </span>
+                <span>{c.name}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-right" aria-hidden="true" tabIndex={-1}>
+          <div className="ghost-card banner" />
+          <div className="ghost-card banner" />
+          <div className="ghost-card box">
+            <div className="ghost-line w-40" style={{ marginBottom: 8 }} />
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="ghost-row">
+                <div className="ghost-avatar sm" />
+                <div className="ghost-lines">
+                  <div className="ghost-line w-70" />
+                  <div className="ghost-line w-45" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="ghost-card box">
+            <div className="ghost-line w-35" style={{ marginBottom: 8 }} />
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="ghost-row">
+                <div className="ghost-avatar sm online" />
+                <div className="ghost-line w-60" />
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

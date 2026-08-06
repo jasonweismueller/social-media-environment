@@ -447,7 +447,7 @@ export function Feed({
                 runSeed={runSeed}
                 app={app}
                 assignedReviewer={reviewerNameMap.get(id) || null}
-                revealIndex={idx}
+                revealIndex={flags?.realistic_pacing ? idx : null}
               />
             );
           })}

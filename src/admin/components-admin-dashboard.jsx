@@ -577,6 +577,12 @@ export function AdminDashboard({
     // blank. See `fallbackEngagementStats` (utils-core.js) for why it's safe
     // against experimental confounds.
     engagement: { backendField: "realistic_engagement", savingKey: "savingEng", readKeys: ["realistic_engagement"], label: "Realistic engagement counts" },
+    // Per direct instruction: each realism feature is its own independent
+    // toggle, never bundled — nothing here should become "standard" behavior
+    // a study can't opt out of. Same safe-by-default posture as `engagement`
+    // above (new jsonb key, false for every feed that's never set it).
+    pacing: { backendField: "realistic_pacing", savingKey: "savingPace", readKeys: ["realistic_pacing"], label: "Realistic post-loading pacing" },
+    surroundings: { backendField: "realistic_surroundings", savingKey: "savingSurr", readKeys: ["realistic_surroundings"], label: "Realistic surroundings (Facebook rails)" },
   };
   const ALL_SAVING_KEYS = Object.values(FLAG_KINDS).map((k) => k.savingKey);
 

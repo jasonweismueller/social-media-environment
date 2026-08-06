@@ -3933,3 +3933,236 @@ synthetic variations.
 **Other open threads, still not picked up, carried forward from the prior session's own handoff**:
 an admin audit/activity log, and Amazon reviews never rendering their configured images. Neither was
 touched this session either.
+
+## Survey preview polish: chevron/copy-button consistency, per-question preview, force-response + page-jump (2026-08-06)
+
+Four small direct-feedback fixes on the survey editor/preview from the previous session's own work
+(`~/.claude/plans/synthetic-sprouting-crescent.md` / `purrfect-wiggling-quill.md`), committed
+together as `ac883d1 survey improvements`:
+
+- **Question card collapse chevron moved to a fixed position.** It used to sit leftmost in the
+  collapsed row but jump into the Actions cluster (next to the "↑" move-up button — easy to confuse,
+  same chevron shape rotated) once expanded. Now it's a standalone button at the same leftmost
+  position in both states (`components-admin-surveys-editor.jsx` `QuestionCard`/`QuestionActions`).
+- **Copy-question icon button now bordered**, matching the ↑/↓/preview/delete buttons around it — it
+  was using `IconOnlyButton`'s default "ghost" (borderless) variant while its neighbors were all
+  bordered, which read as visually inconsistent.
+- **New per-question preview**: an eye icon next to Copy on every question row opens the same survey
+  preview modal, jumped straight to that question's page — `SurveyScreen`/`SurveyScreenMobile`
+  gained an `initialQuestionId` prop that finds the right page once `visiblePages` resolves and
+  jumps once (a ref-guarded effect, so it doesn't keep fighting the participant's own later
+  navigation as `responses` change `visiblePages`).
+- **Preview toolbar**: a "Force response" toggle lets an admin click through the preview without
+  answering required questions (`enforceRequired` prop, default `true` — unchanged real-participant
+  behavior), and the page-progress dots became clickable (`allowPageJump` prop) to jump straight to
+  any page. Both default off/unused unless the preview modal passes them, so real survey delivery
+  (`App-*.jsx`) is unaffected — neither prop is ever passed there.
+
+**Verified live** via the established dynamic-import-into-`.admin-shell` mount technique (fabricated
+2-page survey with a required question and an experiment group): chevron stays in the same spot
+across collapse/expand, copy/preview buttons render bordered, clicking a question's preview icon
+opens the modal on the correct page, "Force response" off lets Next proceed without answering (on
+lets it correctly block), and clicking a page dot jumps directly. Not verified: a real click-through
+by a logged-in admin (standing limitation throughout this file).
+
+## Survey preview toolbar redesign + new Feed preview feature (2026-08-06)
+
+Two follow-up requests, committed as `2d7080c add feed preview`:
+
+**Toolbar regrouping** (`components-admin-survey-preview.jsx`): the group selector, Reshuffle,
+Force response, and Preview-as-mobile controls used to be scattered (mismatched heights, unrelated
+controls split across both ends of the row). Regrouped into two clusters — "preview context" (group
+selector + Reshuffle, left, same 34px height) and "display options" (Force response + Preview as
+mobile, right, both real `Toggle` switches now — Reshuffle became a round icon-only button instead
+of an oversized rectangular one, matching the Toggle switches' compact footprint). `IconPillButton`
+and an `IconShuffle`/`IconEye` icon pair were promoted from a local one-off into the shared
+`src/admin/ui/` design system (`IconPillButton.jsx`, `icons.jsx`) since the new Feed preview needed
+the same round icon-button pattern.
+
+**New Feed preview** (`components-admin-feed-preview.jsx`, `FeedPreviewModal`): a "Preview" (eye
+icon) button in the Feeds panel's Posts toolbar opens a **full-screen** (not boxed-modal) preview
+reusing the real participant-facing `Feed` component — same CSS, same per-app randomization logic
+(`Feed` itself computes FB/Amazon's deterministic avatar/name assignment maps; Instagram's
+`PostCard` does its own internally), fed from the admin's current in-memory (possibly unsaved)
+posts array. Full-screen rather than boxed, because `Feed`'s `.page` rail grid genuinely depends on
+real browser viewport width (media queries, not container width) — a fixed-width dialog would
+either clip it or force a mismatched layout. Added a `fullScreen` prop to the shared `Modal.jsx` for
+this (same portal-target/focus-trap/Escape-to-close machinery, just an edge-to-edge panel instead of
+a centered card) rather than building a bespoke one-off overlay. Not disabled — Like/Comment/Share
+work exactly like the real feed (all genuinely self-contained local `PostCard` state, not something
+the preview needs to own) — but every callback that would log/persist real participant data is a
+no-op, and "Submit" shows a toast instead of hitting the backend.
+
+**Verified live**: reactions/comments/share work (real emoji flyout opens, Like highlights),
+Reshuffle re-rolls randomized names/times, Close returns cleanly to the Feeds panel, and the
+regrouped toolbar controls render/toggle correctly. Not verified: a real click-through by a logged-
+in admin.
+
+## Feed Participants tab: design-system migration (2026-08-06)
+
+`components-admin-participants-feed.jsx` (2,141 lines) predated the admin dashboard's design-system
+rollout and had never been migrated — raw `className="card"`/`<table>`/`<select>` with inline
+`var(--line)` styling sitting next to a handful of newer `Button`/`PageHeader` components, and the
+participant simulator (mode/count/Simulate/Clear + the large "Controlled simulation settings" panel)
+crammed into the "Feed engagement" chart card's own header row. Committed as
+`581153a feed participants tab rework`.
+
+Restructured into four real `Card` sections — **Feed engagement** (stats + charts, unchanged
+content), **Simulate participants** (pulled into its own card, collapsed by default since it's a
+dev/testing tool not part of the everyday workflow — a `simOpen` toggle), **Per-post interactions**,
+**Latest submissions** — and both data tables now use the shared `Table`/`Th`/`Td` primitives
+instead of raw HTML. `ParticipantDetailModal` migrated from a bespoke `.modal-backdrop`/
+`document.body`-portaled dialog to the shared `Modal` (gets focus-trap/Escape/correct `--admin-*`
+token scoping for free). `StatCard` (also reused by `components-admin-participants-survey.jsx`)
+restyled to tokens without changing its prop API. Dead `compact`-ternary plumbing (`padCell`/
+`fsTable`/`wrapperPad`/`headerGap`/`statsGap`, a local `const compact = false` that made every
+ternary a fixed no-op) removed as part of the same pass. Per direct instruction, the per-post
+interactions table's *columns/shape* were deliberately left exactly as they were — restyled only,
+not restructured.
+
+**Verified**: file parses clean; not click-tested live (this page needs a real participant roster
+fetch, which needs a real admin session — standing limitation throughout this file).
+
+## Realism improvements: engagement counts, entrance pacing, real (not ghost) rail surroundings (2026-08-06)
+
+Per direct request, after a design discussion about how to make feeds feel more alive **without
+introducing between-condition confounds** in an experiment. Committed as `6fd9cde realism
+improvements`. The organizing principle applied throughout, restated because it's the reason none of
+this needed a bigger safety mechanism: a realism feature is confound-safe exactly when it's
+**mechanically identical across every condition** — same algorithm, same pool, seeded by
+participant/post identity, never by condition or content. It only becomes unsafe when it's driven by
+*what* is shown or *which arm* a participant is in.
+
+**1. Engagement-count realism (opt-in, new `realistic_engagement` feed flag).** Facebook/Instagram
+posts already had a real display mechanism for admin-authored reaction/comment/share counts
+(`post.reactions`/`post.metrics`) — the actual gap was that most posts' counts are just left blank
+(tedious to hand-author per post), so most feeds show no social-proof numbers at all. New
+`fallbackEngagementStats(postId)` (`utils-core.js`, reusing the existing private `mulberry32_`/
+`hashStrToInt_` seeded-PRNG already backing `fakeNamesFor`) generates a plausible long-tail-
+distributed reaction/comment/share count, **seeded purely by `post.id`** — deliberately not by
+participant, run, feed, or project. Two reasons: (a) it matches reality — a post's like count is a
+property of the post, identical for every viewer, not per-participant noise; (b) it's the specific
+fix for a real confound risk this codebase already has a name for — Control/Treatment/etc. variants
+of "the same" post share the same bare `post.id` across different feeds (the `posts.id` composite-
+key story, 2026-08-02 above), so seeding off `post.id` alone guarantees every condition's copy of a
+post gets identical numbers, closing off any chance that displayed "popularity" could correlate with
+which arm a participant is in.
+
+Wired into `ui-posts-facebook.jsx`/`ui-posts-instagram.jsx`: an explicit non-zero admin-authored
+value **always** wins over the fallback (only fills in where genuinely blank); the reaction-emoji
+row specifically still respects Facebook's existing `showReactions` per-post toggle (fallback numbers
+never make a reaction row appear where an admin deliberately left it off — that toggle already has
+real "on/off" semantics, e.g. a study that manipulates presence/absence of social proof); comments/
+shares have no such toggle and already displayed whenever nonzero regardless of `showReactions`, so
+their fallback applies independently, matching that existing rule. **New feed flag
+`realistic_engagement`** (`FLAG_KINDS` in `components-admin-dashboard.jsx`, alongside Time/Avatar/
+Image/Name/Bio in the Feeds → Settings → Behavior card; plumbed through `normalizeFlagsForStore`/
+`-ForRead` in `utils-backend.js` and `FLAG_PAIRS` in `utils-backend-supabase.js`) — defaults `false`
+for every feed that's never had it set (a new jsonb key, same "safe no-op for existing rows" posture
+every prior flag addition in this file used), so **zero already-live studies change behavior**
+unless a researcher explicitly opts in per feed. Amazon excluded (no reactions/comments/shares
+concept — its own review-helpful-count mechanic is unrelated); no GAS counterpart (postdates the
+Supabase cutover, same posture as custom measure groups).
+
+**2. Interaction pacing — post entrance cascade (opt-in, new `realistic_pacing` feed flag).** A
+batch of newly-revealed posts fades/slides in with a small per-post stagger (`post-reveal-in` CSS
+keyframe, `animation-delay` proportional to `revealIndex % 6`) instead of snapping in all at once,
+across all three apps (Amazon included — its review cards get the identical treatment). `revealIndex`
+is purely a reveal-order position (index into the currently-rendered array) — never derived from post
+content — so it can't itself become a confound; every post gets exactly the same treatment when the
+flag is on, and it only plays once per card (a real CSS `animation` on mount, not retriggered by
+re-renders since `key={p.id}` keeps each `<article>` stable). Respects `prefers-reduced-motion`.
+Reminder call sites (a single frozen post inside a survey question) never pass `revealIndex` at all,
+so they always render instantly regardless of the flag.
+
+**3. Facebook's ghost rails, optionally replaced with real-looking (still fully inert) surroundings**
+(opt-in, new `realistic_surroundings` feed flag), per direct request including "contacts on the right
+rail could be randomised names." Off (the default) renders the exact original generic blurred/
+desaturated skeleton (`filter: grayscale(1) blur(1px); opacity:.55`) unchanged — same treatment
+`App-facebook.jsx`'s separate pre-load skeleton correctly uses too (that one's *supposed* to look
+like it's loading, untouched either way). On swaps in real-looking content via a `.rail--content`
+modifier (sharp/full-opacity), used only by `Feed`'s own rails when the flag is set. **Left rail**:
+real-looking nav rows (Friends/Memories/Saved/Groups/Video/Marketplace) and a "Your shortcuts" list —
+fixed, generic, identical for every participant (nothing here is randomized, so nothing for it to
+confound); deliberately didn't attempt to show a fake "your profile" row, since we have no real
+participant identity to reflect and fabricating one would be worse than showing nothing. **Right
+rail "Contacts"**: 14 entries built from the *same* avatar/name pools already used for real
+post-author randomization, via the existing `pickUniqueDeterministic` helper (guarantees no repeats
+within the list), seeded distinctly (`"rail-contacts-name"`/`"rail-contacts-avatar"` salts) so it
+never mirrors any specific post's assigned author — confound-safe for the identical reason
+author-name randomization already is: same mechanism, same pool, seeded by run/participant, never by
+condition. ~30% get a deterministic "online" dot, matching a believable light sprinkling rather than
+an implausible "everyone's online" look. Both rails stay exactly as inert either way (`aria-hidden`,
+`tabIndex={-1}`, `.rail`'s own `pointer-events:none` — none of that CSS changed, on or off) — **this
+only ever changes what the surroundings look like, never what they do**, which matters concretely for
+disclosure: a real click-through confirmed no interaction is possible on either rail state, so telling
+participants "only the middle column is interactive" (as the user planned to) stays accurate
+regardless of the toggle. Instagram/Amazon have no rail markup at all (confirmed via grep — their
+`Feed`s are single-column), so this toggle is Facebook-only (excluded from the flag list Amazon's
+Settings tab shows), not a case of the near-duplicate-`App-*.jsx` footgun.
+
+**All three are independently opt-in feed flags, deliberately never bundled into one switch** — per
+explicit, repeated direct instruction ("nothing should become standard... I want separate toggles").
+`realistic_engagement` / `realistic_pacing` / `realistic_surroundings` each default `false` for every
+feed (new jsonb keys, same "safe no-op for existing rows" posture every prior flag addition in this
+file used) and are set/read completely independently — a researcher can turn on pacing alone, or
+surroundings alone, or any combination, per feed. **This wasn't the first cut**: pacing and
+surroundings initially shipped unconditional (always-on once the code existed at all, no flag), then
+were converted to opt-in toggles in a same-session follow-up once the user clarified the requirement
+directly. If picking this up fresh, the current (correct) state is: three flags in `FLAG_KINDS`
+(`components-admin-dashboard.jsx`) — `engagement`/`pacing`/`surroundings` — each independently
+gating its own piece of behavior; nothing renders/animates/replaces anything unless its own specific
+flag is on.
+
+**Verified live**, in both directions for all three flags together: with `flags: {}` (matching every
+currently-live feed's real default), confirmed zero `post-reveal-in` class, zero `rail--content`
+modifier (original `.ghost-card` skeleton present on both rails), and zero fallback engagement numbers
+— i.e. byte-for-byte the pre-this-session behavior. With all three flags explicitly `true`, confirmed
+the reaction/comment/share fallback numbers appear, both rails render the real-content version with
+14 distinct randomized contacts, and every post card carries `post-reveal-in` with correctly staggered
+`animation-delay` (checked via computed style, not just class presence) — mounted `Feed` directly
+per-app (`?app=fb`/`ig`/`amz` + the cache-busted dynamic-import technique) with fabricated posts, plus
+a separate mount of `AdminFeedsPanel` confirming all three toggles render correctly in Feeds →
+Settings → Behavior, labeled "Realistic engagement counts" / "Realistic post-loading pacing" /
+"Realistic surroundings (Facebook rails)", with Amazon's feed-settings view correctly showing pacing
+but not engagement/surroundings. **Not verified**: a real click-through by a logged-in admin actually
+flipping these toggles for a real feed (standing limitation throughout this file) — worth doing on
+staging before promoting to production.
+
+**Other realism ideas discussed but not built tonight** (same confound-safety framing, and the same
+"must be its own independent toggle" requirement, would apply to each — flagging for whoever picks
+this up next, not a commitment):
+- **Instagram's `StoryBar`** (mobile-only, already exists) could get the same seeded-random-contacts
+  treatment as Facebook's right rail — same avatar/name pools, same non-interactive treatment, own
+  flag.
+- **Amazon** has no rail/surrounding-chrome concept at all today (`Feed` is a single centered
+  column) — a "customers also viewed"-style decorative strip would be a bigger, greenfield addition,
+  not a rework of something that already exists.
+- **View-count-style ambient text** ("Seen by ~200 people") — same `post.id`-seeded-fallback pattern
+  as engagement counts would apply directly, own flag.
+
+## Session handoff (2026-08-06) — read this first if picking up fresh
+
+**Everything from this session is committed to `main`, but `production`/`studyfeed.org` is two
+commits behind** (`git log production..main` → `6fd9cde realism improvements` then the pacing/
+surroundings-toggle follow-up commit on top of it) — the survey-preview polish, toolbar redesign,
+feed preview, Feed Participants redesign, and all three realism features (each its own opt-in flag)
+are live on **staging** (`staging.studyfeed.org`, builds from `main` automatically) but **not yet on
+the real site**. This was intentional given the session ran unattended overnight (user went to sleep
+partway through, twice — confirming the realism-feature direction before the first build, then
+correcting pacing/surroundings from unconditional to opt-in in a second wake-up before going back to
+sleep again) — nothing here has had a real logged-in click-through, so staging is the right place to
+verify before promoting, same reasoning as every other "session ran late/unattended" handoff in this
+file.
+
+**The one item worth checking first, specifically**: turn each of the three "Realistic …" toggles on
+individually for a real feed on staging (not all at once) and confirm each looks right in the actual
+rendered feed on its own — they were verified together and individually-off in this session's
+fabricated-data mounts, but never through a real admin session. All three are entirely opt-in
+(default off, zero effect on any feed that doesn't explicitly enable it), so there's no risk in
+leaving this unverified for a while if there isn't time right away.
+
+**Everything else** (chevron/copy-button fixes, per-question preview, toolbar regrouping, feed
+preview, Feed Participants redesign) is layout/chrome-only and lower-stakes if it ships to
+production before a full click-through — but per this file's own standing pattern, worth doing that
+click-through on staging first regardless.
