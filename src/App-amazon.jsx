@@ -155,6 +155,14 @@ function normalizeFlags(raw) {
       f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false
     ),
     randomize_bios: truthy(f.randomize_bios ?? f.rand_bios ?? false),
+    // See App-facebook.jsx's copy of this function for why these three need
+    // to be listed explicitly — same bug, same fix, mirrored per file.
+    // (Amazon only actually consumes `pacing`, but keeping the shape
+    // identical across all three App-*.jsx files avoids yet another
+    // near-duplicate drift.)
+    realistic_engagement: truthy(f.realistic_engagement ?? false),
+    realistic_pacing: truthy(f.realistic_pacing ?? false),
+    realistic_surroundings: truthy(f.realistic_surroundings ?? false),
   };
 }
 

@@ -157,6 +157,17 @@ function normalizeFlags(raw) {
       f.randomize_images ?? f.randomize_image ?? f.rand_images ?? false
     ),
     randomize_bios: truthy(f.randomize_bios ?? f.rand_bios ?? false),
+    // These three postdate this function (added for the opt-in realism
+    // features) and have only ever had one name each — no legacy alias to
+    // fall back to. Without listing them here explicitly, this whitelist-
+    // style normalizer silently drops them even though the backend read
+    // path (fetchFeedFlags/normalizeFlagsForRead, utils-backend.js) already
+    // returns them correctly — the exact bug that made all three toggles a
+    // no-op for real participants despite saving/reading fine in the admin
+    // dashboard.
+    realistic_engagement: truthy(f.realistic_engagement ?? false),
+    realistic_pacing: truthy(f.realistic_pacing ?? false),
+    realistic_surroundings: truthy(f.realistic_surroundings ?? false),
   };
 }
 
