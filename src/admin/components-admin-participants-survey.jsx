@@ -30,8 +30,12 @@ import {
   summarizeComposite,
   loadCustomMeasureGroups,
   saveCustomMeasureGroups,
+  simulateSurveyResponseRows,
+  flattenSurveyQuestions,
+  flattenSurveyResponseRecord,
+  SURVEY_COLUMN_LABEL_MODE,
 } from "../utils";
-import { PageHeader, Card, Table, Th, Td, Button, Badge, useToast, useConfirm, EmptyState, IconNote } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -92,6 +96,44 @@ function triggerCsvDownload(filename, csv) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+// Mirrors mergeParticipantRowsWithSurveyRows's column shape/order
+// (utils-backend.js, not exported) so a CSV built from simulated rows lines
+// up exactly with what "Download Survey CSV" produces from real data —
+// same participant-field order, same survey_<QID>[_<ROW>] column keys, same
+// "NA" fill for unanswered/not-shown-to-this-participant cells (matters
+// since typical R workflows against this app's exports rely on read.csv's
+// default na.strings picking that up).
+function buildSimulatedCsvRows(survey, simRows, fillValue = "NA") {
+  const hasGroups = Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
+  const groupNameById = new Map((survey?.experiment_groups || []).map((g) => [g.id, g.name]));
+  const surveyColumns = flattenSurveyQuestions(survey, { labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT });
+
+  return (simRows || []).map((row) => {
+    const flat = flattenSurveyResponseRecord(row, surveyColumns);
+    Object.keys(flat).forEach((k) => {
+      if (flat[k] === "" || flat[k] == null) flat[k] = fillValue;
+    });
+
+    return {
+      session_id: row.session_id ?? "",
+      participant_id: row.participant_id ?? "",
+      ip_address: "",
+      prolific_pid: row.prolific_pid ?? "",
+      entered_at_iso: row.entered_at_iso ?? "",
+      submitted_at_iso: row.submitted_at_iso ?? "",
+      duration_s: Math.round((row.duration_ms ?? 0) / 1000),
+      feed_id: row.feed_id ?? "",
+      ...(hasGroups
+        ? {
+            experiment_group_id: row.experiment_group_id ?? "",
+            experiment_group_name: groupNameById.get(row.experiment_group_id) || row.experiment_group_id || "",
+          }
+        : {}),
+      ...flat,
+    };
+  });
 }
 
 const LAST_SURVEY_KEY = (projectId) => `admin_last_analysis_survey_id::${APP || "app"}::${projectId || "global"}`;
@@ -986,6 +1028,143 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
   );
 }
 
+// Calibrated empirically against computeGroupComparison's actual output
+// (matrix/bipolar composites, 3 groups, n=30/group) rather than derived by
+// hand — the generator's noise/quantization layers make the true
+// z-shift -> observed-mean relationship non-linear. Roughly: None ~ no
+// separation; Small ~ Cohen's d 0.2-0.3 (often not significant, like a
+// modest pilot effect); Medium ~ d 0.5-0.6; Large ~ d 0.9+ (reliably
+// significant at n=30/group) — useful spread for testing pairwise-
+// comparison code against both "nothing here" and "clearly something here".
+const GROUP_EFFECT_PRESETS = [
+  { value: 0, label: "None (null effect)" },
+  { value: 0.2, label: "Small" },
+  { value: 0.45, label: "Medium" },
+  { value: 0.8, label: "Large" },
+];
+
+function SimulateResponsesCard({
+  survey,
+  simOpen,
+  setSimOpen,
+  usingSimulated,
+  simRowCount,
+  simPerGroup,
+  setSimPerGroup,
+  simTotal,
+  setSimTotal,
+  simGroupEffect,
+  setSimGroupEffect,
+  simLowEffort,
+  setSimLowEffort,
+  onSimulate,
+  onClear,
+}) {
+  const groups = Array.isArray(survey?.experiment_groups) ? survey.experiment_groups : [];
+  const hasGroups = groups.length > 0;
+  const expectedN = hasGroups ? groups.length * Math.max(0, Number(simPerGroup) || 0) : Math.max(0, Number(simTotal) || 0);
+
+  return (
+    <Card
+      title="Simulate responses"
+      subtitle="Generate fake-but-plausible responses for this survey — client-side only, never sent to the backend — so you can build/test an analysis script before real data exists."
+      actions={
+        <Button size="sm" variant="ghost" onClick={() => setSimOpen((v) => !v)}>
+          {simOpen ? "Hide" : "Show"}
+        </Button>
+      }
+    >
+      {simOpen ? (
+        <>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            {hasGroups ? (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--admin-muted)" }}>
+                Participants per group ({groups.length} groups)
+                <input
+                  type="number"
+                  min={1}
+                  value={simPerGroup}
+                  onChange={(e) => setSimPerGroup(Math.max(1, Number(e.target.value) || 1))}
+                  style={{ ...inputStyle, width: 100 }}
+                />
+              </label>
+            ) : (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--admin-muted)" }}>
+                Total participants
+                <input
+                  type="number"
+                  min={1}
+                  value={simTotal}
+                  onChange={(e) => setSimTotal(Math.max(1, Number(e.target.value) || 1))}
+                  style={{ ...inputStyle, width: 100 }}
+                />
+              </label>
+            )}
+
+            {hasGroups && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--admin-muted)" }}>
+                Group differences
+                <select
+                  value={simGroupEffect}
+                  onChange={(e) => setSimGroupEffect(Number(e.target.value))}
+                  style={{ ...inputStyle, width: 170 }}
+                  title="How much simulated group means differ — for testing your between-group comparison code, not a real effect"
+                >
+                  {GROUP_EFFECT_PRESETS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <Button variant="secondary" onClick={onSimulate}>
+              Simulate {expectedN} response{expectedN === 1 ? "" : "s"}
+            </Button>
+
+            {usingSimulated && (
+              <Button variant="ghost" onClick={onClear}>
+                Clear simulation
+              </Button>
+            )}
+          </div>
+
+          <div style={{ marginTop: 12, maxWidth: 480 }}>
+            <Toggle
+              label="Include a few low-effort (straight-lining) responses"
+              hint="A small share of simulated respondents give the same answer to every item of a scale, on top of whatever ties happen naturally — useful for testing the data-quality flags below."
+              checked={simLowEffort}
+              onChange={setSimLowEffort}
+            />
+          </div>
+
+          {usingSimulated && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--admin-muted)" }}>
+              Currently viewing {simRowCount} simulated response{simRowCount === 1 ? "" : "s"} — every chart, stat, and
+              test below is computed from this fake data, not real responses.
+            </div>
+          )}
+        </>
+      ) : (
+        usingSimulated && (
+          <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
+            Viewing {simRowCount} simulated response{simRowCount === 1 ? "" : "s"} —{" "}
+            <button
+              type="button"
+              onClick={onClear}
+              style={{ border: "none", background: "none", padding: 0, color: "var(--admin-accent)", cursor: "pointer", font: "inherit" }}
+            >
+              clear
+            </button>{" "}
+            to go back to real data.
+          </div>
+        )
+      )}
+    </Card>
+  );
+}
+
 /* ----------------------------- main page ----------------------------- */
 
 export function SurveyParticipantsPage({
@@ -1015,6 +1194,18 @@ export function SurveyParticipantsPage({
   const [downloading, setDownloading] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [customGroups, setCustomGroups] = useState([]);
+
+  // Simulate responses — generates fake-but-plausible survey_responses rows
+  // client-side (never touches the backend) so an analysis script can be
+  // built/tested against realistic data instead of waiting on real
+  // participants. See utils-survey-simulate.js for the generation model.
+  const [simOpen, setSimOpen] = useState(false);
+  const [usingSimulated, setUsingSimulated] = useState(false);
+  const [simRows, setSimRows] = useState([]);
+  const [simPerGroup, setSimPerGroup] = useState(30);
+  const [simTotal, setSimTotal] = useState(100);
+  const [simGroupEffect, setSimGroupEffect] = useState(0.45);
+  const [simLowEffort, setSimLowEffort] = useState(true);
 
   useEffect(() => {
     if (controlled) {
@@ -1048,6 +1239,8 @@ export function SurveyParticipantsPage({
       setSurvey(null);
       setResponseRows([]);
       setCustomGroups([]);
+      setUsingSimulated(false);
+      setSimRows([]);
       return;
     }
 
@@ -1058,6 +1251,8 @@ export function SurveyParticipantsPage({
     }
 
     setCustomGroups([]);
+    setUsingSimulated(false);
+    setSimRows([]);
 
     let cancelled = false;
     setLoading(true);
@@ -1101,10 +1296,31 @@ export function SurveyParticipantsPage({
     };
   }, [surveyId, projectId, controlled]);
 
+  const effectiveResponseRows = usingSimulated ? simRows : responseRows;
+
   const dataset = useMemo(() => {
     if (!survey) return null;
-    return buildAnalysisDataset({ survey, responseRows });
-  }, [survey, responseRows]);
+    return buildAnalysisDataset({ survey, responseRows: effectiveResponseRows });
+  }, [survey, effectiveResponseRows]);
+
+  const runSimulation = () => {
+    if (!survey) return;
+    const generated = simulateSurveyResponseRows({
+      survey,
+      participantsPerGroup: simPerGroup,
+      totalParticipants: simTotal,
+      groupEffectSize: simGroupEffect,
+      includeLowEffort: simLowEffort,
+      seed: surveyId,
+    });
+    setSimRows(generated);
+    setUsingSimulated(true);
+  };
+
+  const clearSimulation = () => {
+    setUsingSimulated(false);
+    setSimRows([]);
+  };
 
   const demographics = useMemo(() => (dataset ? computeDemographicsSummary(dataset) : []), [dataset]);
   const measures = useMemo(() => (dataset ? computeMeasuresSummary(dataset) : null), [dataset]);
@@ -1154,10 +1370,13 @@ export function SurveyParticipantsPage({
     if (!surveyId) return;
     try {
       setDownloading(true);
-      const roster = await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" });
-      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+
+      const safeRows = usingSimulated
+        ? buildSimulatedCsvRows(survey, simRows)
+        : (await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" })).rows || [];
+
       if (!safeRows.length) {
-        toast.error("No survey responses found yet.");
+        toast.error(usingSimulated ? "Simulate some responses first." : "No survey responses found yet.");
         return;
       }
 
@@ -1177,7 +1396,7 @@ export function SurveyParticipantsPage({
       });
 
       const csv = buildCsv(normalizedRows, header, header);
-      const filename = `${safeFileStem(survey?.name || surveyId)}_survey_responses.csv`;
+      const filename = `${safeFileStem(survey?.name || surveyId)}_survey_responses${usingSimulated ? "_SIMULATED" : ""}.csv`;
       triggerCsvDownload(filename, csv);
     } catch (e) {
       console.error("Survey CSV download failed:", e);
@@ -1215,11 +1434,17 @@ export function SurveyParticipantsPage({
                 ))}
               </select>
               <span className="subtle"> · {APP} · {projectId || "global"}</span>
+              {usingSimulated && <Badge tone="accent">SIMULATED</Badge>}
             </div>
           }
           actions={
             <>
-              <Button size="sm" onClick={refresh} disabled={!surveyId || loading}>
+              <Button
+                size="sm"
+                onClick={refresh}
+                disabled={!surveyId || loading || usingSimulated}
+                title={usingSimulated ? "Clear the simulation first" : undefined}
+              >
                 Refresh
               </Button>
               <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
@@ -1229,8 +1454,14 @@ export function SurveyParticipantsPage({
           }
         />
       ) : (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 14 }}>
-          <Button size="sm" onClick={refresh} disabled={!surveyId || loading}>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          {usingSimulated && <Badge tone="accent">SIMULATED</Badge>}
+          <Button
+            size="sm"
+            onClick={refresh}
+            disabled={!surveyId || loading || usingSimulated}
+            title={usingSimulated ? "Clear the simulation first" : undefined}
+          >
             Refresh
           </Button>
           <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
@@ -1272,6 +1503,23 @@ export function SurveyParticipantsPage({
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <SimulateResponsesCard
+              survey={survey}
+              simOpen={simOpen}
+              setSimOpen={setSimOpen}
+              usingSimulated={usingSimulated}
+              simRowCount={simRows.length}
+              simPerGroup={simPerGroup}
+              setSimPerGroup={setSimPerGroup}
+              simTotal={simTotal}
+              setSimTotal={setSimTotal}
+              simGroupEffect={simGroupEffect}
+              setSimGroupEffect={setSimGroupEffect}
+              simLowEffort={simLowEffort}
+              setSimLowEffort={setSimLowEffort}
+              onSimulate={runSimulation}
+              onClear={clearSimulation}
+            />
             <DemographicsSection dataset={dataset} demographics={demographics} />
             <CustomGroupsSection
               dataset={dataset}
