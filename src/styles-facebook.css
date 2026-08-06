@@ -30,6 +30,21 @@
 .dark-mode{
   --bg:#18191a; --card:#242526; --text:#e4e6eb; --muted:#b0b3b8; --line:#3e4042;
   --blue:#2d88ff; --blue-ink:#5aa5ff; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 12px rgba(0,0,0,.4);
+  /* `color`/`background` are set here explicitly, not just the variables
+     above — on a real participant page `.dark-mode` sits on <body>, which
+     already declares `color:var(--text)`/`background:var(--bg)` and
+     re-resolves them fine. But `color` is an *inherited* property that
+     resolves once, where declared, to a literal value — a descendant
+     re-declaring the same custom property doesn't retroactively change
+     what already-inherited `color` values resolve to. The admin's Feed/
+     Survey preview applies `.dark-mode` to a wrapper <div> nested *inside*
+     the (always-light) real page body, not to body itself — without this,
+     backgrounds re-theme correctly (elements like `.card` declare their
+     own `background:var(--card)`) but text silently keeps inheriting the
+     real body's light color. Confirmed live before this fix: a `.card`
+     inside such a wrapper had background #242526 but text color #111827.
+     Redundant (but harmless) when `.dark-mode` is on <body> directly. */
+  color:var(--text); background:var(--bg);
 }
 
 /* Floating dark-mode toggle button (ParticipantThemeToggle.jsx) — colors
@@ -2212,12 +2227,30 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   --survey-muted: var(--muted, #6b7280);
 }
 
-/* --survey-blue-soft is the one survey-bridge variable above that isn't
-   derived from a base token with a fallback — everything else in this
-   block re-themes for free once .dark-mode overrides --bg/--card/etc.
-   above, this one needs its own explicit dark value. */
+/* The --survey-* bridge above is declared once on :root as var(--bg, ...)
+   etc. — CSS custom properties resolve nested var() references using the
+   value inherited AT THE ELEMENT WHERE THE PROPERTY ITSELF IS DECLARED,
+   not where it's later used. Since :root (the <html> element) never
+   carries .dark-mode, --survey-text's computed value gets permanently
+   "baked" to the light #111827 the moment it's declared, and that baked
+   literal is what inherits everywhere below — completely bypassing any
+   later .dark-mode override of the underlying --text, whether that class
+   ends up on <body> (a real participant page) or a wrapper <div> (the
+   admin preview). Confirmed live: .dark-mode on <body> correctly flipped
+   --text itself, but every survey element using var(--survey-text) still
+   rendered light. Fix: redeclare the whole bridge under .dark-mode too, so
+   each --survey-* variable gets freshly resolved wherever .dark-mode
+   actually lives, using the already-overridden base tokens declared in
+   the same rule just above. */
 .dark-mode{
+  --survey-blue: var(--blue);
+  --survey-blue-dark: var(--blue-ink);
   --survey-blue-soft: rgba(45,136,255,.16);
+  --survey-bg: var(--bg);
+  --survey-card: var(--card);
+  --survey-line: var(--line);
+  --survey-text: var(--text);
+  --survey-muted: var(--muted);
 }
 
 /* Full-page / survey-only mode */

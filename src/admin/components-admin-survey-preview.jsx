@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Toggle, IconPillButton, IconShuffle, EmptyState, useToast, useAdminTheme } from "./ui";
 import { SurveyScreen, SurveyScreenMobile, ParticipantThemeToggle } from "../ui-core";
 import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
@@ -115,6 +115,15 @@ export function SurveyPreviewModal({
   const { theme: adminTheme } = useAdminTheme();
   const [manualDark, setManualDark] = useState(null); // null = still mirroring admin theme
   const previewIsDark = manualDark !== null ? manualDark : adminTheme === "dark";
+
+  // Post-reminder questions render a real PostCard, whose comment/share
+  // dialogs portal straight to document.body — see the identical comment
+  // in components-admin-feed-preview.jsx for why this is needed alongside
+  // the wrapper div below.
+  useEffect(() => {
+    document.body.classList.toggle("dark-mode", previewIsDark);
+    return () => document.body.classList.remove("dark-mode");
+  }, [previewIsDark]);
 
   const materializedPages = useMemo(() => {
     const pages = materializePagesFromBlocks(survey, survey?.page_blocks, {

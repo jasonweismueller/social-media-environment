@@ -2155,8 +2155,22 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   --survey-muted: var(--muted, #6b7280);
 }
 
+/* The --survey-* bridge above is declared once on :root as var(--bg, ...)
+   etc. — since :root (<html>) never carries .dark-mode, each variable's
+   computed value gets permanently baked to its light default the moment
+   it's declared, bypassing any later .dark-mode override of --text/--bg/
+   etc. further down the tree. See the identical, more detailed comment in
+   styles-facebook.css (this section is a byte-for-byte copy of the same
+   bridge) — fix is redeclaring the whole bridge under .dark-mode too. */
 .dark-mode{
+  --survey-blue: var(--blue);
+  --survey-blue-dark: var(--blue-ink);
   --survey-blue-soft: rgba(45,136,255,.16);
+  --survey-bg: var(--bg);
+  --survey-card: var(--card);
+  --survey-line: var(--line);
+  --survey-text: var(--text);
+  --survey-muted: var(--muted);
 }
 
 /* Full-page / survey-only mode */

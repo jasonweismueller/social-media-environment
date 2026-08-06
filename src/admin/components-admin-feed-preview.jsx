@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Modal, IconPillButton, IconShuffle, EmptyState, useToast, useAdminTheme } from "./ui";
 import { Feed } from "../ui-posts";
 import { APP } from "../utils";
@@ -46,6 +46,17 @@ export function FeedPreviewModal({ posts = [], flags = {}, projectId = "", feedI
   const { theme: adminTheme } = useAdminTheme();
   const [manualDark, setManualDark] = useState(null); // null = still mirroring admin theme
   const previewIsDark = manualDark !== null ? manualDark : adminTheme === "dark";
+
+  // Comment/share dialogs (real participant UI, rendered by PostCard)
+  // portal straight to document.body, bypassing the wrapper div below — so
+  // the wrapper alone can't theme them. Mirroring previewIsDark onto body
+  // while this modal is open covers that case too; safe to do from here
+  // since the participant-facing App-*.jsx components never also try to
+  // control body.dark-mode while an admin route (this one) is mounted.
+  useEffect(() => {
+    document.body.classList.toggle("dark-mode", previewIsDark);
+    return () => document.body.classList.remove("dark-mode");
+  }, [previewIsDark]);
 
   return (
     <Modal
