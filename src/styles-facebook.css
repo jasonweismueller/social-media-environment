@@ -249,8 +249,8 @@ a:hover{text-decoration:underline}
 .rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:14px 4px 6px; padding-top:4px; }
 .rail-real-list{ background:#fff; border:1px solid var(--line); border-radius:1rem; box-shadow:var(--shadow); padding:.4rem; }
 .rail-real-item{ display:flex; align-items:center; gap:.6rem; padding:.4rem .5rem; border-radius:.5rem; font-size:14px; color:#050505; }
-.rail-real-icon{ width:28px; height:28px; border-radius:8px; background:#e7f0ff; flex:0 0 auto; }
-.rail-real-icon--shortcut{ border-radius:8px; background:#eef2f7; }
+.rail-real-icon{ width:28px; height:28px; border-radius:999px; background:#e7f0ff; flex:0 0 auto; }
+.rail-real-icon--shortcut{ background:#8a8d91; }
 .rail-contact-avatar-wrap{ position:relative; width:32px; height:32px; flex:0 0 auto; }
 .rail-contact-avatar{ width:32px; height:32px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb; }
 .rail-contact-avatar--blank{ background:#e5e7eb; }
@@ -266,7 +266,22 @@ a:hover{text-decoration:underline}
   from{ opacity:0; transform:translateY(8px); }
   to{ opacity:1; transform:translateY(0); }
 }
-.post-reveal-in{ animation: post-reveal-in .32s ease-out both; }
+/* `backwards` only, deliberately not `both`/`forwards` — a *finished*
+   CSS animation whose last keyframe still specifies a real `transform`
+   value (even `translateY(0)`, not the literal keyword `none`) makes the
+   element a permanent containing block for any `position:fixed`
+   descendant, for as long as that computed style lingers. The desktop
+   Comment/Share modals are rendered as DOM children of `.post-card` and
+   rely on `position:fixed` to cover the full viewport — with `both`, once
+   a post's reveal animation finished, its card silently became a fixed-
+   position containing block forever, so those modals opened constrained
+   to the post's own box instead of over the whole page. `backwards` still
+   holds the *from* state during each post's staggered `animation-delay`
+   (so a late post doesn't flash at full opacity before its turn), but
+   lets `transform`/`opacity` revert to their normal (non-animated,
+   animation-free) computed values — `none` / `1` — the moment the
+   animation completes, restoring normal fixed-position behavior. */
+.post-reveal-in{ animation: post-reveal-in .32s ease-out backwards; }
 @media (prefers-reduced-motion: reduce){
   .post-reveal-in{ animation:none; }
 }
@@ -523,6 +538,15 @@ a:hover{text-decoration:underline}
 .trp-tab{ width:40px; height:28px; border-radius:6px; background:#f3f4f6; }
 .trp-btn{ width:32px; height:32px; border-radius:999px; background:#e5e7eb; }
 .trp-avatar{ width:32px; height:32px; border-radius:999px; background:#d1d5db; }
+
+/* Real-looking (still inert) top bar — see TopRailReal, ui-core-facebook.jsx */
+.trp-real-logo{ width:40px; height:40px; border-radius:999px; background:#1877f2; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.trp-real-search{ display:flex; align-items:center; gap:8px; width:225px; height:40px; border-radius:999px; background:#f0f2f5; padding:0 14px; color:#65676b; font-size:15px; flex:0 0 auto; }
+.trp-real-tab{ display:flex; align-items:center; justify-content:center; width:108px; height:52px; border-bottom:3px solid transparent; color:#65676b; }
+.trp-real-tab--active{ border-bottom-color:#1877f2; }
+.trp-real-btn{ position:relative; width:40px; height:40px; border-radius:999px; background:#e4e6eb; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.trp-real-badge{ position:absolute; top:-3px; right:-3px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:#e41e3f; color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; border:2px solid #fff; }
+.trp-real-avatar{ width:40px; height:40px; border-radius:999px; background:#d1d5db; flex:0 0 auto; }
 
 /* Keep feed + rails aligned under the top rail */
 .page { padding-top: var(--feed-gap); }

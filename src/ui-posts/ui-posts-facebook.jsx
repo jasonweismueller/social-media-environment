@@ -58,7 +58,85 @@ const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot
 // so there's nothing for it to confound). Real Facebook's own nav; no
 // personalization attempted since we have no real identity to reflect.
 export const LEFT_RAIL_NAV_ITEMS = ["Friends", "Memories", "Saved", "Groups", "Video", "Marketplace"];
-export const LEFT_RAIL_SHORTCUTS = ["Photography Club", "Local Marketplace", "Book Swap"];
+// A larger pool than any single feed needs — callers pick a height-filling
+// prefix (see `pickShortcutsForHeight`) rather than always showing all of
+// them, so a short viewport doesn't get a comically long list forced in.
+export const LEFT_RAIL_SHORTCUT_POOL = [
+  "Photography Club", "Local Marketplace", "Book Swap", "Hiking Buddies",
+  "Weekend Board Games", "Home Baking Tips", "City Cyclists", "Language Exchange",
+  "Vintage Cameras", "Community Garden", "Running Club", "Film Discussion Group",
+];
+export function pickShortcutsForHeight(count) {
+  return LEFT_RAIL_SHORTCUT_POOL.slice(0, Math.max(1, Math.min(count, LEFT_RAIL_SHORTCUT_POOL.length)));
+}
+
+// Real-looking (still purely decorative) colored icon badges for the left
+// rail's nav row — same fixed, content-independent chrome as the labels
+// themselves, just no longer a flat placeholder square. One glyph per
+// LEFT_RAIL_NAV_ITEMS entry, roughly matching real Facebook's own icon
+// colors so the row reads as genuine nav, not a generic list.
+function RailNavIconGlyph({ bg, children }) {
+  return (
+    <span
+      className="rail-real-icon"
+      style={{ background: bg, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {children}
+      </svg>
+    </span>
+  );
+}
+
+export const LEFT_RAIL_ICONS = {
+  Friends: (
+    <RailNavIconGlyph bg="#1877f2">
+      <circle cx="9" cy="8" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+      <circle cx="17" cy="9" r="2.4" /><path d="M15 20a4.2 4.2 0 0 1 7.5-2.6" />
+    </RailNavIconGlyph>
+  ),
+  Memories: (
+    <RailNavIconGlyph bg="#31a3f2">
+      <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" />
+    </RailNavIconGlyph>
+  ),
+  Saved: (
+    <RailNavIconGlyph bg="#8b5cf6">
+      <path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4.2L5 21V4.5a1 1 0 0 1 1-1Z" />
+    </RailNavIconGlyph>
+  ),
+  Groups: (
+    <RailNavIconGlyph bg="#06b6ae">
+      <circle cx="8" cy="9" r="3" /><circle cx="16" cy="9" r="3" />
+      <path d="M2.8 19.5a5.3 5.3 0 0 1 10.4 0M10.8 19.5a5.3 5.3 0 0 1 10.4 0" />
+    </RailNavIconGlyph>
+  ),
+  Video: (
+    <RailNavIconGlyph bg="#f33f6e">
+      <rect x="3" y="6" width="13" height="12" rx="2.5" />
+      <path d="M16 10.5 21 7.5v9L16 13.5Z" fill="#fff" stroke="none" />
+    </RailNavIconGlyph>
+  ),
+  Marketplace: (
+    <RailNavIconGlyph bg="#0ea5e9">
+      <path d="M4 9h16l-1.4 10.2a1.5 1.5 0 0 1-1.5 1.3H6.9a1.5 1.5 0 0 1-1.5-1.3L4 9Z" />
+      <path d="M8 9V6.5a4 4 0 0 1 8 0V9" />
+    </RailNavIconGlyph>
+  ),
+};
+
+// Generic group icon for the "Your shortcuts" list — one shared glyph
+// (shortcuts are interchangeable generic group names, not distinct nav
+// destinations, so they don't need per-item icons the way LEFT_RAIL_ICONS
+// does).
+export const RAIL_SHORTCUT_ICON = (
+  <span className="rail-real-icon rail-real-icon--shortcut" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="9" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+      <circle cx="17" cy="10" r="2.3" /><path d="M15 20a4.1 4.1 0 0 1 7.3-2.5" />
+    </svg>
+  </span>
+);
 
 // Decorative "Contacts" rail generator — real-looking, but purely cosmetic:
 // reuses the exact same avatar/name pools as real post authors, seeded
@@ -2402,7 +2480,7 @@ export function Feed({
       });
 
       setContacts(
-        buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: 14 })
+        buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: 22 })
       );
     })();
 
@@ -2433,16 +2511,16 @@ export function Feed({
           <div className="rail-real-list">
             {LEFT_RAIL_NAV_ITEMS.map((label) => (
               <div key={label} className="rail-real-item">
-                <span className="rail-real-icon" />
+                {LEFT_RAIL_ICONS[label]}
                 <span>{label}</span>
               </div>
             ))}
           </div>
           <div className="rail-real-title">Your shortcuts</div>
           <div className="rail-real-list">
-            {LEFT_RAIL_SHORTCUTS.map((label) => (
+            {pickShortcutsForHeight(10).map((label) => (
               <div key={label} className="rail-real-item">
-                <span className="rail-real-icon rail-real-icon--shortcut" />
+                {RAIL_SHORTCUT_ICON}
                 <span>{label}</span>
               </div>
             ))}

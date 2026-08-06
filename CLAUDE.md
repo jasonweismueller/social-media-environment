@@ -4272,3 +4272,62 @@ class names should have been the tell that this exact ambiguity was already a kn
 component, and it was almost missed a second time here for a different, unrelated pair of duplicate
 elements. When verifying a visual feature end-to-end, measure the rendered box (`getBoundingClientRect`
 + computed `display`), not just presence-of-class-in-DOM.
+
+## Third round, same morning: a real functional bug in the pacing animation, plus "realistic surroundings" expanded (icons, top bar, height-filling)
+
+Once rails were genuinely visible, the user reported a real functional regression: with pacing on,
+clicking Share/Comment on desktop opened the modal *inside* the post card instead of as a real
+overlay in front of everything — "like opening a new window in the post itself." Found and fixed,
+plus three follow-up visual requests against a real Facebook screenshot they attached as a reference.
+
+**The modal bug, root-caused precisely**: `.post-reveal-in`'s keyframe animation was
+`animation: post-reveal-in .32s ease-out both;`. `both` fill-mode retains the *last* keyframe's
+computed style after the animation finishes — and that last keyframe still specifies a real
+`transform` value (`translateY(0)`, not the literal keyword `none`). Per the CSS spec, any element
+with a non-`none` `transform` becomes a containing block for `position:fixed` descendants — and
+desktop's `FacebookCommentModalDesktop`/`FacebookShareModalDesktop` are rendered as plain DOM
+children of `.post-card` (unlike their mobile siblings, which correctly use `createPortal(document.
+body)`), relying on `position:fixed` to cover the full viewport. With `both`, every post's card
+silently became a permanent fixed-position containing block the moment its intro animation finished,
+constraining any later-opened modal to the post's own small box. Fixed by changing fill-mode to
+`backwards` only (all three apps' stylesheets) — still holds the *from* state during each post's
+staggered `animation-delay` (so a late post doesn't flash at full opacity before its turn), but lets
+`transform`/`opacity` revert to their real computed values (`none` / `1`) once the animation
+completes, restoring normal fixed-position behavior. Verified two ways: `getComputedStyle(card).
+transform` reads back `"none"` after the animation finishes (was permanently `"translateY(0px)"`
+before the fix), and clicking Share now produces a `position:fixed` element sized to the exact full
+viewport (`1400×900` at `top:0,left:0` in the test), not the post's bounding box — confirmed via
+screenshot too, not just computed geometry.
+
+**Rail/top-bar follow-ups, against a real Facebook screenshot the user attached as reference**:
+- **Real icons instead of flat color squares** — `LEFT_RAIL_ICONS` (`ui-posts-facebook.jsx`,
+  exported), one small colored-circle-badge SVG glyph per nav item (Friends/Memories/Saved/Groups/
+  Video/Marketplace), roughly matching real Facebook's own icon colors; a shared generic
+  `RAIL_SHORTCUT_ICON` for the "Your shortcuts" list (those are interchangeable generic group names,
+  not distinct destinations, so one glyph is correct, not a missing case). `.rail-real-icon` changed
+  from a rounded square to a true circle (`border-radius:999px`) to match.
+- **Rails now fill the actual available height instead of stopping short** — the fixed-length lists
+  (6 nav items + 3 shortcuts, 14 contacts) were much shorter than the ghost skeleton they replaced,
+  which had its own height-driven count. `PageWithRails` (`App-facebook.jsx`) now computes two
+  *separate* real-content counts on the same resize listener the ghost `rightCount` already used,
+  tuned to the real rows' actual ~46px height (much shorter than the ghost `RailBox`/`RailList`
+  blocks the original formula was tuned for) — `LEFT_RAIL_SHORTCUT_POOL` grew from 3 to 12 generic
+  names with a new `pickShortcutsForHeight(n)` helper picking a height-filling prefix, and the
+  contacts count scales with `buildRailContacts`'s existing `count` param instead of a hardcoded 14.
+- **The top bar is now also real when the flag is on** — previously untouched regardless of
+  `realistic_surroundings` (always the generic placeholder bar). New `TopRailReal`
+  (`ui-core-facebook.jsx`): FB logo badge, a real-looking search pill, five center nav-icon tabs
+  (Home highlighted active, matching real Facebook), and right-side grid-menu/Messenger/Notifications
+  (with badge counts)/avatar icons — same fixed-content, zero-interactivity-added posture as every
+  other realism piece (`aria-hidden`, plain `<span>`/`<div>`, no click handlers, so "only the middle
+  column is interactive" stays true). `RouteAwareTopbar` gained a `flags` prop (threaded from its one
+  real call site, `App-facebook.jsx`) and picks between `TopRailReal`/`TopRailPlaceholder`.
+
+All three pieces share the exact same on/off contract every other realism toggle in this file uses —
+verified both ways again after these changes: with `flags:{}` the visible rail is plain ghost, the
+top bar is the original placeholder (confirmed via `topBarHasGhostLogo:true` / `topBarHasRealSearch:
+false`), zero console errors; with all three flags on, real icons/content render and fill
+correspondingly more of a 900px-tall viewport than before. **Not yet verified**: an actual
+click-through by a real logged-in participant on staging with the modal fix specifically (verified
+against the real bundled dev app with a mocked flags fetch, same technique as the rest of this
+morning's fixes, not staging itself) — worth confirming Share/Comment on staging once this deploys.

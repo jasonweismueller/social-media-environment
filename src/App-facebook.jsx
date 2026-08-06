@@ -56,7 +56,14 @@ import { Feed as FBFeed } from "./ui-posts";
 // (this file's `PageWithRails`, the one actually wrapping the live
 // participant feed, and `Feed`'s own rails, only reachable when `Feed` is
 // mounted standalone e.g. the admin's Feed Preview) can't drift apart.
-import { buildRailContacts, LEFT_RAIL_NAV_ITEMS, LEFT_RAIL_SHORTCUTS } from "./ui-posts/ui-posts-facebook";
+import {
+  buildRailContacts,
+  LEFT_RAIL_NAV_ITEMS,
+  LEFT_RAIL_SHORTCUT_POOL,
+  pickShortcutsForHeight,
+  LEFT_RAIL_ICONS,
+  RAIL_SHORTCUT_ICON,
+} from "./ui-posts/ui-posts-facebook";
 import {
   ParticipantOverlay,
   ThankYouOverlay,
@@ -843,6 +850,36 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
   const realisticOn = !!flags?.realistic_surroundings;
   const [contacts, setContacts] = useState([]);
 
+  // The real-content contact/shortcut rows are much shorter than the ghost
+  // `RailBox`/`RailList` blocks `rightCount` above was tuned for (a compact
+  // one-line-per-row list vs. tall skeleton cards), so reusing `rightCount`
+  // directly left real mode visibly not filling the same vertical space the
+  // ghost version did. Separate counts, tuned to the real rows' actual
+  // ~46px height, recomputed on the same resize listener.
+  const [realRightCount, setRealRightCount] = useState(20);
+  const [realShortcutsCount, setRealShortcutsCount] = useState(8);
+
+  useEffect(() => {
+    const compute = () => {
+      const railH = (window.innerHeight || 900) - 30;
+      const REAL_ROW_H = 46;
+      const CONTACTS_HEADER_H = 90; // title + list container padding/border
+      const rightN = Math.max(10, Math.min(Math.floor((railH - CONTACTS_HEADER_H) / REAL_ROW_H), 60));
+      setRealRightCount(rightN);
+
+      // Left rail's real content = fixed 6-item nav block + "Your shortcuts"
+      // title + a height-filling shortcuts list.
+      const NAV_BLOCK_H = 6 * REAL_ROW_H + 24; // 6 nav rows + list padding
+      const SHORTCUTS_HEADER_H = 90;
+      const leftRemaining = railH - NAV_BLOCK_H - SHORTCUTS_HEADER_H;
+      const shortcutsN = Math.max(3, Math.min(Math.floor(leftRemaining / REAL_ROW_H), LEFT_RAIL_SHORTCUT_POOL.length));
+      setRealShortcutsCount(shortcutsN);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+
   useEffect(() => {
     if (!realisticOn) return undefined;
     let cancelled = false;
@@ -852,12 +889,12 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
         getAvatarPool("male"),
       ]);
       if (cancelled) return;
-      setContacts(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: rightCount }));
+      setContacts(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: realRightCount }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [realisticOn, rightCount, runSeed, app, projectId, feedId]);
+  }, [realisticOn, realRightCount, runSeed, app, projectId, feedId]);
 
   return (
     <div
@@ -873,16 +910,16 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
           <div className="rail-real-list">
             {LEFT_RAIL_NAV_ITEMS.map((label) => (
               <div key={label} className="rail-real-item">
-                <span className="rail-real-icon" />
+                {LEFT_RAIL_ICONS[label]}
                 <span>{label}</span>
               </div>
             ))}
           </div>
           <div className="rail-real-title">Your shortcuts</div>
           <div className="rail-real-list">
-            {LEFT_RAIL_SHORTCUTS.map((label) => (
+            {pickShortcutsForHeight(realShortcutsCount).map((label) => (
               <div key={label} className="rail-real-item">
-                <span className="rail-real-icon rail-real-icon--shortcut" />
+                {RAIL_SHORTCUT_ICON}
                 <span>{label}</span>
               </div>
             ))}
@@ -2995,7 +3032,7 @@ export default function App() {
   return (
     <Router>
       <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
-        <RouteAwareTopbar />
+        <RouteAwareTopbar flags={flags} />
 
         <Routes>
           <Route

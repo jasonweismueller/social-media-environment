@@ -755,7 +755,74 @@ export function TopRailPlaceholder() {
   );
 }
 
-export function RouteAwareTopbar() {
+function TrpIcon({ size = 22, children, ...rest }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...rest}>
+      {children}
+    </svg>
+  );
+}
+
+// Real-looking (still fully inert — plain divs/spans, no click handlers,
+// aria-hidden) top bar shown in place of `TopRailPlaceholder` above when a
+// feed opts into "Realistic surroundings". Same reasoning as the left/right
+// rails (ui-posts-facebook.jsx `Feed`, App-facebook.jsx `PageWithRails`):
+// fixed, generic, identical for every participant/condition — nothing here
+// is randomized or content-dependent, so there's nothing for it to confound.
+function TopRailReal() {
+  return (
+    <div className="top-rail-placeholder" aria-hidden="true">
+      <div className="trp-inner">
+        <div className="trp-left">
+          <span className="trp-real-logo">
+            <TrpIcon size={20} stroke="#fff" strokeWidth={2.5}>
+              <path d="M15 8.5h2V5h-2a4 4 0 0 0-4 4v2H9v3.5h2V21h3.5v-6.5H17l.5-3.5h-3V9a.5.5 0 0 1 .5-.5Z" fill="#fff" stroke="none" />
+            </TrpIcon>
+          </span>
+          <span className="trp-real-search">
+            <TrpIcon size={15} stroke="#65676b"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m20 20-4.3-4.3" /></TrpIcon>
+            Search Facebook
+          </span>
+        </div>
+
+        <div className="trp-center">
+          <span className="trp-real-tab trp-real-tab--active">
+            <TrpIcon stroke="#1877f2"><path d="M4 11.5 12 4l8 7.5" /><path d="M6 10v9.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V10" /></TrpIcon>
+          </span>
+          <span className="trp-real-tab">
+            <TrpIcon stroke="#65676b"><rect x="3" y="6" width="18" height="13" rx="2.5" /><path d="M8 19v2M16 19v2M3 10h18" /></TrpIcon>
+          </span>
+          <span className="trp-real-tab">
+            <TrpIcon stroke="#65676b"><path d="M4 9h16l-1.4 10.2a1.5 1.5 0 0 1-1.5 1.3H6.9a1.5 1.5 0 0 1-1.5-1.3L4 9Z" /><path d="M8 9V6.5a4 4 0 0 1 8 0V9" /></TrpIcon>
+          </span>
+          <span className="trp-real-tab">
+            <TrpIcon stroke="#65676b"><circle cx="9" cy="8" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><circle cx="17" cy="9" r="2.4" /><path d="M15 20a4.2 4.2 0 0 1 7.5-2.6" /></TrpIcon>
+          </span>
+          <span className="trp-real-tab">
+            <TrpIcon stroke="#65676b"><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M8 10v4M8 12h0M14 9l4 3-4 3V9Z" /></TrpIcon>
+          </span>
+        </div>
+
+        <div className="trp-right">
+          <span className="trp-real-btn">
+            <TrpIcon size={18} stroke="#050505"><circle cx="5" cy="5" r="1.6" fill="#050505" stroke="none" /><circle cx="12" cy="5" r="1.6" fill="#050505" stroke="none" /><circle cx="19" cy="5" r="1.6" fill="#050505" stroke="none" /><circle cx="5" cy="12" r="1.6" fill="#050505" stroke="none" /><circle cx="12" cy="12" r="1.6" fill="#050505" stroke="none" /><circle cx="19" cy="12" r="1.6" fill="#050505" stroke="none" /><circle cx="5" cy="19" r="1.6" fill="#050505" stroke="none" /><circle cx="12" cy="19" r="1.6" fill="#050505" stroke="none" /><circle cx="19" cy="19" r="1.6" fill="#050505" stroke="none" /></TrpIcon>
+          </span>
+          <span className="trp-real-btn">
+            <TrpIcon size={19} stroke="#050505"><path d="M12 3C6.9 3 3 6.6 3 11.2c0 2.6 1.3 4.9 3.4 6.4V21l3.1-1.7c.8.2 1.6.3 2.5.3 5.1 0 9-3.6 9-8.4S17.1 3 12 3Z" /></TrpIcon>
+            <span className="trp-real-badge">2</span>
+          </span>
+          <span className="trp-real-btn">
+            <TrpIcon size={19} stroke="#050505"><path d="M12 3a5.5 5.5 0 0 0-5.5 5.5c0 5-2.1 6.5-2.1 6.5h15.2s-2.1-1.5-2.1-6.5A5.5 5.5 0 0 0 12 3Z" /><path d="M9.7 18a2.3 2.3 0 0 0 4.6 0" /></TrpIcon>
+            <span className="trp-real-badge">3</span>
+          </span>
+          <span className="trp-real-avatar" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RouteAwareTopbar({ flags } = {}) {
   const location = useLocation();
   const isMobile = useIsMobile(700);
 
@@ -777,7 +844,7 @@ export function RouteAwareTopbar() {
 
   return (
     <>
-      <TopRailPlaceholder />
+      {flags?.realistic_surroundings ? <TopRailReal /> : <TopRailPlaceholder />}
       <div className="admin-fab-wrap">
         {onAdmin ? (
           <Link to="/" className="btn admin-fab" aria-label="Back to feed">↩</Link>

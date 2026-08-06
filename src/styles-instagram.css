@@ -332,7 +332,11 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   from{ opacity:0; transform:translateY(8px); }
   to{ opacity:1; transform:translateY(0); }
 }
-.post-reveal-in{ animation: post-reveal-in .32s ease-out both; }
+/* `backwards` only, not `both`/`forwards` — see styles-facebook.css's copy
+   of this rule for why a finished animation whose last keyframe still sets
+   a real `transform` value breaks `position:fixed` modals rendered inside
+   the animated card. */
+.post-reveal-in{ animation: post-reveal-in .32s ease-out backwards; }
 @media (prefers-reduced-motion: reduce){
   .post-reveal-in{ animation:none; }
 }
