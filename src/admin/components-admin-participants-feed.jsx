@@ -58,9 +58,9 @@ const isAmazonApp = () => String(APP || "").toLowerCase() === "amz";
 
 /* ------------------------- small inline charts ------------------------- */
 const ENGAGEMENT_SERIES = [
-  { key: "reactedPct", label: "Reacted", color: "#2563eb" },
-  { key: "commentedPct", label: "Commented", color: "#16a34a" },
-  { key: "sharedPct", label: "Shared", color: "#d97706" },
+  { key: "reactedPct", label: "Reacted", color: "var(--admin-info)" },
+  { key: "commentedPct", label: "Commented", color: "var(--admin-success)" },
+  { key: "sharedPct", label: "Shared", color: "var(--admin-warning)" },
 ];
 
 function EngagementBarChart({ data }) {
@@ -69,7 +69,7 @@ function EngagementBarChart({ data }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 8, color: "var(--admin-muted, #6b7280)" }}>
+      <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 8, color: "var(--admin-muted)" }}>
         {ENGAGEMENT_SERIES.map((s) => (
           <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <span style={{ width: 8, height: 8, background: s.color, borderRadius: 2, display: "inline-block" }} />
@@ -83,7 +83,7 @@ function EngagementBarChart({ data }) {
             style={{
               fontSize: 11,
               marginBottom: 3,
-              color: "var(--admin-muted, #6b7280)",
+              color: "var(--admin-muted)",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -102,7 +102,7 @@ function EngagementBarChart({ data }) {
                   borderRadius: 2,
                 }}
               />
-              <span style={{ fontSize: 10, color: "var(--admin-muted, #6b7280)" }}>
+              <span style={{ fontSize: 10, color: "var(--admin-muted)" }}>
                 {Math.round((d[s.key] || 0) * 100)}%
               </span>
             </div>
@@ -124,11 +124,11 @@ function SubmissionsTimeChart({ data }) {
           <div
             key={d.day}
             title={`${d.day}: ${d.count} submission${d.count === 1 ? "" : "s"}`}
-            style={{ width: 10, height: Math.max(2, (d.count / max) * 50), background: "var(--admin-accent, #2563eb)", borderRadius: 2, flexShrink: 0 }}
+            style={{ width: 10, height: Math.max(2, (d.count / max) * 50), background: "var(--admin-accent)", borderRadius: 2, flexShrink: 0 }}
           />
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--admin-muted, #6b7280)", marginTop: 2 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--admin-muted)", marginTop: 2 }}>
         <span>{data[0].day}</span>
         {data.length > 1 && <span>{data[data.length - 1].day}</span>}
       </div>
@@ -2040,9 +2040,9 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
                             display: "inline-block",
                             fontSize: 11,
                             fontWeight: 600,
-                            color: "var(--admin-warning-ink, #b45309)",
-                            background: "var(--admin-warning-soft, #fef3c7)",
-                            border: "1px solid var(--admin-warning-border, #fde68a)",
+                            color: "var(--admin-warning-ink)",
+                            background: "var(--admin-warning-soft)",
+                            border: "1px solid var(--admin-warning-border)",
                             borderRadius: 999,
                             padding: "1px 7px",
                             marginRight: 4,

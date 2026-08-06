@@ -53,9 +53,9 @@ export function genNeutralAvatarDataUrl(size = 64) {
   const s = size;
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="16" fill="#e5e7eb"/>
-  <circle cx="16" cy="12" r="6" fill="#9ca3af"/>
-  <path d="M6 30c1.8-7 6-10 10-10s8.2 3 10 10" fill="#9ca3af"/>
+  <rect width="32" height="32" rx="16" fill="var(--admin-border-subtle)"/>
+  <circle cx="16" cy="12" r="6" fill="var(--admin-muted-2)"/>
+  <path d="M6 30c1.8-7 6-10 10-10s8.2 3 10 10" fill="var(--admin-muted-2)"/>
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
@@ -126,9 +126,9 @@ export function AdminPostEditor({
                 padding: "7px 12px",
                 marginBottom: 14,
                 borderRadius: 8,
-                border: "1px solid #c7d2fe",
-                background: "#eef2ff",
-                color: "#4f46e5",
+                border: "1px solid var(--admin-accent-border)",
+                background: "var(--admin-accent-soft)",
+                color: "var(--admin-accent)",
                 fontWeight: 600,
                 fontSize: 13,
                 cursor: "pointer",

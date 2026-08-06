@@ -145,7 +145,7 @@ function MiniHistogram({ nums, binCount = 8, height = 56 }) {
             style={{
               flex: 1,
               height: Math.max(2, (b.count / max) * (height - 4)),
-              background: "var(--admin-accent, #2563eb)",
+              background: "var(--admin-accent)",
               borderRadius: 2,
             }}
           />
@@ -177,7 +177,7 @@ function CategoryBarList({ options, maxWidth = 180 }) {
             style={{
               width: Math.max(2, (o.pct / max) * maxWidth),
               height: 9,
-              background: "var(--admin-accent, #2563eb)",
+              background: "var(--admin-accent)",
               borderRadius: 2,
             }}
           />
@@ -231,7 +231,7 @@ function DemographicsSection({ dataset, demographics }) {
             style={{
               padding: "4px 8px",
               borderRadius: 6,
-              border: "1px solid var(--admin-border, #d1d5db)",
+              border: "1px solid var(--admin-border)",
               fontSize: 13,
               maxWidth: 260,
             }}
@@ -319,7 +319,7 @@ function CompositeMeasureBlock({ dataset, composite, summary, actions }) {
           Cronbach's α{" "}
           <strong>{summary.reliability ? fmtNum(summary.reliability.alpha) : "—"}</strong>
           {summary.reliability?.lowN && (
-            <span title="Reliability estimates from this few respondents aren't meaningful yet — treat as provisional." style={{ marginLeft: 4, color: "var(--admin-warning, #b45309)", cursor: "help" }}>
+            <span title="Reliability estimates from this few respondents aren't meaningful yet — treat as provisional." style={{ marginLeft: 4, color: "var(--admin-warning)", cursor: "help" }}>
               ⚠
             </span>
           )}
@@ -372,7 +372,7 @@ function CompositeMeasureBlock({ dataset, composite, summary, actions }) {
 const inputStyle = {
   padding: "6px 9px",
   borderRadius: 6,
-  border: "1px solid var(--admin-border, #d1d5db)",
+  border: "1px solid var(--admin-border)",
   fontSize: 13,
 };
 
@@ -429,11 +429,11 @@ function GroupEditor({ dataset, initial, onSave, onCancel }) {
   return (
     <div
       style={{
-        border: "1px solid var(--admin-border, #d1d5db)",
+        border: "1px solid var(--admin-border)",
         borderRadius: 8,
         padding: 14,
         marginBottom: 16,
-        background: "var(--admin-surface-subtle, rgba(0,0,0,0.02))",
+        background: "var(--admin-surface-alt)",
       }}
     >
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
@@ -574,7 +574,7 @@ function CustomGroupsSection({ dataset, projectId, surveyId, groups, setGroups }
       }
     >
       {saveError && (
-        <div style={{ fontSize: 12.5, color: "#b91c1c", marginBottom: 10 }}>
+        <div style={{ fontSize: 12.5, color: "var(--admin-danger-ink)", marginBottom: 10 }}>
           Failed to save: {saveError}
         </div>
       )}
@@ -759,7 +759,7 @@ const GROUP_COMPARISON_PAGE_SIZE = 8;
 
 function TestCaveat({ text }) {
   return (
-    <span title={text} style={{ marginLeft: 4, color: "var(--admin-warning, #b45309)", cursor: "help" }}>
+    <span title={text} style={{ marginLeft: 4, color: "var(--admin-warning)", cursor: "help" }}>
       ⚠
     </span>
   );
@@ -882,9 +882,9 @@ function FlagBadge({ label, detail }) {
         display: "inline-block",
         fontSize: ".72rem",
         fontWeight: 600,
-        color: "#b45309",
-        background: "#fef3c7",
-        border: "1px solid #fde68a",
+        color: "var(--admin-warning-ink)",
+        background: "var(--admin-warning-soft)",
+        border: "1px solid var(--admin-warning-border)",
         borderRadius: 999,
         padding: "1px 7px",
         marginRight: 4,
@@ -1202,7 +1202,7 @@ export function SurveyParticipantsPage({
                 style={{
                   padding: "4px 8px",
                   borderRadius: 6,
-                  border: "1px solid var(--admin-border, #d1d5db)",
+                  border: "1px solid var(--admin-border)",
                   fontSize: 13,
                   maxWidth: 320,
                 }}

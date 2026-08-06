@@ -1703,7 +1703,7 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
         borderRadius: 10,
         overflow: "hidden",
         background: "var(--admin-surface)",
-        boxShadow: focused ? "0 0 0 3px rgba(79,70,229,0.10)" : "none",
+        boxShadow: focused ? "0 0 0 3px var(--admin-accent-ring)" : "none",
       }}
     >
       <div
@@ -1875,7 +1875,7 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
           justifyContent: "center",
           cursor: "pointer",
           padding: 0,
-          boxShadow: isActive ? "0 1px 4px rgba(0,0,0,0.10)" : "none",
+          boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
           opacity: isActive ? 1 : 0.4,
           transition:
             "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
@@ -1898,7 +1898,7 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
             borderRadius: 10,
             border: "1px solid var(--admin-border)",
             background: "var(--admin-surface)",
-            boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
+            boxShadow: "var(--admin-shadow-md)",
           }}
         >
           <div style={{ fontSize: 12, marginBottom: 6 }}>Add question</div>
@@ -3487,7 +3487,7 @@ function QuestionCard({
     marginBottom: 26,
     background: isDragging ? "var(--admin-surface-sunken)" : isPageBreak ? "var(--admin-surface-alt)" : "var(--admin-surface)",
     opacity: isDragging ? 0.65 : 1,
-    boxShadow: isDragOver ? "0 0 0 3px rgba(99,102,241,0.12)" : "none",
+    boxShadow: isDragOver ? "0 0 0 3px var(--admin-accent-ring)" : "none",
   };
 
   if (isPageBreak) {
@@ -4351,7 +4351,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                         padding: "2px 0",
                         cursor: "pointer",
                         fontSize: 11,
-                        color: feedSeq.length ? "#1d4ed8" : "var(--admin-muted)",
+                        color: feedSeq.length ? "var(--admin-info-ink)" : "var(--admin-muted)",
                         textAlign: "left",
                       }}
                     >
@@ -4386,8 +4386,8 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                                 {isChecked && (
                                   <span
                                     style={{
-                                      fontSize: 11, fontWeight: 700, color: "#1d4ed8", background: "#eff6ff",
-                                      border: "1px solid #bfdbfe", borderRadius: 999, padding: "1px 6px",
+                                      fontSize: 11, fontWeight: 700, color: "var(--admin-info-ink)", background: "var(--admin-info-soft)",
+                                      border: "1px solid var(--admin-info-border)", borderRadius: 999, padding: "1px 6px",
                                     }}
                                   >
                                     {orderIndex + 1}

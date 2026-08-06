@@ -17,9 +17,9 @@ export function Tabs({ tabs = [], activeId, onChange, ariaLabel }) {
         overflowX: "auto",
         padding: 6,
         marginBottom: 18,
-        border: "1px solid #e5e7eb",
+        border: "1px solid var(--admin-border-subtle)",
         borderRadius: 12,
-        background: "#f9fafb",
+        background: "var(--admin-surface-alt)",
       }}
     >
       {tabs.map((tab) => {
@@ -36,12 +36,12 @@ export function Tabs({ tabs = [], activeId, onChange, ariaLabel }) {
               flex: "1 0 auto",
               padding: "10px 12px",
               borderRadius: 9,
-              border: isActive ? "1px solid #c7d2fe" : "1px solid transparent",
-              background: isActive ? "#fff" : "transparent",
-              color: isActive ? "#3730a3" : "#4b5563",
+              border: isActive ? "1px solid var(--admin-accent-border)" : "1px solid transparent",
+              background: isActive ? "var(--admin-surface)" : "transparent",
+              color: isActive ? "var(--admin-accent-ink)" : "var(--admin-muted)",
               cursor: "pointer",
               textAlign: "left",
-              boxShadow: isActive ? "0 1px 3px rgba(15,23,42,0.08)" : "none",
+              boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
             }}
           >
             <div style={{ fontSize: 14, fontWeight: 700 }}>{tab.label}</div>
@@ -50,7 +50,7 @@ export function Tabs({ tabs = [], activeId, onChange, ariaLabel }) {
                 style={{
                   marginTop: 2,
                   fontSize: 11,
-                  color: isActive ? "#6366f1" : "#9ca3af",
+                  color: isActive ? "var(--admin-accent)" : "var(--admin-muted-2)",
                   whiteSpace: "nowrap",
                 }}
               >

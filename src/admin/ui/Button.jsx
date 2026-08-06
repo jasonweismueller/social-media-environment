@@ -12,7 +12,7 @@ const VARIANTS = {
     color: "#fff",
   },
   secondary: {
-    background: "#fff",
+    background: "var(--admin-surface)",
     borderColor: "var(--admin-border)",
     color: "var(--admin-text)",
   },
@@ -22,7 +22,7 @@ const VARIANTS = {
     color: "var(--admin-text)",
   },
   danger: {
-    background: "#fff",
+    background: "var(--admin-surface)",
     borderColor: "var(--admin-danger-border)",
     color: "var(--admin-danger-ink)",
   },

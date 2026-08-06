@@ -13,7 +13,7 @@ import {
   getAdminUsername,
 } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, EmptyState, IconFolder } from "./ui";
+import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, EmptyState, IconFolder, ThemeToggle } from "./ui";
 
 /**
  * Landing page after login: pick a project (or create/delete one), then
@@ -120,6 +120,7 @@ export function AdminProjectPicker() {
           subtitle={`Signed in as ${getAdminUsername() || getAdminEmail() || "unknown"} — choose a project to continue.`}
           actions={
             <>
+              <ThemeToggle />
               {hasAdminRole("owner") && (
                 <Button size="sm" variant="ghost" onClick={() => navigate("/admin/users")}>
                   Manage users

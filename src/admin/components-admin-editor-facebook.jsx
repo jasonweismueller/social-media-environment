@@ -25,9 +25,9 @@ export function genNeutralAvatarDataUrl(size = 64) {
     <clipPath id="r"><rect x="0" y="0" width="32" height="32" rx="16" ry="16"/></clipPath>
   </defs>
   <g clip-path="url(#r)">
-    <rect width="32" height="32" fill="#e5e7eb"/>
-    <circle cx="16" cy="12.5" r="6" fill="#9ca3af"/>
-    <rect x="5" y="20" width="22" height="10" rx="5" fill="#9ca3af"/>
+    <rect width="32" height="32" fill="var(--admin-border-subtle)"/>
+    <circle cx="16" cy="12.5" r="6" fill="var(--admin-muted-2)"/>
+    <rect x="5" y="20" width="22" height="10" rx="5" fill="var(--admin-muted-2)"/>
   </g>
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -198,9 +198,9 @@ export function AdminPostEditor({
                 padding: "7px 12px",
                 marginBottom: 14,
                 borderRadius: 8,
-                border: "1px solid #c7d2fe",
-                background: "#eef2ff",
-                color: "#4f46e5",
+                border: "1px solid var(--admin-accent-border)",
+                background: "var(--admin-accent-soft)",
+                color: "var(--admin-accent)",
                 fontWeight: 600,
                 fontSize: 13,
                 cursor: "pointer",

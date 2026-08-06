@@ -97,7 +97,7 @@ function ImageCropper({
           position: "relative",
           borderRadius: 8,
           overflow: "hidden",
-          background: "#f3f4f6",
+          background: "var(--admin-surface-alt)",
           userSelect: "none",
           cursor: disabled ? "default" : (dragging ? "grabbing" : "grab"),
           boxShadow: "inset 0 0 0 1px rgba(0,0,0,.05)",
@@ -122,7 +122,7 @@ function ImageCropper({
             }}
           />
         ) : (
-          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "#9ca3af" }}>
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--admin-muted-2)" }}>
             No image
           </div>
         )}
@@ -196,9 +196,9 @@ function Thumb({ src, active, onClick, onRemove, idx }) {
           height: 72,
           borderRadius: 8,
           overflow: "hidden",
-          border: active ? "2px solid #2563eb" : "1px solid var(--line)",
+          border: active ? "2px solid var(--admin-info)" : "1px solid var(--admin-border)",
           padding: 0,
-          background: "#fff",
+          background: "var(--admin-surface)",
           cursor: "pointer",
         }}
         title={`Image ${idx + 1}`}
@@ -206,7 +206,7 @@ function Thumb({ src, active, onClick, onRemove, idx }) {
         {src ? (
           <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         ) : (
-          <div style={{ width: "100%", height: "100%", background: "#f3f4f6" }} />
+          <div style={{ width: "100%", height: "100%", background: "var(--admin-surface-alt)" }} />
         )}
       </button>
 
@@ -221,10 +221,10 @@ function Thumb({ src, active, onClick, onRemove, idx }) {
           width: 22,
           height: 22,
           borderRadius: 999,
-          border: "1px solid #e5e7eb",
-          background: "#fff",
+          border: "1px solid var(--admin-border-subtle)",
+          background: "var(--admin-surface)",
           cursor: "pointer",
-          boxShadow: "0 2px 8px rgba(0,0,0,.12)",
+          boxShadow: "var(--admin-shadow-sm)",
         }}
       >
         ×
@@ -304,12 +304,12 @@ function CarouselEditor({ images, setImages, feedId, isNew }) {
             width: 72,
             height: 72,
             borderRadius: 8,
-            border: "1px dashed var(--line)",
+            border: "1px dashed var(--admin-border)",
             display: "grid",
             placeItems: "center",
-            color: "#6b7280",
+            color: "var(--admin-muted)",
             cursor: "pointer",
-            background: "#fff",
+            background: "var(--admin-surface)",
           }}
           title="Add images"
         >
@@ -629,7 +629,7 @@ export function MediaFieldset({
                 minHeight: 120,
                 overflow: "hidden",
                 borderRadius: 8,
-                background: "#f9fafb",
+                background: "var(--admin-surface-alt)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

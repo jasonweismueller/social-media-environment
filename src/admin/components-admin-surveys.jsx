@@ -457,22 +457,22 @@ function buildSurveyEthicsHtmlDocument({ survey, feeds = [], projectId = "" } = 
   <meta charset="utf-8" />
   <title>${escapeHtml(normalized.name || "Survey ethics export")}</title>
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; color: #111827; line-height: 1.45; margin: 32px; }
+    body { font-family: Arial, Helvetica, sans-serif; color: var(--admin-text); line-height: 1.45; margin: 32px; }
     h1 { font-size: 26px; margin: 0 0 8px; }
-    h2 { font-size: 20px; margin: 28px 0 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+    h2 { font-size: 20px; margin: 28px 0 10px; border-bottom: 1px solid var(--admin-border-subtle); padding-bottom: 6px; }
     h3 { font-size: 16px; margin: 18px 0 8px; }
-    .muted { color: #6b7280; }
-    .summary { border: 1px solid #e5e7eb; background: #f9fafb; border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
+    .muted { color: var(--admin-muted); }
+    .summary { border: 1px solid var(--admin-border-subtle); background: var(--admin-surface-alt); border-radius: 10px; padding: 14px 16px; margin: 18px 0; }
     .summary-row { margin: 4px 0; }
-    .preface-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; margin: 12px 0 18px; }
+    .preface-box { border: 1px solid var(--admin-border-subtle); border-radius: 10px; padding: 14px 16px; margin: 12px 0 18px; }
     .page-section { break-inside: avoid; page-break-inside: avoid; }
-    .question-block { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
+    .question-block { border: 1px solid var(--admin-border-subtle); border-radius: 10px; padding: 12px 14px; margin: 12px 0; break-inside: avoid; page-break-inside: avoid; }
     .question-heading { font-weight: 700; margin-bottom: 6px; }
     .question-text { margin-bottom: 6px; }
-    .question-description { color: #374151; margin: 6px 0; }
-    .response-options { background: #f9fafb; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
-    .question-meta { font-size: 12px; color: #4b5563; margin-top: 4px; }
-    .required { color: #b91c1c; font-size: 12px; font-weight: 700; margin-left: 6px; }
+    .question-description { color: var(--admin-text); margin: 6px 0; }
+    .response-options { background: var(--admin-surface-alt); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+    .question-meta { font-size: 12px; color: var(--admin-muted); margin-top: 4px; }
+    .required { color: var(--admin-danger-ink); font-size: 12px; font-weight: 700; margin-left: 6px; }
     ul, ol { margin-top: 6px; }
     @media print { body { margin: 18mm; } .no-print { display: none !important; } }
   </style>
@@ -845,11 +845,9 @@ function surveyListButtonStyle(isActive) {
     cursor: "pointer",
     borderRadius: 10,
     marginBottom: 6,
-    background: isActive ? "#eef2ff" : "#fff",
-    border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
-    boxShadow: isActive
-      ? "0 1px 2px rgba(79,70,229,0.10)"
-      : "0 1px 2px rgba(0,0,0,0.03)",
+    background: isActive ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+    border: isActive ? "1px solid var(--admin-accent-border)" : "1px solid var(--admin-border-subtle)",
+    boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
     transition: "all 0.15s ease",
   };
 }
@@ -932,7 +930,7 @@ function SurveyListContent({
                   }}
                 />
               ) : (
-                <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
+                <div style={{ fontWeight: 700, color: isActive ? "var(--admin-accent-ink)" : "var(--admin-text)" }}>
                   {s.name || s.survey_id}
                 </div>
               )}
@@ -950,9 +948,9 @@ function SurveyListContent({
           style={{
             width: "100%",
             marginTop: 10,
-            background: "#ecfdf5",
-            borderColor: "#a7f3d0",
-            color: "#047857",
+            background: "var(--admin-success-soft)",
+            borderColor: "var(--admin-success-border)",
+            color: "var(--admin-success-ink)",
           }}
         >
           {isSaving ? "Saving…" : "Save survey"}
@@ -1002,7 +1000,7 @@ function FieldBlock({ label, children, hint = "" }) {
       </div>
       {children}
       {hint ? (
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 4 }}>
           {hint}
         </div>
       ) : null}
@@ -1022,9 +1020,9 @@ function TextInput({ value, onChange, placeholder, style, readOnly = false }) {
         height: 42,
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         boxSizing: "border-box",
-        background: readOnly ? "#f9fafb" : "#fff",
+        background: readOnly ? "var(--admin-surface-alt)" : "var(--admin-surface)",
         ...style,
       }}
     />
@@ -1050,10 +1048,10 @@ function TextAreaInput({
         width: "100%",
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         resize: "vertical",
         boxSizing: "border-box",
-        background: readOnly ? "#f9fafb" : "#fff",
+        background: readOnly ? "var(--admin-surface-alt)" : "var(--admin-surface)",
         ...style,
       }}
     />
@@ -1125,8 +1123,8 @@ function RichTextInput({
   );
 
   const buttonStyle = {
-    border: "1px solid #d1d5db",
-    background: "#fff",
+    border: "1px solid var(--admin-border)",
+    background: "var(--admin-surface)",
     borderRadius: 8,
     padding: "6px 9px",
     cursor: "pointer",
@@ -1135,8 +1133,8 @@ function RichTextInput({
   };
 
   const selectStyle = {
-    border: "1px solid #d1d5db",
-    background: "#fff",
+    border: "1px solid var(--admin-border)",
+    background: "var(--admin-surface)",
     borderRadius: 8,
     padding: "6px 8px",
     fontSize: 12,
@@ -1161,7 +1159,7 @@ function RichTextInput({
           >
             Rich text editor
           </button>
-          <span style={{ fontSize: 12, color: "#6b7280" }}>
+          <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>
             Advanced HTML view. Changes here still save to the same backend field.
           </span>
         </div>
@@ -1179,10 +1177,10 @@ function RichTextInput({
   return (
     <div
       style={{
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--admin-border)",
         borderRadius: 10,
         overflow: "hidden",
-        background: "#fff",
+        background: "var(--admin-surface)",
       }}
     >
       <div
@@ -1192,8 +1190,8 @@ function RichTextInput({
           flexWrap: "wrap",
           alignItems: "center",
           padding: 8,
-          borderBottom: "1px solid #e5e7eb",
-          background: "#f9fafb",
+          borderBottom: "1px solid var(--admin-border-subtle)",
+          background: "var(--admin-surface-alt)",
         }}
       >
         <select
@@ -1266,7 +1264,7 @@ function RichTextInput({
               top: 12,
               left: 12,
               right: 12,
-              color: "#9ca3af",
+              color: "var(--admin-muted-2)",
               fontSize: 14,
               pointerEvents: "none",
             }}
@@ -1297,7 +1295,7 @@ function RichTextInput({
             outline: "none",
             lineHeight: 1.55,
             fontSize: 14,
-            color: "#111827",
+            color: "var(--admin-text)",
             overflowY: "auto",
             maxHeight: Math.max(minHeight + 220, 360),
           }}
@@ -1317,8 +1315,8 @@ function SelectInput({ value, onChange, children, style }) {
         height: 42,
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d1d5db",
-        background: "#fff",
+        border: "1px solid var(--admin-border)",
+        background: "var(--admin-surface)",
         boxSizing: "border-box",
         ...style,
       }}
@@ -2482,7 +2480,7 @@ export function AdminSurveysPanel({
                   flexWrap: "wrap",
                 }}
               >
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
                   {linkedFeedCount} linked feed
                   {linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
                   {pageCount === 1 ? "" : "s"}
@@ -2626,8 +2624,8 @@ export function AdminSurveysPanel({
                         style={{
                           padding: "10px 14px",
                           borderRadius: 10,
-                          border: "1px solid #d1d5db",
-                          background: "#fff",
+                          border: "1px solid var(--admin-border)",
+                          background: "var(--admin-surface)",
                           cursor: savingSurvey ? "not-allowed" : "pointer",
                           fontWeight: 600,
                         }}
@@ -2643,8 +2641,8 @@ export function AdminSurveysPanel({
                         style={{
                           padding: "10px 14px",
                           borderRadius: 10,
-                          border: "1px solid #d1d5db",
-                          background: "#fff",
+                          border: "1px solid var(--admin-border)",
+                          background: "var(--admin-surface)",
                           cursor: savingSurvey ? "not-allowed" : "pointer",
                           fontWeight: 600,
                         }}
@@ -2660,9 +2658,9 @@ export function AdminSurveysPanel({
                       style={{
                         padding: "10px 14px",
                         borderRadius: 10,
-                        border: "1px solid #fca5a5",
-                        background: "#fff",
-                        color: "#b91c1c",
+                        border: "1px solid var(--admin-danger-border)",
+                        background: "var(--admin-surface)",
+                        color: "var(--admin-danger-ink)",
                         cursor: deletingSurveyData ? "not-allowed" : "pointer",
                         fontWeight: 600,
                       }}
@@ -2678,11 +2676,11 @@ export function AdminSurveysPanel({
                   style={{
                     padding: "10px 12px",
                     borderRadius: 10,
-                    border: "1px solid #e5e7eb",
-                    background: "#f9fafb",
+                    border: "1px solid var(--admin-border-subtle)",
+                    background: "var(--admin-surface-alt)",
                     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                     fontSize: 13,
-                    color: survey?.survey_id ? "#111827" : "#9ca3af",
+                    color: survey?.survey_id ? "var(--admin-text)" : "var(--admin-muted-2)",
                   }}
                 >
                   {survey?.survey_id || "Save the survey to generate its survey ID."}
@@ -2722,8 +2720,8 @@ export function AdminSurveysPanel({
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      border: "1px solid #d1d5db",
-                      background: surveyOnlyLaunchUrl ? "#fff" : "#f3f4f6",
+                      border: "1px solid var(--admin-border)",
+                      background: surveyOnlyLaunchUrl ? "var(--admin-surface)" : "var(--admin-surface-alt)",
                       cursor: surveyOnlyLaunchUrl ? "pointer" : "not-allowed",
                       fontWeight: 600,
                     }}
@@ -2767,8 +2765,8 @@ export function AdminSurveysPanel({
                     style={{
                       padding: "8px 12px",
                       borderRadius: 9,
-                      border: "1px solid #d1d5db",
-                      background: "#fff",
+                      border: "1px solid var(--admin-border)",
+                      background: "var(--admin-surface)",
                       cursor:
                         experimentGroupCountsLoading || !survey?.survey_id
                           ? "not-allowed"
@@ -2788,9 +2786,9 @@ export function AdminSurveysPanel({
                     style={{
                       padding: "8px 12px",
                       borderRadius: 9,
-                      border: "1px solid #fca5a5",
-                      background: "#fff",
-                      color: "#b91c1c",
+                      border: "1px solid var(--admin-danger-border)",
+                      background: "var(--admin-surface)",
+                      color: "var(--admin-danger-ink)",
                       cursor:
                         resettingGroupBalance || !survey?.survey_id
                           ? "not-allowed"
@@ -2808,7 +2806,7 @@ export function AdminSurveysPanel({
                 <div
                   style={{
                     fontSize: 12,
-                    color: "#b91c1c",
+                    color: "var(--admin-danger-ink)",
                     marginBottom: 12,
                   }}
                 >
@@ -2816,7 +2814,7 @@ export function AdminSurveysPanel({
                 </div>
               )}
               {!survey?.survey_id ? (
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
+                <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
                   Save the survey first to start tracking group assignments.
                 </div>
               ) : (
@@ -2830,15 +2828,15 @@ export function AdminSurveysPanel({
                         style={{
                           padding: "10px 14px",
                           borderRadius: 10,
-                          border: "1px solid #e5e7eb",
-                          background: "#f8fafc",
+                          border: "1px solid var(--admin-border-subtle)",
+                          background: "var(--admin-surface-sunken)",
                           minWidth: 120,
                         }}
                       >
-                        <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                        <div style={{ fontSize: 11, color: "var(--admin-muted)", fontWeight: 600 }}>
                           {group.name}
                         </div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: "#111827" }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: "var(--admin-text)" }}>
                           {count}
                         </div>
                       </div>
@@ -2848,15 +2846,15 @@ export function AdminSurveysPanel({
                     style={{
                       padding: "10px 14px",
                       borderRadius: 10,
-                      border: "1px solid #e5e7eb",
-                      background: "#fff",
+                      border: "1px solid var(--admin-border-subtle)",
+                      background: "var(--admin-surface)",
                       minWidth: 120,
                     }}
                   >
-                    <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                    <div style={{ fontSize: 11, color: "var(--admin-muted)", fontWeight: 600 }}>
                       Total
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: "#111827" }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "var(--admin-text)" }}>
                       {experimentGroupCounts?.total || 0}
                     </div>
                   </div>
@@ -3130,8 +3128,8 @@ export function AdminSurveysPanel({
                   style={{
                     padding: "10px 14px",
                     borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
+                    border: "1px solid var(--admin-border)",
+                    background: "var(--admin-surface)",
                     cursor: savingLinks ? "not-allowed" : "pointer",
                     fontWeight: 600,
                   }}
@@ -3143,9 +3141,9 @@ export function AdminSurveysPanel({
               <div
                 style={{
                   fontSize: 12,
-                  color: needsLinkedFeedContext ? "#92400e" : "#065f46",
-                  background: needsLinkedFeedContext ? "#fffbeb" : "#ecfdf5",
-                  border: `1px solid ${needsLinkedFeedContext ? "#f59e0b" : "#10b981"}`,
+                  color: needsLinkedFeedContext ? "var(--admin-warning-ink)" : "var(--admin-success-ink)",
+                  background: needsLinkedFeedContext ? "var(--admin-warning-soft)" : "var(--admin-success-soft)",
+                  border: `1px solid ${needsLinkedFeedContext ? "var(--admin-warning)" : "var(--admin-success)"}`,
                   borderRadius: 10,
                   padding: "10px 12px",
                   marginBottom: 10,
@@ -3160,9 +3158,9 @@ export function AdminSurveysPanel({
                 <div
                   style={{
                     fontSize: 13,
-                    color: "var(--admin-danger-ink, #991b1b)",
-                    background: "var(--admin-danger-soft, #fef2f2)",
-                    border: "1px solid var(--admin-danger-border, #fecaca)",
+                    color: "var(--admin-danger-ink)",
+                    background: "var(--admin-danger-soft)",
+                    border: "1px solid var(--admin-danger-border)",
                     borderRadius: 10,
                     padding: "10px 12px",
                     marginBottom: 10,
@@ -3192,9 +3190,9 @@ export function AdminSurveysPanel({
                 <div
                   style={{
                     fontSize: 13,
-                    color: selectedFeedIds.length > 1 ? "#1e40af" : "#92400e",
-                    background: selectedFeedIds.length > 1 ? "#eff6ff" : "#fffbeb",
-                    border: `1px solid ${selectedFeedIds.length > 1 ? "#bfdbfe" : "#f59e0b"}`,
+                    color: selectedFeedIds.length > 1 ? "var(--admin-info-ink)" : "var(--admin-warning-ink)",
+                    background: selectedFeedIds.length > 1 ? "var(--admin-info-soft)" : "var(--admin-warning-soft)",
+                    border: `1px solid ${selectedFeedIds.length > 1 ? "var(--admin-info-border)" : "var(--admin-warning)"}`,
                     borderRadius: 10,
                     padding: "10px 12px",
                     marginBottom: 10,
@@ -3215,7 +3213,7 @@ export function AdminSurveysPanel({
 
               <div
                 style={{
-                  border: "1px solid #d1d5db",
+                  border: "1px solid var(--admin-border)",
                   borderRadius: 10,
                   padding: 12,
                   maxHeight: 220,
@@ -3223,7 +3221,7 @@ export function AdminSurveysPanel({
                 }}
               >
                 {feeds.length === 0 && (
-                  <div style={{ color: "#6b7280" }}>No feeds found.</div>
+                  <div style={{ color: "var(--admin-muted)" }}>No feeds found.</div>
                 )}
 
                 {feeds.map((f) => {
@@ -3262,9 +3260,9 @@ export function AdminSurveysPanel({
                               style={{
                                 fontSize: 12,
                                 fontWeight: 700,
-                                color: "#1d4ed8",
-                                background: "#eff6ff",
-                                border: "1px solid #bfdbfe",
+                                color: "var(--admin-info-ink)",
+                                background: "var(--admin-info-soft)",
+                                border: "1px solid var(--admin-info-border)",
                                 borderRadius: 999,
                                 padding: "2px 7px",
                               }}
@@ -3281,9 +3279,9 @@ export function AdminSurveysPanel({
                               style={{
                                 fontSize: 11,
                                 fontWeight: 700,
-                                color: "var(--admin-danger-ink, #991b1b)",
-                                background: "var(--admin-danger-soft, #fef2f2)",
-                                border: "1px solid var(--admin-danger-border, #fecaca)",
+                                color: "var(--admin-danger-ink)",
+                                background: "var(--admin-danger-soft)",
+                                border: "1px solid var(--admin-danger-border)",
                                 borderRadius: 999,
                                 padding: "1px 7px",
                                 flexShrink: 0,
@@ -3293,7 +3291,7 @@ export function AdminSurveysPanel({
                             </span>
                           )}
                           {feedId && f.feed_id === feedId && (
-                            <span style={{ fontSize: 12, color: "#6b7280" }}>
+                            <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>
                               (current)
                             </span>
                           )}
@@ -3305,7 +3303,7 @@ export function AdminSurveysPanel({
                               type="button"
                               onClick={() => moveLinkedFeed(f.feed_id, -1)}
                               disabled={orderIndex <= 0}
-                              style={{ padding: "4px 7px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }}
+                              style={{ padding: "4px 7px", borderRadius: 8, border: "1px solid var(--admin-border)", background: "var(--admin-surface)" }}
                             >
                               ↑
                             </button>
@@ -3313,7 +3311,7 @@ export function AdminSurveysPanel({
                               type="button"
                               onClick={() => moveLinkedFeed(f.feed_id, 1)}
                               disabled={orderIndex < 0 || orderIndex >= selectedIds.length - 1}
-                              style={{ padding: "4px 7px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }}
+                              style={{ padding: "4px 7px", borderRadius: 8, border: "1px solid var(--admin-border)", background: "var(--admin-surface)" }}
                             >
                               ↓
                             </button>
@@ -3330,7 +3328,7 @@ export function AdminSurveysPanel({
             {activeEditorTab === "questions" && (
               <>
             {needsReminderPosts && loadingReminderPosts && (
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 10 }}>
                 Loading linked feed posts for post reminder questions…
               </div>
             )}

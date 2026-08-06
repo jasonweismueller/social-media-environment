@@ -15,9 +15,9 @@ function feedListButtonStyle(isActive) {
     cursor: "pointer",
     borderRadius: 10,
     marginBottom: 6,
-    background: isActive ? "#eef2ff" : "#fff",
-    border: isActive ? "1px solid #c7d2fe" : "1px solid #e5e7eb",
-    boxShadow: isActive ? "0 1px 2px rgba(79,70,229,0.10)" : "0 1px 2px rgba(0,0,0,0.03)",
+    background: isActive ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+    border: isActive ? "1px solid var(--admin-accent-border)" : "1px solid var(--admin-border-subtle)",
+    boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
     transition: "all 0.15s ease",
   };
 }
@@ -163,7 +163,7 @@ function FeedListContent({
                   }}
                 />
               ) : (
-                <div style={{ fontWeight: 700, color: isActive ? "#3730a3" : "#111827" }}>
+                <div style={{ fontWeight: 700, color: isActive ? "var(--admin-accent-ink)" : "var(--admin-text)" }}>
                   {f.name || f.feed_id}
                 </div>
               )}
@@ -182,9 +182,9 @@ function FeedListContent({
             style={{
               width: "100%",
               marginTop: 10,
-              background: "#ecfdf5",
-              borderColor: "#a7f3d0",
-              color: "#047857",
+              background: "var(--admin-success-soft)",
+              borderColor: "var(--admin-success-border)",
+              color: "var(--admin-success-ink)",
             }}
           >
             {isSaving ? "Saving…" : "Save feed"}
@@ -518,15 +518,15 @@ export function AdminFeedsPanel({
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap", fontSize: 13 }}>
                     <div>
-                      <div style={{ color: "#6b7280", fontSize: 11 }}>Total participants</div>
+                      <div style={{ color: "var(--admin-muted)", fontSize: 11 }}>Total participants</div>
                       <div style={{ fontWeight: 700, fontSize: 17 }}>{stats ? stats.total : "—"}</div>
                     </div>
                     <div>
-                      <div style={{ color: "#6b7280", fontSize: 11 }}>Submitted</div>
+                      <div style={{ color: "var(--admin-muted)", fontSize: 11 }}>Submitted</div>
                       <div style={{ fontWeight: 700, fontSize: 17 }}>{stats ? stats.submitted : "—"}</div>
                     </div>
                     <div>
-                      <div style={{ color: "#6b7280", fontSize: 11 }}>Avg time (m:ss)</div>
+                      <div style={{ color: "var(--admin-muted)", fontSize: 11 }}>Avg time (m:ss)</div>
                       <div style={{ fontWeight: 700, fontSize: 17 }}>
                         {stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
                       </div>

@@ -1,6 +1,6 @@
 import React, { createContext, useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { IconFeed, IconClipboard } from "./ui";
+import { IconFeed, IconClipboard, ThemeToggle } from "./ui";
 
 // Absolute paths (not relative "feeds"/"surveys") — relative NavLink targets
 // resolve against the current URL segment-by-segment in react-router, so a
@@ -236,28 +236,31 @@ export function AdminShell({
               <span />
             )}
 
-            <button
-              type="button"
-              onClick={onLogout}
-              title="Log out"
-              aria-label="Log out"
-              style={{
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 34,
-                height: 34,
-                border: "none",
-                borderRadius: "var(--admin-radius-sm)",
-                background: "var(--admin-danger-soft)",
-                color: "var(--admin-danger-ink, #b91c1c)",
-                cursor: "pointer",
-                fontSize: 18,
-              }}
-            >
-              ⏻
-            </button>
+            <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <ThemeToggle />
+              <button
+                type="button"
+                onClick={onLogout}
+                title="Log out"
+                aria-label="Log out"
+                style={{
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 34,
+                  height: 34,
+                  border: "none",
+                  borderRadius: "var(--admin-radius-sm)",
+                  background: "var(--admin-danger-soft)",
+                  color: "var(--admin-danger-ink, #b91c1c)",
+                  cursor: "pointer",
+                  fontSize: 18,
+                }}
+              >
+                ⏻
+              </button>
+            </span>
           </div>
 
           <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>

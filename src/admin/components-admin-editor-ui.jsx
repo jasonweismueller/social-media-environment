@@ -49,15 +49,15 @@ export function EditorSection({ title, subtitle, badge, defaultOpen = false, chi
       >
         <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13.5, fontWeight: 700, color: "#111827" }}>{title}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--admin-text)" }}>{title}</span>
             {badge && (
               <span
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: "#4f46e5",
-                  background: "#eef2ff",
-                  border: "1px solid #c7d2fe",
+                  color: "var(--admin-accent)",
+                  background: "var(--admin-accent-soft)",
+                  border: "1px solid var(--admin-accent-border)",
                   borderRadius: 999,
                   padding: "1px 8px",
                   whiteSpace: "nowrap",
@@ -67,9 +67,9 @@ export function EditorSection({ title, subtitle, badge, defaultOpen = false, chi
               </span>
             )}
           </span>
-          {subtitle && <span style={{ fontSize: 12, color: "#6b7280" }}>{subtitle}</span>}
+          {subtitle && <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>{subtitle}</span>}
         </span>
-        <span className="section-chev" aria-expanded={open} style={{ color: "#6b7280", flex: "0 0 auto" }}>
+        <span className="section-chev" aria-expanded={open} style={{ color: "var(--admin-muted)", flex: "0 0 auto" }}>
           <ChevronIcon />
         </span>
       </button>
@@ -88,9 +88,9 @@ export function EditorSection({ title, subtitle, badge, defaultOpen = false, chi
 export function Field({ label, hint, children }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--admin-text)" }}>{label}</span>
       {children}
-      {hint && <span style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.4 }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 11.5, color: "var(--admin-muted)", lineHeight: 1.4 }}>{hint}</span>}
     </label>
   );
 }
@@ -101,9 +101,9 @@ export function Field({ label, hint, children }) {
 export function Group({ label, hint, children }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#374151" }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--admin-text)" }}>{label}</span>
       {children}
-      {hint && <span style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.4 }}>{hint}</span>}
+      {hint && <span style={{ fontSize: 11.5, color: "var(--admin-muted)", lineHeight: 1.4 }}>{hint}</span>}
     </div>
   );
 }
@@ -146,7 +146,7 @@ export function PreviewPane({ label = "Live preview", platformLabel, zoom, child
   return (
     <aside className="editor-preview">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 2px" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".04em" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--admin-muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>
           {label}
         </span>
         {platformLabel && (
@@ -154,9 +154,9 @@ export function PreviewPane({ label = "Live preview", platformLabel, zoom, child
             style={{
               fontSize: 11,
               fontWeight: 600,
-              color: "#4f46e5",
-              background: "#eef2ff",
-              border: "1px solid #c7d2fe",
+              color: "var(--admin-accent)",
+              background: "var(--admin-accent-soft)",
+              border: "1px solid var(--admin-accent-border)",
               borderRadius: 999,
               padding: "2px 9px",
             }}
@@ -168,8 +168,8 @@ export function PreviewPane({ label = "Live preview", platformLabel, zoom, child
       <div
         style={{
           borderRadius: 14,
-          border: "1px solid #e5e7eb",
-          background: "#f3f4f6",
+          border: "1px solid var(--admin-border-subtle)",
+          background: "var(--admin-surface-alt)",
           padding: 18,
           display: "flex",
           justifyContent: "center",

@@ -4143,6 +4143,10 @@ this up next, not a commitment):
 
 ## Session handoff (2026-08-06) — read this first if picking up fresh
 
+**Superseded by "Session handoff (2026-08-06, end of session)" at the very end of this file** — that
+one has the accurate final state (three more real bugs were found and fixed after this note was
+written, and `production` has since caught up to `main` entirely). Left in place as history.
+
 **Everything from this session is committed to `main`, but `production`/`studyfeed.org` is two
 commits behind** (`git log production..main` → `6fd9cde realism improvements` then the pacing/
 surroundings-toggle follow-up commit on top of it) — the survey-preview polish, toolbar redesign,
@@ -4331,3 +4335,223 @@ correspondingly more of a 900px-tall viewport than before. **Not yet verified**:
 click-through by a real logged-in participant on staging with the modal fix specifically (verified
 against the real bundled dev app with a mocked flags fetch, same technique as the rest of this
 morning's fixes, not staging itself) — worth confirming Share/Comment on staging once this deploys.
+
+**Two small follow-up polish fixes, same morning** (`ui-core-facebook.jsx`, `TopRailReal`): the FB
+logo glyph's own path isn't visually centered in the 24x24 viewBox it's drawn in (raw bounding box
+x:[9,17.5]/y:[5,21], center (13.25,13) vs. the viewBox's own center (12,12)) — wrapped it in
+`<g transform="translate(-1.25,-1)">` to actually center it in the circular badge. Verified via
+`getBoundingClientRect()` on the glyph vs. the badge (not just eyeballing a screenshot, which isn't
+reliable at this scale): center-to-center offset is ~0px in both axes after the fix. Also changed the
+search pill's label from "Search Facebook" to just "Search," per direct feedback. Both confirmed live
+against the real bundled dev app.
+
+## Session handoff (2026-08-06, end of session) — read this first if picking up fresh
+
+This was a very long, dense session — survey editor/preview polish, a new Feed Preview feature, a
+full Feed Participants tab redesign, and then a multi-round "realism" feature (engagement counts /
+interaction pacing / real surroundings) that went through **three real, distinct bugs** found via
+direct user testing, each root-caused and fixed in the same session. If picking this up fresh, read
+the section headers from `## Realism improvements: engagement counts, entrance pacing, real (not
+ghost) rail surroundings (2026-08-06)` through this one, in order — each already has its own detailed
+root-cause + fix + verification writeup; this section is an index, not a re-explanation.
+
+**Current deploy state, confirmed just now (not assumed)**: `main` and `production` are **in sync**,
+both at `fd68114` (`git log origin/production..origin/main` is empty) — confirmed via `git fetch` +
+comparing `origin/main`/`origin/production` directly, and independently via the GitHub Actions API
+showing both "Deploy to Staging" and "Deploy to GitHub Pages" completed successfully for `fd68114`.
+**This means everything below is live on `studyfeed.org` right now, not just staging** — the
+production promotion happened during this session (presumably via the user's GitHub Desktop app, not
+something Claude did), so there is no staging buffer left to verify against before real participants
+can hit this.
+
+**Full feature list shipped this session, in order**:
+1. Survey editor: question-card collapse chevron now stays in a fixed position instead of jumping
+   sides on expand; per-question preview button; copy-button border consistency; survey preview
+   gained a "Force response" toggle + clickable page-jump indicators (all in the session's earlier
+   messages, before the CLAUDE.md entries in this file's tail — search `components-admin-surveys-
+   editor.jsx` git history if the specifics matter later).
+2. Survey preview toolbar redesign — "Force response" and "Preview as mobile" now match (both real
+   `Toggle` switches), Reshuffle became a compact icon-pill button, controls regrouped by purpose
+   (preview context left, display options right).
+3. New **Feed preview** feature — full-screen modal reusing the real `Feed` component, so an admin
+   can see exactly what a feed looks like without a live participant link. `IconPillButton`/
+   `IconShuffle`/`IconEye` promoted into the shared `src/admin/ui/` design system; `Modal.jsx` gained
+   a `fullScreen` variant.
+4. **Feed Participants tab redesign** — the simulator moved into its own collapsible card, both
+   tables migrated to the shared `Table`/`Th`/`Td`, `ParticipantDetailModal` migrated off the legacy
+   `.modal-backdrop` onto the shared `Modal`, buttons restyled to match Feeds/Surveys.
+5. **Realism features** — `realistic_engagement` (seeded fallback reaction/comment/share counts,
+   keyed on bare `post.id` specifically so Control/Treatment variants of "the same" post can't get
+   systematically different numbers), `realistic_pacing` (staggered post entrance cascade),
+   `realistic_surroundings` (real-looking, still fully inert left/right rails + top bar, replacing
+   generic ghost skeletons). All three are **independent opt-in feed flags**, deliberately never
+   bundled — per explicit direct instruction, nothing here should become "standard" behavior a study
+   can't opt out of.
+6. **Bug #1**: each `App-*.jsx`'s own local `normalizeFlags()` silently dropped the three new flag
+   keys before they ever reached `<Feed>` — flags saved/read fine in the admin UI, did nothing for
+   real participants. Fixed identically in all three files.
+7. **Bug #2**, the bigger one: `Feed`'s own internal rails (`ui-posts-facebook.jsx`) are **not** what
+   a real participant sees — `App-facebook.jsx` wraps the live feed in a separate `PageWithRails`
+   component with its own independent rail implementation. The fix from Bug #1 was real but rendered
+   at `width: 0`, nested inside the wrong container. Extracted `buildRailContacts`/
+   `LEFT_RAIL_NAV_ITEMS`/`LEFT_RAIL_ICONS`/etc. as shared exports so `Feed`'s rails (only reachable
+   via the admin's standalone Feed Preview) and `PageWithRails`'s rails (the one that actually
+   matters) can't drift apart again.
+8. **Bug #3**: the pacing animation's `both` fill-mode left a permanent `transform: translateY(0)` on
+   every post card after its intro animation finished, which — per the CSS spec — made the card a
+   containing block for `position:fixed` descendants, breaking the desktop Comment/Share modals
+   (they opened constrained inside the post instead of over the whole page). Fixed by changing the
+   fill-mode to `backwards` only, in all three apps' stylesheets.
+9. Rail/top-bar visual polish against a real Facebook reference screenshot the user attached: real
+   colored icon glyphs instead of flat placeholder squares, both rails now compute a height-filling
+   item count tuned to the real (much shorter than ghost) row height, and a genuinely real-looking
+   top bar (`TopRailReal`) instead of the untouched generic placeholder.
+10. Two final small fixes: the Facebook logo glyph is now actually centered in its circular badge
+    (its raw path wasn't centered in its own viewBox), and the search pill reads "Search" instead of
+    "Search Facebook."
+
+**What's genuinely NOT verified, stated plainly since this is now live in production**: at no point
+this session did a real logged-in admin click through the actual `/admin/*` UI to toggle these flags
+through real clicks (standing limitation throughout this file — credential entry is off-limits), and
+no real participant walkthrough (consent → scroll the feed → react/comment/share → submit) was done
+with these flags on. Every verification this session used one of two techniques: (a) mounting real
+bundled components directly via cache-busted dynamic imports with fabricated data, or (b) loading a
+real feed URL through the local dev server / real staging site with only the one Supabase
+`feeds?select=flags` network response intercepted/mocked, everything else hitting the real backend.
+Both are much stronger than nothing, and both are how all three real bugs above were actually caught
+— but neither is "a human clicked through the real thing." Given the session's own track record
+(three real bugs slipped past this exact verification approach before being caught by direct user
+testing), **the highest-value next step is a real click-through** — ideally by the user themselves,
+on a real or disposable feed, with each of the three flags toggled on individually first (not all at
+once), specifically watching for: reaction/comment/share numbers looking plausible, the entrance
+cascade being visible on scroll, the rails/top-bar looking right at a real (not simulated) browser
+width, and — since this was the actual bug reported — that Like/Comment/Share still work normally
+with pacing on.
+
+**Debugging playbook, if another "doesn't work" report comes in**, distilled from how the three real
+bugs above actually got found (in case a future session hits a fourth one): (1) don't trust "the
+admin UI shows it as on" as proof of anything beyond the write path — query the actual stored value
+directly (`supabase db query --linked`, relink between `yrzqnlhbawzuzlrrocfd` (production) and
+`hgctbgunlsesygzglbdv` (staging) as needed, always relink back to production when done); (2) don't
+trust "the component renders correctly with fabricated props" as proof it works live — that only
+tests the component, not the real fetch → normalize → render pipeline in between, which is exactly
+where Bug #1 hid; (3) when checking whether an element is actually visible, measure
+`getBoundingClientRect()` + computed `display`, not just presence of the right CSS class in the DOM —
+`document.querySelector` returns the *first* match, and this codebase has more than one place that
+independently renders something matching `.rail-left`/`.rail-right` (the pre-load skeleton, `Feed`'s
+own rails, and `PageWithRails`'s rails all use the same class names); (4) fetch the actual deployed
+JS bundle directly (`curl` the hashed chunk, `grep` for the symbol in question) before assuming a fix
+isn't live — deploys are fast and confirmable via the GitHub Actions API without needing to guess.
+
+**Nothing from this session went through `EnterPlanMode`/the Plan tool**, so there's no corresponding
+file in `~/.claude/plans/` for it — this CLAUDE.md section is the complete record. If a future session
+wants a dedicated plan file for whatever comes next (e.g. Instagram/Amazon parity for realistic
+surroundings, or the "chrome realism intensity" slider idea mentioned earlier), that would be a fresh
+plan for new work, not a continuation of this one.
+
+## Admin dashboard: dark mode, toggleable (2026-08-06)
+
+Per direct request for a dark mode "I can turn on or off with a switch," with explicit emphasis on
+diligence about background/element/icon colors. Scoped to `/admin/*` only, via the existing
+`--admin-*` token system (`src/admin/ui/tokens.css`) — the participant-facing feed has its own
+separate light-only brand palette (`--blue` etc. in `styles-{facebook,instagram,amazon}.css`) and was
+never in scope.
+
+**Mechanism**: `src/admin/ui/useAdminTheme.js` — a `data-admin-theme` attribute on `<html>`
+(not on any individual `.admin-shell` div, since several pages — `AdminProjectPicker`/
+`AdminPlatformPicker`/`AdminDashboard`/`AdminUsersPage` — each mount their own separate `.admin-shell`
+root; a single `<html>`-level attribute reaches all of them with zero prop-threading and survives
+client-side route changes between them for free), backed by `localStorage` (`admin_theme_v1`,
+falling back to `prefers-color-scheme` on first-ever visit). Applied once at **module-evaluation
+time** (a top-level side effect, not inside a `useEffect`) specifically to avoid a flash of the wrong
+theme on load — an effect-based version would run one tick after first paint. `src/admin/ui/
+ThemeToggle.jsx` is a self-contained sun/moon icon button (new `IconSun`/`IconMoon` in `icons.jsx`)
+wired into all four `.admin-shell`-mounting entry points (`AdminShell.jsx`'s sidebar header,
+`AdminProjectPicker`/`AdminPlatformPicker`/`AdminUsersPage`'s `PageHeader` actions) — each renders its
+own `<ThemeToggle/>` calling the same hook, kept in sync purely through the shared `<html>`
+attribute + localStorage, no context/prop plumbing needed between them.
+
+**Dark palette** (`tokens.css`, `html[data-admin-theme="dark"] .admin-shell { ... }`): same hue
+families as light mode throughout (indigo accent, red danger, green success, amber warning, blue
+info — the latter two are new token groups, `--admin-warning-*`/`--admin-info-*`, added as part of
+this pass since several files had ad-hoc amber/blue hexes with no token to redirect to), re-tuned so
+every `-ink` color stays readable as text against its own `-soft` surface and every `-soft` surface
+reads as a distinct tint against `--admin-surface`, not a flat wash. New `--admin-accent-ring` token
+(replacing several inline `rgba(79,70,229,0.1)`-style accent glows) since a fixed-alpha indigo overlay
+tuned for a white background reads as barely-visible on a dark one.
+
+**Full-codebase color audit**: grepped every `.jsx`/`.css` file under `src/admin` for hardcoded
+hex/`rgba()` literals not already routed through a `var(--admin-*)`, mapped each to the closest
+existing (or newly added) token via a scripted exact-string substitution pass (~150 replacements
+across `components-admin-surveys.jsx` alone, plus `-feeds.jsx`/`-participants-{feed,survey}.jsx`/
+`-surveys-editor.jsx`/`-editor-{facebook,instagram,amazon}.jsx`/`-media-{facebook,instagram}.jsx`/
+`-users.jsx`/`-feed-preview.jsx`/`AdminShell.jsx`/`ui/{Button,Toggle,Tabs,Modal,Toast}.jsx`), then
+manually reviewed every remaining `#fff`/`rgba()` for context (surface background → retoken;
+text-on-saturated-color like a primary button's white label → deliberately left alone, correct in
+both themes; a genuinely theme-independent overlay like the Instagram media-cropper's drag-handle dot,
+drawn over arbitrary photo content rather than admin chrome → also left alone). Caught and fixed, as
+a side effect of the substitution script, ~20 pre-existing redundant `var(--admin-X, var(--admin-X))`
+self-fallbacks (originally `var(--admin-X, #somehex)`, where the hex fallback happened to map to a
+*different* token than the primary — dead code either way, since the primary is always defined on
+`.admin-shell`, just simplified to the plain form once noticed) and one real, pre-existing latent bug
+unrelated to dark mode: `components-admin-media-instagram.jsx`'s image-picker border referenced
+`var(--line)`, a variable that doesn't exist unprefixed in `styles-instagram.css` (only `--ig-line`
+does) — silently resolved to nothing; fixed to `var(--admin-border)`, the evident intent given the
+adjacent ternary branch already used an admin token.
+
+**`components-admin-users.jsx`'s `ChoiceChip` `tone="dark"` variant** (the per-project platform
+toggle chips in `ProjectAccessEditor`) used `background: var(--admin-text)` for its filled/active
+state — correct by coincidence in light mode (`--admin-text` is near-black there) but inverts to
+near-white in dark mode, which would've left white text on a near-white chip. This one genuinely
+needed a fixed, theme-**independent** color (`#1f2430`) rather than a token, since the actual intent
+was "always render as a solid dark pill," not "match the current theme's text color."
+
+**Real, non-obvious bug found and fixed, only caught via live verification, not code reading**: raw
+`<input>`/`<select>`/`<textarea>` elements that don't carry the post-editor's `.input`/`.select`/
+`.textarea` app-css classes *and* don't set an explicit inline `background` either — e.g.
+`PromptDialog.jsx`'s text field — fell back to the browser's opaque-white UA default, which happened
+to look correct in light mode and left a jarring white box in the middle of an otherwise-dark dialog.
+Fixed with one generic baseline rule (`.admin-shell input:not([type=checkbox]):not([type=radio]),
+select, textarea { background: var(--admin-surface); ... }`, plus a `::placeholder` color rule) rather
+than hunting down every individual occurrence — lower specificity than any existing explicit class/
+inline style, so it only fills gaps, never overrides something already deliberately styled.
+
+**Second real bug, more involved — a pre-existing `Modal` naming collision, exposed by dark mode but
+not caused by it**: the post-editor "Add/Edit Post" dialog (`components-admin-dashboard.jsx`) renders
+via `import { Modal, LoadingOverlay } from "../ui-core"` — the **generic participant-facing modal**
+shared by all three apps' real comment/share dialogs (`.modal-backdrop`/`.modal`/`.modal-head`/
+`.modal-footer`/`.dots`, styled in each `styles-*.css`) — not `src/admin/ui/Modal.jsx`, despite that
+also being imported elsewhere in the same file for other dialogs. First surfaced as the post editor's
+header/footer chrome staying stubbornly white while its body content (the `EditorSection` cards,
+already correctly dark via the `--card`/`--text` variable bridge) went dark — initially misdiagnosed
+as Vite HMR staleness (a documented false trail elsewhere in this file) and only confirmed real by
+reproducing it against a from-scratch `npm run dev` restart. Root cause: `.modal`/`.modal-footer`
+hardcode `background:#fff` and `.dots` hardcodes `color:#6b7280` in every `styles-*.css`, none of it
+routed through the `--card`/`--text`/`--line` variables this session's dark-mode bridge already
+covers. Fixed with the same "override the specific hardcoded properties, scoped to `.admin-shell`"
+pattern as the `.btn`/`.avatar`/`.subtle` fix elsewhere in this pass — deliberately scoped so the
+real participant-facing comment/share modal (same classnames, same component) is completely
+untouched; confirmed safe since `data-admin-theme` is never set outside `/admin/*` routes, and the
+override selector requires both.
+
+**Verified live**, end to end, via a from-scratch `npm run dev` restart (ruling out the stale-HMR
+false trail above) and a faked local admin session (`admin_token_v1` etc. in `localStorage` — never
+real credentials, same standing technique this file already documents using repeatedly) plus a
+mocked `window.fetch` for Supabase calls: toggled the switch on `AdminProjectPicker`, `AdminPlatform
+Picker`, the main `AdminDashboard` shell (Feeds/Surveys tree sidebar), `AdminUsersPage`, and confirmed
+dark rendering (plus a real light→dark→light round-trip with no residual artifacts) across: empty
+states, `Card`/`Button`/`Badge`/`Table`/`Tabs`/`Toggle` primitives, the `PromptDialog`/`ConfirmDialog`
+("New feed"/"Feed name" prompts) and `Modal` ("Add user") — including the input-background bug fix
+above — the full post-editor "Add Post" dialog (`EditorSection` cards, rich inputs, live preview,
+`Post type`/`Reactions & Metrics` sections) including the `Modal`-collision fix above, and the survey
+editor's Setup tab (warning banner using the new `--admin-warning-*` tokens) and Questions tab
+(`QuestionCard`, rich-text toolbar, drag/reorder/copy/delete icon buttons). **Not verified**: an
+actual click-through by a real logged-in admin (standing limitation throughout this file — credential
+entry is off-limits) — everything above was exercised via a faked session, same posture as most
+other admin-UI verification in this file. Also not specifically re-checked: the Instagram/Amazon post
+editors' media fieldsets (image crop tool, carousel) beyond the color-token audit itself — the
+Facebook editor was the one actually opened and driven live.
+
+**Left the dev server stopped at the end of this session** (was already running from an earlier
+session per this file's own notes; restarted fresh once to rule out HMR staleness while debugging the
+`Modal` collision above, then stopped when done) — run `npm run dev` again to pick it back up.

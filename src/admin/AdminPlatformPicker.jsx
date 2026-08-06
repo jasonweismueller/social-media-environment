@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getProjectId } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart } from "./ui";
+import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, ThemeToggle } from "./ui";
 
 const PLATFORMS = [
   { app: "fb", label: "Facebook", icon: IconFacebook, blurb: "News-feed style posts, comments, reactions." },
@@ -48,9 +48,12 @@ export function AdminPlatformPicker({ currentApp }) {
           title="Choose a platform"
           subtitle={`Project: ${projectName}`}
           actions={
-            <Button size="sm" variant="ghost" onClick={() => navigate("/admin")}>
-              ← All projects
-            </Button>
+            <>
+              <ThemeToggle />
+              <Button size="sm" variant="ghost" onClick={() => navigate("/admin")}>
+                ← All projects
+              </Button>
+            </>
           }
         />
 

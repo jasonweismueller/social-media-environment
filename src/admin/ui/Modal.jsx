@@ -115,7 +115,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
       style={{
         position: "fixed",
         inset: 0,
-        background: fullScreen ? "var(--admin-bg, #f4f5f7)" : "rgba(15, 23, 42, 0.45)",
+        background: fullScreen ? "var(--admin-surface-sunken)" : "rgba(15, 23, 42, 0.45)",
         display: "flex",
         alignItems: fullScreen ? "stretch" : "center",
         justifyContent: fullScreen ? "stretch" : "center",

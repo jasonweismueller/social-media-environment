@@ -47,7 +47,7 @@ export function FeedPreviewModal({ posts = [], flags = {}, projectId = "", feedI
             display: "flex",
             justifyContent: "center",
             padding: "10px 0",
-            background: "var(--admin-bg, #f4f5f7)",
+            background: "var(--admin-surface-alt)",
             borderBottom: "1px solid var(--admin-border-subtle)",
           }}
         >

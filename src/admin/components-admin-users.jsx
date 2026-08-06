@@ -31,7 +31,7 @@ import {
 } from "../utils";
 import { isSupabaseBackend } from "../utils/utils-supabase-client";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser } from "./ui";
+import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser, ThemeToggle } from "./ui";
 
 const ROLE_OPTIONS = [
   { value: "viewer", label: "Viewer", hint: "Read-only access" },
@@ -83,10 +83,14 @@ function userRowStyle(isActive) {
  * projects only" switch and for the per-project platform chips below it —
  * one primitive instead of two near-identical hand-rolled button styles. */
 function ChoiceChip({ active, onClick, children, tone = "accent", disabled }) {
+  // tone="dark" is a deliberately theme-stable "filled/selected" chip (the
+  // per-project platform toggles below) — not `var(--admin-text)`, which
+  // flips to near-white in dark mode and would leave white text on a
+  // white chip.
   const activeStyle =
     tone === "accent"
       ? { background: "var(--admin-accent)", borderColor: "var(--admin-accent)", color: "#fff" }
-      : { background: "var(--admin-text)", borderColor: "var(--admin-text)", color: "#fff" };
+      : { background: "#1f2430", borderColor: "#1f2430", color: "#fff" };
   return (
     <button
       type="button"
@@ -724,6 +728,7 @@ export function AdminUsersPage() {
           subtitle="Manage admin accounts, roles, and which projects each account can see."
           actions={
             <>
+              <ThemeToggle />
               <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
                 {loading ? "Loading…" : "Refresh"}
               </Button>

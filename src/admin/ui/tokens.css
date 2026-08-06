@@ -29,11 +29,179 @@
   --admin-radius-md: 10px;
   --admin-radius-lg: 14px;
 
+  --admin-warning: #f59e0b;
+  --admin-warning-ink: #92400e;
+  --admin-warning-soft: #fffbeb;
+  --admin-warning-border: #fde68a;
+
+  --admin-info: #2563eb;
+  --admin-info-ink: #1d4ed8;
+  --admin-info-soft: #eff6ff;
+  --admin-info-border: #bfdbfe;
+
   --admin-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
   --admin-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
 
+  /* Translucent accent wash for focus rings / active-row glows / drag-over
+     highlights — same accent hue as --admin-accent but low-alpha, kept as
+     its own token (rather than each call site hardcoding an rgba()) so it
+     can be re-tuned per theme instead of a fixed indigo silently going
+     invisible against a dark surface. */
+  --admin-accent-ring: rgba(79, 70, 229, 0.12);
+
   background: var(--admin-surface-sunken);
   color: var(--admin-text);
+}
+
+/* Baseline for raw <input>/<select>/<textarea> that don't carry the
+   `.input`/`.select`/`.textarea` app-css classes (e.g. PromptDialog.jsx's
+   text field) and don't set an explicit inline background either — without
+   this they fall back to the browser default (opaque white), which reads
+   fine in light mode by coincidence but leaves a stray white box in the
+   middle of a dark dialog. Real inline styles/explicit classes still win
+   over this (lower specificity), so this only fills the gap, never
+   overrides something already deliberately styled. Checkbox/radio excluded
+   — their native appearance shouldn't get a text-field background. */
+.admin-shell input:not([type="checkbox"]):not([type="radio"]),
+.admin-shell select,
+.admin-shell textarea {
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+}
+.admin-shell input::placeholder,
+.admin-shell textarea::placeholder {
+  color: var(--admin-muted-2);
+}
+
+/* ==========================================================================
+   Dark mode — toggled via the <html data-admin-theme="dark"> attribute set
+   by useAdminTheme.js (ThemeToggle.jsx is the switch). Scoped through
+   `.admin-shell` exactly like the light tokens above, so it can never leak
+   into the participant-facing app.
+
+   Same hue families as light mode throughout (indigo accent, red danger,
+   green success, amber warning, blue info) — only lightness/saturation
+   shift, chosen so each -ink color reads as real text against its own
+   -soft surface, and every -soft surface reads as a distinct dark tint
+   against --admin-surface (not just a flat wash). */
+html[data-admin-theme="dark"] .admin-shell {
+  --admin-accent: #6366f1;
+  --admin-accent-ink: #c7d2fe;
+  --admin-accent-soft: #23263f;
+  --admin-accent-border: #4338ca;
+
+  --admin-danger: #f87171;
+  --admin-danger-ink: #fca5a5;
+  --admin-danger-soft: #3a1c1c;
+  --admin-danger-border: #7f1d1d;
+
+  --admin-success: #4ade80;
+  --admin-success-ink: #86efac;
+  --admin-success-soft: #14291b;
+  --admin-success-border: #15803d;
+
+  --admin-warning: #fbbf24;
+  --admin-warning-ink: #fde68a;
+  --admin-warning-soft: #392b0d;
+  --admin-warning-border: #92400e;
+
+  --admin-info: #60a5fa;
+  --admin-info-ink: #bfdbfe;
+  --admin-info-soft: #16233d;
+  --admin-info-border: #1d4ed8;
+
+  --admin-border: #3a4150;
+  --admin-border-subtle: #262b35;
+  --admin-text: #e8eaed;
+  --admin-muted: #9aa4b2;
+  --admin-muted-2: #6b7280;
+  --admin-surface: #1a1d24;
+  --admin-surface-alt: #22262f;
+  --admin-surface-sunken: #101217;
+
+  --admin-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --admin-shadow-md: 0 4px 20px rgba(0, 0, 0, 0.55);
+  --admin-accent-ring: rgba(99, 102, 241, 0.35);
+
+  /* The post-editor modal (components-admin-editor-ui.jsx) deliberately
+     reuses `.card`/`.input`/`.select`/`.textarea`/`.btn`/`.avatar`/`.subtle`
+     from the active app's own participant-facing stylesheet (see that
+     file's own header comment) rather than the --admin-* tokens above.
+     Those classes read CSS variables defined at that stylesheet's own
+     `:root` (`--bg`/`--card`/`--text`/`--muted`/`--line`/`--shadow`, or
+     Instagram's `--ig-*`-prefixed equivalents) — redefining the same
+     variable names here, scoped to this dark `.admin-shell`, overrides
+     them for every descendant that references them, without touching
+     the participant-facing app itself (a CSS variable's value comes from
+     the nearest ancestor that sets it, regardless of which stylesheet the
+     rule using var() was declared in).
+     Facebook/Amazon: */
+  --bg: var(--admin-surface-sunken);
+  --card: var(--admin-surface);
+  --text: var(--admin-text);
+  --muted: var(--admin-muted);
+  --line: var(--admin-border-subtle);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
+  /* Instagram (`--ig-*`-prefixed instead of the above): */
+  --ig-bg: var(--admin-surface-sunken);
+  --ig-card: var(--admin-surface);
+  --ig-text: var(--admin-text);
+  --ig-muted: var(--admin-muted);
+  --ig-line: var(--admin-border-subtle);
+  --ig-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* `.btn`/`.avatar`/`.subtle` hardcode their background/color literally
+   (`#fff`/`#e5e7eb`/`#6b7280`) rather than through a CSS variable in every
+   app's stylesheet, so the variable bridge above can't reach them —
+   overridden directly here instead. (`.input`/`.select`/`.textarea` don't
+   need their own entry here — they're plain <input>/<select>/<textarea>
+   tags, already covered by the theme-aware baseline rule above.) Only ever
+   rendered inside `.admin-shell` via the post-editor modal (confirmed:
+   nothing else under src/admin uses these classnames), so this can't
+   affect the real participant-facing feed either. */
+html[data-admin-theme="dark"] .admin-shell .btn {
+  background: var(--admin-surface-alt);
+  color: var(--admin-text);
+}
+/* `components-admin-dashboard.jsx`'s post-editor dialog turns out to import
+   `Modal` from `../ui-core` (the generic participant-facing modal shared by
+   all three apps' comment/share dialogs — `.modal-backdrop`/`.modal`/
+   `.modal-head`/`.modal-footer`/`.dots`), not `src/admin/ui/Modal.jsx` —
+   a pre-existing naming collision, not something dark mode introduced.
+   That component isn't portaled — it renders as a normal descendant of
+   whichever tree it's mounted in, so `--text`/`--line` above already reach
+   it correctly; only `.modal`/`.modal-footer`'s hardcoded `#fff` background
+   and `.dots`' hardcoded `#6b7280`/`#f3f4f6` need a direct override, scoped
+   to `.admin-shell` so the real participant-facing comment/share modal
+   (which reuses these exact same classes) is completely untouched. */
+html[data-admin-theme="dark"] .admin-shell .modal,
+html[data-admin-theme="dark"] .admin-shell .modal-footer {
+  background: var(--admin-surface);
+}
+html[data-admin-theme="dark"] .admin-shell .dots {
+  color: var(--admin-muted);
+}
+html[data-admin-theme="dark"] .admin-shell .dots:hover:not(:disabled) {
+  background: var(--admin-surface-alt);
+}
+html[data-admin-theme="dark"] .admin-shell .btn:hover {
+  background: var(--admin-surface);
+}
+html[data-admin-theme="dark"] .admin-shell .avatar {
+  background: var(--admin-border);
+}
+html[data-admin-theme="dark"] .admin-shell .subtle {
+  color: var(--admin-muted);
+}
+
+/* Several `.admin-shell` pages (e.g. AdminProjectPicker) don't force
+   `min-height: 100vh` on their own wrapper, so on a short page the real
+   <body> background shows below the fold — flip that too, so there's no
+   leftover white strip under a short dark-mode page. */
+html[data-admin-theme="dark"] body {
+  background: #101217;
 }
 
 @keyframes admin-spin {
