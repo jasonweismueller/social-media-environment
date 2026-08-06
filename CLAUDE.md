@@ -4555,3 +4555,31 @@ Facebook editor was the one actually opened and driven live.
 **Left the dev server stopped at the end of this session** (was already running from an earlier
 session per this file's own notes; restarted fresh once to rule out HMR staleness while debugging the
 `Modal` collision above, then stopped when done) — run `npm run dev` again to pick it back up.
+
+## Session handoff (2026-08-06, dark mode) — read this first if picking up fresh
+
+**Everything described in the section immediately above this one is implemented and verified live**
+(via the faked-local-session technique this file documents using repeatedly), but **not yet a real
+click-through by a logged-in admin** — see below. Full index, exact file list, and a concrete
+"suggested first steps" list: `~/.claude/plans/twilight-toggling-hopper.md` — read that file's own
+sections rather than re-deriving status from the narrative above.
+
+**The one thing worth doing first**: a real click-through on `staging.studyfeed.org` with a real
+owner login, toggling dark mode on and clicking through Feeds/Surveys/Users/the post editor for
+real. Everything shipped this session was verified against the actual running app with real
+components, just through a faked admin session rather than a genuine logged-in one — staging has no
+participant-data risk and a real login, making it the lowest-risk place to close that gap (same
+"first genuine live-click-through opportunity" framing this file has used for other features before).
+
+**Git/dev-server state, as left at end of session**: nothing was committed by Claude (no push
+credentials in this sandbox — this repo's standing pattern, see "Deployment" section up top); check
+`git status`/`git log` before assuming either way, since this repo's auto-commit mechanism may have
+already picked the changes up without any Claude tool call. The dev server was left **stopped** —
+run `npm run dev` to bring it back.
+
+**Not independently verified this session** (all shipped, all reviewed by code-audit, none
+click-tested): the Instagram/Amazon post editors' media fieldsets beyond the color-token sweep
+itself, the survey editor's Pre-feed/Participants/Launch & completion tabs, and the Feed
+Participants / Survey Participants analysis-hub pages. All built from the same shared token-based
+primitives already verified elsewhere in this session, so low risk — but flagged rather than
+silently assumed correct.
