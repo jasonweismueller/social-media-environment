@@ -410,6 +410,22 @@ export const SURVEY_COLUMN_LABEL_MODE = {
   TEXT: "text",
 };
 
+// The "survey_" prefix on column_key (makeSurveyExportColumnKey below) is
+// load-bearing internally — it's what lets a multi-feed CSV's column-key
+// space tell a survey question apart from a per-post metric column
+// (`${post_id}_reacted` etc., which can collide with a question id/row-value
+// otherwise) and from the fixed participant-meta columns (session_id, etc.).
+// It's not meant to be user-visible, though — this strips it back off for
+// display purposes only (CSV header text), leaving every internal
+// column_key/lookup untouched. Safe to call on any header string, including
+// ones that never had the prefix (participant-meta columns, per-feed
+// `feed1_..._reacted` columns) — those pass through unchanged.
+export function stripSurveyExportPrefix(key) {
+  const s = String(key ?? "");
+  const p = `${SURVEY_EXPORT_PREFIX}_`;
+  return s.startsWith(p) ? s.slice(p.length) : s;
+}
+
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }

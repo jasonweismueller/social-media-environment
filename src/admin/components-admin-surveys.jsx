@@ -29,6 +29,7 @@ import {
   SURVEY_QUESTION_TYPES,
   loadExperimentGroupCounts,
   resetExperimentGroupAssignments,
+  stripSurveyExportPrefix,
 } from "../utils";
 
 import {
@@ -2187,7 +2188,7 @@ export function AdminSurveysPanel({
         return next;
       });
 
-      const csv = buildCsv(normalizedRows, header, header);
+      const csv = buildCsv(normalizedRows, header, header.map(stripSurveyExportPrefix));
       const filename = `${safeFileStem(survey.name || survey.survey_id)}_responses_${todayStamp()}.csv`;
 
       triggerCsvDownload(filename, csv);
@@ -2260,7 +2261,7 @@ export function AdminSurveysPanel({
         feedIds,
         postsByFeed,
         projectId,
-      });
+      }).map(stripSurveyExportPrefix);
       const csv = buildCsv(normalizedRows, header, labels);
       const filename = `${safeFileStem(survey.name || survey.survey_id)}_multi_feed_responses_${todayStamp()}.csv`;
 

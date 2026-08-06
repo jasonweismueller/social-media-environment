@@ -34,6 +34,7 @@ import {
   flattenSurveyQuestions,
   flattenSurveyResponseRecord,
   SURVEY_COLUMN_LABEL_MODE,
+  stripSurveyExportPrefix,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
@@ -1403,7 +1404,7 @@ export function SurveyParticipantsPage({
         return next;
       });
 
-      const csv = buildCsv(normalizedRows, header, header);
+      const csv = buildCsv(normalizedRows, header, header.map(stripSurveyExportPrefix));
       const filename = `${safeFileStem(survey?.name || surveyId)}_responses_${todayStamp()}${usingSimulated ? "_SIMULATED" : ""}.csv`;
       triggerCsvDownload(filename, csv);
     } catch (e) {
