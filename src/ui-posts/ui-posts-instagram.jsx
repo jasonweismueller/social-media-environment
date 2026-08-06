@@ -189,7 +189,7 @@ function DesktopMenu({ open, onClose, onPick, id, onAction }) {
     >
       <div
         style={{
-          background: "#fff",
+          background: "var(--ig-card)",
           borderRadius: 16,
           width: "100%",
           maxWidth: 380,
@@ -825,8 +825,13 @@ const displayBio = useMemo(() => {
       data-post-id={id}
       className={revealIndex != null ? "insta-card post-reveal-in" : "insta-card"}
       style={{
-        background: "#fff",
-        border: "1px solid var(--line)",
+        // Was a hardcoded "#fff"/var(--line) (the latter never defined in
+        // this stylesheet, only --ig-line) — an inline style has higher
+        // specificity than any CSS class, so dark mode couldn't override
+        // this card's background at all until it referenced the real,
+        // themeable --ig-* variables directly.
+        background: "var(--ig-card)",
+        border: "1px solid var(--ig-line)",
         borderRadius: 12,
         overflow: "visible",
         ...(revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : null),
@@ -1248,7 +1253,7 @@ onExpand={() => {
     style={{
       width: "100%",
       maxWidth: 480,
-      background: "#fff",
+      background: "var(--ig-card)",
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,
       animation: "igSheetSlideUp 0.5s cubic-bezier(0.25,1,0.5,1)",
@@ -1409,7 +1414,7 @@ onExpand={() => {
   style={{
     borderTop: "1px solid #e5e7eb",
     padding: "8px 12px",
-    background: "#fff",
+    background: "var(--ig-card)",
     display: "flex",
     alignItems: "center",
     gap: 8,
@@ -1647,7 +1652,7 @@ marginTop: "auto",
                 flex: 1,
                 overflowY: "auto",
                 padding: "14px 16px",
-                background: "#fff",
+                background: "var(--ig-card)",
               }}
             >
               {baseComments + participantComments === 0 ? (
@@ -1759,7 +1764,7 @@ marginTop: "auto",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                background: "#fff",
+                background: "var(--ig-card)",
               }}
             >
               <input
