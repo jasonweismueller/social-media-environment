@@ -4166,3 +4166,52 @@ leaving this unverified for a while if there isn't time right away.
 preview, Feed Participants redesign) is layout/chrome-only and lower-stakes if it ships to
 production before a full click-through — but per this file's own standing pattern, worth doing that
 click-through on staging first regardless.
+
+## Real bug found the next morning: the three realism flags did nothing for real participants (2026-08-06)
+
+User turned all three "Realistic …" toggles on for a real feed on staging and reported they had no
+visible effect — exactly the item flagged above as "worth checking first." Root-caused and fixed the
+same session, not staging-specific.
+
+**Root cause**: `App-facebook.jsx`/`App-instagram.jsx`/`App-amazon.jsx` each have their own local
+`normalizeFlags(raw)` function that runs on every flags fetch, *after* the already-correct backend
+read path (`fetchFeedFlags` → `normalizeFlagsForRead`, `utils-backend.js`, confirmed correctly
+returns all three new keys). This local function builds its return value as a **hardcoded object
+literal listing only the original five `randomize_*` keys** — since it constructs a fresh object
+rather than spreading the input, any key not explicitly listed (i.e. `realistic_engagement`/
+`realistic_pacing`/`realistic_surroundings`) is silently dropped before `setFlags()` ever runs. This
+is precisely the near-duplicate-`App-*.jsx`-file footgun this document already has a name for — the
+three flags round-trip correctly through the admin dashboard (which reads `feedFlags` state directly
+from the backend fetch, never touching this function) so the toggles looked like they worked, while
+the actual participant-facing `<Feed>` never received them at all.
+
+**Fix**: added the same three lines (`realistic_engagement`/`realistic_pacing`/
+`realistic_surroundings`, each `truthy(f.<key> ?? false)`, no legacy alias since these postdate GAS)
+to all three files' `normalizeFlags()`, identically.
+
+**Verified against the real bundled app, not a reimplementation**: loaded the real
+`project_1`/`feed_1_rev` feed (a real UWA-ethics-approved study) through the local dev server —
+clicked through the real Participant Information/Consent pages (did not submit anything, no
+participant row created) — with `window.fetch` patched to intercept only the one Supabase
+`feeds?select=flags` request and return `{realistic_engagement: true, realistic_pacing: true,
+realistic_surroundings: true}`, every other request (posts, everything else) hit the real backend
+unmodified. Confirmed in the live DOM: real posts got `post-reveal-in` with correctly staggered
+`animationDelay` (0/70/140ms), real comment/share fallback counts appeared on posts whose own
+authored counts were blank, and the right rail showed real randomized contacts instead of the ghost
+skeleton. **One test-methodology gotcha hit and resolved along the way**: `document.querySelector
+('.rail-left')` initially appeared to show the left rail as still-ghost while the right rail
+correctly flipped — false alarm, not a real asymmetry. `App-facebook.jsx` has its own *separate*,
+permanently-ghost `.rail-left`/`.rail-right` pre-load skeleton (unconditional by design, shown while
+content is still loading) that coexists in the DOM with `Feed`'s own rails; `querySelector` (singular)
+silently grabbed the skeleton's element for the left rail by DOM-order coincidence. Querying
+`querySelectorAll` confirmed both real pairs existed and both were correctly `rail--content` on the
+`Feed`-owned copies.
+
+**Lesson for future sessions**: when a participant-facing flag is confirmed correctly saved *and*
+read back via the admin UI, that only proves the backend round-trip — it says nothing about whether
+the value actually reaches the component that consumes it, if there's a normalization/mapping layer
+in between. This exact case (App-*.jsx's local `normalizeFlags`) was invisible to every mount-based
+test earlier in this session, since all of those constructed the `flags` object by hand and passed it
+directly to `<Feed>`, skipping this function entirely — worth remembering before trusting a
+component-level test as proof a feature works end-to-end through the real fetch→normalize→render
+pipeline.
