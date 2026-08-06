@@ -4721,3 +4721,58 @@ was deployed to **production** (`yrzqnlhbawzuzlrrocfd`) only — not to the sepa
 survey with dark mode toggled and it doesn't persist, that's why — redeploy there too
 (`supabase functions deploy save-survey --project-ref hgctbgunlsesygzglbdv`) before assuming
 something's actually broken.
+
+## Session handoff (2026-08-06, dark mode for participants) — read this first if picking up fresh
+
+**What shipped this session**: dark mode for the participant-facing feed and survey, on top of the
+previous session's admin-dashboard-only dark mode. Two new independent opt-in flags
+(`allow_dark_mode` — one on feeds, one on surveys, both default `false`), a shared
+`useParticipantTheme`/`ParticipantThemeToggle` pair, `.dark-mode` CSS palettes across all three
+stylesheets, and Feed/Survey preview theme-syncing. Full narrative, architecture, and the three real
+bugs found only by live testing (a CSS-inheritance gap, a worse `--survey-*` bridge bug that would
+have broken real participant survey pages, and an Instagram inline-style block): see the section
+directly above this one, "Dark mode for participants (feed + survey), admin-controlled, synced into
+previews (2026-08-06)". Plan file: `~/.claude/plans/valiant-stirring-kernighan.md`.
+
+**Git/deploy state, confirmed just now**: `main` and `origin/main` are in sync at `cd5260e update`
+(working tree clean, nothing uncommitted). **`production` is 6 commits behind `main`**
+(`git log origin/production..origin/main`: `cd5260e`, `ee46275`, `cd3190e`, `ce384ff`, `ddd7e0c`,
+`841ebbc`) — this range covers *both* this session's participant dark mode *and* the previous
+session's admin dashboard dark mode. **Neither is live on `studyfeed.org` yet** — both are only on
+`staging.studyfeed.org` (which builds from `main` automatically). Promoting needs the usual
+deliberate step this repo has always required: merge/fast-forward `main` into `production` and push
+`production` (see the "Deployment" section near the top of this file for the full mechanism).
+
+**Backend**: the `save-survey` Edge Function (carries the new survey-level `allow_dark_mode` field)
+was type-checked and deployed to the **production** Supabase project (`yrzqnlhbawzuzlrrocfd`) only.
+It was **not** deployed to the separate `studyfeed-staging` Supabase project
+(`hgctbgunlsesygzglbdv`) — so saving a survey with dark mode toggled on *from staging* won't persist
+that field until it's redeployed there too:
+```
+supabase functions deploy save-survey --project-ref hgctbgunlsesygzglbdv
+```
+No database migration was needed for either new flag (both are plain JSONB keys, same pattern as
+every prior flag/survey-field addition in this file).
+
+**What's genuinely NOT verified — the highest-value next step**: a real click-through by a real
+logged-in admin. Every check this session used direct component mounts with fabricated data via the
+browser console (confirmed correct down to computed CSS values, which is what caught the three real
+bugs) — but nothing was clicked through in the actual rendered `/admin/*` UI, and no real participant
+session was walked end-to-end (open a feed with dark mode on, toggle it, submit into a survey that
+also has it on, confirm the choice carried over). `staging.studyfeed.org` has real content, no
+participant-data risk, and a real owner login — same "lowest-risk place to close this gap" framing
+this file has used for every dark-mode-adjacent feature before. Concretely, worth checking there:
+1. Toggle "Allow dark mode for participants" on for a real feed (Feeds → Settings → Behavior) and a
+   real survey (Survey editor → Setup tab) — confirm both save correctly.
+2. Open that feed's real participant link, confirm the floating toggle appears and actually works.
+3. Advance from that feed into the linked survey (with its own flag also on) — confirm the dark
+   choice carries over automatically, per the design confirmed with the user this session.
+4. Open Feed Preview / Survey Preview from the admin dashboard in both admin-light and admin-dark
+   mode, confirm the preview mirrors correctly and the in-preview toggle works.
+5. If testing survey saves on staging specifically, redeploy `save-survey` there first (see above)
+   or the flag won't actually persist — don't mistake that for a frontend bug.
+
+**Not part of this session, still open from before it**: `production` being 6 commits behind `main`
+predates this session (it already included the prior session's admin dark mode work) — promoting
+that is a decision for whenever the user wants both dark-mode features live on the real site, not
+something either session did unprompted.
