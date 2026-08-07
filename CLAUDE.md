@@ -5520,3 +5520,32 @@ with the intended ~72% base accuracy once low-effort participants are mixed in. 
 calls) routes through the identical `flattenSurveyResponseRecord` call already exercised above, so
 this fix reaches the real CSV download path, not just the lower-level generator. Not re-verified via
 an actual admin click-through (same standing limitation).
+
+**Follow-up, same day, per direct request: recall's CSV columns simplified to one.** Recall
+questions no longer export `dwell_s`/`correct`/`selected_option` as three separate columns — just
+one, named `<questionId>_RECALL`, `"1"` (correct) or `"0"` (wrong). Scoped to recall only; static and
+interactive reminders still export dwell (and interactive's own fields) exactly as before.
+
+- `RECALL_FIELDS` (`utils-backend.js`) collapsed to a single `{ value: "RECALL", label: "RECALL" }`
+  entry, and the post_reminder branch of `flattenSurveyQuestions` no longer appends
+  `REMINDER_DWELL_FIELDS` when `recall_enabled`.
+- **Only the CSV export changed, not what's collected.** The response value itself still stores the
+  full `{selected_option, correct, dwell_ms, dwell_s}` shape exactly as before (`handleRecallSelect`/
+  the dwell tracker were untouched) — per the user's own "at least in the csv" phrasing, this is a
+  presentation simplification, not a data-collection change.
+- Column name "RECALL" doesn't match the response value's actual key (`correct`), unlike every other
+  row-based CSV field in this file, which reads `value[row_value]` directly. New special case in
+  `flattenSurveyResponseRecord`: when `col.question_type === "post_reminder" && col.row_value ===
+  "RECALL"`, reads `value.correct` and reports `"1"`/`"0"` (blank, not `"0"`, when unanswered — same
+  "don't flag a blank as wrong" posture the attention-check flag already uses) instead of the normal
+  `normalizeSurveyAnswerScalar` stringification (which would have produced `"true"`/`"false"`).
+  Handles both a real boolean (`true`/`false`, how every real recall response has been stored so far)
+  and a bare `1`/`0` the same way, so this doesn't depend on the stored shape ever changing.
+
+**Verified**: `flattenSurveyQuestions` now emits exactly one column per recall question
+(`survey_Q_RECALL_RECALL`), with static/interactive reminder columns unaffected. Five manually-built
+response shapes fed through `flattenSurveyResponseRecord` — boolean `true`, boolean `false`, numeric
+`1`, numeric `0`, and no response at all — produced `"1"`/`"0"`/`"1"`/`"0"`/`""` respectively. Re-ran
+`simulateSurveyResponseRows` (20 rows) through the same real column/flatten functions and confirmed
+only `"0"`/`"1"` values, zero blanks. Not re-verified via an actual admin click-through (same standing
+limitation as elsewhere in this file).

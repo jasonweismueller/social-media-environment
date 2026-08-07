@@ -505,13 +505,22 @@ const REMINDER_INTERACTION_FIELDS = [
   { value: "review_helpful", label: "Marked helpful" },
 ];
 
-// Curated columns for a "recall" post_reminder question (recall_enabled) —
+// Curated column for a "recall" post_reminder question (recall_enabled) —
 // mirrors REMINDER_INTERACTION_FIELDS's "fixed field list stands in for
-// q.rows" mechanism, just a different (much smaller) field list for a
-// fundamentally different kind of reminder question.
+// q.rows" mechanism, just a single field for a fundamentally different kind
+// of reminder question. Per direct request: no separate selected_option/
+// dwell columns for recall questions in the CSV — just one "RECALL" column,
+// 1 (correct) or 0 (wrong). The response value itself still stores
+// selected_option/correct/dwell_ms/dwell_s in full (handleRecallSelect in
+// ui-survey.jsx/-mobile.jsx, the dwell tracker) — this only simplifies what
+// gets exported. row_value is "RECALL" (the column name/suffix the user
+// asked for) rather than the value object's actual key ("correct") — see
+// flattenSurveyResponseRecord's post_reminder/RECALL special case below,
+// which reads `value.correct` and formats it as "1"/"0" instead of the
+// normal `value[row_value]` lookup + true/false stringification every other
+// row field uses.
 const RECALL_FIELDS = [
-  { value: "correct", label: "Correct" },
-  { value: "selected_option", label: "Selected option" },
+  { value: "RECALL", label: "RECALL" },
 ];
 
 // Present on every post_reminder question — static, interactive, or recall
@@ -541,21 +550,21 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
         return;
       }
 
-      // Every post_reminder question gets at least the dwell-time column;
-      // interactive and recall ones additionally get their own curated
-      // fields on top, via the exact same "row" mechanism matrix/bipolar
-      // questions already use (a fixed field list stands in for q.rows).
+      // A recall post_reminder gets just the one RECALL column (no dwell —
+      // per direct request, recall's CSV output is deliberately minimal).
+      // Every other post_reminder (static or interactive) gets the
+      // dwell-time column, plus interactive's own curated fields on top, via
+      // the exact same "row" mechanism matrix/bipolar questions already use
+      // (a fixed field list stands in for q.rows).
       const questionText = String(q?.text || questionId).trim() || questionId;
       const rows =
         questionType === "post_reminder"
-          ? [
-              ...(q?.recall_enabled
-                ? RECALL_FIELDS
-                : q?.reminder_interactive
-                  ? REMINDER_INTERACTION_FIELDS
-                  : []),
-              ...REMINDER_DWELL_FIELDS,
-            ]
+          ? (q?.recall_enabled
+              ? RECALL_FIELDS
+              : [
+                  ...(q?.reminder_interactive ? REMINDER_INTERACTION_FIELDS : []),
+                  ...REMINDER_DWELL_FIELDS,
+                ])
           : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
 
@@ -713,7 +722,16 @@ export function flattenSurveyResponseRecord(responseRow, surveyColumns) {
 
     if (col.kind === "row") {
       if (isPlainObject(value)) {
-        out[col.column_key] = normalizeSurveyAnswerScalar(value[col.row_value]);
+        // The RECALL column (see RECALL_FIELDS above) is the one row field
+        // whose column name doesn't match the response value's actual key —
+        // it reads `value.correct` (booleans, real data collected before
+        // this column existed) and reports it as "1"/"0" rather than the
+        // normal value[row_value] lookup + true/false stringification.
+        if (col.question_type === "post_reminder" && col.row_value === "RECALL") {
+          out[col.column_key] = value.correct == null ? "" : (value.correct ? "1" : "0");
+        } else {
+          out[col.column_key] = normalizeSurveyAnswerScalar(value[col.row_value]);
+        }
       } else {
         out[col.column_key] = "";
       }
