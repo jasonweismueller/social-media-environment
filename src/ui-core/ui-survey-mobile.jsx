@@ -207,6 +207,15 @@ function isEmptyRequiredValue(q, value) {
       });
     }
 
+    // A recall post_reminder's response object gets `dwell_ms`/`dwell_s`
+    // populated purely from viewport dwell tracking, before the participant
+    // has actually picked an option — the generic "any keys at all" check
+    // below would wrongly call that "answered". Match utils-survey.js's
+    // isQuestionAnswered exactly: only `selected_option` counts.
+    if (q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER) {
+      return !obj.selected_option;
+    }
+
     return Object.keys(obj).length === 0;
   }
 
@@ -1443,6 +1452,25 @@ export function SurveyScreenMobile({
     }
   }, [visiblePages, currentPageIndex]);
 
+  // See ui-survey.jsx's SurveyScreen for the rationale — final Submit
+  // validates the whole survey, not just the current page, so a returned
+  // error can belong to a question on an earlier page than the one
+  // currently visible. Jumps there so it's actually reachable/highlighted
+  // instead of leaving the participant stuck on the last page with no way
+  // to find the real problem. No-op whenever every error is already on the
+  // current page (the normal per-page "Next" validation path).
+  useEffect(() => {
+    if (!errors || typeof errors !== "object") return;
+    const errorIds = Object.keys(errors);
+    if (!errorIds.length) return;
+    if (currentPage?.questions?.some((q) => errors[q.id])) return;
+    const idx = visiblePages.findIndex((page) => page.questions.some((q) => errors[q.id]));
+    if (idx >= 0 && idx !== currentPageIndex) {
+      setCurrentPageIndex(idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errors, visiblePages]);
+
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
   const isFirstPage = currentPageIndex === 0;
@@ -1506,7 +1534,10 @@ export function SurveyScreenMobile({
       if (
         !q ||
         q.type === SURVEY_QUESTION_TYPES.INFO ||
-        q.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+        // See ui-survey.jsx's SurveyScreen for the rationale — a
+        // recall-enabled post_reminder is a real, answerable, potentially
+        // required question, not a display-only one.
+        (q.type === SURVEY_QUESTION_TYPES.POST_REMINDER && !q.recall_enabled) ||
         !q.required
       ) {
         return;

@@ -212,6 +212,15 @@ function isEmptyRequiredValue(question, value) {
       });
     }
 
+    // A recall post_reminder's response object gets `dwell_ms`/`dwell_s`
+    // populated purely from viewport dwell tracking, before the participant
+    // has actually picked an option — the generic "any keys at all" check
+    // below would wrongly call that "answered". Match utils-survey.js's
+    // isQuestionAnswered exactly: only `selected_option` counts.
+    if (question.type === SURVEY_QUESTION_TYPES.POST_REMINDER) {
+      return !value.selected_option;
+    }
+
     return Object.keys(value).length === 0;
   }
 
@@ -1783,6 +1792,33 @@ export function SurveyScreen({
     }
   }, [visiblePages, currentPageIndex]);
 
+  // Real production bug, fixed here: `onSubmit` (App-*.jsx's
+  // `handleSurveySubmit`) validates the WHOLE survey via
+  // `validateSurveyResponses` — not just the current page — so a required
+  // question left unanswered on an earlier page (most commonly: the
+  // participant used Back, or a question further up became required only
+  // after a later answer) surfaces in `errors` even while sitting on the
+  // last page. Per-page "Next" validation only ever fills `errors` with
+  // current-page question ids, so it's naturally already on-screen; only a
+  // final Submit can hand back an error whose question isn't on the visible
+  // page at all — previously nothing looked at the returned error ids, so
+  // the participant saw the generic banner with nothing highlighted and no
+  // way to find the actual problem. This jumps to the first page (in
+  // participant-visible order, so it matches whatever the participant
+  // actually navigated through) containing an errored question — a no-op
+  // whenever every error is already on the current page.
+  useEffect(() => {
+    if (!errors || typeof errors !== "object") return;
+    const errorIds = Object.keys(errors);
+    if (!errorIds.length) return;
+    if (currentPage?.questions?.some((q) => errors[q.id])) return;
+    const idx = visiblePages.findIndex((page) => page.questions.some((q) => errors[q.id]));
+    if (idx >= 0 && idx !== currentPageIndex) {
+      setCurrentPageIndex(idx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errors, visiblePages]);
+
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
   const isFirstPage = currentPageIndex === 0;
@@ -1848,7 +1884,17 @@ const isNextDelayed =
       if (
         !q ||
         q.type === SURVEY_QUESTION_TYPES.INFO ||
-        q.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+        // A post_reminder is only ever display-only (exempt from required)
+        // UNLESS recall_enabled — that's the whole reason `required` is a
+        // real, meaningful field on a recall reminder (see utils-survey.js's
+        // isDisplayOnlyQuestion). Unconditionally skipping every
+        // post_reminder here regardless of recall_enabled let a participant
+        // click "Next" straight past a required, unanswered recall question
+        // with zero warning — the final whole-survey Submit validator
+        // (validateSurveyResponses, utils-survey.js) correctly catches it,
+        // but only after the participant has already moved on, often many
+        // pages further, which is the actual real-world bug this fixes.
+        (q.type === SURVEY_QUESTION_TYPES.POST_REMINDER && !q.recall_enabled) ||
         !q.required
       ) {
         return;

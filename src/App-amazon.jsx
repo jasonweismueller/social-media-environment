@@ -2432,7 +2432,7 @@ export default function App() {
       projectId,
     });
 
-    const validation = validateSurveyResponses(linkedSurvey, surveyResponses);
+    const validation = validateSurveyResponses(linkedSurvey, surveyResponses, { feedId: activeFeedId });
 
     if (!validation.ok) {
       setSurveyErrors(validation.errors || {});
