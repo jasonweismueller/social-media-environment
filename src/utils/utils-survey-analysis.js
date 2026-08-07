@@ -752,14 +752,32 @@ function makeChoiceLabelLookup(choices) {
   return (rawValue) => map.get(String(rawValue).trim()) || String(rawValue);
 }
 
+/**
+ * A free-text (TEXT/TEXTAREA) question's real answer shape can't be known
+ * from the survey definition alone the way a choice-based question's can
+ * (`choicesAreNumeric` inspects its fixed option list) — it depends purely on
+ * what participants actually typed. Age asked as an open text field is the
+ * common case: the question type is "text" but every real answer is a bare
+ * number. Promotes such an item from "text" to "numeric" so it gets a real
+ * mean/SD/median/histogram instead of just an answered-count, while genuine
+ * open-ended free text (where answers aren't numbers) is left alone.
+ */
+function textItemLooksNumeric(item, rows) {
+  const raws = (rows || [])
+    .map((r) => getRawItemValue(r.responses, item))
+    .map((v) => (v == null ? "" : String(v).trim()))
+    .filter(Boolean);
+  if (raws.length < 3) return false;
+  const numericCount = raws.filter((v) => parseNumericOrNull(v) != null).length;
+  return numericCount / raws.length >= 0.9;
+}
+
 /* =========================
    Dataset assembly
    ========================= */
 
 export function buildAnalysisDataset({ survey, responseRows }) {
-  const items = classifySurveyQuestions(survey);
-  const composites = buildComposites(items);
-  const absorbed = absorbedItemKeySet(composites);
+  const rawItems = classifySurveyQuestions(survey);
 
   const rows = (responseRows || []).map((row) => ({
     session_id: row?.session_id || "",
@@ -768,6 +786,15 @@ export function buildAnalysisDataset({ survey, responseRows }) {
     experiment_group_id: row?.experiment_group_id ? String(row.experiment_group_id) : "",
     responses: coerceResponses(row),
   }));
+
+  const items = rawItems.map((it) =>
+    it.kind === "text" && textItemLooksNumeric(it, rows)
+      ? { ...it, kind: "numeric", numericFromText: true }
+      : it
+  );
+
+  const composites = buildComposites(items);
+  const absorbed = absorbedItemKeySet(composites);
 
   return { items, composites, absorbed, rows };
 }

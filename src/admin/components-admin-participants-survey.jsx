@@ -953,31 +953,49 @@ function FlagBadge({ label, detail }) {
   );
 }
 
-// Straight-lining check: did this participant give the exact same answer to
-// every item of a composite scale (>= 3 items, so a 2-item "composite" isn't
-// flagged just for happening to agree with itself)? A conservative, purely
-// client-side heuristic over data already loaded — nothing sent anywhere,
-// nothing auto-excluded, just a hint for the researcher to look closer.
-// Incomplete composites (any item left blank) are skipped rather than
-// flagged, since a blank isn't "the same answer."
+// Straight-lining check: an overall assessment across every measure this
+// participant answered, not a separate flag per composite. Checking one
+// composite in isolation is weak evidence on its own — a composite's items
+// are often closely related by design (that's what makes them a valid
+// scale), so giving the identical answer to all of them can be a genuine,
+// consistent response rather than inattention. It only becomes a meaningful
+// signal once it's the *dominant* pattern across everything the participant
+// answered, not one isolated measure among several answered normally — so a
+// single flag is computed from all eligible composites (>= 3 items) together,
+// and only fires when a majority of the composites they actually completed
+// were straight-lined (or there's only one composite in the whole survey to
+// begin with, in which case there's nothing else to compare it against).
+// A conservative, purely client-side heuristic over data already loaded —
+// nothing sent anywhere, nothing auto-excluded, just a hint for the
+// researcher to look closer. Incomplete composites (any item left blank) are
+// skipped rather than counted, since a blank isn't "the same answer."
 function computeStraightLineFlags(dataset, row) {
-  const flags = [];
-  for (const composite of dataset.composites) {
-    if (composite.items.length < 3) continue;
-    const vals = composite.items.map((it) => {
+  const completeComposites = dataset.composites.filter((composite) => {
+    if (composite.items.length < 3) return false;
+    return composite.items.every((it) => {
       const v = getRawItemValue(row.responses, it);
-      return v == null || v === "" ? null : String(v);
+      return v != null && v !== "";
     });
-    if (vals.some((v) => v == null)) continue;
-    if (vals.every((v) => v === vals[0])) {
-      flags.push({
-        key: `straightline:${composite.id}`,
-        label: "Straight-lining",
-        detail: `Gave the identical answer to all ${composite.items.length} items in "${composite.label}".`,
-      });
-    }
+  });
+  if (!completeComposites.length) return [];
+
+  const straightLined = completeComposites.filter((composite) => {
+    const vals = composite.items.map((it) => String(getRawItemValue(row.responses, it)));
+    return vals.every((v) => v === vals[0]);
+  });
+  if (!straightLined.length) return [];
+
+  if (completeComposites.length > 1 && straightLined.length / completeComposites.length < 0.5) {
+    return [];
   }
-  return flags;
+
+  const names = straightLined.map((c) => c.label).join(", ");
+  const detail =
+    straightLined.length === completeComposites.length
+      ? `Gave the identical answer within every measure answered (${completeComposites.length}): ${names}.`
+      : `Gave the identical answer within ${straightLined.length} of ${completeComposites.length} measures answered: ${names}.`;
+
+  return [{ key: "straightline:overall", label: "Straight-lining", detail }];
 }
 
 // Attention-check items are flagged directly by classifySurveyQuestions
