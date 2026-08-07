@@ -87,7 +87,7 @@ export const IconThumb = (p) => (
   </svg>
 );
 export const IconComment = (p) => (
-  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style={{ display: "block", transform: "translateY(1px)" }} {...p}>
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style={{ display: "block" }} {...p}>
     <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0  0 0 2-2V4a2 2 0  0 0-2-2z"/>
   </svg>
 );
@@ -411,17 +411,30 @@ export function NamesPeek({ post, count = 0, kind, label, hideInlineLabel = fals
 }
 
 /* -------- neutral, gender-agnostic tiny avatar for real comment ----------- */
+// A static SVG data URI can't respond to the `.dark-mode` CSS class the way
+// a real DOM element can — colors have to be baked in at generation time.
+// Checked directly here (rather than threading an `isDark` prop through
+// every call site in the comment/share modals) since this is a synchronous,
+// side-effect-free read of already-committed DOM state: whenever dark mode
+// toggles, the surrounding React tree re-renders anyway (the toggle itself
+// is a state change), so any `<img src={neutralAvatarDataUrl(...)}>` in that
+// tree naturally regenerates with the correct palette on that same render.
 export function neutralAvatarDataUrl(size = 28) {
   const s = size;
+  const isDark =
+    typeof document !== "undefined" &&
+    document.body?.classList.contains("dark-mode");
+  const bgFill = isDark ? "#3a3b3c" : "#e5e7eb";
+  const personFill = isDark ? "#b0b3b8" : "#9ca3af";
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 32 32">
   <defs>
     <clipPath id="r"><rect x="0" y="0" width="32" height="32" rx="16" ry="16"/></clipPath>
   </defs>
   <g clip-path="url(#r)">
-    <rect width="32" height="32" fill="#e5e7eb"/>
-    <circle cx="16" cy="12.5" r="6" fill="#9ca3af"/>
-    <rect x="5" y="20" width="22" height="10" rx="5" fill="#9ca3af"/>
+    <rect width="32" height="32" fill="${bgFill}"/>
+    <circle cx="16" cy="12.5" r="6" fill="${personFill}"/>
+    <rect x="5" y="20" width="22" height="10" rx="5" fill="${personFill}"/>
   </g>
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
