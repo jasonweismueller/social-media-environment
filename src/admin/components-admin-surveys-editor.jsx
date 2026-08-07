@@ -4,6 +4,7 @@ import {
   makeQuestionByType,
   SURVEY_QUESTION_TYPES,
   VISIBLE_IF_ELIGIBLE_TYPES,
+  ATTENTION_CHECK_ELIGIBLE_TYPES,
 } from "../utils";
 import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm } from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
@@ -258,6 +259,8 @@ export function ensureMatrixRowsFromQuestionId(items = [], questionId = "") {
   return (Array.isArray(items) ? items : []).map((item, i) => ({
     value: preserveEmptyOrSanitize(item?.value, makeMatrixRowValue(questionId, i)),
     label: String(item?.label ?? ""),
+    is_attention_check: !!item?.is_attention_check,
+    attention_check_value: String(item?.attention_check_value ?? ""),
   }));
 }
 
@@ -272,6 +275,8 @@ export function ensureBipolarRowArray(items = [], questionId = "") {
       label,
       left_label: leftLabel,
       right_label: rightLabel,
+      is_attention_check: !!item?.is_attention_check,
+      attention_check_value: String(item?.attention_check_value ?? ""),
     };
   });
 }
@@ -501,6 +506,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       (q?.apply_feed_randomization ?? q?.meta?.apply_feed_randomization ?? true) !== false,
     reminder_interactive:
       !!(q?.reminder_interactive ?? q?.meta?.reminder_interactive ?? false),
+    is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!q?.is_attention_check,
+    attention_check_value: String(q?.attention_check_value ?? ""),
     meta: q?.meta || {},
   };
 }
@@ -1038,10 +1045,23 @@ export function buildSavedQuestion(q, index) {
             ).trim(),
             left_label: String(row?.left_label ?? row?.label ?? "").trim(),
             right_label: String(row?.right_label ?? "").trim(),
+            is_attention_check: !!row?.is_attention_check,
+            attention_check_value: String(row?.attention_check_value ?? ""),
           }))
         : cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
             cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI
-          ? ensureMatrixRowsFromQuestionId(cleanQ.rows, cleanQ.id)
+          ? ensureMatrixRowsFromQuestionId(cleanQ.rows, cleanQ.id).map((row) => ({
+              ...row,
+              // Only MATRIX_SINGLE has a UI path to ever set this — gated
+              // again here anyway, same defensive posture as every other
+              // type-eligibility check in this feature.
+              is_attention_check:
+                cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE && !!row.is_attention_check,
+              attention_check_value:
+                cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE
+                  ? row.attention_check_value
+                  : "",
+            }))
           : [],
     columns:
       cleanQ.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
@@ -1085,6 +1105,12 @@ export function buildSavedQuestion(q, index) {
           }
         : cleanQ.meta || {},
     randomize_options: false,
+    is_attention_check:
+      ATTENTION_CHECK_ELIGIBLE_TYPES.includes(cleanQ.type) && !!cleanQ.is_attention_check,
+    attention_check_value:
+      ATTENTION_CHECK_ELIGIBLE_TYPES.includes(cleanQ.type) && cleanQ.is_attention_check
+        ? String(cleanQ.attention_check_value || "")
+        : "",
   };
 }
 
@@ -1935,10 +1961,61 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
   );
 }
 
+// Compact per-row attention-check control, shared by the matrix rows editor
+// and the bipolar rows editor — a small pill toggle that expands into a
+// column-value picker once turned on. Deliberately not the full FieldBlock+
+// Toggle treatment ChoiceEditorBlock uses for a whole question — this lives
+// inline in a dense row list, so it stays small.
+function RowAttentionCheckControl({ isAttentionCheck, attentionCheckValue, columns, onToggle, onValueChange }) {
+  const safeColumns = (columns || []).filter((c) => String(c?.value || "").trim());
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, gridColumn: "1 / -1", paddingLeft: 2 }}>
+      <button
+        type="button"
+        onClick={() => onToggle(!isAttentionCheck)}
+        title="Mark this row as an attention check — it's excluded from the composite's mean/reliability and never gets shuffled or moved by page randomization."
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "2px 8px",
+          borderRadius: 999,
+          border: "1px solid",
+          cursor: "pointer",
+          borderColor: isAttentionCheck ? "var(--admin-accent-border)" : "var(--admin-border)",
+          background: isAttentionCheck ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+          color: isAttentionCheck ? "var(--admin-accent-ink)" : "var(--admin-muted)",
+        }}
+      >
+        {isAttentionCheck ? "✓ Attention check" : "Mark as attention check"}
+      </button>
+
+      {isAttentionCheck && (
+        <SelectInput
+          value={attentionCheckValue}
+          onChange={onValueChange}
+          disabled={!safeColumns.length}
+          style={{ height: 30, fontSize: 12, maxWidth: 220 }}
+        >
+          <option value="">
+            {safeColumns.length ? "Expected answer…" : "Add columns first"}
+          </option>
+          {safeColumns.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label || c.value}
+            </option>
+          ))}
+        </SelectInput>
+      )}
+    </div>
+  );
+}
+
 function ItemTableEditor({
   title,
   items,
   onChange,
+  attentionCheckColumns = null,
   prefix = "opt",
   addLabel = "Add row",
   valuePlaceholder = "Value",
@@ -2018,6 +2095,21 @@ function ItemTableEditor({
               title={`Delete ${singularTitle}`}
               danger
             />
+
+            {attentionCheckColumns && (
+              <RowAttentionCheckControl
+                isAttentionCheck={!!item?.is_attention_check}
+                attentionCheckValue={item?.attention_check_value || ""}
+                columns={attentionCheckColumns}
+                onToggle={(v) =>
+                  updateItem(i, {
+                    is_attention_check: v,
+                    ...(v ? {} : { attention_check_value: "" }),
+                  })
+                }
+                onValueChange={(v) => updateItem(i, { attention_check_value: v })}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -2040,7 +2132,7 @@ function ItemTableEditor({
   );
 }
 
-function BipolarRowTableEditor({ items, onChange, questionId }) {
+function BipolarRowTableEditor({ items, onChange, questionId, columns = null }) {
   const safeItems = Array.isArray(items) ? items : [];
 
   function updateItem(index, patch) {
@@ -2108,6 +2200,21 @@ function BipolarRowTableEditor({ items, onChange, questionId }) {
               placeholder="Right label"
             />
             <IconOnlyButton onClick={() => removeItem(i)} title="Delete row" danger />
+
+            {columns && (
+              <RowAttentionCheckControl
+                isAttentionCheck={!!item?.is_attention_check}
+                attentionCheckValue={item?.attention_check_value || ""}
+                columns={columns}
+                onToggle={(v) =>
+                  updateItem(i, {
+                    is_attention_check: v,
+                    ...(v ? {} : { attention_check_value: "" }),
+                  })
+                }
+                onValueChange={(v) => updateItem(i, { attention_check_value: v })}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -2907,6 +3014,13 @@ function QuestionActions({
  * reorder/copy/delete), styled to match the compact rows already used in
  * the study outline (OutlineRow) rather than shrinking the full editor.
  */
+// True whether the check lives on the question itself (single/dropdown) or
+// on one of its rows (matrix single/bipolar) — the "AC" badge doesn't care
+// which shape the question is, just whether it has one.
+function questionHasAttentionCheck(q) {
+  return !!q?.is_attention_check || (Array.isArray(q?.rows) && q.rows.some((r) => r?.is_attention_check));
+}
+
 function CollapsedQuestionRow({
   q,
   index,
@@ -3007,6 +3121,29 @@ function CollapsedQuestionRow({
       >
         {shortType}
       </span>
+
+      {questionHasAttentionCheck(q) ? (
+        <span
+          title={
+            q.attention_check_value || (q.rows || []).some((r) => r?.is_attention_check)
+              ? "Attention check — pinned in place, never shuffled/reordered"
+              : "Attention check — no expected answer picked yet"
+          }
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "var(--admin-accent-ink)",
+            background: "var(--admin-accent-soft)",
+            border: "1px solid var(--admin-accent-border)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+          }}
+        >
+          AC
+        </span>
+      ) : null}
 
       {q.required ? (
         <span
@@ -3181,25 +3318,73 @@ function PostReminderEditorBlock({
   );
 }
 
-function ChoiceEditorBlock({ choices, onChange }) {
+function ChoiceEditorBlock({
+  choices,
+  onChange,
+  showAttentionCheck = false,
+  isAttentionCheck = false,
+  attentionCheckValue = "",
+  onAttentionCheckToggle,
+  onAttentionCheckValueChange,
+}) {
+  const safeChoices = (choices || []).filter((c) => String(c?.value || "").trim());
+
   return (
-    <ItemTableEditor
-      title="Options"
-      items={choices}
-      onChange={onChange}
-      prefix="opt"
-      addLabel="Add option"
-    />
+    <>
+      <ItemTableEditor
+        title="Options"
+        items={choices}
+        onChange={onChange}
+        prefix="opt"
+        addLabel="Add option"
+      />
+
+      {showAttentionCheck && (
+        <FieldBlock
+          label="Attention check"
+          hint="Marks this as an instructional check (e.g. “please select X”). It never gets its own options shuffled, and if its page sits in a randomized block, the page stays pinned in place instead of moving around with the rest — so it always lands where you put it."
+        >
+          <Toggle
+            label="This question is an attention check"
+            checked={isAttentionCheck}
+            onChange={onAttentionCheckToggle}
+          />
+
+          {isAttentionCheck && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 4 }}>
+                Expected (correct) answer
+              </div>
+              <SelectInput
+                value={attentionCheckValue}
+                onChange={onAttentionCheckValueChange}
+                disabled={!safeChoices.length}
+              >
+                <option value="">
+                  {safeChoices.length ? "Choose the correct option…" : "Add options first"}
+                </option>
+                {safeChoices.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label || c.value}
+                  </option>
+                ))}
+              </SelectInput>
+            </div>
+          )}
+        </FieldBlock>
+      )}
+    </>
   );
 }
 
-function MatrixEditorBlock({ rows, columns, questionId, onRowsChange, onColumnsChange }) {
+function MatrixEditorBlock({ rows, columns, questionId, allowAttentionCheck = false, onRowsChange, onColumnsChange }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
       <ItemTableEditor
         title="Rows / items"
         items={rows}
         onChange={onRowsChange}
+        attentionCheckColumns={allowAttentionCheck ? columns : null}
         prefix={sanitizeQuestionId(questionId, "ROW")}
         addLabel="Add row"
         valuePlaceholder="Auto id"
@@ -3220,10 +3405,26 @@ function MatrixEditorBlock({ rows, columns, questionId, onRowsChange, onColumnsC
 }
 
 function BipolarEditorBlock({ rows, questionId, min, max, onRowsChange, onMinChange, onMaxChange }) {
+  // Bipolar columns are the numeric scale points themselves (min..max), not
+  // admin-editable text — the same range frontendQuestionToBackend derives
+  // when no explicit columns array is set. Computed here purely to populate
+  // the attention-check expected-answer picker per row.
+  const safeMin = Number.isFinite(min) ? min : 1;
+  const safeMax = Number.isFinite(max) ? max : 7;
+  const scaleColumns = Array.from(
+    { length: Math.max(2, safeMax - safeMin + 1) },
+    (_, i) => ({ value: String(safeMin + i), label: String(safeMin + i) })
+  );
+
   return (
     <>
       <div style={{ marginBottom: 12 }}>
-        <BipolarRowTableEditor items={rows} questionId={questionId} onChange={onRowsChange} />
+        <BipolarRowTableEditor
+          items={rows}
+          questionId={questionId}
+          columns={scaleColumns}
+          onChange={onRowsChange}
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, alignItems: "end" }}>
@@ -3289,6 +3490,12 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
       nextType === POST_REMINDER_TYPE ? q.apply_feed_randomization !== false : true,
     reminder_interactive:
       nextType === POST_REMINDER_TYPE ? !!q.reminder_interactive : false,
+    is_attention_check:
+      ATTENTION_CHECK_ELIGIBLE_TYPES.includes(nextType) ? !!q.is_attention_check : false,
+    attention_check_value:
+      ATTENTION_CHECK_ELIGIBLE_TYPES.includes(nextType)
+        ? String(q.attention_check_value || "")
+        : "",
     meta: q.meta || {},
   };
 
@@ -3338,6 +3545,19 @@ function renderTypeSpecificFields({
         <ChoiceEditorBlock
           choices={q.choices}
           onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
+          showAttentionCheck={ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type)}
+          isAttentionCheck={!!q.is_attention_check}
+          attentionCheckValue={q.attention_check_value || ""}
+          onAttentionCheckToggle={(v) =>
+            updateQuestion(index, {
+              is_attention_check: v,
+              // Turning the toggle off clears any previously-picked answer
+              // too, rather than leaving a stale expected value sitting on
+              // a question that's no longer flagged as a check.
+              ...(v ? {} : { attention_check_value: "" }),
+            })
+          }
+          onAttentionCheckValueChange={(v) => updateQuestion(index, { attention_check_value: v })}
         />
       );
     case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:
@@ -3347,6 +3567,7 @@ function renderTypeSpecificFields({
           rows={q.rows}
           columns={q.columns}
           questionId={q.id}
+          allowAttentionCheck={type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE}
           onRowsChange={(items) =>
             updateQuestion(index, { rows: ensureMatrixRowsFromQuestionId(items, q.id) })
           }

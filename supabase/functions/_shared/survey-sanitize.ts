@@ -61,6 +61,12 @@ export function isValidSurveyQuestionType(type: unknown): boolean {
   return Object.values(SURVEY_QUESTION_TYPES).includes(type as never);
 }
 
+// Mirrors ATTENTION_CHECK_ELIGIBLE_TYPES in src/utils/utils-survey.js.
+const ATTENTION_CHECK_ELIGIBLE_TYPES: string[] = [
+  SURVEY_QUESTION_TYPES.SINGLE,
+  SURVEY_QUESTION_TYPES.DROPDOWN,
+];
+
 function asObject(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : {};
 }
@@ -149,31 +155,53 @@ function normalizeStructuredItems(items: unknown = [], prefix = "item"): Array<{
     .filter((x): x is { value: string; label: string } => Boolean(x));
 }
 
-function normalizeMatrixRows(items: unknown = [], questionId = ""): Array<{ value: string; label: string }> {
+type MatrixRow = {
+  value: string;
+  label: string;
+  is_attention_check: boolean;
+  attention_check_value: string;
+};
+
+function normalizeMatrixRows(items: unknown = [], questionId = ""): MatrixRow[] {
   if (!Array.isArray(items)) return [];
   return items
     .map((item, i) => {
       if (typeof item === "string") {
         const label = item.trim();
-        return label ? { value: makeMatrixRowValue(questionId, i), label } : null;
+        return label
+          ? { value: makeMatrixRowValue(questionId, i), label, is_attention_check: false, attention_check_value: "" }
+          : null;
       }
 
       if (item && typeof item === "object") {
         const fallbackValue = makeMatrixRowValue(questionId, i);
         const value = sanitizeStructuredValue((item as any).value, fallbackValue);
         const label = String((item as any).label ?? (item as any).value ?? "").trim();
-        return value || label ? { value: value || fallbackValue, label } : null;
+        return value || label
+          ? {
+              value: value || fallbackValue,
+              label,
+              is_attention_check: !!(item as any).is_attention_check,
+              attention_check_value: String((item as any).attention_check_value ?? ""),
+            }
+          : null;
       }
 
       return null;
     })
-    .filter((x): x is { value: string; label: string } => Boolean(x));
+    .filter((x): x is MatrixRow => Boolean(x));
 }
 
-function normalizeBipolarRows(
-  items: unknown = [],
-  questionId = ""
-): Array<{ value: string; label: string; left_label: string; right_label: string }> {
+type BipolarRow = {
+  value: string;
+  label: string;
+  left_label: string;
+  right_label: string;
+  is_attention_check: boolean;
+  attention_check_value: string;
+};
+
+function normalizeBipolarRows(items: unknown = [], questionId = ""): BipolarRow[] {
   if (!Array.isArray(items)) return [];
 
   return items
@@ -181,7 +209,14 @@ function normalizeBipolarRows(
       if (typeof item === "string") {
         const text = item.trim();
         return text
-          ? { value: makeMatrixRowValue(questionId, i), label: text, left_label: text, right_label: "" }
+          ? {
+              value: makeMatrixRowValue(questionId, i),
+              label: text,
+              left_label: text,
+              right_label: "",
+              is_attention_check: false,
+              attention_check_value: "",
+            }
           : null;
       }
 
@@ -198,13 +233,15 @@ function normalizeBipolarRows(
               label: label || leftLabel || `Row ${i + 1}`,
               left_label: leftLabel || label || "",
               right_label: rightLabel,
+              is_attention_check: !!(item as any).is_attention_check,
+              attention_check_value: String((item as any).attention_check_value ?? ""),
             }
           : null;
       }
 
       return null;
     })
-    .filter((x): x is { value: string; label: string; left_label: string; right_label: string } => Boolean(x));
+    .filter((x): x is BipolarRow => Boolean(x));
 }
 
 function normalizeVisibleInFeeds(value: unknown = []): string[] {
@@ -495,6 +532,8 @@ export function normalizeQuestion(raw: any = {}): any {
     description: String(raw.description || ""),
     required: isDisplayOnlyQuestion({ type }) ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
+    is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
+    attention_check_value: String(raw.attention_check_value ?? ""),
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c: any, i: number) => ({
@@ -564,6 +603,8 @@ export function frontendQuestionToBackend(question: any = {}): any {
     visible_in_feeds: q.visible_in_feeds,
     feed_overrides: q.feed_overrides,
     visible_to_group_ids: q.visible_to_group_ids,
+    is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(q.type) && !!q.is_attention_check,
+    attention_check_value: String(q.attention_check_value ?? ""),
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
@@ -601,6 +642,9 @@ export function frontendQuestionToBackend(question: any = {}): any {
           ? q.rows.map((row: any, i: number) => ({
               value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
               label: String(row?.label ?? ""),
+              is_attention_check: q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE && !!row?.is_attention_check,
+              attention_check_value:
+                q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ? String(row?.attention_check_value ?? "") : "",
             }))
           : [],
         columns: Array.isArray(q.columns)
@@ -620,6 +664,8 @@ export function frontendQuestionToBackend(question: any = {}): any {
               label: String(row?.label ?? row?.left_label ?? ""),
               left_label: String(row?.left_label ?? row?.label ?? ""),
               right_label: String(row?.right_label ?? ""),
+              is_attention_check: !!row?.is_attention_check,
+              attention_check_value: String(row?.attention_check_value ?? ""),
             }))
           : [],
         columns:

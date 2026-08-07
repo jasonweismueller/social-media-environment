@@ -486,6 +486,8 @@ export function classifySurveyQuestions(survey) {
               choices: q.columns,
               isComposite: true,
               compositeQuestionId: q.id,
+              isAttentionCheck: !!row.is_attention_check,
+              attentionCheckValue: String(row.attention_check_value || ""),
             });
           });
           break;
@@ -501,6 +503,8 @@ export function classifySurveyQuestions(survey) {
               choices: q.columns,
               isComposite: true,
               compositeQuestionId: q.id,
+              isAttentionCheck: !!row.is_attention_check,
+              attentionCheckValue: String(row.attention_check_value || ""),
             });
           });
           break;
@@ -528,6 +532,8 @@ export function classifySurveyQuestions(survey) {
             itemLabel: plainText,
             kind: numeric ? "numeric" : "categorical",
             choices: q.choices,
+            isAttentionCheck: !!q.is_attention_check,
+            attentionCheckValue: String(q.attention_check_value || ""),
           });
           break;
         }
@@ -575,7 +581,15 @@ export function buildComposites(items) {
   });
 
   byQuestion.forEach((groupItems, questionId) => {
-    const numericItems = groupItems.filter((it) => it.kind === "numeric" && !it.isDemographic);
+    // An attention-check row isn't a real measurement item — folding it into
+    // the composite's mean/Cronbach's alpha would contaminate both with a
+    // row that's answered by instruction, not by the trait the scale
+    // measures. Excluded here, not hidden — it still shows up as its own
+    // standalone item below (never absorbed into a composite, so
+    // computeMeasuresSummary's standalone filter picks it up automatically).
+    const numericItems = groupItems.filter(
+      (it) => it.kind === "numeric" && !it.isDemographic && !it.isAttentionCheck
+    );
     if (numericItems.length >= 2) {
       composites.push({
         id: questionId,

@@ -180,6 +180,18 @@ function generateAnswer(q, ctx) {
 
     case SURVEY_QUESTION_TYPES.SINGLE:
     case SURVEY_QUESTION_TYPES.DROPDOWN: {
+      // Attention checks: everyone who's actually paying attention answers
+      // correctly; low-effort participants answer wrong (any other choice)
+      // — gives the "Failed attention check" flag in the analysis hub
+      // something real to catch when testing against simulated data.
+      if (q.is_attention_check) {
+        const choices = Array.isArray(q.choices) ? q.choices : [];
+        if (!choices.length) return "";
+        if (!isLowEffort) return q.attention_check_value || choices[0].value;
+        const wrongChoices = choices.filter((c) => c.value !== q.attention_check_value);
+        const pool = wrongChoices.length ? wrongChoices : choices;
+        return pool[Math.floor(rng() * pool.length)].value;
+      }
       const z = theta + groupShift + randNormal(rng) * 0.6;
       return pickChoiceValue(rng, q.choices, z);
     }
@@ -200,10 +212,24 @@ function generateAnswer(q, ctx) {
     case SURVEY_QUESTION_TYPES.BIPOLAR: {
       const rows = Array.isArray(q.rows) ? q.rows : [];
       const out = {};
+
+      // An attention-check row (e.g. "select Strongly Disagree here") isn't
+      // a real measurement item, so it's answered independently of theta —
+      // same correct-unless-low-effort logic as a standalone attention-check
+      // question, just addressed by row instead of by question.
+      const answerAttentionCheckRow = (row) => {
+        const columns = Array.isArray(q.columns) ? q.columns : [];
+        if (!columns.length) return "";
+        if (!isLowEffort) return row.attention_check_value || columns[0].value;
+        const wrongColumns = columns.filter((c) => c.value !== row.attention_check_value);
+        const pool = wrongColumns.length ? wrongColumns : columns;
+        return pool[Math.floor(rng() * pool.length)].value;
+      };
+
       if (isLowEffort) {
         const fixed = pickChoiceValue(rng, q.columns, randNormal(rng) * 0.2);
         rows.forEach((row) => {
-          out[row.value] = fixed;
+          out[row.value] = row.is_attention_check ? answerAttentionCheckRow(row) : fixed;
         });
         return out;
       }
@@ -226,6 +252,10 @@ function generateAnswer(q, ctx) {
         const n = sorted.length;
         const baseIdx = zToIndex(compositeTheta, n);
         rows.forEach((row) => {
+          if (row.is_attention_check) {
+            out[row.value] = answerAttentionCheckRow(row);
+            return;
+          }
           const jitterScale = 0.75 + stableUnit(`${q.id}::${row.value}::jit`) * 0.35;
           const jitter = Math.round(randNormal(rng) * jitterScale);
           out[row.value] = sorted[clampNum(baseIdx + jitter, 0, n - 1)].value;
@@ -234,6 +264,10 @@ function generateAnswer(q, ctx) {
       }
 
       rows.forEach((row) => {
+        if (row.is_attention_check) {
+          out[row.value] = answerAttentionCheckRow(row);
+          return;
+        }
         const rowW = 0.55 + stableUnit(`${q.id}::${row.value}`) * 0.2;
         const z = rowW * compositeTheta + Math.sqrt(Math.max(0, 1 - rowW * rowW)) * randNormal(rng);
         out[row.value] = pickChoiceValue(rng, q.columns, z);

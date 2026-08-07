@@ -974,6 +974,31 @@ function computeStraightLineFlags(dataset, row) {
   return flags;
 }
 
+// Attention-check items are flagged directly by classifySurveyQuestions
+// (isAttentionCheck/attentionCheckValue, utils-survey-analysis.js) rather
+// than detected heuristically the way straight-lining is — the admin
+// explicitly marked the question and picked the correct answer in the
+// editor, so this is a real pass/fail check, not a guess. Skipped (not
+// flagged as a fail) when unanswered — an attention check left blank could
+// mean it was never reached (e.g. hidden by a visible_if further up the
+// page), not that it was answered wrong.
+function computeAttentionCheckFlags(dataset, row) {
+  const flags = [];
+  for (const item of dataset.items) {
+    if (!item.isAttentionCheck) continue;
+    const v = getRawItemValue(row.responses, item);
+    if (v == null || v === "") continue;
+    if (String(v) !== item.attentionCheckValue) {
+      flags.push({
+        key: `attentioncheck:${item.questionId}`,
+        label: "Failed attention check",
+        detail: `"${item.questionText}" was answered incorrectly.`,
+      });
+    }
+  }
+  return flags;
+}
+
 function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
   const groups = Array.isArray(survey?.experiment_groups) ? survey.experiment_groups : [];
   const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
@@ -988,7 +1013,7 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
   const flagsBySession = useMemo(() => {
     const out = new Map();
     sorted.forEach((r) => {
-      const flags = computeStraightLineFlags(dataset, r);
+      const flags = [...computeStraightLineFlags(dataset, r), ...computeAttentionCheckFlags(dataset, r)];
       if (flags.length) out.set(r.session_id || r.participant_id, flags);
     });
     return out;

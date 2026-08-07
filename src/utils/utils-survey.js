@@ -54,6 +54,16 @@ export const VISIBLE_IF_ELIGIBLE_TYPES = [
   SURVEY_QUESTION_TYPES.SLIDER,
 ];
 
+// Attention checks ("please select X") only make sense for a question with
+// a single, discrete, unambiguous correct choice — single/dropdown, not
+// multi (no single "correct" combination), not matrix/bipolar (would need a
+// correct value per row, out of scope for v1), not slider/text (no fixed
+// correct answer to compare against).
+export const ATTENTION_CHECK_ELIGIBLE_TYPES = [
+  SURVEY_QUESTION_TYPES.SINGLE,
+  SURVEY_QUESTION_TYPES.DROPDOWN,
+];
+
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -169,6 +179,8 @@ function normalizeMatrixRows(items = [], questionId = "") {
           ? {
               value: value || fallbackValue,
               label,
+              is_attention_check: !!item.is_attention_check,
+              attention_check_value: String(item.attention_check_value ?? ""),
             }
           : null;
       }
@@ -209,6 +221,8 @@ function normalizeBipolarRows(items = [], questionId = "") {
               label: label || leftLabel || `Row ${i + 1}`,
               left_label: leftLabel || label || "",
               right_label: rightLabel,
+              is_attention_check: !!item.is_attention_check,
+              attention_check_value: String(item.attention_check_value ?? ""),
             }
           : null;
       }
@@ -530,11 +544,49 @@ export function frontendPageBlocksToBackend(
   );
 }
 
+function pageHasAttentionCheck(page) {
+  return (page?.questions || []).some(
+    (q) => q?.is_attention_check || (Array.isArray(q?.rows) && q.rows.some((r) => r?.is_attention_check))
+  );
+}
+
+/**
+ * Shuffles `pages`, except any page carrying an attention-check question
+ * stays pinned at its original index — everything else reshuffles around
+ * it. A plain seededShuffle would move an attention check around along with
+ * everything else, which defeats the point of pinning it at a deliberate
+ * spot (e.g. "always partway through," not "wherever it happens to land").
+ */
+function seededShuffleKeepingAttentionChecksFixed(pages, seed) {
+  const fixedIndices = [];
+  const shuffleable = [];
+  pages.forEach((page, idx) => {
+    if (pageHasAttentionCheck(page)) fixedIndices.push(idx);
+    else shuffleable.push(page);
+  });
+
+  if (!fixedIndices.length) return seededShuffle(pages, seed);
+
+  const shuffled = seededShuffle(shuffleable, seed);
+  const result = new Array(pages.length);
+  fixedIndices.forEach((idx) => {
+    result[idx] = pages[idx];
+  });
+  let si = 0;
+  for (let i = 0; i < result.length; i++) {
+    if (result[i] === undefined) result[i] = shuffled[si++];
+  }
+  return result;
+}
+
 /**
  * Produces the participant-facing page order.
  *
  * Block order always remains fixed. Pages are shuffled only inside blocks
- * where randomize_pages is true.
+ * where randomize_pages is true — except a page containing an
+ * attention-check question, which keeps its original relative slot in the
+ * block instead of shuffling with the rest (see
+ * seededShuffleKeepingAttentionChecksFixed above).
  */
 export function materializePagesFromBlocks(
   surveyOrPages = {},
@@ -605,7 +657,7 @@ export function materializePagesFromBlocks(
       return blockPages;
     }
 
-    return seededShuffle(
+    return seededShuffleKeepingAttentionChecksFixed(
       blockPages,
       `${participantSeed}::page_block::${
         block.id || blockIndex + 1
@@ -724,6 +776,9 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     description: overrides.description || "",
     required: isDisplayOnlyQuestion({ type: safeType }) ? false : !!overrides.required,
     randomize_options: !!overrides.randomize_options,
+    is_attention_check:
+      ATTENTION_CHECK_ELIGIBLE_TYPES.includes(safeType) && !!overrides.is_attention_check,
+    attention_check_value: String(overrides.attention_check_value ?? ""),
     options: cleanStringArray(overrides.options),
     rows: cleanStringArray(overrides.rows),
     columns: cleanStringArray(overrides.columns),
@@ -814,6 +869,9 @@ export function normalizeQuestion(raw = {}) {
     description: String(raw.description || ""),
     required: isDisplayOnlyQuestion({ type }) ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
+    is_attention_check:
+      ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
+    attention_check_value: String(raw.attention_check_value ?? ""),
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c, i) => ({
@@ -898,6 +956,8 @@ export function frontendQuestionToBackend(question = {}) {
     visible_in_feeds: q.visible_in_feeds,
     feed_overrides: q.feed_overrides,
     visible_to_group_ids: q.visible_to_group_ids,
+    is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(q.type) && !!q.is_attention_check,
+    attention_check_value: String(q.attention_check_value ?? ""),
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
@@ -939,6 +999,15 @@ export function frontendQuestionToBackend(question = {}) {
           ? q.rows.map((row, i) => ({
               value: sanitizeStructuredValue(row?.value, makeMatrixRowValue(q.id, i)),
               label: String(row?.label ?? ""),
+              // MATRIX_MULTI excluded — a checkbox row has no single correct
+              // value to compare against, same reasoning as excluding the
+              // plain MULTI (checkbox) question type above.
+              is_attention_check:
+                q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE && !!row?.is_attention_check,
+              attention_check_value:
+                q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE
+                  ? String(row?.attention_check_value ?? "")
+                  : "",
             }))
           : [],
         columns: Array.isArray(q.columns)
@@ -958,6 +1027,8 @@ export function frontendQuestionToBackend(question = {}) {
               label: String(row?.label ?? row?.left_label ?? ""),
               left_label: String(row?.left_label ?? row?.label ?? ""),
               right_label: String(row?.right_label ?? ""),
+              is_attention_check: !!row?.is_attention_check,
+              attention_check_value: String(row?.attention_check_value ?? ""),
             }))
           : [],
         columns:
@@ -1854,7 +1925,11 @@ export function getRenderedQuestion(
     q.label = q.text;
   }
 
-  if (q.randomize_options) {
+  // Attention-check questions never shuffle, regardless of randomize_options
+  // — a "please select X" instruction has to stay checkable by choice value
+  // regardless of any stray/legacy randomize_options state, not just rely on
+  // an admin remembering to leave that box unchecked for this question.
+  if (q.randomize_options && !q.is_attention_check) {
     if (Array.isArray(q.choices) && q.choices.length > 1) {
       q.choices = seededShuffle(q.choices, `${participantSeed}::${q.id}`);
     }
