@@ -280,21 +280,22 @@ a:hover{text-decoration:underline}
    state, not something to fix. `pointer-events:none`/`user-select:none`
    from `.rail` above still apply — this only ever changes appearance. */
 .rail--content{ filter:none; opacity:1; }
-.rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:14px 4px 6px; padding-top:4px; }
-.rail-real-list{ background:#fff; border:1px solid var(--line); border-radius:1rem; box-shadow:var(--shadow); padding:.4rem; }
-.rail-real-item{ display:flex; align-items:center; gap:.6rem; padding:.4rem .5rem; border-radius:.5rem; font-size:14px; color:#050505; }
-.rail-real-icon{ width:28px; height:28px; border-radius:999px; background:#e7f0ff; flex:0 0 auto; }
-.rail-real-icon--shortcut{ background:#8a8d91; }
+.rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:16px 4px 8px; padding-top:4px; }
+/* Larger rows with real gap between them — per direct feedback, items read
+   as too cramped and too tightly packed to need as many to fill the rail. */
+.rail-real-list{ background:#fff; border:1px solid var(--line); border-radius:1rem; box-shadow:var(--shadow); padding:.5rem; display:flex; flex-direction:column; gap:4px; }
+.rail-real-item{ display:flex; align-items:center; gap:.75rem; padding:.65rem .7rem; border-radius:.6rem; font-size:15px; color:#050505; }
+.rail-real-icon{ width:34px; height:34px; border-radius:999px; background:#e7f0ff; flex:0 0 auto; }
 
 /* Dark-mode overrides — only visible when "realistic surroundings" is also
    on, but should still look right when combined with dark mode. */
 .dark-mode .rail-real-list{ background:var(--card); }
 .dark-mode .rail-real-item{ color:var(--text); }
 .dark-mode .rail-real-icon{ background:#2a3a52; }
-.rail-contact-avatar-wrap{ position:relative; width:32px; height:32px; flex:0 0 auto; }
-.rail-contact-avatar{ width:32px; height:32px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb; }
+.rail-contact-avatar-wrap{ position:relative; width:38px; height:38px; flex:0 0 auto; }
+.rail-contact-avatar{ width:38px; height:38px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb; }
 .rail-contact-avatar--blank{ background:#e5e7eb; }
-.rail-contact-online-dot{ position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border:2px solid #fff; border-radius:999px; background:#22c55e; }
+.rail-contact-online-dot{ position:absolute; right:-1px; bottom:-1px; width:10px; height:10px; border:2px solid #fff; border-radius:999px; background:#22c55e; }
 
 /* Post entrance cascade ("interaction pacing" realism) — a batch of newly
    revealed posts fades/slides in with a small per-post stagger instead of

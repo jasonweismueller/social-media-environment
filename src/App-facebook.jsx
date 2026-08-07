@@ -65,7 +65,8 @@ import {
   LEFT_RAIL_SHORTCUT_POOL,
   pickShortcutsForHeight,
   LEFT_RAIL_ICONS,
-  RAIL_SHORTCUT_ICON,
+  LEFT_RAIL_SHORTCUT_ICONS,
+  LEFT_RAIL_SHORTCUT_ICON_DEFAULT,
 } from "./ui-posts/ui-posts-facebook";
 import {
   ParticipantOverlay,
@@ -187,6 +188,7 @@ function normalizeFlags(raw) {
     realistic_engagement: truthy(f.realistic_engagement ?? false),
     realistic_pacing: truthy(f.realistic_pacing ?? false),
     realistic_surroundings: truthy(f.realistic_surroundings ?? false),
+    realistic_surroundings_avatars: truthy(f.realistic_surroundings_avatars ?? false),
     // Same postdates-this-function, no-legacy-alias, must-list-explicitly
     // situation as the three realistic_* flags above.
     allow_dark_mode: truthy(f.allow_dark_mode ?? false),
@@ -862,24 +864,34 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
   // one-line-per-row list vs. tall skeleton cards), so reusing `rightCount`
   // directly left real mode visibly not filling the same vertical space the
   // ghost version did. Separate counts, tuned to the real rows' actual
-  // ~46px height, recomputed on the same resize listener.
-  const [realRightCount, setRealRightCount] = useState(20);
-  const [realShortcutsCount, setRealShortcutsCount] = useState(8);
+  // ~58px height (bumped up from an earlier, more compact ~46px per direct
+  // feedback that rows should be larger/more spaced — see the `.rail-real-
+  // item`/`.rail-real-list` CSS), recomputed on the same resize listener.
+  const [realRightCount, setRealRightCount] = useState(16);
+  const [realShortcutsCount, setRealShortcutsCount] = useState(3);
 
   useEffect(() => {
     const compute = () => {
       const railH = (window.innerHeight || 900) - 30;
-      const REAL_ROW_H = 46;
+      const REAL_ROW_H = 58;
       const CONTACTS_HEADER_H = 90; // title + list container padding/border
-      const rightN = Math.max(10, Math.min(Math.floor((railH - CONTACTS_HEADER_H) / REAL_ROW_H), 60));
+      const rightN = Math.max(6, Math.min(Math.floor((railH - CONTACTS_HEADER_H) / REAL_ROW_H), 50));
       setRealRightCount(rightN);
 
-      // Left rail's real content = fixed 6-item nav block + "Your shortcuts"
-      // title + a height-filling shortcuts list.
-      const NAV_BLOCK_H = 6 * REAL_ROW_H + 24; // 6 nav rows + list padding
+      // Left rail's real content = fixed nav block (one row per
+      // LEFT_RAIL_NAV_ITEMS entry) + "Your shortcuts" title + a height-
+      // filling shortcuts list. A real Facebook screenshot showed the nav
+      // block alone filling the whole rail with no shortcuts visible at
+      // all without scrolling — capped low (4) so shortcuts stay a small
+      // supplement to the nav list, never dominate it the way an
+      // uncapped height-fill previously could on a tall viewport.
+      const NAV_BLOCK_H = LEFT_RAIL_NAV_ITEMS.length * REAL_ROW_H + 24;
       const SHORTCUTS_HEADER_H = 90;
       const leftRemaining = railH - NAV_BLOCK_H - SHORTCUTS_HEADER_H;
-      const shortcutsN = Math.max(3, Math.min(Math.floor(leftRemaining / REAL_ROW_H), LEFT_RAIL_SHORTCUT_POOL.length));
+      const shortcutsN = Math.max(
+        2,
+        Math.min(Math.floor(leftRemaining / REAL_ROW_H), LEFT_RAIL_SHORTCUT_POOL.length, 4)
+      );
       setRealShortcutsCount(shortcutsN);
     };
     compute();
@@ -891,17 +903,21 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
     if (!realisticOn) return undefined;
     let cancelled = false;
     (async () => {
-      const [femalePool, malePool] = await Promise.all([
-        getAvatarPool("female"),
-        getAvatarPool("male"),
-      ]);
+      // "Realistic surroundings avatars" is a separate opt-in sub-toggle —
+      // contacts only get a real avatar photo when it's on; off, they fall
+      // back to the existing blank-circle placeholder (no pool fetch at
+      // all, so turning this off also skips the extra network cost).
+      const showAvatars = !!flags?.realistic_surroundings_avatars;
+      const [femalePool, malePool] = showAvatars
+        ? await Promise.all([getAvatarPool("female"), getAvatarPool("male")])
+        : [[], []];
       if (cancelled) return;
       setContacts(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: realRightCount }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [realisticOn, realRightCount, runSeed, app, projectId, feedId]);
+  }, [realisticOn, realRightCount, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
 
   return (
     <div
@@ -926,7 +942,7 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
           <div className="rail-real-list">
             {pickShortcutsForHeight(realShortcutsCount).map((label) => (
               <div key={label} className="rail-real-item">
-                {RAIL_SHORTCUT_ICON}
+                {LEFT_RAIL_SHORTCUT_ICONS[label] || LEFT_RAIL_SHORTCUT_ICON_DEFAULT}
                 <span>{label}</span>
               </div>
             ))}

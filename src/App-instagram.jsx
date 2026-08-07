@@ -160,6 +160,7 @@ function normalizeFlags(raw) {
     realistic_engagement: truthy(f.realistic_engagement ?? false),
     realistic_pacing: truthy(f.realistic_pacing ?? false),
     realistic_surroundings: truthy(f.realistic_surroundings ?? false),
+    realistic_surroundings_avatars: truthy(f.realistic_surroundings_avatars ?? false),
     allow_dark_mode: truthy(f.allow_dark_mode ?? false),
   };
 }

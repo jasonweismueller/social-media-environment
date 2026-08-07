@@ -583,6 +583,12 @@ export function AdminDashboard({
     // above (new jsonb key, false for every feed that's never set it).
     pacing: { backendField: "realistic_pacing", savingKey: "savingPace", readKeys: ["realistic_pacing"], label: "Realistic post-loading pacing" },
     surroundings: { backendField: "realistic_surroundings", savingKey: "savingSurr", readKeys: ["realistic_surroundings"], label: "Realistic surroundings (Facebook rails)" },
+    // A separate opt-in sub-toggle of `surroundings` above, not bundled into
+    // it — per direct instruction, whether the decorative rail contacts get
+    // a real avatar photo is its own on/off switch. Same Facebook-only
+    // exclusion as `surroundings` (components-admin-feeds.jsx's Amazon
+    // filter), since it has no effect without `surroundings` also being on.
+    surroundingsAvatars: { backendField: "realistic_surroundings_avatars", savingKey: "savingSurrAv", readKeys: ["realistic_surroundings_avatars"], label: "Realistic surroundings avatars" },
     // Whether participants get a dark-mode toggle for this feed at all —
     // opt-in, works identically on all three apps (unlike avatar/image/bio
     // and engagement/surroundings above), see components-admin-feeds.jsx's

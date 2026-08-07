@@ -57,7 +57,16 @@ const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot
 // participant/condition (nothing here is randomized or content-dependent,
 // so there's nothing for it to confound). Real Facebook's own nav; no
 // personalization attempted since we have no real identity to reflect.
-export const LEFT_RAIL_NAV_ITEMS = ["Friends", "Memories", "Saved", "Groups", "Video", "Marketplace"];
+// Per a real Facebook screenshot the user provided: the left rail is
+// dominated by fixed nav destinations (often 10+, enough to fill the whole
+// viewport with none of "Your shortcuts" visible without scrolling) — the
+// original 6-item list read as having too many shortcuts relative to nav by
+// comparison. Expanded to match; shortcuts are capped lower for the same
+// reason (see `pickShortcutsForHeight`'s callers).
+export const LEFT_RAIL_NAV_ITEMS = [
+  "Friends", "Memories", "Saved", "Groups", "Reels", "Marketplace",
+  "Feeds", "Ads Manager", "Birthdays", "Events", "Gaming Video", "Crisis response",
+];
 // A larger pool than any single feed needs — callers pick a height-filling
 // prefix (see `pickShortcutsForHeight`) rather than always showing all of
 // them, so a short viewport doesn't get a comically long list forced in.
@@ -74,7 +83,10 @@ export function pickShortcutsForHeight(count) {
 // rail's nav row — same fixed, content-independent chrome as the labels
 // themselves, just no longer a flat placeholder square. One glyph per
 // LEFT_RAIL_NAV_ITEMS entry, roughly matching real Facebook's own icon
-// colors so the row reads as genuine nav, not a generic list.
+// colors so the row reads as genuine nav, not a generic list. Also reused
+// for LEFT_RAIL_SHORTCUT_ICONS below — same visual language, different
+// glyph/color per shortcut so the shortcuts list doesn't read as one entry
+// copy-pasted N times.
 function RailNavIconGlyph({ bg, children }) {
   return (
     <span
@@ -111,7 +123,7 @@ export const LEFT_RAIL_ICONS = {
       <path d="M2.8 19.5a5.3 5.3 0 0 1 10.4 0M10.8 19.5a5.3 5.3 0 0 1 10.4 0" />
     </RailNavIconGlyph>
   ),
-  Video: (
+  Reels: (
     <RailNavIconGlyph bg="#f33f6e">
       <rect x="3" y="6" width="13" height="12" rx="2.5" />
       <path d="M16 10.5 21 7.5v9L16 13.5Z" fill="#fff" stroke="none" />
@@ -123,20 +135,140 @@ export const LEFT_RAIL_ICONS = {
       <path d="M8 9V6.5a4 4 0 0 1 8 0V9" />
     </RailNavIconGlyph>
   ),
+  Feeds: (
+    <RailNavIconGlyph bg="#64748b">
+      <path d="M5 6h14M5 12h14M5 18h9" />
+    </RailNavIconGlyph>
+  ),
+  "Ads Manager": (
+    <RailNavIconGlyph bg="#2563eb">
+      <path d="M5 20V11M12 20V4M19 20v-7" />
+      <path d="M3 20h18" />
+    </RailNavIconGlyph>
+  ),
+  Birthdays: (
+    <RailNavIconGlyph bg="#f0384a">
+      <path d="M12 3c-1.3 0-1.9 2.2-.8 3.4.5.6 1.3.6 1.8 0C14.1 5.2 13.3 3 12 3Z" />
+      <rect x="4" y="10" width="16" height="10" rx="1.5" />
+      <path d="M4 14h16M12 10v10" />
+    </RailNavIconGlyph>
+  ),
+  Events: (
+    <RailNavIconGlyph bg="#f0384a">
+      <path d="M12 3.5l2.1 4.4 4.9.7-3.5 3.4.8 4.9-4.3-2.3-4.3 2.3.8-4.9-3.5-3.4 4.9-.7Z" />
+    </RailNavIconGlyph>
+  ),
+  "Gaming Video": (
+    <RailNavIconGlyph bg="#1877f2">
+      <rect x="3" y="8" width="18" height="9" rx="4.2" />
+      <path d="M8 10.5v4M6 12.5h4" />
+      <circle cx="16" cy="11" r="1" fill="#fff" stroke="none" />
+      <circle cx="18.3" cy="13.3" r="1" fill="#fff" stroke="none" />
+    </RailNavIconGlyph>
+  ),
+  "Crisis response": (
+    <RailNavIconGlyph bg="#0ea5e9">
+      <circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4.3" /><circle cx="12" cy="12" r="1" fill="#fff" stroke="none" />
+    </RailNavIconGlyph>
+  ),
 };
 
-// Generic group icon for the "Your shortcuts" list — one shared glyph
-// (shortcuts are interchangeable generic group names, not distinct nav
-// destinations, so they don't need per-item icons the way LEFT_RAIL_ICONS
-// does).
-export const RAIL_SHORTCUT_ICON = (
-  <span className="rail-real-icon rail-real-icon--shortcut" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="9" cy="9" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
-      <circle cx="17" cy="10" r="2.3" /><path d="M15 20a4.1 4.1 0 0 1 7.3-2.5" />
-    </svg>
-  </span>
+// One distinct glyph per LEFT_RAIL_SHORTCUT_POOL entry — per direct
+// feedback, these are different Facebook groups, so they shouldn't all
+// share one generic "people" icon the way a single flat placeholder would.
+// `LEFT_RAIL_SHORTCUT_ICON_DEFAULT` is the fallback for any pool entry that
+// somehow isn't in this map (kept from the original single-icon design).
+export const LEFT_RAIL_SHORTCUT_ICON_DEFAULT = (
+  <RailNavIconGlyph bg="#8a8d91">
+    <circle cx="9" cy="9" r="3" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+    <circle cx="17" cy="10" r="2.3" /><path d="M15 20a4.1 4.1 0 0 1 7.3-2.5" />
+  </RailNavIconGlyph>
 );
+// Deprecated alias, kept for compatibility with any other caller that
+// hasn't switched to LEFT_RAIL_SHORTCUT_ICONS yet.
+export const RAIL_SHORTCUT_ICON = LEFT_RAIL_SHORTCUT_ICON_DEFAULT;
+
+export const LEFT_RAIL_SHORTCUT_ICONS = {
+  "Photography Club": (
+    <RailNavIconGlyph bg="#0ea5a4">
+      <rect x="3" y="7" width="18" height="12" rx="2.5" />
+      <path d="M9 7l1.2-2h3.6L15 7" />
+      <circle cx="12" cy="13" r="3.2" />
+    </RailNavIconGlyph>
+  ),
+  "Local Marketplace": (
+    <RailNavIconGlyph bg="#0891b2">
+      <path d="M4 10 5 4h14l1 6" />
+      <path d="M4 10v9a1 1 0 0 0 1 1h3v-6h8v6h3a1 1 0 0 0 1-1v-9" />
+    </RailNavIconGlyph>
+  ),
+  "Book Swap": (
+    <RailNavIconGlyph bg="#d97706">
+      <path d="M12 6c-2-1.5-5-2-8-1.3V17c3-.7 6-.2 8 1.3 2-1.5 5-2 8-1.3V4.7c-3-.7-6-.2-8 1.3Z" />
+      <path d="M12 6v12.3" />
+    </RailNavIconGlyph>
+  ),
+  "Hiking Buddies": (
+    <RailNavIconGlyph bg="#16a34a">
+      <path d="M3 19 9.5 8l3.5 5.5L15 10l6 9Z" />
+      <circle cx="8.3" cy="6" r="1.3" fill="#fff" stroke="none" />
+    </RailNavIconGlyph>
+  ),
+  "Weekend Board Games": (
+    <RailNavIconGlyph bg="#dc2626">
+      <rect x="5" y="5" width="14" height="14" rx="3" />
+      <circle cx="9" cy="9" r="1" fill="#fff" stroke="none" />
+      <circle cx="15" cy="9" r="1" fill="#fff" stroke="none" />
+      <circle cx="9" cy="15" r="1" fill="#fff" stroke="none" />
+      <circle cx="15" cy="15" r="1" fill="#fff" stroke="none" />
+      <circle cx="12" cy="12" r="1" fill="#fff" stroke="none" />
+    </RailNavIconGlyph>
+  ),
+  "Home Baking Tips": (
+    <RailNavIconGlyph bg="#f59e0b">
+      <path d="M12 3c-1 0-1.8.8-1.8 1.8 0 .6.3 1.1.7 1.5-1.9.5-3.4 2-3.8 3.9h10a5 5 0 0 0-3.8-3.9c.4-.4.7-.9.7-1.5C13.8 3.8 13 3 12 3Z" />
+      <path d="M6 10h12l-1.3 8.5a2 2 0 0 1-2 1.7H9.3a2 2 0 0 1-2-1.7L6 10Z" />
+    </RailNavIconGlyph>
+  ),
+  "City Cyclists": (
+    <RailNavIconGlyph bg="#2563eb">
+      <circle cx="6" cy="17" r="3" /><circle cx="18" cy="17" r="3" />
+      <path d="M6 17l4.5-9h3L17 14M9.5 8h3" />
+    </RailNavIconGlyph>
+  ),
+  "Language Exchange": (
+    <RailNavIconGlyph bg="#7c3aed">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17" />
+      <path d="M12 3.5c2.5 2.3 2.5 15 0 17M12 3.5c-2.5 2.3-2.5 15 0 17" />
+    </RailNavIconGlyph>
+  ),
+  "Vintage Cameras": (
+    <RailNavIconGlyph bg="#78716c">
+      <circle cx="12" cy="12" r="7.5" /><circle cx="12" cy="12" r="3.2" />
+      <path d="M12 4.5v2.3M12 17.2v2.3M4.5 12h2.3M17.2 12h2.3" />
+    </RailNavIconGlyph>
+  ),
+  "Community Garden": (
+    <RailNavIconGlyph bg="#22c55e">
+      <path d="M12 21V10" />
+      <path d="M12 10c0-4 3-6 7-6 0 4-3 7-7 6Z" />
+      <path d="M12 13c0-3-2.5-5-6-5 0 3 2.5 6 6 5Z" />
+    </RailNavIconGlyph>
+  ),
+  "Running Club": (
+    <RailNavIconGlyph bg="#ef4444">
+      <circle cx="14.5" cy="5" r="1.6" fill="#fff" stroke="none" />
+      <path d="M9 20l2.5-4 3-1.5-1-4-3 1-2-3M12.5 14.5l3 1 2.5 4" />
+    </RailNavIconGlyph>
+  ),
+  "Film Discussion Group": (
+    <RailNavIconGlyph bg="#4b5563">
+      <path d="M3.5 10.5 4.5 19a1.5 1.5 0 0 0 1.5 1.3h12a1.5 1.5 0 0 0 1.5-1.3l1-8.5Z" />
+      <path d="M3.5 10.5 5 5.5l3 2.2 1.6-3.4 3 2.2 1.6-3.2 3 2.2 1.8-2 1.5 3.5-16.5 3.5Z" />
+    </RailNavIconGlyph>
+  ),
+};
 
 // Decorative "Contacts" rail generator — real-looking, but purely cosmetic:
 // reuses the exact same avatar/name pools as real post authors, seeded
@@ -148,7 +280,11 @@ export const RAIL_SHORTCUT_ICON = (
 // (the one actually wrapping the live participant feed — this file's own
 // `Feed.rail-right` is only reachable when `Feed` is mounted standalone,
 // e.g. the admin's Feed Preview) can build an identical contacts list
-// instead of hand-rolling a second copy of this logic.
+// instead of hand-rolling a second copy of this logic. `femalePool`/
+// `malePool` are passed empty by a caller that wants contacts shown without
+// avatar photos (the separate "surrounding avatars" toggle) — `avatarUrl`
+// then comes back falsy for every contact and the caller's own blank-circle
+// fallback renders instead.
 export function buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count = 14 }) {
   const contactSeedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
   const namePool = [...FB_FEMALE_NAMES, ...FB_MALE_NAMES];
@@ -2494,15 +2630,24 @@ export function Feed({
         ),
       });
 
+      // "Realistic surroundings avatars" is a separate opt-in sub-toggle
+      // from "Realistic surroundings" itself — the contacts' avatarUrl is
+      // only populated when it's on; off, buildRailContacts gets empty
+      // pools and every contact falls back to a blank circle.
+      const showAvatars = !!flags?.realistic_surroundings_avatars;
       setContacts(
-        buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: 22 })
+        buildRailContacts({
+          femalePool: showAvatars ? femalePool : [],
+          malePool: showAvatars ? malePool : [],
+          runSeed, app, projectId, feedId, count: 22,
+        })
       );
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [femalePosts, malePosts, companyPosts, runSeed, app, projectId, feedId]);
+  }, [femalePosts, malePosts, companyPosts, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
 
   // Opt-in per feed ("Realistic surroundings", Feeds → Settings →
   // Behavior) — off by default, same as every other realism toggle in this
@@ -2533,9 +2678,9 @@ export function Feed({
           </div>
           <div className="rail-real-title">Your shortcuts</div>
           <div className="rail-real-list">
-            {pickShortcutsForHeight(10).map((label) => (
+            {pickShortcutsForHeight(4).map((label) => (
               <div key={label} className="rail-real-item">
-                {RAIL_SHORTCUT_ICON}
+                {LEFT_RAIL_SHORTCUT_ICONS[label] || LEFT_RAIL_SHORTCUT_ICON_DEFAULT}
                 <span>{label}</span>
               </div>
             ))}

@@ -705,6 +705,7 @@ const FLAG_PAIRS = [
   ["realistic_engagement", "realistic_engagement"],
   ["realistic_pacing", "realistic_pacing"],
   ["realistic_surroundings", "realistic_surroundings"],
+  ["realistic_surroundings_avatars", "realistic_surroundings_avatars"],
   ["allow_dark_mode", "allow_dark_mode"],
 ];
 

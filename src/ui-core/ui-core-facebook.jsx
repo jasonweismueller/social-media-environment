@@ -851,13 +851,15 @@ export function RouteAwareTopbar({ flags } = {}) {
   return (
     <>
       {flags?.realistic_surroundings ? <TopRailReal /> : <TopRailPlaceholder />}
-      <div className="admin-fab-wrap">
-        {onAdmin ? (
+      {/* Real participants must never be shown a link into the admin login
+          (removed per direct request) — an already-authenticated admin
+          browsing their own /admin session still gets a quick way back to
+          the feed. */}
+      {onAdmin && (
+        <div className="admin-fab-wrap">
           <Link to="/" className="btn admin-fab" aria-label="Back to feed">↩</Link>
-        ) : (
-          <Link to="/admin" className="btn admin-fab" aria-label="Admin">⚙</Link>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }

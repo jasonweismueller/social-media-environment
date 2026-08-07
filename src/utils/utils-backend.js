@@ -1600,6 +1600,13 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.realistic_surroundings !== "undefined") {
     out.realistic_surroundings = !!flags.realistic_surroundings;
   }
+  // A separate opt-in sub-toggle of "realistic_surroundings" (not bundled
+  // into it) — per direct instruction, whether decorative rail contacts get
+  // a real avatar photo is its own on/off switch, independent of everything
+  // else "realistic surroundings" controls.
+  if (typeof flags.realistic_surroundings_avatars !== "undefined") {
+    out.realistic_surroundings_avatars = !!flags.realistic_surroundings_avatars;
+  }
   // Opt-in per feed, whether participants get a dark-mode toggle at all —
   // same no-GAS-counterpart posture as the three realistic_* flags above.
   if (typeof flags.allow_dark_mode !== "undefined") {
@@ -1619,6 +1626,7 @@ export function normalizeFlagsForRead(flags) {
   out.realistic_engagement = !!out.realistic_engagement;
   out.realistic_pacing = !!out.realistic_pacing;
   out.realistic_surroundings = !!out.realistic_surroundings;
+  out.realistic_surroundings_avatars = !!out.realistic_surroundings_avatars;
   out.allow_dark_mode = !!out.allow_dark_mode;
 
   delete out.random_time;

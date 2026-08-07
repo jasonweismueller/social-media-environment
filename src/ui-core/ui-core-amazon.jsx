@@ -1,7 +1,7 @@
 // ui-core-amazon.jsx
 // Amazon reviews-only version of shared UI core components.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { fakeNamesFor as utilsFakeNamesFor,uid } from "../utils";
 
 /* ------------------------------- Tiny helpers ------------------------------- */
@@ -743,20 +743,15 @@ export function RouteAwareTopbar() {
     else document.body.classList.remove("admin-mode");
   }, [onAdmin]);
 
+  // Real participants must never be shown a link into the admin login
+  // (removed per direct request) — this component already returns null
+  // whenever onAdmin is true, so the "Back to feed" branch that used to
+  // sit here was unreachable in practice; the only thing this was ever
+  // actually rendering to a real visitor was the participant-facing
+  // gear-icon link into /admin.
   if (onSurvey || isMobile || onAdmin) return null;
 
-  return (
-    <>
-      <TopRailPlaceholder />
-      <div className="admin-fab-wrap">
-        {onAdmin ? (
-          <Link to="/" className="btn admin-fab" aria-label="Back to feed">↩</Link>
-        ) : (
-          <Link to="/admin" className="btn admin-fab" aria-label="Admin">⚙</Link>
-        )}
-      </div>
-    </>
-  );
+  return <TopRailPlaceholder />;
 }
 
 /* ------------------------- Page scaffold (rails + center) ------------------ */
