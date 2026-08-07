@@ -5180,3 +5180,82 @@ actual click-through/typing by a real logged-in admin, or a real participant ses
 recall question end-to-end through a genuine survey link — same standing no-login limitation as
 everywhere else in this file. Worth a real click-through on staging before trusting this beyond what
 the live-mounted-component verification above already covers.
+
+## Real content added to a live survey: "Recall and Intervention" block on "Study 1 - Main" (2026-08-07)
+
+Direct request to add new questions to a real, live, currently-collecting survey — `survey_t9919ylm52omnt277u3`
+("Study 1 - Main", `project_1`), the same survey this file already documents extensively elsewhere
+(6 experiment groups: CONTROL = Group 1/Group 4, PL/Prebunk-Long = Group 3/Group 6, PS/Prebunk-Short
+= Group 2/Group 5 — confirmed fresh from the live `experiment_groups` table and the existing
+group-gated `TREATMENT/CONTROL FEED` block's own real questions, not just trusted from this file's
+older notes). No admin login available, so applied via `supabase db query --linked` directly against
+`surveys.definition` (production project `yrzqnlhbawzuzlrrocfd`) — the same direct-SQL-write pattern
+this file already uses for administrative changes when the real admin UI isn't reachable, just this
+time editing survey *content* rather than schema or participant data.
+
+**What was added**, a new page (`page_45`) inside a new block (`block_recall_intervention`,
+title "RECALL AND INTERVENTION") inserted into `page_blocks` right before the existing
+`DEMOGRAPHICS` block:
+1. **`PL_RECALL`** / **`PS_RECALL`** — two `post_reminder` questions using this session's new
+   "recall" feature (see the section above this one), each showing the real Prebunk-Long/
+   Prebunk-Short "Digital Literacy Project" post (`post_id 77el6ugqvsomgan170e`, `post_feed_id`
+   `feed_4`/`feed_3`) alongside 2 authored decoy versions with different body text — plausible,
+   same general "prebunking" theme and structure/length as the real post, but genuinely
+   distinguishable content (e.g. the real PL post is about emotional language with a "SHOCKING!!!"
+   example; its decoys are about share-count/virality and "leaked documents" framing instead).
+   `required: true`, gated to their own condition's 2 groups only (`PL_RECALL` → Group 3/6,
+   `PS_RECALL` → Group 2/5).
+2. **`INT_FORMAT`** — new `matrix_single`, 2 rows ("Detailed", "Long"), 7-point Strongly
+   disagree…Strongly agree.
+3. **`INT_CL`** / **`INT_HELPFUL`** — two more `matrix_single` questions, 3 rows each, exact text
+   the user specified.
+
+**The whole block is gated to `visible_to_group_ids: [Group 2, Group 3, Group 5, Group 6]`** (PL+PS
+only, excludes CONTROL) — a deliberate choice over per-question-only gating (both patterns already
+coexist elsewhere in this same survey: `TREATMENT/CONTROL FEED` relies purely on per-question
+gating inside an all-visible block, while `INFORMATION FEED 1`/`INFORMATION FEED 2` gate at the
+block level with `visible_to_group_ids: []` left on every question inside). Block-level gating here
+means CONTROL participants (who never saw any Digital Literacy Project post) skip this page
+entirely rather than landing on a page where every question happens to be invisible.
+
+**Also added, per a follow-up message in the same request**: a 6th demographics question on the
+existing `page_44` (`SOCIAL_MEDIA_USE`, single_choice, "How often do you use social media (e.g.,
+Facebook)?", Never…Several times a day) — `visible_to_group_ids: []`, shown to everyone, matching
+the existing AGE/SEX/INCOME/EDUCATION/IDEOLOGY questions' style exactly.
+
+**Applied safely**: took a full local backup of the pre-edit `definition` (scratchpad-only, not
+committed — this survey's content lives in the database, not this repo) before writing; built the
+update as a single atomic `jsonb_set` UPDATE and dry-ran it inside a transaction with `ROLLBACK`
+first, inspecting the exact resulting `page_blocks`/`page_44`/`page_45` shape before committing for
+real. Checked response volume first (12 responses total, latest from 2026-08-02, five days before
+this change) — not actively collecting a live burst at the moment of the edit.
+
+**Verified against the live post-write database and the real app code, not just the write itself**:
+confirmed via SQL that `page_blocks` now has 5 entries (new block correctly positioned before
+DEMOGRAPHICS), `pages` has 45, `page_44` has 6 questions. Then — critically, since a raw
+`definition` fetch alone doesn't include this survey's `experiment_groups` (those live in the
+separate `experiment_groups` table since the 2026-08-03 restructuring documented earlier in this
+file, not in the jsonb) — fetched the real `definition` *and* the real `experiment_groups` rows via
+the anon-key REST API (read-only, no login), merged them the same way
+`supabaseLoadSurveyDefinition` does, and ran the real `normalizeSurvey`/`materializePagesFromBlocks`/
+`isQuestionVisible` against all 6 real groups: Group 1 and Group 4 (CONTROL) correctly never
+materialize `page_45` at all; Group 2/Group 5 (PS) see `PS_RECALL` + all 3 matrix questions, never
+`PL_RECALL`; Group 3/Group 6 (PL) see `PL_RECALL` + all 3 matrix questions, never `PS_RECALL` —
+exactly the intended per-condition split, confirmed against the actual live group ids, not a
+fabricated stand-in. (A first pass of this exact check initially showed every group seeing
+everything, including CONTROL — traced to the test itself, not the data: forgetting to merge
+`experiment_groups` onto the raw definition before normalizing, which silently drops all
+`visible_to_group_ids` gating as unrecognized. Worth remembering for any future check of this kind:
+a raw `select definition from surveys` is not the same object the app actually renders from.)
+
+**Not independently re-rendered with real post content through `PostReminderCard`** (would have
+needed the raw-DB-row → frontend-post-object mapping `mapPostRowToRaw`, `utils-backend-supabase.js`,
+which isn't exported) — the recall UI's actual rendering behavior with real data is covered instead
+by this session's general recall-feature verification (same rendering pipeline, fabricated post
+content) plus the group-visibility check above, which is the part specific to this survey and the
+part a generic feature test couldn't have caught.
+
+**To revert, if ever needed** (purely additive — nothing pre-existing was touched, confirmed by the
+pre-commit dry run's diff): remove the `block_recall_intervention` entry from `page_blocks`, remove
+the `page_45` entry from `pages`, and remove the `SOCIAL_MEDIA_USE` entry from `page_44`'s
+`questions` array. No other stored data (responses, assignments, other pages/blocks) was touched.
