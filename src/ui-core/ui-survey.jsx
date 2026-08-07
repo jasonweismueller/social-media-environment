@@ -792,6 +792,11 @@ const ReminderPostInner = memo(function ReminderPostInner({
   interactive,
   value,
   onChange,
+  // Set only by RecallOptionCard — see PostCard's own comment
+  // (ui-posts-facebook.jsx) for why a recall picker's 3 simultaneous
+  // PostCard instances must not each write "what was displayed" under the
+  // same post/feed/participant key.
+  suppressDisplayedSnapshot = false,
 }) {
   const noopAction = useCallback(() => {}, []);
   const noopRegisterViewRef = useCallback(() => undefined, []);
@@ -835,6 +840,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
       runSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
       assignedAvatarUrl={assignedAvatarUrl || null}
+      suppressDisplayedSnapshot={suppressDisplayedSnapshot}
     />
   );
 }, (prev, next) => {
@@ -847,7 +853,8 @@ const ReminderPostInner = memo(function ReminderPostInner({
     prev.participantSeed === next.participantSeed &&
     prev.assignedAvatarUrl === next.assignedAvatarUrl &&
     prev.interactive === next.interactive &&
-    prev.value === next.value
+    prev.value === next.value &&
+    prev.suppressDisplayedSnapshot === next.suppressDisplayedSnapshot
   );
 });
 
@@ -895,6 +902,7 @@ function RecallOptionCard({
             interactive={false}
             value={undefined}
             onChange={noopChange}
+            suppressDisplayedSnapshot
           />
         </div>
       </div>

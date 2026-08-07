@@ -362,6 +362,19 @@ export function PostCard({
   // show one frozen post, nothing to cascade), so they render with no
   // stagger — instant, exactly as before.
   revealIndex = null,
+  // The "displayed post snapshot" localStorage mechanism below assumes
+  // exactly one PostCard renders for a given (projectId, feedId, post.id,
+  // participantSeed) tuple at a time — true for the real feed and for a
+  // plain single-post reminder, but not for a "recall" reminder's 3-option
+  // picker, which renders 3 PostCard instances (the real post plus 2
+  // decoys) that all share that same tuple, since they're clones of one
+  // post differing only in text. Without this, all 3 would race to write
+  // the same localStorage key, and whichever wrote last would silently
+  // become "what this participant saw" for every future read — including
+  // the recall picker's own next render, corrupting all 3 options to show
+  // identical (wrong) content. Set by RecallOptionCard/RecallOptionCardMobile
+  // only; every other call site leaves this false, unchanged behavior.
+  suppressDisplayedSnapshot = false,
 }) {
   const [reportAck, setReportAck] = useState(false);
   const [linkAck, setLinkAck] = useState(false);
@@ -1083,7 +1096,7 @@ export function PostCard({
   ]);
 
   React.useEffect(() => {
-    if (!displayedSnapshot || !post?.id || !feedId) return;
+    if (suppressDisplayedSnapshot || !displayedSnapshot || !post?.id || !feedId) return;
 
     saveDisplayedPostSnapshot(displayedSnapshot, {
       projectId,
@@ -1096,6 +1109,7 @@ export function PostCard({
       onDisplayedPostSnapshot(displayedSnapshot);
     }
   }, [
+    suppressDisplayedSnapshot,
     displayedSnapshot,
     post?.id,
     projectId,
@@ -1105,7 +1119,7 @@ export function PostCard({
   ]);
 
   const handleDisplayedImageLoad = React.useCallback((event) => {
-    if (!displayedSnapshot || !post?.id || !feedId) return;
+    if (suppressDisplayedSnapshot || !displayedSnapshot || !post?.id || !feedId) return;
 
     const imgEl = event?.currentTarget;
     const finalUrl = String(imgEl?.currentSrc || imgEl?.src || displayImage?.url || "").trim();
@@ -1142,6 +1156,7 @@ export function PostCard({
       onDisplayedPostSnapshot(finalSnapshot);
     }
   }, [
+    suppressDisplayedSnapshot,
     displayedSnapshot,
     post?.id,
     projectId,

@@ -5284,3 +5284,74 @@ test question — the append-only page_44 patch preserves whatever was already t
 instead of production's 6. **Left as an open question for the user, not decided unilaterally**:
 whether to delete their leftover test question (`Q_EIZMQ86K8JRMSICCOHI`, staging only, harmless but
 inert) or leave it as a scratch item.
+
+**Second follow-up, same day**: user asked to (1) delete the leftover staging test question, (2)
+confirm/write the recall decoy text (already done — see above, nothing new needed), and (3) push
+staging's survey data to production. Did **not** do (3) literally — a full-definition diff between
+staging and production first (before touching anything) found real, unrelated divergence: production
+had a currently-live "(WAVE 1)" project-title suffix, a bolded consent-decline message, an empty
+`instructions_html`, and "Start survey" as the button label, none of which exist in staging's stale
+Aug-5 snapshot — clearly real edits made directly to the live study since the snapshot was taken, not
+something to silently revert. Confirmed with the user before proceeding rather than guessing; user
+clarified they actually prefer **staging's** wording for those fields (opposite of what a blind
+"production wins" assumption would have produced) and confirmed via a targeted query that
+**production has zero attention checks configured anywhere** (matching what the user suspected) while
+**staging has 4 real ones** — a 4th row (`AC1`–`AC4`, "Please select 'Strongly disagree/agree' for
+this answer.") added to 4 specific matrix questions (`AI4_EMO_BL`, `MI9_NOEMO_BL`, `AI4_NOEMO_BL`,
+`MI9_EMO_BL`), apparently configured directly on staging at some point and never carried over.
+Pushed exactly those two things — the 4 top-level text fields (`participant_information_html`,
+`instructions_html`, `consent_decline_message_html`, `pre_feed_button_label`) and the 4 questions'
+`rows` arrays — from staging to production via a surgical `jsonb` merge (not a wholesale definition
+copy), same backup-then-dry-run-then-commit discipline as every other live edit in this session.
+Deliberately left `allow_dark_mode` (present only on staging) untouched — a functional toggle, not
+wording, and not something the user asked for; flagged rather than silently included.
+
+## Real bug found and fixed: recall post-reminder's 3 options could collapse into duplicates, losing the real post (2026-08-07)
+
+User reported, testing the recall feature live: "the two alternative posts are fine, but it seems
+the actual post is missing." Reproduced exactly (see below) and root-caused to a genuine defect in
+this session's own recall implementation, not a data/content issue.
+
+**Root cause**: `PostCard` (`ui-posts-facebook.jsx`) has a pre-existing "displayed post snapshot"
+mechanism — on every render it writes "what this participant is currently seeing" to a `localStorage`
+key derived purely from `(projectId, feedId, post.id, participantSeed)`, later read back by
+`getDisplayedPostSnapshot` (used by `PostReminderCard`'s `storedSnapshot` resolution, so a reminder
+shows the exact randomized version a participant actually saw). This assumes exactly one `PostCard`
+renders per key at a time — true for the real feed and for a plain single-post reminder, but a
+"recall" reminder's 3-option picker renders **three** `PostCard` instances simultaneously (the real
+post + 2 decoys), all sharing the identical key since they're clones of one post differing only in
+text. All three raced to write the same `localStorage` entry; whichever wrote last silently won. On
+the *initial* render this was invisible (the options build from already-resolved data, not from that
+localStorage entry) — but on **any remount** (page revisit, "Reshuffle," a real participant reloading)
+`storedSnapshot` would read back that corrupted single winner and **all three options would render
+identical content**, with the real post's own distinct text gone — exactly "the actual post is
+missing."
+
+**Reproduced deterministically before writing any fix**: mounted the real `SurveyScreen` against a
+real PL_RECALL-shaped question and the real production post, first render correctly showed
+DECOY_ONE/REAL/DECOY_TWO, confirmed the `displayed_post_snapshot_latest` key held whichever decoy
+rendered last, then remounted with the same `participantSeed` — second render showed
+DECOY_ONE/DECOY_TWO/DECOY_TWO, the real post completely replaced. Confirmed via `grep` that this
+"displayed snapshot" mechanism is Facebook-only (`ui-posts-instagram.jsx`/`ui-posts-amazon.jsx` have
+no equivalent), so the fix is scoped there.
+
+**Fix**: new `suppressDisplayedSnapshot` prop on `PostCard`, default `false` (every existing call
+site unaffected), gating both effects that call `saveDisplayedPostSnapshot`. Threaded through
+`ReminderPostInner`/`ReminderPostInnerMobile` (added to their memo comparators too) and set `true`
+only by `RecallOptionCard`/`RecallOptionCardMobile` — the near-duplicate desktop/mobile pair this
+file already documents needing identical fixes. A recall option's `PostCard` render now never writes
+to the shared snapshot key at all, so the 3 siblings can no longer race to overwrite each other, and
+the *outer* `PostReminderCard`'s own real-feed-viewing lookup (which builds the 3 options from in the
+first place) is completely unaffected — this only stops the *synthetic* recall-picker renders from
+being mistaken for "what the participant actually saw."
+
+**Verified**: re-ran the exact reproduction 3 times after the fix — `localStorage` gained zero
+`displayed_post_snapshot` entries from the recall picker, and 3 successive remounts all correctly
+showed DECOY_ONE/REAL/DECOY_TWO with no drift. Regression-checked a plain (non-recall) reminder
+separately — still correctly writes its own snapshot exactly as before. Both confirmed via the real
+running dev server, not a reimplementation. **Not yet deployed anywhere** — this is a pure frontend
+fix (no Edge Function involved), ships via the normal `main` → GitHub Actions → staging/production
+pipeline once committed/pushed; unlike the Supabase writes elsewhere in this file, nothing about this
+fix required (or used) `supabase db query`. Worth a real click-through once it's live, on the same
+`PL_RECALL`/`PS_RECALL` questions the user was testing, ideally revisiting the page twice to
+specifically re-exercise the remount path that exposed this.

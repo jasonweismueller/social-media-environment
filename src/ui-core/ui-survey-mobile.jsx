@@ -456,6 +456,10 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
   interactive,
   value,
   onChange,
+  // Set only by RecallOptionCardMobile — see PostCard's own comment
+  // (ui-posts-facebook.jsx) and the matching desktop comment in
+  // ui-survey.jsx for why this is needed.
+  suppressDisplayedSnapshot = false,
 }) {
   const noopAction = useCallback(() => {}, []);
   const noopRegisterViewRef = useCallback(() => undefined, []);
@@ -498,6 +502,7 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
       runSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
       assignedAvatarUrl={assignedAvatarUrl || null}
+      suppressDisplayedSnapshot={suppressDisplayedSnapshot}
     />
   );
 }, (prev, next) => {
@@ -510,7 +515,8 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
     prev.participantSeed === next.participantSeed &&
     prev.assignedAvatarUrl === next.assignedAvatarUrl &&
     prev.interactive === next.interactive &&
-    prev.value === next.value
+    prev.value === next.value &&
+    prev.suppressDisplayedSnapshot === next.suppressDisplayedSnapshot
   );
 });
 
@@ -553,6 +559,7 @@ function RecallOptionCardMobile({
             interactive={false}
             value={undefined}
             onChange={noopChange}
+            suppressDisplayedSnapshot
           />
         </div>
       </div>
