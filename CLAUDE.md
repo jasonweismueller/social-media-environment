@@ -5355,8 +5355,6 @@ pipeline once committed/pushed; unlike the Supabase writes elsewhere in this fil
 fix required (or used) `supabase db query`. Worth a real click-through once it's live, on the same
 `PL_RECALL`/`PS_RECALL` questions the user was testing, ideally revisiting the page twice to
 specifically re-exercise the remount path that exposed this.
-<<<<<<< HEAD
-=======
 
 ## Dropout-aware experiment group assignment (2026-08-07)
 
@@ -5425,4 +5423,3 @@ had a real bug causing near-100% abandonment, this algorithm would keep funnelin
 participants into it trying to catch up, which is the correct response to variance but the wrong
 response to an actual broken condition. That's a monitoring responsibility (watching live completion
 rates per group), not something the algorithm itself can safely guard against.
->>>>>>> production
