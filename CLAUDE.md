@@ -5284,8 +5284,6 @@ test question — the append-only page_44 patch preserves whatever was already t
 instead of production's 6. **Left as an open question for the user, not decided unilaterally**:
 whether to delete their leftover test question (`Q_EIZMQ86K8JRMSICCOHI`, staging only, harmless but
 inert) or leave it as a scratch item.
-<<<<<<< Updated upstream
-=======
 
 **Second follow-up, same day**: user asked to (1) delete the leftover staging test question, (2)
 confirm/write the recall decoy text (already done — see above, nothing new needed), and (3) push
@@ -5425,4 +5423,3 @@ had a real bug causing near-100% abandonment, this algorithm would keep funnelin
 participants into it trying to catch up, which is the correct response to variance but the wrong
 response to an actual broken condition. That's a monitoring responsibility (watching live completion
 rates per group), not something the algorithm itself can safely guard against.
->>>>>>> Stashed changes
