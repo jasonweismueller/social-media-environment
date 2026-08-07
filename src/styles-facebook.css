@@ -279,7 +279,15 @@ a:hover{text-decoration:underline}
    real feed mounts) should stay blurred — that's a correct "still loading"
    state, not something to fix. `pointer-events:none`/`user-select:none`
    from `.rail` above still apply — this only ever changes appearance. */
-.rail--content{ filter:none; opacity:1; }
+/* Real content's actual height depends on viewport height (12 nav rows +
+   shortcuts + their headers can exceed a shorter laptop screen's rail
+   height) — `.rail`'s own fixed height + `overflow:hidden` (correct for the
+   ghost skeleton, which is never taller than the viewport) would otherwise
+   silently clip the bottom of the real nav/shortcuts list instead of
+   showing it, cutting a shortcut off mid-row. Real Facebook's own left rail
+   scrolls independently for the same reason — overriding to a scrollable
+   column here instead of a hard clip. */
+.rail--content{ filter:none; opacity:1; overflow-y:auto; overflow-x:hidden; }
 .rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:16px 4px 8px; padding-top:4px; }
 /* Larger rows with real gap between them — per direct feedback, items read
    as too cramped and too tightly packed to need as many to fill the rail. */

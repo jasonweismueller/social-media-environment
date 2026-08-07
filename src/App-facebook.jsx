@@ -864,27 +864,33 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
   // one-line-per-row list vs. tall skeleton cards), so reusing `rightCount`
   // directly left real mode visibly not filling the same vertical space the
   // ghost version did. Separate counts, tuned to the real rows' actual
-  // ~58px height (bumped up from an earlier, more compact ~46px per direct
+  // ~52px height (bumped up from an earlier, more compact ~46px per direct
   // feedback that rows should be larger/more spaced — see the `.rail-real-
   // item`/`.rail-real-list` CSS), recomputed on the same resize listener.
+  // With 12 nav rows now (up from the original 6), the nav block alone can
+  // approach or exceed a shorter viewport's full rail height — `.rail--
+  // content`'s own overflow-y:auto (styles-facebook.css) is the real safety
+  // net against clipping regardless of screen size, but REAL_ROW_H is kept
+  // a bit smaller than it could be specifically so at least 2 shortcuts
+  // fit without needing to scroll on most ordinary viewport heights too.
   const [realRightCount, setRealRightCount] = useState(16);
   const [realShortcutsCount, setRealShortcutsCount] = useState(3);
 
   useEffect(() => {
     const compute = () => {
       const railH = (window.innerHeight || 900) - 30;
-      const REAL_ROW_H = 58;
+      const REAL_ROW_H = 52;
       const CONTACTS_HEADER_H = 90; // title + list container padding/border
       const rightN = Math.max(6, Math.min(Math.floor((railH - CONTACTS_HEADER_H) / REAL_ROW_H), 50));
       setRealRightCount(rightN);
 
       // Left rail's real content = fixed nav block (one row per
       // LEFT_RAIL_NAV_ITEMS entry) + "Your shortcuts" title + a height-
-      // filling shortcuts list. A real Facebook screenshot showed the nav
-      // block alone filling the whole rail with no shortcuts visible at
-      // all without scrolling — capped low (4) so shortcuts stay a small
-      // supplement to the nav list, never dominate it the way an
-      // uncapped height-fill previously could on a tall viewport.
+      // filling shortcuts list, capped low (4) so shortcuts stay a small
+      // supplement to the nav list rather than dominating it — but always
+      // at least 2 (Math.max below), never clipped to fewer/cut off
+      // regardless of how little room `leftRemaining` computes to, since
+      // the rail itself can now scroll to fit them (see `.rail--content`).
       const NAV_BLOCK_H = LEFT_RAIL_NAV_ITEMS.length * REAL_ROW_H + 24;
       const SHORTCUTS_HEADER_H = 90;
       const leftRemaining = railH - NAV_BLOCK_H - SHORTCUTS_HEADER_H;
