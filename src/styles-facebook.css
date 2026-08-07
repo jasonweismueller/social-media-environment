@@ -231,6 +231,10 @@ a:hover{text-decoration:underline}
 }
 .rx-stack .rx:last-of-type{margin-right:0}
 .rx-count{margin-left:9px;line-height:18px;display:inline-block}
+/* The white ring/fill on each stacked reaction icon exists to separate
+   overlapping emoji circles from whatever's behind them — needs to match
+   the card background in dark mode, not stay literal white. */
+.dark-mode .rx-stack .rx{ border-color:var(--card); background:var(--card); }
 
 /* — Tighten gap when reactions follow text directly (no image) — */
 .card-body + .bar-stats {
@@ -249,6 +253,7 @@ a:hover{text-decoration:underline}
   width:32px;height:32px;border-radius:999px;border:none;background:transparent;display:grid;place-items:center;font-size:18px;cursor:pointer;transition:transform .06s ease-out
 }
 .react-flyout button:hover{transform:scale(1.15)}
+.dark-mode .react-flyout{ background:var(--card); }
 
 /* ============= Page layout (3-column + skeleton rails) ============= */
 .page{
@@ -1978,6 +1983,29 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .fb-comment-composer{
   border-top: 1px solid var(--line);
   background: #fff;
+}
+
+/* Dark-mode overrides for the block above — the desktop comment modal's
+   own container background is already handled inline (var(--card), see
+   ui-post-desktop-facebook.jsx), but everything in this "unification"
+   block independently hardcodes white/dark-text, including forcing the
+   post shown at the top of the modal back to a literal white card via
+   `!important` — without these, the modal's outer chrome would go dark
+   but the post embedded inside it would stay a bright white rectangle. */
+.dark-mode .fb-comment-modal-body,
+.dark-mode .fb-comment-modal-post-wrap,
+.dark-mode .fb-modal-post-shell,
+.dark-mode .fb-modal-post-shell.card,
+.dark-mode .fb-modal-post-shell.post-card,
+.dark-mode .fb-modal-post-shell .card,
+.dark-mode .fb-modal-post-shell .post-card,
+.dark-mode .fb-comment-thread,
+.dark-mode .fb-comment-composer{
+  background: var(--card) !important;
+}
+.dark-mode .fb-comment-author,
+.dark-mode .fb-comment-text{
+  color: var(--text);
 }
 
 /* Make modal clear the sticky top rail a bit more comfortably */

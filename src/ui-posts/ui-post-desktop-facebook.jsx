@@ -78,7 +78,7 @@ export function FacebookCommentModalDesktop({
     <DesktopOverlay onClose={onClose} topOffset={76}>
       <div
         style={{
-          background: "#fff",
+          background: "var(--card)",
           borderRadius: 18,
           width: "100%",
           maxWidth: 820,
@@ -129,7 +129,7 @@ export function FacebookCommentModalDesktop({
               {ghostCount === 0 && !hasParticipantComment ? (
                 <div
                   style={{
-                    color: "#6b7280",
+                    color: "var(--muted)",
                     fontSize: 14,
                     paddingBottom: 10,
                   }}
@@ -161,7 +161,7 @@ export function FacebookCommentModalDesktop({
                             fontWeight: 700,
                             fontSize: 14,
                             marginBottom: 5,
-                            color: "#111827",
+                            color: "var(--text)",
                           }}
                         >
                           User {i + 1}
@@ -170,7 +170,7 @@ export function FacebookCommentModalDesktop({
                           style={{
                             height: 10,
                             width: "78%",
-                            background: "#e5e7eb",
+                            background: "var(--line)",
                             borderRadius: 999,
                             marginBottom: 6,
                           }}
@@ -179,7 +179,7 @@ export function FacebookCommentModalDesktop({
                           style={{
                             height: 10,
                             width: "48%",
-                            background: "#e5e7eb",
+                            background: "var(--line)",
                             borderRadius: 999,
                           }}
                         />
@@ -242,7 +242,7 @@ export function FacebookCommentModalDesktop({
               flex: 1,
               border: "none",
               outline: "none",
-              background: "#f3f4f6",
+              background: "var(--line)",
               borderRadius: 999,
               padding: "11px 14px",
               fontSize: 14,
@@ -255,7 +255,7 @@ export function FacebookCommentModalDesktop({
             style={{
               border: "none",
               background: "transparent",
-              color: commentText.trim() ? "#1877f2" : "#9ca3af",
+              color: commentText.trim() ? "var(--blue)" : "var(--muted)",
               fontWeight: 700,
               fontSize: 14,
               cursor: commentText.trim() ? "pointer" : "default",
@@ -336,7 +336,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
       <div
         style={{
           position: "relative",
-          background: "#fff",
+          background: "var(--card)",
           borderRadius: 18,
           width: "100%",
           maxWidth: 520,
@@ -361,7 +361,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
             background: "transparent",
             fontSize: 22,
             cursor: "pointer",
-            color: "#737373",
+            color: "var(--muted)",
             lineHeight: 1,
           }}
         >
@@ -416,7 +416,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
                     style={{
                       borderRadius: "50%",
                       border: selected
-  ? "2px solid #1877f2"
+  ? "2px solid var(--blue)"
   : "2px solid transparent",
                       transition: "border 0.2s ease",
                     }}
@@ -430,7 +430,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
                         width: 22,
                         height: 22,
                         borderRadius: "50%",
-                        background: "#1877f2",
+                        background: "var(--blue)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -448,7 +448,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
                 <span
                   style={{
                     fontSize: 13,
-                    color: "#111",
+                    color: "var(--text)",
                     textAlign: "center",
                     marginTop: 6,
                     maxWidth: 80,
@@ -474,9 +474,9 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
         >
           <div
             style={{
-              borderTop: "1px solid #e5e7eb",
+              borderTop: "1px solid var(--line)",
               padding: "12px 16px 16px",
-              background: "#fff",
+              background: "var(--card)",
               display: "flex",
               flexDirection: "column",
               gap: 12,
@@ -492,13 +492,13 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               style={{
-                border: "1px solid #e5e7eb",
+                border: "1px solid var(--line)",
                 outline: "none",
-                background: "#f9fafb",
+                background: "var(--line)",
                 borderRadius: 10,
                 padding: "12px 14px",
                 fontSize: 15,
-                color: "#111",
+                color: "var(--text)",
               }}
             />
 
@@ -507,7 +507,7 @@ export function FacebookShareModalDesktop({ open, onClose, onShare }) {
               disabled={!selectedFriends.length}
               style={{
                 background:
-  selectedFriends.length > 0 ? "#1877f2" : "#d1d5db",
+  selectedFriends.length > 0 ? "var(--blue)" : "var(--line)",
                 color: "#fff",
                 fontWeight: 700,
                 border: "none",
