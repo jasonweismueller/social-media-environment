@@ -5486,3 +5486,37 @@ mocking `IntersectionObserver` directly for the pure-logic test above; not somet
 code, since a real participant's foreground tab doesn't have this problem. **Not verified**: an actual
 click-through by a real logged-in admin downloading a CSV from a survey with post_reminder questions
 — same standing no-login limitation as everywhere else in this file.
+
+**Real gap found immediately after, same day: neither field was actually reachable in simulated
+data.** `utils-survey-simulate.js`'s `simulateSurveyResponseRows` unconditionally skipped
+`POST_REMINDER` questions in its main per-question loop — never called `generateAnswer` for them at
+all, so `responses[q.id]` was simply never set, and both the new dwell column and recall's
+`selected_option`/`correct` columns read as blank → `NA` through the exact same fill-value path every
+other unanswered simulated cell uses. Not a regression from the dwell work above — recall's own
+columns had the identical problem since the recall feature shipped, just not noticed until dwell
+made someone look at post_reminder columns in simulated data for the first time.
+
+**Fixed**: removed `POST_REMINDER` from that skip (now only `INFO` is skipped there — `isQuestionVisible`
+and the per-question `groupShift` computation immediately below it were already unconditional, so no
+other reordering was needed), and added a real `POST_REMINDER` case to `generateAnswer`'s switch. Dwell
+is generated for **every** post_reminder (static/interactive/recall alike, matching the real
+component's own unconditional behavior) — low-effort simulated participants dwell ~2-10s, everyone
+else ~9s ± noise, nudged by `theta + groupShift` like the other engagement-linked fields in this file.
+When `q.recall_enabled`, `selected_option`/`correct` are also generated — attentive participants pick
+"real" with ~72-95% probability (shifted by `theta + groupShift`, so a group effect can move recall
+accuracy too, not just scale/composite scores), low-effort ones are near chance (1 in 3), mirroring
+the existing standalone-attention-check generation shape just above it in the same file. Interactive
+reminders' own reaction/comment/share fields were deliberately **not** touched — the user only asked
+about dwell and recall, and those fields still correctly read `NA` in simulated data (real gap, but
+out of scope for this fix; flag it if it comes up).
+
+**Verified**: `simulateSurveyResponseRows` run against a fabricated survey with one static, one
+interactive, and one recall post_reminder question (40 simulated participants) — confirmed zero blank
+`dwell_s` values across all three (13 distinct values on the static one alone, i.e. genuine variance,
+not a constant), all three of `selected_option`'s possible values (`real`/`distractor_1`/
+`distractor_2`) appeared across the sample, and `correct` split roughly 70/30 true/false — in line
+with the intended ~72% base accuracy once low-effort participants are mixed in. Confirmed
+`buildSimulatedCsvRows` (the actual function the admin UI's "Simulate responses" download button
+calls) routes through the identical `flattenSurveyResponseRecord` call already exercised above, so
+this fix reaches the real CSV download path, not just the lower-level generator. Not re-verified via
+an actual admin click-through (same standing limitation).

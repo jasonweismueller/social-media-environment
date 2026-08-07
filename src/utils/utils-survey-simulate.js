@@ -292,6 +292,38 @@ function generateAnswer(q, ctx) {
     case SURVEY_QUESTION_TYPES.TEXTAREA:
       return generateTextAnswer(q, rng);
 
+    // Dwell time applies to every post_reminder — static, interactive, or
+    // recall alike — the same as the real component measures unconditionally
+    // (trackElementDwellMs, utils-core.js), so it's generated regardless of
+    // q.recall_enabled/q.reminder_interactive. Low-effort participants dwell
+    // far less, matching how they already answer everything else above with
+    // minimal engagement.
+    case SURVEY_QUESTION_TYPES.POST_REMINDER: {
+      const dwellSeconds = isLowEffort
+        ? clampNum(2 + Math.abs(randNormal(rng)) * 2, 1, 10)
+        : clampNum(9 + (theta + groupShift) * 1.5 + randNormal(rng) * 4, 2, 45);
+      const out = {
+        dwell_ms: Math.round(dwellSeconds * 1000),
+        dwell_s: Math.round(dwellSeconds),
+      };
+
+      if (!q.recall_enabled) return out;
+
+      // Recall accuracy: attentive participants correctly pick the post they
+      // actually saw out of the 3 candidates; low-effort ones are close to
+      // chance (1 in 3) — same "correct-unless-low-effort" shape the
+      // standalone attention-check case above already uses.
+      const correctProb = isLowEffort
+        ? 1 / 3
+        : clampNum(0.72 + (theta + groupShift) * 0.08, 0.35, 0.95);
+      const wrongOptions = ["distractor_1", "distractor_2"];
+      const selected =
+        rng() < correctProb ? "real" : wrongOptions[Math.floor(rng() * wrongOptions.length)];
+      out.selected_option = selected;
+      out.correct = selected === "real";
+      return out;
+    }
+
     default:
       return "";
   }
@@ -379,10 +411,7 @@ export function simulateSurveyResponseRows({
     pages.forEach((page) => {
       (page.questions || []).forEach((q) => {
         if (!q?.id) return;
-        if (
-          q.type === SURVEY_QUESTION_TYPES.INFO ||
-          q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
-        ) {
+        if (q.type === SURVEY_QUESTION_TYPES.INFO) {
           return;
         }
         if (!isQuestionVisible(q, responses, { feedId, assignedGroupId: p.groupId })) return;
