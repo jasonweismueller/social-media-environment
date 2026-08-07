@@ -290,12 +290,21 @@ export function AdminFeedsPanel({
   const ff = feedFlags[rowKey] || {};
   const stats = feedStats[rowKey];
   const anyFlagBusy = allSavingKeys.some((k) => ff[k]);
+  // Built generically from every entry in `flagKinds` (not a hardcoded
+  // whitelist) so a newly added flag is automatically previewable too —
+  // a hardcoded list here previously excluded every realism flag
+  // (`realistic_engagement`/`_pacing`/`_surroundings`/`_surroundings_avatars`)
+  // entirely, meaning Feed Preview always showed the plain ghost skeleton
+  // for those regardless of what was actually toggled on for the feed.
   const previewFlags = {
     randomize_times: readFlagValue(ff, "time"),
     randomize_avatars: readFlagValue(ff, "avatar"),
     randomize_images: readFlagValue(ff, "image"),
     randomize_names: readFlagValue(ff, "name"),
     randomize_bios: readFlagValue(ff, "bio"),
+    ...Object.fromEntries(
+      Object.entries(flagKinds).map(([kind, { backendField }]) => [backendField, readFlagValue(ff, kind)])
+    ),
   };
 
   const { feedsSlot, feedsAddSlot } = useContext(AdminTreeSlotsContext);

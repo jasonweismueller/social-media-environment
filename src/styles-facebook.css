@@ -283,11 +283,19 @@ a:hover{text-decoration:underline}
    shortcuts + their headers can exceed a shorter laptop screen's rail
    height) — `.rail`'s own fixed height + `overflow:hidden` (correct for the
    ghost skeleton, which is never taller than the viewport) would otherwise
-   silently clip the bottom of the real nav/shortcuts list instead of
-   showing it, cutting a shortcut off mid-row. Real Facebook's own left rail
-   scrolls independently for the same reason — overriding to a scrollable
-   column here instead of a hard clip. */
-.rail--content{ filter:none; opacity:1; overflow-y:auto; overflow-x:hidden; }
+   silently clip the bottom of the real nav/shortcuts/contacts list instead
+   of showing it. A first attempt at fixing this added overflow-y:auto for
+   an internal scrollbar, but `.rail` is deliberately `pointer-events:none`
+   (this content must stay fully inert) — an element with pointer-events
+   disabled can't receive the wheel/scrollbar interaction needed to actually
+   scroll its own internal overflow, so that "fix" was never actually usable
+   and the content stayed just as unreachable as a hard clip. Real fix:
+   remove the fixed height/clip entirely for real content so it renders at
+   its own natural height, same as a normal sticky sidebar with more content
+   than the viewport — the whole page's own (real, always-scrollable) scroll
+   reveals the rest as the participant scrolls, no special interaction with
+   the inert rail itself required. */
+.rail--content{ filter:none; opacity:1; height:auto; min-height:calc(100vh - var(--rail-gap)); overflow:visible; }
 .rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:16px 4px 8px; padding-top:4px; }
 /* Larger rows with real gap between them — per direct feedback, items read
    as too cramped and too tightly packed to need as many to fill the rail. */

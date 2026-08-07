@@ -287,19 +287,35 @@ export const LEFT_RAIL_SHORTCUT_ICONS = {
 // fallback renders instead.
 export function buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count = 14 }) {
   const contactSeedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
-  const namePool = [...FB_FEMALE_NAMES, ...FB_MALE_NAMES];
-  const avatarPool = [...(femalePool || []), ...(malePool || [])];
-  return Array.from({ length: count }, (_, i) => ({
-    id: `rail-contact-${i}`,
-    name:
-      pickUniqueDeterministic(namePool, i, [...contactSeedBase, "rail-contacts-name"]) ||
-      `Contact ${i + 1}`,
-    avatarUrl: pickUniqueDeterministic(avatarPool, i, [...contactSeedBase, "rail-contacts-avatar"]),
-    // ~30% online, deterministic per contact — matches the light sprinkling
-    // of green dots on a real contacts list rather than an implausible
-    // "everyone's online" look.
-    online: pickDeterministic([true, false, false, false], [...contactSeedBase, "rail-contacts-online", i]) === true,
-  }));
+  // Gender is picked once per contact, then BOTH the name and the avatar are
+  // drawn from that same gender's pool — a real post's avatar/name pairing
+  // is likewise driven by one shared `authorType`, just admin-chosen there
+  // instead of auto-picked here. Picking name and avatar independently (the
+  // original approach) could pair a female name with a male photo or vice
+  // versa, since each was drawn from a pool merging both genders together.
+  // Separate running per-gender indices (not the shared `i`) keep
+  // `pickUniqueDeterministic`'s no-repeats guarantee working correctly
+  // within each gender's own pool.
+  let femaleIdx = 0;
+  let maleIdx = 0;
+  return Array.from({ length: count }, (_, i) => {
+    const isFemale =
+      pickDeterministic(["female", "male"], [...contactSeedBase, "rail-contacts-gender", i]) === "female";
+    const genderIdx = isFemale ? femaleIdx++ : maleIdx++;
+    const namePool = isFemale ? FB_FEMALE_NAMES : FB_MALE_NAMES;
+    const genderAvatarPool = isFemale ? (femalePool || []) : (malePool || []);
+    return {
+      id: `rail-contact-${i}`,
+      name:
+        pickUniqueDeterministic(namePool, genderIdx, [...contactSeedBase, "rail-contacts-name", isFemale ? "f" : "m"]) ||
+        `Contact ${i + 1}`,
+      avatarUrl: pickUniqueDeterministic(genderAvatarPool, genderIdx, [...contactSeedBase, "rail-contacts-avatar", isFemale ? "f" : "m"]),
+      // ~30% online, deterministic per contact — matches the light sprinkling
+      // of green dots on a real contacts list rather than an implausible
+      // "everyone's online" look.
+      online: pickDeterministic([true, false, false, false], [...contactSeedBase, "rail-contacts-online", i]) === true,
+    };
+  });
 }
 
 function snapshotKeyPart_(value) {
