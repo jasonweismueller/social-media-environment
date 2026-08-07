@@ -840,11 +840,19 @@ export function PostCard({
   const baseReactions = useMemo(() => {
     const explicit = post.reactions || {};
     const hasExplicit = Object.values(explicit).some((v) => Number(v) > 0);
-    // Reaction *numbers* only ever fill in when reactions are already meant
-    // to be visible for this post (`showReactions`) — that toggle stays the
-    // real on/off switch; this only stops it from displaying a bare "0".
+    // Previously gated on `showReactions` too, on the theory that it was a
+    // real per-post "reactions visible at all" on/off switch a study might
+    // deliberately manipulate — but `showReactions` defaults to `false` for
+    // every newly-created post (components-admin-dashboard.jsx's blank-post
+    // template) and `hasRx` below doesn't otherwise consult it either
+    // (`respectShowReactions` defaults to false and isn't passed `true`
+    // anywhere in the live app), so in practice this made the fallback
+    // reaction numbers almost never appear — exactly the reported "the
+    // engagement toggle only affects comments and shares" bug. Comments/
+    // shares already apply their own fallback unconditionally (no dedicated
+    // show/hide toggle of their own); reactions now match that.
     const source =
-      !hasExplicit && showReactions && engagementFallback
+      !hasExplicit && engagementFallback
         ? engagementFallback.reactions
         : explicit;
     return {
