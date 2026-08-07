@@ -19,6 +19,7 @@ import {
   applyPostInteractionEvent,
   makeEmptyPostInteractionAggregate,
   buildRecallReminderOptions,
+  trackElementDwellMs,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -837,8 +838,33 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
     targetPostId,
   ]);
 
+  // Dwell time — see the identical comment in ui-survey.jsx's PostReminderCard
+  // (desktop) for the full rationale; this is the same mechanism, applied to
+  // the mobile-only near-duplicate component.
+  const dwellRef = useRef(null);
+  const dwellValueRef = useRef(value);
+  useEffect(() => { dwellValueRef.current = value; }, [value]);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
+  useEffect(() => {
+    if (!post || !dwellRef.current) return;
+    return trackElementDwellMs(dwellRef.current, {
+      onUpdate: (ms) => {
+        const prev = dwellValueRef.current;
+        const next = {
+          ...(prev && typeof prev === "object" ? prev : {}),
+          dwell_ms: ms,
+          dwell_s: Math.round(ms / 1000),
+        };
+        dwellValueRef.current = next;
+        onChangeRef.current?.(questionId, next);
+      },
+    });
+  }, [post, questionId]);
+
   return (
-    <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
+    <div ref={dwellRef} className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
       <SurveyReminderPostStyle />
       {question?.text ? (
         <div

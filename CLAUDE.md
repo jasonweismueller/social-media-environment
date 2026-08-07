@@ -5423,3 +5423,66 @@ had a real bug causing near-100% abandonment, this algorithm would keep funnelin
 participants into it trying to catch up, which is the correct response to variance but the wrong
 response to an actual broken condition. That's a monitoring responsibility (watching live completion
 rates per group), not something the algorithm itself can safely guard against.
+
+## Post-reminder dwell time, exported to CSV (2026-08-07)
+
+Direct request: measure dwell time on `post_reminder` survey questions the same way the real feed
+already measures per-post dwell, and get it into the CSV export. Applies to **every** post_reminder
+question — static, interactive, or recall alike — unconditionally, with no admin toggle: unlike
+`realistic_engagement`/`realistic_pacing`/etc. (this repo's standing rule that new
+participant-facing *behavior* must be its own opt-in toggle), this is passive instrumentation with
+zero effect on what a participant sees or can do, matching how the real feed's own dwell tracking has
+never been toggleable either.
+
+**New `trackElementDwellMs(el, { threshold, onUpdate })`** (`utils-core.js`, exported) — same
+IntersectionObserver-based vp_enter/vp_exit concept as the existing `startViewportTracker` (real
+feed dwell), but scoped to exactly one DOM node instead of delegating across a shared
+`[data-post-id]` selector. That distinction matters specifically for a "recall" reminder's 3
+candidate `PostCard`s, which all carry the *same* underlying `post.id` (see the 2026-08-07 recall
+entries above) — a shared selector-based observer keyed by post id would have wrongly merged their
+dwell time into one bucket.
+
+**Wired into `PostReminderCard`/`PostReminderCardMobile`** (`ui-survey.jsx`/`ui-survey-mobile.jsx`,
+the established near-duplicate desktop/mobile pair — both needed the identical addition, checked
+from the start rather than fixing one and waiting for a bug report on the other). A `ref` on the
+card's outer wrapper feeds `trackElementDwellMs`; its `onUpdate` merges `{dwell_ms, dwell_s}` onto
+whatever the question's response value already holds (`reaction_type` for interactive,
+`selected_option`/`correct` for recall, nothing yet for static) via the same `onChange(questionId,
+value)` every other reminder mode already writes through — not a separate response key. Reads/writes
+`value`/`onChange` through refs (not effect deps), so a dwell tick doesn't restart the
+IntersectionObserver on every update; only `[post, questionId]` do. `isDisplayOnlyQuestion`/
+`isQuestionAnswered` (`utils-survey.js`) are unaffected — a static or non-recall-interactive reminder
+stays exempt from required/answered checks regardless of its value's shape, and a recall reminder's
+answered-check only ever looks at `selected_option`, so merging dwell fields in can't accidentally
+make a question read as answered (or unanswered) when it shouldn't.
+
+**CSV** (`utils-backend.js`): new `REMINDER_DWELL_FIELDS = [{ value: "dwell_s", label: "Dwell time
+(s)" }]`. `flattenSurveyQuestions`'s post_reminder branch now always includes it — on top of
+`RECALL_FIELDS`/`REMINDER_INTERACTION_FIELDS` when applicable, alone otherwise — via the same "a
+fixed field list stands in for q.rows" row mechanism matrix/bipolar questions already use. This also
+**removed the old "static reminders export nothing" early return** — a static reminder now gets
+exactly one column (`<questionId>_dwell_s`) instead of zero. No changes needed to
+`flattenSurveyResponseRecord` (the generic `value[row_value]` lookup already handles an arbitrary
+row_value string) or to any of the three CSV entry points (single-feed, multi-feed, Survey
+Participants analysis hub) — all three already derive their columns from `flattenSurveyQuestions` via
+`buildSurveyExportColumns`, confirmed by tracing each one rather than assumed.
+
+**Verified**: all four touched files parse clean. `flattenSurveyQuestions`/
+`flattenSurveyResponseRecord` tested directly against the real running dev server — confirmed the
+right column set per reminder mode (static → dwell only; interactive → its 8 fields + dwell; recall →
+its 2 fields + dwell) and confirmed a value merging `reaction_type`/`commented`/etc. alongside
+`dwell_ms`/`dwell_s` reads out correctly with nothing clobbered. `trackElementDwellMs`'s own
+accumulation logic was verified with a mocked `IntersectionObserver` (driving synthetic enter/exit
+entries directly) — confirmed a single enter→exit cycle produces one correctly-timed update, and that
+a second entry followed by the tracker's `stop()` (the unmount path) correctly flushes a cumulative,
+not reset, total. The full component was also mounted live end-to-end once (fabricated survey/post,
+real `SurveyScreen`) and confirmed `responses[question.id]` correctly gained `{dwell_ms, dwell_s}` on
+unmount after the card was scrolled into view. **A real environment limitation hit and worked around
+while verifying, not a bug**: this browser-automation pane reports `document.hidden === true`/
+`visibilityState: "hidden"` even when focused, which suppresses real `IntersectionObserver` callbacks
+most of the time — the same class of "this tool's synthetic events don't behave like a real browser
+tab" gotcha already documented elsewhere in this file (hover, click dispatch). Worked around by
+mocking `IntersectionObserver` directly for the pure-logic test above; not something to "fix" in app
+code, since a real participant's foreground tab doesn't have this problem. **Not verified**: an actual
+click-through by a real logged-in admin downloading a CSV from a survey with post_reminder questions
+— same standing no-login limitation as everywhere else in this file.

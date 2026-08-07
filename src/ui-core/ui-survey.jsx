@@ -19,6 +19,7 @@ import {
   applyPostInteractionEvent,
   makeEmptyPostInteractionAggregate,
   buildRecallReminderOptions,
+  trackElementDwellMs,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -1172,8 +1173,41 @@ const PostReminderCard = memo(function PostReminderCard({
     targetPostId,
   ]);
 
+  // Dwell time — how long this reminder card was actually visible in the
+  // participant's viewport while the survey page was open, same
+  // IntersectionObserver-based "vp_enter/vp_exit" concept the real feed
+  // already tracks per post (trackElementDwellMs, utils-core.js), just
+  // scoped to this one card. Applies to every post_reminder question
+  // (static, interactive, or recall) — passive measurement, not something
+  // the participant sees or interacts with, so it isn't gated behind any
+  // toggle. Merged onto the same responses[question.id] value object every
+  // other reminder mode already writes to (reaction_type/selected_option/
+  // etc.), rather than a separate response key, so it survives whatever
+  // shape that object already has.
+  const dwellRef = useRef(null);
+  const dwellValueRef = useRef(value);
+  useEffect(() => { dwellValueRef.current = value; }, [value]);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+
+  useEffect(() => {
+    if (!post || !dwellRef.current) return;
+    return trackElementDwellMs(dwellRef.current, {
+      onUpdate: (ms) => {
+        const prev = dwellValueRef.current;
+        const next = {
+          ...(prev && typeof prev === "object" ? prev : {}),
+          dwell_ms: ms,
+          dwell_s: Math.round(ms / 1000),
+        };
+        dwellValueRef.current = next;
+        onChangeRef.current?.(questionId, next);
+      },
+    });
+  }, [post, questionId]);
+
   return (
-  <div className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
+  <div ref={dwellRef} className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>
     <SurveyReminderPostStyle />
     {question?.text ? (
       <div

@@ -514,6 +514,17 @@ const RECALL_FIELDS = [
   { value: "selected_option", label: "Selected option" },
 ];
 
+// Present on every post_reminder question — static, interactive, or recall
+// alike. How long the reminder card was actually visible in the
+// participant's viewport while the survey page was open (IntersectionObserver
+// -based, same "dwell" concept the real feed already tracks per post — see
+// trackElementDwellMs, utils-core.js). Passive measurement, not something the
+// participant sees or interacts with, so unlike reminder_interactive/
+// recall_enabled it isn't gated behind an editor toggle.
+const REMINDER_DWELL_FIELDS = [
+  { value: "dwell_s", label: "Dwell time (s)" },
+];
+
 export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
@@ -530,19 +541,21 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
         return;
       }
 
-      // Static (default) reminders have nothing to export — same as before.
-      // Interactive and recall ones fall through and get one column per
-      // curated field below, via the exact same "row" mechanism
-      // matrix/bipolar questions already use (a fixed field list stands in
-      // for q.rows).
-      if (questionType === "post_reminder" && !q?.reminder_interactive && !q?.recall_enabled) {
-        return;
-      }
-
+      // Every post_reminder question gets at least the dwell-time column;
+      // interactive and recall ones additionally get their own curated
+      // fields on top, via the exact same "row" mechanism matrix/bipolar
+      // questions already use (a fixed field list stands in for q.rows).
       const questionText = String(q?.text || questionId).trim() || questionId;
       const rows =
         questionType === "post_reminder"
-          ? (q?.recall_enabled ? RECALL_FIELDS : REMINDER_INTERACTION_FIELDS)
+          ? [
+              ...(q?.recall_enabled
+                ? RECALL_FIELDS
+                : q?.reminder_interactive
+                  ? REMINDER_INTERACTION_FIELDS
+                  : []),
+              ...REMINDER_DWELL_FIELDS,
+            ]
           : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
 

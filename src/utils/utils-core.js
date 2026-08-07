@@ -669,6 +669,57 @@ export function startViewportTracker({
   return Object.assign(cleanup, { observeNew: observeAll });
 }
 
+// Single-element dwell tracker — same vp_enter/vp_exit-via-IntersectionObserver
+// concept as startViewportTracker above, but scoped to exactly one DOM node
+// instead of delegating across a shared `[data-post-id]` selector. Built for
+// the survey engine's post_reminder dwell time (PostReminderCard,
+// ui-survey.jsx/ui-survey-mobile.jsx): a reminder is a single card, not a
+// scrolling feed, and — for a "recall" reminder specifically — 3 candidate
+// PostCards all carry the *same* underlying post.id, so a shared
+// selector-based observer keyed by post id would wrongly merge their dwell
+// time. Tracking the caller's own wrapper element sidesteps that entirely.
+export function trackElementDwellMs(el, { threshold = VIEWPORT_ENTER_FRACTION, onUpdate } = {}) {
+  if (!el || typeof IntersectionObserver !== "function") return () => {};
+
+  const th = clamp(Number(threshold) || VIEWPORT_ENTER_FRACTION, 0, 1);
+  let totalMs = 0;
+  let enteredAt = null;
+
+  const flush = () => {
+    if (enteredAt == null) return;
+    totalMs += Math.max(0, Date.now() - enteredAt);
+    enteredAt = null;
+    onUpdate?.(totalMs);
+  };
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[entries.length - 1];
+      const nowIn = (entry?.intersectionRatio || 0) >= th;
+      if (nowIn && enteredAt == null) {
+        enteredAt = Date.now();
+      } else if (!nowIn && enteredAt != null) {
+        flush();
+      }
+    },
+    { rootMargin: "0px", threshold: Array.from({ length: 101 }, (_, i) => i / 100) }
+  );
+  io.observe(el);
+
+  const onHide = () => flush();
+  document.addEventListener("visibilitychange", onHide, { passive: true });
+  window.addEventListener("beforeunload", onHide, { passive: true });
+  window.addEventListener("pagehide", onHide, { passive: true });
+
+  return () => {
+    flush();
+    try { io.disconnect(); } catch {}
+    document.removeEventListener("visibilitychange", onHide);
+    window.removeEventListener("beforeunload", onHide);
+    window.removeEventListener("pagehide", onHide);
+  };
+}
+
 /* -------- participant row/header builders (client) ------------------------ */
 export function buildMinimalHeader(posts) {
   const base = [
