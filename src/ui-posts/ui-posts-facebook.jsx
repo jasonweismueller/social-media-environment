@@ -2511,6 +2511,17 @@ export function Feed({
   runSeed,
   participantSeed,
   onDisplayedPostSnapshot,
+  // Default true so every existing standalone mount (the admin's Feed
+  // Preview is the only real one) keeps rendering its own rails exactly as
+  // before. The real per-participant page (App-facebook.jsx) nests this
+  // component inside its own separate `PageWithRails`, which already
+  // renders the real rails — that call site passes `showRails={false}` so
+  // this component's own copy doesn't also render, invisibly-but-still-
+  // painting-content, squeezed into the narrow feed column next to it. That
+  // double-render (not a CSS sizing detail) is what actually needs
+  // preventing — no amount of width/overflow tuning on a duplicate DOM tree
+  // fully hides it, since content can still paint outside a zero-width box.
+  showRails = true,
 }) {
   const STEP = 6;
   const FIRST_PAINT = Math.min(8, posts.length || 0);
@@ -2676,7 +2687,7 @@ export function Feed({
 
   return (
     <div className="page">
-      {realisticSurroundingsOn ? (
+      {showRails && (realisticSurroundingsOn ? (
         /* Decorative surroundings only — `.rail`'s own pointer-events:none
            (styles-facebook.css) plus aria-hidden/tabIndex=-1 here keep this
            entirely inert. Real names/dates/content are never shown here (we
@@ -2729,7 +2740,7 @@ export function Feed({
             ))}
           </div>
         </aside>
-      )}
+      ))}
 
       <main className="container feed">
         {renderPosts.map((p, revealIndex) => {
@@ -2782,7 +2793,7 @@ export function Feed({
         </div>
       </main>
 
-      {realisticSurroundingsOn ? (
+      {showRails && (realisticSurroundingsOn ? (
         <aside className="rail rail-right rail--content" aria-hidden="true" tabIndex={-1}>
           <div className="rail-real-title">Contacts</div>
           <div className="rail-real-list">
@@ -2827,7 +2838,7 @@ export function Feed({
             ))}
           </div>
         </aside>
-      )}
+      ))}
     </div>
   );
 }

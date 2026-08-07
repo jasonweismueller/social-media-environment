@@ -3254,6 +3254,15 @@ export default function App() {
                           log={log}
                           showComposer={false}
                           loading={false}
+                          // PageWithRails (above) already renders the real
+                          // left/right rails — Feed's own internal copy is
+                          // only meant for when it's mounted standalone
+                          // (the admin's Feed Preview). Without this, Feed
+                          // still renders its own rail-left/rail-right
+                          // nested inside PageWithRails' narrow feed column,
+                          // a real second copy of the whole nav/shortcuts/
+                          // contacts list, not just a CSS sizing detail.
+                          showRails={false}
                           flags={flags}
                           runSeed={runSeed}
                           app={APP}

@@ -295,7 +295,25 @@ a:hover{text-decoration:underline}
    than the viewport — the whole page's own (real, always-scrollable) scroll
    reveals the rest as the participant scrolls, no special interaction with
    the inert rail itself required. */
-.rail--content{ filter:none; opacity:1; height:auto; min-height:calc(100vh - var(--rail-gap)); overflow:visible; }
+/* min-width:0 is load-bearing, not decorative: a CSS grid item's automatic
+   minimum width defaults to its content's min-content size UNLESS the item's
+   own `overflow` is something other than `visible` — that's the exact
+   mechanism `.rail`'s `overflow:hidden` above relies on to let its
+   `minmax(0, Nfr)` grid track actually shrink to ~0. Switching to
+   `overflow:visible` here (needed for the height fix) silently opted this
+   variant back into "grid track must be at least min-content wide" —
+   invisible for the real (outer) rail, which always has plenty of room, but
+   it un-hid `Feed`'s OWN internal rail-left/rail-right (ui-posts-facebook.jsx,
+   only meant to be reachable when `Feed` is mounted standalone e.g. the
+   admin's Feed Preview) where it's nested inside the real `PageWithRails`'s
+   narrow feed column (App-facebook.jsx) — that nested copy relied on being
+   squeezed to ~0px to stay invisible, and became a second, real-width,
+   visible copy of the whole nav/shortcuts/contacts list once min-content
+   sizing came back. Explicit `min-width:0` restores "can shrink to nothing"
+   independently of `overflow`, so the real rail (with room to spare) still
+   renders at full width while the cramped nested duplicate goes back to
+   invisible. */
+.rail--content{ filter:none; opacity:1; height:auto; min-height:calc(100vh - var(--rail-gap)); overflow:visible; min-width:0; }
 .rail-real-title{ font-size:13px; font-weight:600; color:var(--muted,#65676b); margin:16px 4px 8px; padding-top:4px; }
 /* Larger rows with real gap between them — per direct feedback, items read
    as too cramped and too tightly packed to need as many to fill the rail. */
