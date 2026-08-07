@@ -88,7 +88,15 @@ export const IconThumb = (p) => (
 );
 export const IconComment = (p) => (
   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style={{ display: "block" }} {...p}>
-    <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M20 2H4a2 2 0 0 0-2 2v14l4-4h14a2 2 0  0 0 2-2V4a2 2 0  0 0-2-2z"/>
+    {/* The previous path's bottom-left tail dragged its own visual bounding
+        box down (shape center at y=10, not the viewBox's y=12) — a genuine
+        geometry problem no amount of box-alignment CSS fixes, since the SVG
+        *element's* box was already correctly centered next to the label
+        text; only the *drawn shape inside it* was off-center. This path
+        (a well-known, symmetric "message square" design) has a bounding box
+        of x:[3,21]/y:[3,21], i.e. centered exactly on (12,12) — verified by
+        tracing its point coordinates before using it. */}
+    <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
   </svg>
 );
 export const IconShare = (p) => (
