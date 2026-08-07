@@ -505,6 +505,15 @@ const REMINDER_INTERACTION_FIELDS = [
   { value: "review_helpful", label: "Marked helpful" },
 ];
 
+// Curated columns for a "recall" post_reminder question (recall_enabled) —
+// mirrors REMINDER_INTERACTION_FIELDS's "fixed field list stands in for
+// q.rows" mechanism, just a different (much smaller) field list for a
+// fundamentally different kind of reminder question.
+const RECALL_FIELDS = [
+  { value: "correct", label: "Correct" },
+  { value: "selected_option", label: "Selected option" },
+];
+
 export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
@@ -522,17 +531,18 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
       }
 
       // Static (default) reminders have nothing to export — same as before.
-      // Interactive ones fall through and get one column per curated field
-      // below, via the exact same "row" mechanism matrix/bipolar questions
-      // already use (a fixed field list stands in for q.rows).
-      if (questionType === "post_reminder" && !q?.reminder_interactive) {
+      // Interactive and recall ones fall through and get one column per
+      // curated field below, via the exact same "row" mechanism
+      // matrix/bipolar questions already use (a fixed field list stands in
+      // for q.rows).
+      if (questionType === "post_reminder" && !q?.reminder_interactive && !q?.recall_enabled) {
         return;
       }
 
       const questionText = String(q?.text || questionId).trim() || questionId;
       const rows =
         questionType === "post_reminder"
-          ? REMINDER_INTERACTION_FIELDS
+          ? (q?.recall_enabled ? RECALL_FIELDS : REMINDER_INTERACTION_FIELDS)
           : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
 
@@ -897,6 +907,70 @@ function resolveExperimentGroupName(surveyDefinition, groupId) {
   return match?.name ? String(match.name) : "";
 }
 
+// Attention-check items across a survey definition — question-level
+// SINGLE/DROPDOWN (`is_attention_check`) plus, for MATRIX_SINGLE/BIPOLAR,
+// individual rows carrying their own `is_attention_check` — the same two
+// levels the admin editor lets an admin mark
+// (`components-admin-surveys-editor.jsx`'s `ChoiceEditorBlock`/
+// `RowAttentionCheckControl`) and the on-screen "Failed attention check"
+// flag already checks (`computeAttentionCheckFlags`,
+// `components-admin-participants-survey.jsx`). Deliberately re-walks
+// `survey.pages` directly here (mirroring `flattenSurveyQuestions` just
+// above) rather than importing the analysis engine's
+// `classifySurveyQuestions` — this file's own header comment states it
+// depends on `utils-core` only, and the analysis engine's demographic/
+// composite-scale machinery isn't needed for this narrow lookup anyway.
+export function getSurveyAttentionCheckItems(surveyDefinition) {
+  const pages = Array.isArray(surveyDefinition?.pages) ? surveyDefinition.pages : [];
+  const items = [];
+  pages.forEach((page) => {
+    const qs = Array.isArray(page?.questions) ? page.questions : [];
+    qs.forEach((q) => {
+      if (!q?.id) return;
+      if (q.type === "matrix_single" || q.type === "bipolar") {
+        (Array.isArray(q.rows) ? q.rows : []).forEach((row) => {
+          if (!row?.is_attention_check) return;
+          items.push({
+            questionId: q.id,
+            rowValue: row?.value,
+            expected: String(row?.attention_check_value ?? ""),
+            isRow: true,
+          });
+        });
+      } else if (q.is_attention_check) {
+        items.push({
+          questionId: q.id,
+          rowValue: "",
+          expected: String(q.attention_check_value ?? ""),
+          isRow: false,
+        });
+      }
+    });
+  });
+  return items;
+}
+
+// Counts how many of the survey's attention-check items this participant
+// answered correctly. Skipped (neither counted nor penalized) when
+// unanswered, same "don't flag a blank as a fail" posture
+// `computeAttentionCheckFlags` already uses — a blank could mean the item
+// was never reached (e.g. hidden by `visible_if`/group visibility further
+// up the page), not that it was answered wrong.
+export function countAttentionChecksPassed(attentionCheckItems, responses) {
+  const answers = responses && typeof responses === "object" ? responses : {};
+  let passed = 0;
+  attentionCheckItems.forEach((item) => {
+    const v = item.isRow
+      ? (answers[item.questionId] && typeof answers[item.questionId] === "object"
+          ? answers[item.questionId][item.rowValue]
+          : undefined)
+      : answers[item.questionId];
+    if (v == null || v === "") return;
+    if (String(v) === item.expected) passed += 1;
+  });
+  return passed;
+}
+
 function mergeParticipantRowsWithSurveyRows({
   participantRows = [],
   surveyRows = [],
@@ -909,6 +983,7 @@ function mergeParticipantRowsWithSurveyRows({
   const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
   const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
   const lookup = makeSurveyResponseLookup(surveyRows, surveyColumns);
+  const attentionCheckItems = getSurveyAttentionCheckItems(surveyDefinition);
 
   const mergedRows = participants.map((participant) => {
     const sessionId = String(participant?.session_id || "").trim();
@@ -971,6 +1046,16 @@ function mergeParticipantRowsWithSurveyRows({
     ? {
         experiment_group_id: experimentGroupId,
         experiment_group_name: resolveExperimentGroupName(surveyDefinition, experimentGroupId),
+      }
+    : {}),
+  ...(attentionCheckItems.length
+    ? {
+        attention_checks_passed: match
+          ? countAttentionChecksPassed(
+              attentionCheckItems,
+              parseMaybeJson(match.raw?.response_json ?? match.raw?.responses ?? {}, {})
+            )
+          : fillValue,
       }
     : {}),
 };
@@ -1142,6 +1227,7 @@ export async function loadMultiFeedParticipantSurveyRoster({
   const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
   const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
   const surveyLookup = makeSurveyResponseLookup(surveyResponses, surveyColumns);
+  const attentionCheckItems = getSurveyAttentionCheckItems(surveyDefinition);
 
   const byParticipant = new Map();
 
@@ -1212,6 +1298,16 @@ export async function loadMultiFeedParticipantSurveyRoster({
         ? {
             experiment_group_id: experimentGroupId,
             experiment_group_name: resolveExperimentGroupName(surveyDefinition, experimentGroupId),
+          }
+        : {}),
+      ...(attentionCheckItems.length
+        ? {
+            attention_checks_passed: match
+              ? countAttentionChecksPassed(
+                  attentionCheckItems,
+                  parseMaybeJson(match.raw?.response_json ?? match.raw?.responses ?? {}, {})
+                )
+              : fillValue,
           }
         : {}),
       ...surveyPayload,

@@ -277,11 +277,27 @@ function isPageBreakQuestion(question) {
 }
 
 function isDisplayOnlyQuestion(question) {
+  // A "recall" post-reminder (recall_enabled) asks the participant to pick
+  // the post they actually saw out of 3 candidates — a real answerable
+  // question, not a passive display block, so it drops out of the
+  // display-only set (making `required`/answered-validation apply) exactly
+  // like this codebase already special-cases interactive vs. static
+  // reminders for other purposes (e.g. CSV export).
+  if (question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER) {
+    return !question?.recall_enabled;
+  }
   return (
     question?.type === SURVEY_QUESTION_TYPES.INFO ||
-    question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
     question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
+}
+
+// Always exactly 2 entries (padded/truncated), trimmed only at usage time —
+// kept as typed so an admin's in-progress edit isn't silently mangled.
+function normalizeRecallDistractorTexts(arr) {
+  const out = (Array.isArray(arr) ? arr : []).slice(0, 2).map((v) => String(v ?? ""));
+  while (out.length < 2) out.push("");
+  return out;
 }
 
 function normalizeRichSurveyField(value, fallback = "") {
@@ -774,7 +790,9 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     text,
     label: text,
     description: overrides.description || "",
-    required: isDisplayOnlyQuestion({ type: safeType }) ? false : !!overrides.required,
+    required: isDisplayOnlyQuestion({ type: safeType, recall_enabled: !!overrides.recall_enabled })
+      ? false
+      : !!overrides.required,
     randomize_options: !!overrides.randomize_options,
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(safeType) && !!overrides.is_attention_check,
@@ -798,6 +816,8 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     post_feed_id: String(overrides.post_feed_id ?? ""),
     apply_feed_randomization: overrides.apply_feed_randomization !== false,
     reminder_interactive: !!overrides.reminder_interactive,
+    recall_enabled: !!overrides.recall_enabled,
+    recall_distractor_texts: normalizeRecallDistractorTexts(overrides.recall_distractor_texts),
     next_delay_seconds: normalizePageDelaySeconds(overrides.next_delay_seconds),
     meta: asObject(overrides.meta),
   };
@@ -861,13 +881,23 @@ export function normalizeQuestion(raw = {}) {
       ? !!(raw.reminder_interactive ?? meta.reminder_interactive ?? false)
       : false;
 
+  const recallEnabled =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? !!(raw.recall_enabled ?? meta.recall_enabled ?? false)
+      : false;
+
+  const recallDistractorTexts =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? normalizeRecallDistractorTexts(raw.recall_distractor_texts ?? meta.recall_distractor_texts)
+      : normalizeRecallDistractorTexts([]);
+
   return {
     id: questionId,
     type,
     text,
     label: text,
     description: String(raw.description || ""),
-    required: isDisplayOnlyQuestion({ type }) ? false : !!raw.required,
+    required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled }) ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
@@ -928,6 +958,8 @@ export function normalizeQuestion(raw = {}) {
     post_feed_id: postFeedId,
     apply_feed_randomization: applyFeedRandomization,
     reminder_interactive: reminderInteractive,
+    recall_enabled: recallEnabled,
+    recall_distractor_texts: recallDistractorTexts,
     next_delay_seconds: normalizePageDelaySeconds(raw.next_delay_seconds),
     meta: {
       ...meta,
@@ -938,6 +970,8 @@ export function normalizeQuestion(raw = {}) {
             post_feed_id: postFeedId,
             apply_feed_randomization: applyFeedRandomization,
             reminder_interactive: reminderInteractive,
+            recall_enabled: recallEnabled,
+            recall_distractor_texts: recallDistractorTexts,
           }
         : {}),
     },
@@ -967,6 +1001,8 @@ export function frontendQuestionToBackend(question = {}) {
             post_feed_id: String(q.post_feed_id ?? ""),
             apply_feed_randomization: q.apply_feed_randomization !== false,
             reminder_interactive: !!q.reminder_interactive,
+            recall_enabled: !!q.recall_enabled,
+            recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
           }
         : {}),
     },
@@ -1076,12 +1112,17 @@ export function frontendQuestionToBackend(question = {}) {
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
       return {
         ...base,
-        required: false,
+        // base.required already resolves to false for an ordinary
+        // (non-recall) reminder via isDisplayOnlyQuestion — a recall
+        // reminder is a real answerable question, so it keeps whatever
+        // `required` the admin actually set instead of being forced off.
         post_id: String(q.post_id ?? ""),
         post_label: String(q.post_label ?? ""),
         post_feed_id: String(q.post_feed_id ?? ""),
         apply_feed_randomization: q.apply_feed_randomization !== false,
         reminder_interactive: !!q.reminder_interactive,
+        recall_enabled: !!q.recall_enabled,
+        recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
@@ -1841,6 +1882,11 @@ export function isQuestionAnswered(q, value) {
     case SURVEY_QUESTION_TYPES.BIPOLAR:
       return isBipolarAnswered(q, value);
 
+    // Only reachable when required+recall_enabled, since isDisplayOnlyQuestion
+    // exempts every other post_reminder from required/answered checks.
+    case SURVEY_QUESTION_TYPES.POST_REMINDER:
+      return !!(value && typeof value === "object" && value.selected_option);
+
     case SURVEY_QUESTION_TYPES.TEXT:
     case SURVEY_QUESTION_TYPES.TEXTAREA:
     case SURVEY_QUESTION_TYPES.SINGLE:
@@ -1940,6 +1986,43 @@ export function getRenderedQuestion(
   }
 
   return q;
+}
+
+// Builds the 3 candidate posts a "recall" post-reminder question shows: the
+// real post the participant actually saw, plus the admin's two distractor
+// texts — each a shallow clone of the real post with only its text field(s)
+// swapped, so every other visual detail (avatar, image, time, reactions)
+// stays identical and text content is the only thing participants have to
+// tell apart. Order is shuffled once per participant+question via the same
+// seededShuffle mechanism getRenderedQuestion already uses for
+// randomize_options, so the correct answer isn't always in the same slot.
+// Returns [] (not ready to show) when the post hasn't resolved yet or
+// either distractor text is still blank — callers should fall back to the
+// plain single-post reminder view rather than showing an obviously-wrong
+// blank option.
+export function buildRecallReminderOptions(post, question, participantSeed = "") {
+  if (!post || !question?.recall_enabled) return [];
+
+  const [d1, d2] = normalizeRecallDistractorTexts(question?.recall_distractor_texts);
+  if (!d1.trim() || !d2.trim()) return [];
+
+  const applyRecallText = (text) => {
+    const clone = { ...post, text };
+    if (Object.prototype.hasOwnProperty.call(post, "review_text")) {
+      clone.review_text = text;
+    }
+    return clone;
+  };
+
+  const realText = String(post.review_text || post.text || "");
+
+  const options = [
+    { key: "real", post: applyRecallText(realText), correct: true },
+    { key: "distractor_1", post: applyRecallText(d1), correct: false },
+    { key: "distractor_2", post: applyRecallText(d2), correct: false },
+  ];
+
+  return seededShuffle(options, `${participantSeed}::${question?.id || ""}::recall`);
 }
 
 /* =========================

@@ -232,8 +232,25 @@ export function shouldAutoRewriteRowValues(question) {
   );
 }
 
-function isEditorDisplayOnlyType(type) {
-  return type === SURVEY_QUESTION_TYPES.INFO || type === POST_REMINDER_TYPE;
+// Accepts either a bare type string (conservative default: a post_reminder
+// with unknown recall status is treated as display-only) or a
+// question-like object with `.type`/`.recall_enabled` — a "recall" reminder
+// is a real answerable question, not a passive display block, mirroring
+// isDisplayOnlyQuestion's identical carve-out in utils-survey.js.
+function isEditorDisplayOnlyType(questionOrType) {
+  const isObj = questionOrType && typeof questionOrType === "object";
+  const type = isObj ? questionOrType.type : questionOrType;
+  if (type === POST_REMINDER_TYPE) {
+    return isObj ? !questionOrType.recall_enabled : true;
+  }
+  return type === SURVEY_QUESTION_TYPES.INFO;
+}
+
+// Always exactly 2 entries — mirrors utils-survey.js's identical helper.
+function normalizeRecallDistractorTextsForEditor(arr) {
+  const out = (Array.isArray(arr) ? arr : []).slice(0, 2).map((v) => String(v ?? ""));
+  while (out.length < 2) out.push("");
+  return out;
 }
 
 export function ensureChoiceArray(items = []) {
@@ -474,13 +491,14 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
   }
 
   const normalizedId = sanitizeQuestionId(q?.id, "");
+  const recallEnabled = !!(q?.recall_enabled ?? q?.meta?.recall_enabled ?? false);
 
   return {
     _editorId: q?._editorId || makeEditorId(),
     id: normalizedId,
     type,
     text: normalizeRichTextHtml(q?.text ?? ""),
-    required: isEditorDisplayOnlyType(type) ? false : !!q?.required,
+    required: isEditorDisplayOnlyType({ type, recall_enabled: recallEnabled }) ? false : !!q?.required,
     choices: ensureChoiceArray(q?.choices),
     rows:
       type === SURVEY_QUESTION_TYPES.BIPOLAR
@@ -506,6 +524,10 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       (q?.apply_feed_randomization ?? q?.meta?.apply_feed_randomization ?? true) !== false,
     reminder_interactive:
       !!(q?.reminder_interactive ?? q?.meta?.reminder_interactive ?? false),
+    recall_enabled: recallEnabled,
+    recall_distractor_texts: normalizeRecallDistractorTextsForEditor(
+      q?.recall_distractor_texts ?? q?.meta?.recall_distractor_texts
+    ),
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!q?.is_attention_check,
     attention_check_value: String(q?.attention_check_value ?? ""),
     meta: q?.meta || {},
@@ -966,6 +988,8 @@ export function makeBackendQuestionFromType(type, index = 0) {
     post_feed_id: String(base?.post_feed_id ?? ""),
     apply_feed_randomization: base?.apply_feed_randomization !== false,
     reminder_interactive: !!base?.reminder_interactive,
+    recall_enabled: !!base?.recall_enabled,
+    recall_distractor_texts: normalizeRecallDistractorTextsForEditor(base?.recall_distractor_texts),
     meta: base?.meta || {},
   };
 
@@ -1026,7 +1050,7 @@ export function buildSavedQuestion(q, index) {
     type: cleanQ.type,
     text: cleanQ.text,
     description: "",
-    required: isEditorDisplayOnlyType(cleanQ.type) ? false : !!cleanQ.required,
+    required: isEditorDisplayOnlyType(cleanQ) ? false : !!cleanQ.required,
     choices:
       cleanQ.type === SURVEY_QUESTION_TYPES.SINGLE ||
       cleanQ.type === SURVEY_QUESTION_TYPES.MULTI ||
@@ -1095,6 +1119,12 @@ export function buildSavedQuestion(q, index) {
       cleanQ.type === POST_REMINDER_TYPE
         ? !!cleanQ.reminder_interactive
         : false,
+    recall_enabled:
+      cleanQ.type === POST_REMINDER_TYPE ? !!cleanQ.recall_enabled : false,
+    recall_distractor_texts:
+      cleanQ.type === POST_REMINDER_TYPE
+        ? normalizeRecallDistractorTextsForEditor(cleanQ.recall_distractor_texts)
+        : normalizeRecallDistractorTextsForEditor([]),
     meta:
       cleanQ.type === POST_REMINDER_TYPE
         ? {
@@ -1102,6 +1132,8 @@ export function buildSavedQuestion(q, index) {
             post_feed_id: String(cleanQ.post_feed_id || ""),
             apply_feed_randomization: cleanQ.apply_feed_randomization !== false,
             reminder_interactive: !!cleanQ.reminder_interactive,
+            recall_enabled: !!cleanQ.recall_enabled,
+            recall_distractor_texts: normalizeRecallDistractorTextsForEditor(cleanQ.recall_distractor_texts),
           }
         : cleanQ.meta || {},
     randomize_options: false,
@@ -2938,7 +2970,7 @@ function QuestionActions({
   onDragEnd,
   onPreviewQuestion,
 }) {
-  const isDisplayOnly = isEditorDisplayOnlyType(q?.type);
+  const isDisplayOnly = isEditorDisplayOnlyType(q);
 
   return (
     <TopField label="Actions">
@@ -3037,7 +3069,7 @@ function CollapsedQuestionRow({
   onToggleCollapsed,
   onPreviewQuestion,
 }) {
-  const isDisplayOnly = isEditorDisplayOnlyType(type);
+  const isDisplayOnly = isEditorDisplayOnlyType(q);
   const isPostReminder = type === POST_REMINDER_TYPE;
   const rawText = stripHtmlForEmptyCheck(q.text || "");
   // A post reminder's content comes from the referenced post, not q.text — an
@@ -3273,10 +3305,17 @@ function PostReminderEditorBlock({
   selectedPostFeedId,
   applyFeedRandomization,
   reminderInteractive,
+  recallEnabled,
+  recallDistractorTexts,
   onPostChange,
   onApplyFeedRandomizationChange,
   onReminderInteractiveChange,
+  onRecallEnabledChange,
+  onRecallDistractorTextsChange,
 }) {
+  const [d1, d2] = recallDistractorTexts || ["", ""];
+  const distractorsIncomplete = !String(d1 || "").trim() || !String(d2 || "").trim();
+
   return (
     <>
       <FieldBlock
@@ -3306,13 +3345,64 @@ function PostReminderEditorBlock({
 
       <FieldBlock
         label="Interactivity"
-        hint="On: participants can like/comment/share/report this reminder post exactly like the real feed, and those interactions are recorded as answers to this question (visible as extra columns in the CSV export). Off (default): the reminder is view-only — no hover effects, nothing clickable. Available actions depend on the platform (Amazon posts only support helpful/report)."
+        hint={
+          recallEnabled
+            ? "Turned off automatically while recall testing (below) is on — a recall question is always a static comparison, not a live interactive post."
+            : "On: participants can like/comment/share/report this reminder post exactly like the real feed, and those interactions are recorded as answers to this question (visible as extra columns in the CSV export). Off (default): the reminder is view-only — no hover effects, nothing clickable. Available actions depend on the platform (Amazon posts only support helpful/report)."
+        }
       >
         <Toggle
           label="Let participants interact with this reminder post (like, comment, share, report)"
-          checked={reminderInteractive}
+          checked={reminderInteractive && !recallEnabled}
+          disabled={recallEnabled}
           onChange={onReminderInteractiveChange}
         />
+      </FieldBlock>
+
+      <FieldBlock
+        label="Recall test"
+        hint="On: instead of the post alone, shows it next to two decoy versions with different text (configured below), in a shuffled order, and asks the participant to pick the one they actually saw. Scored correct/incorrect and recorded as this question's answer (extra CSV columns) — it can also be marked Required like a normal question, unlike a plain reminder."
+      >
+        <Toggle
+          label="Ask participants to pick this post out of decoy versions"
+          checked={!!recallEnabled}
+          onChange={onRecallEnabledChange}
+        />
+
+        {recallEnabled && (
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 4 }}>
+                Decoy text 1
+              </div>
+              <TextAreaInput
+                value={d1}
+                onChange={(v) => onRecallDistractorTextsChange([v, d2])}
+                placeholder="A plausible but different version of the post text…"
+                rows={3}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 4 }}>
+                Decoy text 2
+              </div>
+              <TextAreaInput
+                value={d2}
+                onChange={(v) => onRecallDistractorTextsChange([d1, v])}
+                placeholder="A plausible but different version of the post text…"
+                rows={3}
+              />
+            </div>
+
+            {distractorsIncomplete && (
+              <div style={{ fontSize: 12, color: "var(--admin-warning-ink)" }}>
+                Both decoy texts need to be filled in before this shows as a recall test —
+                until then, participants just see the plain reminder post above.
+              </div>
+            )}
+          </div>
+        )}
       </FieldBlock>
     </>
   );
@@ -3473,13 +3563,16 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
 
   const next = makeBackendQuestionFromType(nextType, index);
   const preservedId = sanitizeQuestionId(q.id, next.id);
+  const nextRecallEnabled = nextType === POST_REMINDER_TYPE ? !!q.recall_enabled : false;
 
   let merged = {
     ...next,
     _editorId: q._editorId,
     id: preservedId,
     text: q.text || next.text,
-    required: isEditorDisplayOnlyType(nextType) ? false : !!q.required,
+    required: isEditorDisplayOnlyType({ type: nextType, recall_enabled: nextRecallEnabled })
+      ? false
+      : !!q.required,
     visible_if: q.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
@@ -3490,6 +3583,11 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
       nextType === POST_REMINDER_TYPE ? q.apply_feed_randomization !== false : true,
     reminder_interactive:
       nextType === POST_REMINDER_TYPE ? !!q.reminder_interactive : false,
+    recall_enabled: nextRecallEnabled,
+    recall_distractor_texts:
+      nextType === POST_REMINDER_TYPE
+        ? normalizeRecallDistractorTextsForEditor(q.recall_distractor_texts)
+        : normalizeRecallDistractorTextsForEditor([]),
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(nextType) ? !!q.is_attention_check : false,
     attention_check_value:
@@ -3529,12 +3627,31 @@ function renderTypeSpecificFields({
           selectedPostFeedId={q.post_feed_id || q?.meta?.post_feed_id || ""}
           applyFeedRandomization={q.apply_feed_randomization !== false}
           reminderInteractive={!!q.reminder_interactive}
+          recallEnabled={!!q.recall_enabled}
+          recallDistractorTexts={normalizeRecallDistractorTextsForEditor(q.recall_distractor_texts)}
           onPostChange={(patch) => updateQuestion(index, patch)}
           onApplyFeedRandomizationChange={(v) =>
             updateQuestion(index, { apply_feed_randomization: v })
           }
           onReminderInteractiveChange={(v) =>
             updateQuestion(index, { reminder_interactive: v })
+          }
+          onRecallEnabledChange={(v) =>
+            updateQuestion(index, {
+              recall_enabled: v,
+              // Recall is a static comparison task — turning it on always
+              // implies non-interactive, so it doesn't silently coexist
+              // with the Interactivity toggle behind the scenes.
+              ...(v ? { reminder_interactive: false } : {}),
+              // Turning recall off on a required question would otherwise
+              // leave `required` stuck true on a now-display-only block,
+              // which the editor UI has no way to clear (the Required
+              // toggle is hidden for display-only questions).
+              ...(v ? {} : { required: false }),
+            })
+          }
+          onRecallDistractorTextsChange={(next) =>
+            updateQuestion(index, { recall_distractor_texts: normalizeRecallDistractorTextsForEditor(next) })
           }
         />
       );
@@ -3883,7 +4000,7 @@ function QuestionCard({
 
         <TopField
           label={
-            isEditorDisplayOnlyType(type)
+            isEditorDisplayOnlyType(q)
               ? QUESTION_TYPE_LABELS[type] || "Display block"
               : `Question ${displayNumber}`
           }
@@ -3892,7 +4009,7 @@ function QuestionCard({
             value={q.text || ""}
             onChange={(v) => updateQuestion(index, { text: v })}
             placeholder={
-              isEditorDisplayOnlyType(type) ? "Display text" : "Question text"
+              isEditorDisplayOnlyType(q) ? "Display text" : "Question text"
             }
           />
         </TopField>
@@ -5283,6 +5400,10 @@ export function SurveyEditor({
         post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
         apply_feed_randomization: sourceQuestion?.apply_feed_randomization !== false,
         reminder_interactive: !!sourceQuestion?.reminder_interactive,
+        recall_enabled: !!sourceQuestion?.recall_enabled,
+        recall_distractor_texts: normalizeRecallDistractorTextsForEditor(
+          sourceQuestion?.recall_distractor_texts
+        ),
       };
 
       if (shouldAutoRewriteRowValues(copiedQuestion)) {

@@ -4776,3 +4776,407 @@ this file has used for every dark-mode-adjacent feature before. Concretely, wort
 predates this session (it already included the prior session's admin dark mode work) — promoting
 that is a decision for whenever the user wants both dark-mode features live on the real site, not
 something either session did unprompted.
+
+## Survey response simulator (2026-08-06)
+
+Prompted directly: building an R analysis script needs ≥30 responses per experiment-group
+condition, and collecting that much real Prolific data before the script even exists is slow. New
+**`src/utils/utils-survey-simulate.js`** — `simulateSurveyResponseRows({survey, participantsPerGroup,
+totalParticipants, groupEffectSize, includeLowEffort, seed})`, a pure function (no backend/React)
+that walks the real survey definition via the same `materializePagesFromBlocks`/`isQuestionVisible`
+the real participant app uses, so simulated `responses` correctly respect experiment-group gating,
+`visible_if`, and page-block randomization.
+
+**Generation model**: each participant gets a latent trait `theta`; SLIDER/SINGLE/DROPDOWN map
+`theta + groupShift` through a z→value function; MATRIX_SINGLE/BIPOLAR share a per-question
+`compositeTheta` (correlated with `theta`) across rows, producing Cronbach's alpha roughly in a
+realistic 0.6–0.85 band. ~5% of simulated participants are "low-effort" (straight-line every
+matrix/bipolar question, answer any attention check wrong — see the attention-checks section
+below). Group-effect presets (None/Small/Medium/Large in the UI) were calibrated empirically by
+repeatedly running the real `computeGroupComparison` at different raw values and measuring the
+resulting Cohen's d, not derived by hand — the noise/quantization pipeline is non-linear.
+
+**A real generation bug found and fixed mid-calibration**: the first version of the matrix/bipolar
+generator (continuous per-item z-score, independently noised, rounded to ~5 buckets) made
+genuinely-independent items tie far more often than real Likert data would (30-40% of "normal"
+simulated participants tying on a 3-item composite, not the intended ~5%) — with only a few
+categories, most of a roughly-unit-variance distribution's mass concentrates in the middle 2-3
+buckets regardless of correlation. Fixed by jittering a *base category index* directly instead of
+re-quantizing a continuous score — makes "how often do items differ" a single legible parameter
+instead of an emergent side effect of rounding.
+
+**UI**: new "Simulate responses" card in `components-admin-participants-survey.jsx` (Survey
+Participants analysis hub), same collapsible/`usingSimulated`-toggle pattern the existing Feed
+Participants simulator already uses — every chart/composite/flag in the hub runs against the fake
+data automatically once simulated, no separate code paths. CSV download works on simulated data
+too (`buildSimulatedCsvRows`, mirrors the real export's column shape exactly).
+
+**Status: shipped, live on production** (`80f9290`). **Not resolved**: mid-session the user
+reported not being able to find this feature at all; a clarifying question (where they were
+looking, what "a separate thing" should mean) went unanswered. Most likely explanation, never
+confirmed: looking at `studyfeed.org` before `production` had caught up to `main` (it has since).
+Check that first if this comes up again before assuming a real discoverability problem.
+
+## Survey CSV cleanup: filenames + bare column names (2026-08-06)
+
+Two fixes prompted by the user hitting a real R import error against a downloaded CSV.
+
+**Filenames**: all three "Download Survey CSV" buttons (single-feed, multi-feed, Survey
+Participants analysis hub) now name the file `{Survey Name}_responses_{YYYY-MM-DD}.csv`
+(`_SIMULATED` suffix for simulated downloads). Found and fixed a **real pre-existing bug** in the
+multi-feed filename builder along the way: `.replace(/[^\\w-]+/g, "_")` — a double-escaped
+backslash meant the character class matched almost every real character in a survey name, so every
+multi-feed CSV before this fix was named essentially `_multi_feed_survey_responses.csv` regardless
+of the actual survey. Fixed by routing all three builders through the existing (correct)
+`safeFileStem` helper instead of ad-hoc inline sanitization.
+
+**Bare column names**: every CSV export's *internal* column key has always been prefixed
+`survey_` (`makeSurveyExportColumnKey`, `utils-backend.js`) — load-bearing internally, since it's
+what lets the multi-feed CSV tell a survey question apart from a per-post metric column
+(`feed1_<post_id>_reacted`) that could otherwise collide with a question id. New
+`stripSurveyExportPrefix()` (exported from `utils-backend.js`) is applied *only* to the CSV header
+**label** array passed to `buildCsv()` — the `header` array used for actual `row[key]` value
+lookups is untouched, so no merge/disambiguation logic changed, only the text in row 1 of the
+downloaded file. Verified live: `survey_MI1_EMO_BL_1` → `MI1_EMO_BL_1`; non-survey columns pass
+through unchanged.
+
+**Status: shipped, live on production** (`f1659ac`, `89d6b20`).
+
+## Submission abuse guards: rate limiting, duplicate-prevention, already-completed guard (2026-08-06)
+
+Prompted directly, after a discussion about protecting against AI-assisted Prolific responses (see
+"not done" list in the session-handoff section below): "protection against someone just spamming
+our page." Investigated the actual exposure before building — `participants`/`survey_responses`
+insert RLS policies were `with check (true)` for anon, genuinely open: anyone with the public,
+JS-bundled anon key could script direct REST inserts against either table, no rate limit, no
+dedup, completely bypassing the participant UI.
+
+**Feasibility confirmed live, before designing anything**: a temporary SQL function reading
+`current_setting('request.headers', true)`, called via curl with a spoofed `X-Forwarded-For`
+header, confirmed PostgREST exposes `cf-connecting-ip` (Cloudflare) and `sb-forwarded-for`
+(Supabase's own edge) — neither is client-suppliable (unlike raw `x-forwarded-for`, which *did*
+show the spoofed value). Meant real per-IP rate limiting was buildable as a plain Postgres trigger,
+no Edge Function rewrite of the submission path needed. Also confirmed by reading the code that
+both `sendToSheet`/`sendSurveyResponseToBackend` already `await` their insert and surface a real
+"please try again" error on failure — a trigger-rejected insert fails safely, not silently.
+
+**New migration `20260801000021_submission_abuse_guards.sql`**, applied to both Supabase projects:
+1. **Rate limiter** — `submission_events(ip, created_at)` (RLS on, zero policies, only touched by
+   the trigger's own `security definer` function), `enforce_submission_rate_limit()` BEFORE INSERT
+   trigger on both `participants` and `survey_responses`. 10 inserts / 10-minute window per
+   resolved IP, platform-wide (not per-survey). Opportunistic cleanup of hour-old events inside the
+   same trigger, no cron needed.
+2. **Duplicate-submission guard** — partial unique index on `(feed_id, prolific_pid)`
+   (`participants`) / `(survey_id, prolific_pid)` (`survey_responses`), `where prolific_pid is not
+   null`. **Found real pre-existing data first**: production already had 5 `(feed_id, prolific_pid)`
+   pairs with 2 rows each — real Prolific IDs, all under `proj_7` — which would have made an
+   unscoped index fail to create, and deciding those were "bad" duplicates isn't a call to make
+   silently on live human-subjects data. Both indexes are scoped `and created_at >=
+   '2026-08-06T12:20:01Z'` (a literal timestamp, the migration's own apply time), guarding every
+   *new* submission without touching or requiring a decision about the 5 existing pairs.
+   **Flagged to the user, not yet followed up on — those 5 pairs may represent double Prolific
+   payouts, worth checking directly.**
+
+Both verified live against the real production REST endpoint via curl: rate limiter allowed 9
+inserts then rejected the 10th+ (`P0001`); duplicate guard rejected a second same-`prolific_pid`
+insert (`23505`). All test rows and `submission_events` entries deleted afterward, zero residue
+confirmed.
+
+**Client-side "already completed" guard** (`utils-core.js` `hasCompletedStudyLocally`/
+`markStudyCompletedLocally`, localStorage-keyed by app+project+feed-or-survey id) — a courtesy
+layer on top of the real server-side guards above, not a security boundary: stops an honest
+participant reloading after a successful submit from redoing the whole flow only to hit the server
+rejection at the end. Wired into all three `App-*.jsx` files at both completion choke points each
+has (`finalizeStudyCompletion` for the survey-linked path, the feed-only-completion effect) — same
+near-duplicate-file footgun this file already documents, all three checked from the start.
+
+**A real ordering bug found and fixed during live verification**: the new "Already completed"
+render block was initially placed *after* the existing `feedNotFound` 404 block — since the async
+boot fetch still runs regardless, a participant who'd completed a study whose feed was later
+deleted would see "page not found" instead of "already completed." Fixed by swapping the two
+blocks' precedence (already-completed checked first) in all three files, plus matching fixes to
+the `document.title`-setting effects so the tab title doesn't lag behind the actual screen. Caught
+by testing a synthetic non-existent feed_id with the completion flag set simultaneously — not
+something a happy-path-only test would surface.
+
+Verified live across all three apps: flag unset → real 404 (regression check); flag set → "Already
+completed" screen + matching title, even for a nonexistent feed_id. Zero console errors. Not
+verified: an actual duplicate-submission or rate-limit trip through the real participant UI
+end-to-end (only the underlying triggers were tested directly).
+
+**Status: shipped, live on production** (`2dbcb0c` — confirmed current `production` tip).
+
+## Attention-check questions (2026-08-06)
+
+Prompted directly, in two parts: first "attention check questions that are unaffected from
+randomization," then a follow-up — "I also need it to be part of a matrix row... it can be a
+better check" than a standalone question.
+
+**Data model**: `is_attention_check` (bool) + `attention_check_value` (string) added at two levels
+— **question-level** for SINGLE/DROPDOWN (`ATTENTION_CHECK_ELIGIBLE_TYPES`, `utils-survey.js`;
+MULTI excluded, no single unambiguous correct combination), and **row-level** for MATRIX_SINGLE/
+BIPOLAR rows (MATRIX_MULTI rows excluded, same reasoning). Threaded through every place this
+file's own duplicated-logic footgun would predict: `makeQuestion`/`normalizeQuestion`/
+`frontendQuestionToBackend` and `normalizeMatrixRows`/`normalizeBipolarRows` in
+`utils-survey.js`; the **separate** TypeScript copy of the same logic in
+`supabase/functions/_shared/survey-sanitize.ts` (type-checked, redeployed to both Supabase
+projects, twice — once per level); and the editor's round-trip functions
+(`normalizeQuestionForEditor`, `buildSavedQuestion`, `ensureMatrixRowsFromQuestionId`,
+`ensureBipolarRowArray`, `computeQuestionAfterTypeChange`) in
+`components-admin-surveys-editor.jsx`.
+
+**Two randomization guarantees, actually enforced**:
+1. **Option/row order** — `getRenderedQuestion` skips the `randomize_options` choice-shuffle
+   entirely for an attention-check question, regardless of what `randomize_options` is set to.
+   (Found while building this: `randomize_options` has **zero UI exposure anywhere in the current
+   admin editor** — hardcoded `false` in `buildSavedQuestion` — so this guard is currently
+   dead-code-proofing more than an active fix, but keeps the guarantee real if that UI ever ships
+   later. No row/column shuffle mechanism exists anywhere in the survey engine today, confirmed by
+   grep, so there's nothing analogous to guard for matrix rows/columns yet.)
+2. **Page position** — new `seededShuffleKeepingAttentionChecksFixed()` (`utils-survey.js`), used
+   inside `materializePagesFromBlocks`'s block-shuffle step in place of a plain seeded shuffle. A
+   page containing a question (or, for the row-level extension, a matrix/bipolar row) with
+   `is_attention_check` keeps its original index within the block; every other page in that block
+   still shuffles freely among the remaining slots. Verified live across 30 seeds
+   (question-level) and 20 seeds (row-level): the pinned page landed in its original slot every
+   time, other pages' order genuinely varied.
+
+**Composite-scoring correctness** (`utils-survey-analysis.js`): `buildComposites` excludes
+`isAttentionCheck` rows from a matrix composite's numeric grouping — doesn't contaminate the
+composite's mean/Cronbach's alpha. Not hidden, though: since it's never absorbed into a composite,
+it automatically shows up as its own standalone item in Measures (existing filter logic,
+unchanged). Verified: a 3-row matrix with one marked row produced a 2-item composite.
+
+**Scoring/flag**: new `computeAttentionCheckFlags(dataset, row)` in
+`components-admin-participants-survey.jsx`, same shape/placement as the pre-existing
+`computeStraightLineFlags` — compares the answered value against `item.attentionCheckValue` for
+every item with `item.isAttentionCheck` (set by `classifySurveyQuestions`, which already
+individually classifies matrix rows as their own items, so the row-level case needed no special
+casing once the field was threaded through). Skipped, not flagged, when unanswered — same
+under-flag-rather-than-over-flag posture as straight-lining. Surfaces in the existing Responses
+table "Flags" column.
+
+**Editor UI**: SINGLE/DROPDOWN — `ChoiceEditorBlock` gained a toggle + expected-answer `<select>`.
+MATRIX_SINGLE/BIPOLAR — new shared `RowAttentionCheckControl`, an inline pill toggle + conditional
+column-value picker embedded per-row in `ItemTableEditor` (gated via a new
+`attentionCheckColumns` prop, only passed for MATRIX_SINGLE) and `BipolarRowTableEditor` (gated via
+a new `columns` prop, computed from `min`/`max` since bipolar columns are a numeric scale, not
+admin-editable text). Collapsed-row "AC" badge now checks both the question-level flag and
+`q.rows.some(r => r.is_attention_check)` via a new `questionHasAttentionCheck(q)` helper.
+
+**Simulator**: both the SINGLE/DROPDOWN and MATRIX_SINGLE/BIPOLAR branches of `generateAnswer`
+(`utils-survey-simulate.js`) special-case attention-check items — correct unless the simulated
+participant is one of the ~5% "low-effort" ones, who answer wrong instead. Checked before the
+matrix/bipolar row falls through to normal composite-theta generation, in both the low-effort and
+normal paths. Verified: ~93-95% correct across 200 simulated participants, both standalone and
+matrix-row cases.
+
+**Verification**: pure-function testing via cache-busted dynamic imports against the real running
+dev server throughout, plus one real component mount for the editor UI specifically — `SurveyEditor`
+mounted with a fabricated matrix question, "Mark as attention check" clicked via a real DOM
+`.click()`, the expected-answer `<select>` located and changed via a real `change` event dispatch,
+confirmed both the toggle state and picker rendered correctly. Zero console errors throughout.
+**Not verified, either round**: an actual click-through by a real logged-in admin (standing
+limitation throughout this file), and no real participant walkthrough of the rate limiter or
+already-completed screen mid-flow.
+
+**Status: committed and pushed to `main`/staging only** (`9e24221 attention check functionality`)
+— **not yet on `production`** as of session end (`production` tip is still `2dbcb0c`, one commit
+behind). Backend already ready on both Supabase projects (Edge Function deployed ahead of the
+frontend commit landing anywhere) — harmless, an Edge Function accepting fields the frontend
+doesn't send yet is a no-op.
+
+## Session handoff (2026-08-06, simulator/CSV/abuse-guards/attention-checks) — read this first if picking up fresh
+
+This was one long session covering four separable arcs, in build order: the survey response
+simulator, CSV filename/column-prefix cleanup, submission abuse guards (rate limiting +
+duplicate-prevention + a client-side already-completed guard), and attention-check questions
+(shipped in two rounds — standalone question, then extended to matrix/bipolar rows). Full
+technical detail, design rationale, and exact verification steps for all four:
+`~/.claude/plans/watchful-guarding-shannon.md` — read that file's own "Status at end of session"
+section rather than re-deriving state from the four sections above it in this file.
+
+**Git state, confirmed at session end — re-check before trusting, this flipped more than once
+within this single session** (the checked-out branch here genuinely switched between `main` and
+`production` mid-session, apparently via the user's own GitHub Desktop app, with zero action from
+Claude's side):
+- `main` @ `9e24221 attention check functionality`, pushed, working tree clean.
+- `production` @ `2dbcb0c survey safeguard` — **one commit behind `main`**. Everything through the
+  submission-abuse-guards arc (simulator, CSV fixes, rate limiting, duplicate-prevention,
+  already-completed guard) is live on `studyfeed.org`. **Attention-check questions are on
+  `main`/staging only.**
+- Run `git log production..main --oneline` first to confirm this is still accurate.
+
+**What's actually left, in priority order**:
+1. **The 5 pre-existing duplicate `(feed_id, prolific_pid)` pairs in `proj_7`** — flagged to the
+   user once, not yet followed up on. Possible double-payout on a real Prolific study, worth
+   revisiting if this handoff doesn't prompt a response.
+2. **A real click-through by the user of everything this session shipped** — none of it has been
+   touched by an actual logged-in human. `staging.studyfeed.org` (same code as `main`, real
+   content, no participant-data risk, real login) is the lowest-risk place to close that gap.
+3. **Two items from the original "protect against AI use" discussion were explicitly
+   deprioritized by the user, not forgotten**: paste-detection + tab-away tracking on survey text
+   questions (would need to ship *before* real data collection, can't be reconstructed
+   retroactively — worth resurfacing that timing constraint if this comes up again), and
+   near-duplicate free-text-answer detection (the user said they don't use many open-ended
+   questions, so this is genuinely low-value for their case).
+4. **The simulator-visibility confusion from earlier in the session was never actually resolved**
+   — most likely explanation (looking at production before it caught up to main) was never
+   confirmed with the user. Check that first if it resurfaces.
+5. **Promote `production` to match `main`** whenever the user wants attention checks live on the
+   real site — not automatic, same deliberate-promotion requirement this file has always
+   documented.
+
+## Attention-checks-passed CSV column + "recall" post-reminder question type (2026-08-07)
+
+Two independent, direct requests handled together since both touch the CSV export / post-reminder
+machinery this file already documents extensively.
+
+### 1. `attention_checks_passed` CSV column
+
+Added to every CSV export path, only when the survey actually defines at least one attention-check
+item (mirrors the existing `experiment_group_id`/`experiment_group_name` "only add the column when
+the survey actually has the feature" convention) — question-level SINGLE/DROPDOWN
+(`is_attention_check`) and MATRIX_SINGLE/BIPOLAR rows, the same two levels the admin editor lets an
+admin mark. New `getSurveyAttentionCheckItems(surveyDefinition)`/`countAttentionChecksPassed(items,
+responses)` (`utils-backend.js`, exported) — deliberately **not** built by importing the analysis
+engine's `classifySurveyQuestions` (`utils-survey-analysis.js`), even though that would have been a
+one-line reuse: this file's own header comment states it depends on `utils-core` only, and pulling
+in the analysis engine's demographic/composite-scale machinery for a narrow "count matches" lookup
+would have been a real, unnecessary new cross-file dependency. Instead it re-walks `survey.pages`
+directly, mirroring the existing `flattenSurveyQuestions` right above it in the same file. Skips
+(neither counts nor penalizes) an unanswered item — same "a blank might mean the item was never
+reached" posture `computeAttentionCheckFlags` (`components-admin-participants-survey.jsx`) already
+uses for the on-screen flag, so the CSV number and the on-screen flag can't silently disagree.
+
+Wired into all three places a real response row can become a CSV row: `mergeParticipantRowsWithSurveyRows`
+(the single choke point behind `loadSurveyOnlyRoster`, used by both "Download Survey CSV" buttons),
+`loadMultiFeedParticipantSurveyRoster`'s own bespoke row-merge (same duplication this file's
+`experiment_group_id` entry already documents — "Download multi-feed CSV" builds its rows
+independently), and `buildSimulatedCsvRows` (`components-admin-participants-survey.jsx`, the
+survey-simulator's CSV path, per that function's own comment about mirroring the real export's
+column shape exactly). `NA`-filled (matching every other per-response CSV column's fill convention)
+for a participant with no matching survey response at all, rather than a misleading `0`.
+
+**Verified live**: `getSurveyAttentionCheckItems`/`countAttentionChecksPassed` tested via the real
+running dev server against a fabricated survey (1 SINGLE-level check + 1 MATRIX_SINGLE row check,
+1 non-check question) — correctly found exactly 2 items; all-correct → 2, one-wrong → 1,
+unanswered-item → 1 (correctly skipped, not penalized) across three response fixtures.
+`flattenSurveyQuestions`/`flattenSurveyResponseRecord` tested directly too: a recall-adjacent but
+separately-verified interactive-vs-recall-vs-static post_reminder column-generation case (see
+below) confirmed the general row-column mechanism this column also rides on.
+
+### 2. "Recall" post-reminder question: pick the post you actually saw out of decoy versions
+
+New per-question mode on `post_reminder`: instead of showing the reminder post alone, shows it
+alongside 2 admin-authored decoy versions — same post, same avatar/image/time/reactions, only the
+text differs — in a shuffled order, and records which one the participant picked plus whether it
+was correct. A genuine memory-check question, not a passive display block.
+
+**Data model** — `recall_enabled` (bool) + `recall_distractor_texts` (always exactly 2 strings,
+`normalizeRecallDistractorTexts`/`normalizeRecallDistractorTextsForEditor`) added to `post_reminder`
+questions everywhere this file's own "known duplicated logic" footgun says every sibling
+`post_reminder` field (`apply_feed_randomization`, `reminder_interactive`) already lives: 3 spots in
+`utils-survey.js` (`makeQuestion`, `normalizeQuestion`, `frontendQuestionToBackend`), ~7 spots in
+`components-admin-surveys-editor.jsx` (`normalizeQuestionForEditor`, `makeBackendQuestionFromType`,
+`buildSavedQuestion`, `computeQuestionAfterTypeChange`, the duplicate-question copy path, and the
+`renderTypeSpecificFields`/`PostReminderEditorBlock` wiring), and the Edge Function's independent
+TypeScript reimplementation (`supabase/functions/_shared/survey-sanitize.ts`).
+
+**A recall reminder is a real answerable question, not a display block.** `isDisplayOnlyQuestion`
+(`utils-survey.js`, mirrored in `survey-sanitize.ts`) and the admin editor's own `isEditorDisplayOnlyType`
+(`components-admin-surveys-editor.jsx`) both now special-case `post_reminder`: display-only unless
+`recall_enabled`. This makes `required` actually apply (admins can mark a recall question required,
+unlike a plain reminder, which stays forced-`false`), `isQuestionAnswered` gets a real
+`post_reminder` case (`!!value?.selected_option`), and the admin editor's Required toggle/row-count
+readouts all pick this up for free. **A real bug found and fixed mid-implementation, not by a bug
+report**: `normalizeQuestion`'s (and `makeQuestion`'s) own `required:` line still read
+`isDisplayOnlyQuestion({ type })` with no `recall_enabled` — so even after every other piece was
+wired correctly, a recall question's `required` flag was silently discarded on every normalize pass.
+Caught by a live end-to-end test (`validateSurveyResponses` on an empty response set unexpectedly
+returned `ok: true` for a `required: true` recall question) before shipping, not after — fixed in
+both `utils-survey.js` and confirmed already-correct in `survey-sanitize.ts` (written correctly
+there from the start, this pass on the TS file didn't repeat the JS file's mistake).
+
+**Rendering** — `buildRecallReminderOptions(post, question, participantSeed)` (`utils-survey.js`,
+new, exported): given the already-resolved reminder post (reuses `PostReminderCard`'s existing
+snapshot/inline/lazy-fetch resolution unchanged — no new fetch path), builds 3 option objects (the
+real post + 2 shallow clones with `text`/`review_text` swapped to each decoy string, `authorType`
+and everything else byte-identical), shuffled via the same `seededShuffle` mechanism
+`getRenderedQuestion` already uses for `randomize_options` (seeded on `participantSeed::questionId`,
+stable across re-renders, varies per participant). Returns `[]` — "not ready, fall back to the plain
+reminder" — whenever either decoy text is still blank or the post hasn't resolved yet, so an
+in-progress admin configuration never shows an obviously-wrong blank option to a real participant.
+
+New `RecallOptionCard`/`RecallOptionCardMobile` (`ui-survey.jsx`/`ui-survey-mobile.jsx` — the
+established near-duplicate desktop/mobile split this file already documents for
+`PostReminderCard`/`ReminderPostInner`, both files needed the identical addition) wrap the existing
+`ReminderPostInner`/`ReminderPostInnerMobile` (always `interactive={false}` — recall is a static
+comparison task, never coexists with the Interactivity toggle) in a `<label>`+radio-input, reusing
+the plain reminder's own `.survey-post-reminder-frame`/`.survey-post-reminder-card` classes for
+width (no new width CSS needed) plus new `.survey-recall-option*` classes (added to each file's own
+`SURVEY_REMINDER_POST_STYLE` CSS-in-JS block) for the selectable-row chrome. Selecting an option
+calls `onChange(questionId, { selected_option: "real"|"distractor_1"|"distractor_2", correct })` —
+same generic answer pipeline every other question type already uses, landing in
+`responses[question.id]` like any matrix/choice answer.
+
+**New curated CSV columns** (`utils-backend.js`, mirrors the existing `REMINDER_INTERACTION_FIELDS`
+mechanism for interactive reminders exactly, just a different, much smaller field list): `RECALL_FIELDS`
+(`correct`, `selected_option`), wired into `flattenSurveyQuestions`'s existing "static reminders
+export nothing" gate (now `!reminder_interactive && !recall_enabled`) and the row-value dispatch
+(`recall_enabled ? RECALL_FIELDS : REMINDER_INTERACTION_FIELDS`). No changes needed to
+`flattenSurveyResponseRecord` — the generic `kind: "row"` column mechanism already reads
+`value[row_value]` off whatever object lives at `responses[question.id]`, same as every other
+row-structured question type.
+
+**Admin editor UI** (`PostReminderEditorBlock`): new "Recall test" `FieldBlock` — a toggle plus,
+once on, two `TextAreaInput` decoy-text fields with an inline warning when either is still blank.
+Turning recall on force-disables (and unchecks) the existing Interactivity toggle in the same patch
+(`reminder_interactive: false`); turning it back off resets `required` to `false` too, since the
+Required toggle becomes hidden again once the question reverts to display-only and would otherwise
+leave a stale `required: true` with no UI path to clear it.
+
+**Not built, deliberately out of scope**: no integration into the Survey Participants analysis hub
+(Measures/Demographics) — same as interactive reminders, which are also excluded from that hub;
+no simulator support (`utils-survey-simulate.js` already unconditionally skips all `post_reminder`
+questions, interactive or not, so a recall question just reads `NA` in a simulated-data CSV, same as
+an interactive reminder would — not a new gap this feature introduces). No `visible_if`/attention-
+check eligibility added to recall reminders — orthogonal features, not requested.
+
+**Deployed**: `save-survey` Edge Function (the only backend piece touched — no new database columns,
+`recall_enabled`/`recall_distractor_texts` live inside `surveys.definition` jsonb exactly like
+`reminder_interactive` already does) redeployed to **both** Supabase projects, production
+(`yrzqnlhbawzuzlrrocfd`) and staging (`hgctbgunlsesygzglbdv`) — `deno check` clean on both passes.
+**A real, unrelated pre-existing bug found and fixed in the same file while touching it**:
+`survey-sanitize.ts`'s `frontendQuestionToBackend`/`normalizeQuestion` never had a `reminder_interactive`
+field at all — confirmed via grep, checked against this file's own "Interactive post-reminder
+questions" section, which never mentioned updating the Edge Function. Meaning **every survey save
+through the admin editor, on Supabase, has been silently dropping `reminder_interactive` for
+post_reminder questions since that feature shipped** — an interactive-reminder toggle would look
+saved in the UI but revert to non-interactive after any subsequent load/re-save round-trip through
+`save-survey`. Fixed alongside the recall fields (would have needed touching this exact function
+either way) and included in the same two-project redeploy.
+
+**Verified live**, via the established dynamic-import/component-mount technique this file documents
+using repeatedly (dev server confirmed working in this environment): `buildRecallReminderOptions`
+tested directly — 3 options for a ready recall question, stable order across repeat calls with the
+same seed, `[]` for incomplete decoys / recall off / unresolved post, every option's `authorType`
+identical to the source post (proving "only text differs"). Full participant-facing path mounted via
+the real `SurveyScreen` component (fabricated survey + posts, no network) — 3 `.survey-recall-option`
+cards rendered with correctly distinct text ("DECOY ONE TEXT"/"REAL ORIGINAL TEXT"/"DECOY TWO TEXT"),
+clicking a decoy produced `{selected_option:"distractor_1", correct:false}` via `onChange`, clicking
+the real one produced `{selected_option:"real", correct:true}`, selection styling applied correctly.
+CSV column generation independently verified via `flattenSurveyQuestions`/`flattenSurveyResponseRecord`
+directly — recall question emits exactly `correct`/`selected_option` columns, interactive emits the
+full 8-field set, plain static emits none, values round-trip correctly (`"false"`/`"distractor_2"`).
+Admin editor UI mounted via the real `SurveyEditor` (wrapped in the real `ToastProvider`/
+`ConfirmProvider`/`PromptProvider`) — expanded a question card, clicked the real toggle switch
+(`aria-checked` flipped to `"true"`), confirmed the Interactivity switch became visibly disabled
+(`cursor: not-allowed`), confirmed both decoy `<textarea>`s render with the correct placeholder,
+typed into both via native-setter + `input`-event dispatch (bypassing React's value-tracker, the
+standard technique for console-driven controlled-input tests) and confirmed the "still incomplete"
+warning correctly appeared with one filled and disappeared once both were. **Not verified**: an
+actual click-through/typing by a real logged-in admin, or a real participant session exercising a
+recall question end-to-end through a genuine survey link — same standing no-login limitation as
+everywhere else in this file. Worth a real click-through on staging before trusting this beyond what
+the live-mounted-component verification above already covers.

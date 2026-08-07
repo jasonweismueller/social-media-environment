@@ -287,11 +287,23 @@ function isPageBreakQuestion(question: any): boolean {
 }
 
 function isDisplayOnlyQuestion(question: any): boolean {
+  // Mirrors the frontend's identical carve-out (utils-survey.js) — a
+  // "recall" post-reminder (recall_enabled) is a real answerable question,
+  // not a passive display block.
+  if (question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER) {
+    return !question?.recall_enabled;
+  }
   return (
     question?.type === SURVEY_QUESTION_TYPES.INFO ||
-    question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
     question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
+}
+
+// Always exactly 2 entries — mirrors utils-survey.js's identical helper.
+function normalizeRecallDistractorTexts(arr: unknown): string[] {
+  const out = (Array.isArray(arr) ? arr : []).slice(0, 2).map((v) => String(v ?? ""));
+  while (out.length < 2) out.push("");
+  return out;
 }
 
 function normalizeRichSurveyField(value: unknown, fallback = ""): string {
@@ -523,6 +535,18 @@ export function normalizeQuestion(raw: any = {}): any {
     type === SURVEY_QUESTION_TYPES.POST_REMINDER
       ? (raw.apply_feed_randomization ?? meta.apply_feed_randomization ?? true) !== false
       : true;
+  const reminderInteractive =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? !!(raw.reminder_interactive ?? meta.reminder_interactive ?? false)
+      : false;
+  const recallEnabled =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? !!(raw.recall_enabled ?? meta.recall_enabled ?? false)
+      : false;
+  const recallDistractorTexts =
+    type === SURVEY_QUESTION_TYPES.POST_REMINDER
+      ? normalizeRecallDistractorTexts(raw.recall_distractor_texts ?? meta.recall_distractor_texts)
+      : normalizeRecallDistractorTexts([]);
 
   return {
     id: questionId,
@@ -530,7 +554,7 @@ export function normalizeQuestion(raw: any = {}): any {
     text,
     label: text,
     description: String(raw.description || ""),
-    required: isDisplayOnlyQuestion({ type }) ? false : !!raw.required,
+    required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled }) ? false : !!raw.required,
     randomize_options: !!raw.randomize_options,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
     attention_check_value: String(raw.attention_check_value ?? ""),
@@ -581,11 +605,22 @@ export function normalizeQuestion(raw: any = {}): any {
     post_label: postLabel,
     post_feed_id: postFeedId,
     apply_feed_randomization: applyFeedRandomization,
+    reminder_interactive: reminderInteractive,
+    recall_enabled: recallEnabled,
+    recall_distractor_texts: recallDistractorTexts,
     next_delay_seconds: normalizePageDelaySeconds(raw.next_delay_seconds),
     meta: {
       ...meta,
       ...(type === SURVEY_QUESTION_TYPES.POST_REMINDER
-        ? { post_id: postId, post_label: postLabel, post_feed_id: postFeedId, apply_feed_randomization: applyFeedRandomization }
+        ? {
+            post_id: postId,
+            post_label: postLabel,
+            post_feed_id: postFeedId,
+            apply_feed_randomization: applyFeedRandomization,
+            reminder_interactive: reminderInteractive,
+            recall_enabled: recallEnabled,
+            recall_distractor_texts: recallDistractorTexts,
+          }
         : {}),
     },
   };
@@ -613,6 +648,9 @@ export function frontendQuestionToBackend(question: any = {}): any {
             post_label: String(q.post_label ?? ""),
             post_feed_id: String(q.post_feed_id ?? ""),
             apply_feed_randomization: q.apply_feed_randomization !== false,
+            reminder_interactive: !!q.reminder_interactive,
+            recall_enabled: !!q.recall_enabled,
+            recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
           }
         : {}),
     },
@@ -701,11 +739,17 @@ export function frontendQuestionToBackend(question: any = {}): any {
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
       return {
         ...base,
-        required: false,
+        // base.required already resolves to false for an ordinary
+        // (non-recall) reminder via isDisplayOnlyQuestion — a recall
+        // reminder is a real answerable question, so it keeps whatever
+        // `required` the admin actually set instead of being forced off.
         post_id: String(q.post_id ?? ""),
         post_label: String(q.post_label ?? ""),
         post_feed_id: String(q.post_feed_id ?? ""),
         apply_feed_randomization: q.apply_feed_randomization !== false,
+        reminder_interactive: !!q.reminder_interactive,
+        recall_enabled: !!q.recall_enabled,
+        recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:

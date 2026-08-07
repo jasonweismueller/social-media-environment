@@ -18,6 +18,7 @@ import {
   pickDeterministic,
   applyPostInteractionEvent,
   makeEmptyPostInteractionAggregate,
+  buildRecallReminderOptions,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -729,6 +730,51 @@ const SURVEY_REMINDER_POST_STYLE = `
     max-height: 360px !important;
   }
 }
+
+/* "Recall" post-reminder: 3 candidate posts stacked, each a radio option.
+   Uses translucent/theme-independent colors rather than any app's
+   --survey-*/--ig-* tokens (Instagram doesn't have the --survey-* bridge at
+   all — see CLAUDE.md), so this reads correctly in both light and dark
+   mode without needing per-app wiring. */
+.survey-recall-options {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+}
+
+.survey-recall-option {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  padding: 10px;
+  border-radius: 14px;
+  border: 2px solid rgba(120, 120, 120, 0.28);
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.survey-recall-option:hover {
+  border-color: rgba(37, 99, 235, 0.55);
+}
+
+.survey-recall-option-selected {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.survey-recall-option-radio {
+  margin-top: 14px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.survey-recall-option .survey-post-reminder-frame,
+.survey-recall-option .survey-post-reminder-card {
+  margin: 0;
+  pointer-events: none;
+}
 `;
 
 function SurveyReminderPostStyle() {
@@ -805,6 +851,57 @@ const ReminderPostInner = memo(function ReminderPostInner({
   );
 });
 
+// One candidate in a "recall" post-reminder's 3-option picker — a plain
+// static (non-interactive) rendering of the post via the same
+// ReminderPostInner every static reminder already uses, wrapped in a
+// selectable radio row so the whole card (not just a small dot) is
+// clickable.
+function RecallOptionCard({
+  option,
+  app,
+  projectId,
+  feedId,
+  flags,
+  participantSeed,
+  assignedAvatarUrl,
+  questionId,
+  selected,
+  onSelect,
+}) {
+  const noopChange = useCallback(() => {}, []);
+  return (
+    <label
+      className={`survey-recall-option${selected ? " survey-recall-option-selected" : ""}`}
+    >
+      <input
+        type="radio"
+        name={`${questionId}-recall`}
+        checked={selected}
+        onChange={() => onSelect(option.key, option.correct)}
+        className="survey-recall-option-radio"
+      />
+      {/* Reuses the plain reminder's own frame/card classes (not new CSS)
+          so this gets the exact same per-app width constraints. */}
+      <div className={`survey-post-reminder-frame ${app === "ig" ? "ig-reminder-frame" : "fb-reminder-frame"}`}>
+        <div className={`survey-post-reminder-card ${app === "ig" ? "ig-reminder-card" : "fb-reminder-card"}`}>
+          <ReminderPostInner
+            post={option.post}
+            app={app}
+            projectId={projectId}
+            feedId={feedId}
+            flags={flags}
+            participantSeed={participantSeed}
+            assignedAvatarUrl={assignedAvatarUrl}
+            interactive={false}
+            value={undefined}
+            onChange={noopChange}
+          />
+        </div>
+      </div>
+    </label>
+  );
+}
+
 const PostReminderCard = memo(function PostReminderCard({
   question,
   posts = [],
@@ -819,10 +916,16 @@ const PostReminderCard = memo(function PostReminderCard({
   const targetPostId = String(question?.post_id || "").trim();
   const resolvedProjectId = projectId || getProjectId() || "";
   const app = getReminderApp();
-  const interactive = !!question?.reminder_interactive;
+  // A recall reminder is always a static comparison, never interactive —
+  // same rule the admin editor enforces when the toggle is turned on.
+  const interactive = !!question?.reminder_interactive && !question?.recall_enabled;
   const questionId = question?.id;
   const handleInteractiveChange = useCallback(
     (nextValue) => onChange?.(questionId, nextValue),
+    [onChange, questionId]
+  );
+  const handleRecallSelect = useCallback(
+    (optionKey, correct) => onChange?.(questionId, { selected_option: optionKey, correct: !!correct }),
     [onChange, questionId]
   );
 
@@ -994,6 +1097,14 @@ const PostReminderCard = memo(function PostReminderCard({
 
   const post = storedSnapshot || inlinePost || lazyPost;
 
+  // [] whenever recall isn't on, the post hasn't resolved yet, or either
+  // decoy text is still blank — see buildRecallReminderOptions for the
+  // exact fallback contract.
+  const recallOptions = useMemo(
+    () => buildRecallReminderOptions(post, question, participantSeed),
+    [post, question, participantSeed]
+  );
+
   // No stored snapshot means the participant never actually viewed this exact
   // post in a feed, so there's no "real" randomized avatar to recover — the
   // pool assignment feeds normally use is keyed by a per-page-load runSeed
@@ -1069,6 +1180,26 @@ const PostReminderCard = memo(function PostReminderCard({
           {lazyStatus === "loading"
             ? "Loading post…"
             : lazyError || "The reminder post could not be displayed."}
+        </div>
+      </div>
+    ) : recallOptions.length > 0 ? (
+      <div className="survey-post-reminder-outer">
+        <div className="survey-recall-options">
+          {recallOptions.map((option) => (
+            <RecallOptionCard
+              key={option.key}
+              option={option}
+              app={app}
+              projectId={resolvedProjectId}
+              feedId={reminderFeedId || ""}
+              flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
+              participantSeed={participantSeed}
+              assignedAvatarUrl={assignedAvatarUrl}
+              questionId={questionId}
+              selected={value?.selected_option === option.key}
+              onSelect={handleRecallSelect}
+            />
+          ))}
         </div>
       </div>
     ) : (

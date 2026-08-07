@@ -35,6 +35,8 @@ import {
   flattenSurveyResponseRecord,
   SURVEY_COLUMN_LABEL_MODE,
   stripSurveyExportPrefix,
+  getSurveyAttentionCheckItems,
+  countAttentionChecksPassed,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
@@ -118,6 +120,7 @@ function buildSimulatedCsvRows(survey, simRows, fillValue = "NA") {
   const hasGroups = Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
   const groupNameById = new Map((survey?.experiment_groups || []).map((g) => [g.id, g.name]));
   const surveyColumns = flattenSurveyQuestions(survey, { labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT });
+  const attentionCheckItems = getSurveyAttentionCheckItems(survey);
 
   return (simRows || []).map((row) => {
     const flat = flattenSurveyResponseRecord(row, surveyColumns);
@@ -139,6 +142,9 @@ function buildSimulatedCsvRows(survey, simRows, fillValue = "NA") {
             experiment_group_id: row.experiment_group_id ?? "",
             experiment_group_name: groupNameById.get(row.experiment_group_id) || row.experiment_group_id || "",
           }
+        : {}),
+      ...(attentionCheckItems.length
+        ? { attention_checks_passed: countAttentionChecksPassed(attentionCheckItems, row.responses) }
         : {}),
       ...flat,
     };
