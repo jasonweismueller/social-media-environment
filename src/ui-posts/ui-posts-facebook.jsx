@@ -484,6 +484,56 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
   );
 }
 
+// Real Facebook's Like/Love reactions render as a distinctive colored
+// circle (blue/red) with a white icon — the biggest single gap between
+// this app's plain-unicode-emoji reactions and the real thing, per a
+// direct screenshot comparison. The other five (Care/Haha/Wow/Sad/Angry)
+// are yellow *faces*, which the plain emoji already approximates
+// reasonably well without redrawing Meta's actual character artwork
+// (a trademark/copyright line worth staying on the safe side of) — so only
+// Like/Love get a custom glyph here, everything else still renders through
+// REACTION_META's plain emoji exactly as before. Used everywhere a
+// reaction renders as an icon (the stacked summary under a post, the
+// reaction-picker flyout, and the active-reaction indicator on the Like
+// button itself) so all three stay visually consistent with each other.
+function ReactionGlyph({ rxKey, size = 16 }) {
+  if (rxKey === "like") {
+    return (
+      <span
+        style={{
+          display: "inline-flex", width: size, height: size, borderRadius: "999px",
+          background: "#0866FF", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+        }}
+      >
+        <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} fill="#fff" aria-hidden="true">
+          <path d="M2 21h3V10H2v11zm19-11.5c0-1.1-.9-2-2-2h-5.6l.85-4.1.03-.32c0-.41-.16-.79-.43-1.06L12.17 1 6.59 6.59A2 2 0 0 0 6 8v11a2 2 0 0 0 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9.5Z" />
+        </svg>
+      </span>
+    );
+  }
+  if (rxKey === "love") {
+    return (
+      <span
+        style={{
+          display: "inline-flex", width: size, height: size, borderRadius: "999px",
+          background: "#F33E58", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+        }}
+      >
+        <svg viewBox="0 0 24 24" width={size * 0.62} height={size * 0.62} fill="#fff" aria-hidden="true">
+          {/* Same heart path used by IconLike (ui-core-facebook.jsx) — reused
+              rather than redrawn, so both places agree on one heart shape. */}
+          <path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3z" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span style={{ fontSize: size, lineHeight: 1, display: "inline-block" }}>
+      {REACTION_META[rxKey]?.emoji || ""}
+    </span>
+  );
+}
+
 /* ----------------------------- Post Card ---------------------------------- */
 export function PostCard({
   post,
@@ -1495,8 +1545,8 @@ export function PostCard({
 
   const LikeIcon = (p) =>
     myReaction ? (
-      <span style={{ fontSize: 18, lineHeight: 1 }} {...p}>
-        {ALL_REACTIONS[myReaction]}
+      <span {...p}>
+        <ReactionGlyph rxKey={myReaction} size={18} />
       </span>
     ) : (
       <IconThumb {...p} />
@@ -1540,7 +1590,7 @@ export function PostCard({
         aria-expanded={open}
         aria-label={label}
       >
-        {REACTION_META[rxKey].emoji}
+        <ReactionGlyph rxKey={rxKey} size={16} />
         {open && count > 0 && (
           <div
             role="tooltip"
@@ -2355,7 +2405,7 @@ export function PostCard({
                 onMouseLeave={!isMobile ? scheduleClose : undefined}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                {Object.entries(ALL_REACTIONS).map(([key, emoji]) => (
+                {Object.keys(ALL_REACTIONS).map((key) => (
                   <button
                     type="button"
                     key={key}
@@ -2364,7 +2414,7 @@ export function PostCard({
                     onClick={() => onPickReaction(key)}
                     title={key}
                   >
-                    {emoji}
+                    <ReactionGlyph rxKey={key} size={24} />
                   </button>
                 ))}
               </div>
