@@ -5259,3 +5259,28 @@ part a generic feature test couldn't have caught.
 pre-commit dry run's diff): remove the `block_recall_intervention` entry from `page_blocks`, remove
 the `page_45` entry from `pages`, and remove the `SOCIAL_MEDIA_USE` entry from `page_44`'s
 `questions` array. No other stored data (responses, assignments, other pages/blocks) was touched.
+
+**Follow-up, same day: mirrored onto staging too, and a real user-confirmation of the "not ready"
+fallback.** User went to review this on `staging.studyfeed.org` and reported seeing only one
+post_reminder question, sitting inside Demographics, with no text — confusing given the above. Root
+cause, confirmed by querying staging's copy directly: this database edit had only ever touched
+**production** (`yrzqnlhbawzuzlrrocfd`) — staging is a genuinely separate Supabase project
+(`hgctbgunlsesygzglbdv`) that only ever got a one-time content snapshot of this survey back on
+2026-08-05 (see "Staging fully wired up" above), so it never received any of this. What the user
+was actually looking at was their **own** test question (`Q_EIZMQ86K8JRMSICCOHI`) — created live
+through the real admin editor, which staging's deployed frontend code does already support (that
+part shipped normally via the usual `main` → GitHub Actions → staging pipeline) — with recall
+turned on but both decoy-text fields left blank. That's `buildRecallReminderOptions` correctly
+falling back to a plain single reminder exactly as designed (see the feature's own section above:
+"Returns `[]` ... whenever either decoy text is still blank"), not a bug — it just reads confusingly
+without decoy text filled in, since the fallback still shows the generic unedited placeholder intro
+("Please look at this post again before answering.").
+
+Applied the identical patch (same two JSON payloads, re-verified staging's pre-edit `page_blocks`/
+`page_44` shape was byte-identical to production's pre-edit shape before reusing them) to staging
+too, same dry-run-then-commit discipline. Deliberately did **not** touch or remove the user's own
+test question — the append-only page_44 patch preserves whatever was already there, so staging's
+`page_44` now has 7 questions (5 original + the user's test question + the new `SOCIAL_MEDIA_USE`)
+instead of production's 6. **Left as an open question for the user, not decided unilaterally**:
+whether to delete their leftover test question (`Q_EIZMQ86K8JRMSICCOHI`, staging only, harmless but
+inert) or leave it as a scratch item.
