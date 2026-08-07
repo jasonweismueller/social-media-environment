@@ -236,7 +236,7 @@ function DesktopMenu({ open, onClose, onPick, id, onAction }) {
                   ? "#9ca3af"
                   : item.danger
                   ? "#ef4444"
-                  : "#111827",
+                  : "var(--ig-text)",
                 fontWeight: item.bold ? 600 : 400,
                 borderTop: idx === 0 ? "none" : "1px solid #e5e7eb",
                 transition: "background 0.15s ease",
@@ -1085,14 +1085,14 @@ const displayBio = useMemo(() => {
       {/* Actions row */}
       <div
         className="insta-actions"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px 6px 10px", color: "#111827" }}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px 6px 10px", color: "var(--ig-text)" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button
           ref={likeButtonRef}
             aria-label="Like"
             onClick={toggleLike}
-            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ig-text)" }}
             disabled={disabled}
           >
             <HeartIcon filled={liked} />
@@ -1102,7 +1102,7 @@ const displayBio = useMemo(() => {
           <button
             aria-label="Comment"
             onClick={openCommentsPanel}
-            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ig-text)" }}
             disabled={disabled}
           >
             <CommentIcon />
@@ -1112,7 +1112,7 @@ const displayBio = useMemo(() => {
           <button
             aria-label={reposted ? "Remove repost" : "Repost"}
             onClick={toggleRepost}
-            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: reposted ? "#00c853" : "#111827" }}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: reposted ? "#00c853" : "var(--ig-text)" }}
             disabled={disabled}
           >
             <RepostIcon active={reposted} />
@@ -1122,7 +1122,7 @@ const displayBio = useMemo(() => {
           <button
             aria-label="Share"
             onClick={doShare}
-            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "#111827" }}
+            style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "var(--ig-text)" }}
             disabled={disabled}
           >
             <SendIcon />
@@ -1133,7 +1133,7 @@ const displayBio = useMemo(() => {
         <button
           aria-label="Save"
           onClick={toggleSave}
-          style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", position: "relative", color: "#111827" }}
+          style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", position: "relative", color: "var(--ig-text)" }}
           disabled={disabled}
         >
           {saved ? <SaveIconFilled /> : <SaveIcon />}
@@ -1173,7 +1173,7 @@ const displayBio = useMemo(() => {
       fontWeight: 600,
       fontSize: 14,              // ✅ match caption size
       lineHeight: 1.4,           // ✅ same rhythm
-      color: "#111827",          // consistent neutral text
+      color: "var(--ig-text)",          // consistent neutral text
     }}
   >
     {likes.toLocaleString()} likes
@@ -1389,7 +1389,7 @@ onExpand={() => {
             </div>
             <div
               style={{
-                color: "#111827",
+                color: "var(--ig-text)",
                 fontSize: 14,
                 lineHeight: 1.35,
                 whiteSpace: "pre-wrap",
@@ -1635,7 +1635,7 @@ marginTop: "auto",
                   <div
                     style={{
                       fontSize: 14,
-                      color: "#111827",
+                      color: "var(--ig-text)",
                       lineHeight: 1.4,
                       marginTop: 2,
                     }}
@@ -1737,7 +1737,7 @@ marginTop: "auto",
                         </div>
                         <div
                           style={{
-                            color: "#111827",
+                            color: "var(--ig-text)",
                             fontSize: 14,
                             lineHeight: 1.35,
                             whiteSpace: "pre-wrap",

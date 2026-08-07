@@ -403,6 +403,21 @@ a:hover{text-decoration:underline}
 .dark-mode .modal-footer{ background:var(--card); }
 .dark-mode .textarea{ background:var(--card); color:var(--text); }
 
+/* Like/Comment/Share buttons (ActionBtn, ui-core-facebook.jsx) and the
+   "See more"/"See less" text-clamp link — same gap as the rest of this
+   block, hardcoded light colors with no dark counterpart at all. */
+.dark-mode .action{ color:var(--text); background:var(--card); }
+.dark-mode .action:hover:not(:disabled){ background:#3a3b3c; }
+.dark-mode .action.active{ background:rgba(45,136,255,.18); color:var(--blue); }
+.dark-mode .see-more{ color:var(--text); }
+
+/* "..." overflow menu dropdown (Report post, etc.) */
+.dark-mode .menu{ background:var(--card); }
+.dark-mode .menu-item{ color:var(--text); }
+.dark-mode .menu-item:hover{ background:#3a3b3c; }
+.dark-mode .menu-item .mi-icon{ color:var(--text); }
+.dark-mode .menu-item .mi-sub{ color:var(--muted); }
+
 .spinner-ring{
   width:42px;height:42px;margin:0 auto 14px;border-radius:50%;
   border:3px solid #e5e7eb;border-top-color:#3b82f6; animation:spin .9s linear infinite

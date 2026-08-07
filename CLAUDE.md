@@ -5549,3 +5549,82 @@ response shapes fed through `flattenSurveyResponseRecord` — boolean `true`, bo
 `simulateSurveyResponseRows` (20 rows) through the same real column/flatten functions and confirmed
 only `"0"`/`"1"` values, zero blanks. Not re-verified via an actual admin click-through (same standing
 limitation as elsewhere in this file).
+
+## Dark mode, round 3: real remaining gaps in both dark-mode systems (2026-08-07)
+
+Direct user report, browsing both dark modes for real: Like/Comment/Share stayed light in the
+participant feed; "See more" rendered dark-on-dark; a button in the survey editor's Pre-feed tab
+(Participant Information/Instructions) had unreadable dark text; so did "Download survey CSV"/"Copy"
+(launch link)/"Refresh" in the admin Surveys panel. Confirms the pattern the two prior dark-mode
+sessions already worried about out loud: every verification so far had been via direct component
+mounts/mocked sessions, never a real click-through — this is exactly the class of gap that approach
+was always going to miss (a computed style is correct, or it isn't; that's the same thing this
+session finally checked, just via a live-mounted component's `getComputedStyle` instead of an actual
+click, since login is still off-limits).
+
+**Participant feed (`styles-facebook.css`, `.dark-mode` block)**: `.action` (the shared `ActionBtn`
+behind Like/Comment/Share, `ui-core-facebook.jsx`) and `.see-more` (the "See more"/"See less" link)
+were never covered by any `.dark-mode` override at all — hardcoded `color:#374151`/`background:#fff`
+and `color:#111827` respectively, both unconditional. Same for the "..." overflow menu
+(`.menu`/`.menu-item` — Report post, etc.) sitting directly next to those buttons, which had the
+identical gap and is reachable from the exact same row a participant testing this would already be
+looking at. All four added to the existing `.dark-mode` override cluster, same style every other
+rule there already uses (explicit hex for hover states that don't have a variable equivalent,
+`var(--text)`/`var(--card)`/`var(--muted)` where one exists) — `.action.active`'s light-blue tint
+background became a translucent `rgba(45,136,255,.18)` instead (works in both themes without a
+second hardcoded hex).
+
+**Instagram's own Like/Comment/Repost/Share/Save row is a different, worse case of the same bug**:
+unlike Facebook, Instagram's `ui-posts-instagram.jsx` never uses the `.action` CSS class or
+`ui-core-instagram.jsx`'s own (dead, unused) `ActionBtn` export at all — every icon color is a raw
+inline `style={{ color: "#111827" }}`, which no CSS rule of any specificity could ever have
+overridden. Replaced all 11 occurrences of the literal `"#111827"` in that file with
+`"var(--ig-text)"` (already correctly redeclared under `.dark-mode` — confirmed via
+`getComputedStyle`, `#f5f5f5` in dark, `#111827` in light) — covers the action row itself, the
+desktop "X likes" label, the mobile overflow action-sheet, and comment-panel text (all found via
+grep for the same literal, not individually rediscovered) — same reasoning as the earlier repost-
+button session's "fix every occurrence of this exact bug in the file already being touched, not just
+the one instance reported" judgment call.
+
+**Admin dashboard — a real, previously-undiscovered *systemic* gap, not a one-off**: the "button with
+dark text" report turned out to be the same root cause in two different places — `RichTextInput`'s
+Bold/Italic/etc. toolbar (`components-admin-surveys.jsx`, used by both Participant Information *and*
+Instructions, matching "instructions the same" exactly) and the Launch tab's "Download survey
+CSV"/"Download multi-feed CSV"/"Copy"/"Refresh" buttons. All of them are raw `<button>`s that already
+set `background`/`border` inline via `var(--admin-*)`, but never set `color` — and a `<button>`
+element doesn't inherit `color` from its ancestors the way a normal block element does (the UA
+stylesheet gives it its own `buttontext` default), so it silently stayed a fixed near-black
+regardless of `data-admin-theme`. This is the exact same class of gap the admin dark-mode session
+already found and fixed once for raw `<input>`/`<select>`/`<textarea>` (`tokens.css`'s existing
+baseline rule) — just never extended to `<button>`. **Fixed at the same baseline-rule level, not
+per-component**: `.admin-shell button { color: var(--admin-text); }`, added right after the existing
+input/select/textarea rule. Deliberately color-only, not background/border like the sibling rule —
+every button that wants its own background/border already sets it inline, and this shouldn't paint a
+box behind something deliberately left transparent. Confirmed safe against `Button.jsx` (the shared
+design-system component) and every other real admin button before adding it: all set `color` via
+inline `style`, which always wins regardless of this rule's specificity; the one remaining
+class-styled button in the whole admin tree (`components-admin-feeds.jsx`'s `<label className="btn
+ghost">` file-input wrapper, already flagged as a deliberate exception in the earlier button-
+consistency sweep) is a `<label>`, not a `<button>`, so a `button` element selector can't touch it
+either way.
+
+**Verified live**, all three pieces, via direct component mounts against the real running dev server
+(same `getComputedStyle` technique this file already uses repeatedly) rather than a mocked click,
+since real admin login is still off-limits: mounted the real `Feed` (`ui-posts-facebook.jsx`) with
+`body.dark-mode` on — `.action` read back `background: rgb(36,37,38)` / `color: rgb(228,230,235)`
+(dark `--card`/`--text`), `.see-more` read back `color: rgb(228,230,235)` — then removed the class and
+confirmed both reverted to the original light values (`rgb(255,255,255)`/`rgb(55,65,81)` and
+`rgb(17,24,39)`), a true regression check, not just "the new rule exists." Mounted Instagram's `Feed`
+the same way — all 5 action buttons (Like/Comment/Repost/Share/Save) read `rgb(245,245,245)` in dark
+mode. For the admin fix, reproduced the exact real markup (background/border set inline, no color) in
+a synthetic `.admin-shell` node with `data-admin-theme="dark"` set on `<html>` — read back
+`rgb(232,234,237)` (light, readable) where before it would have been the browser's `buttontext`
+default; confirmed a button that already sets its own inline `color` (mirroring "Delete survey data")
+is untouched by the new rule (`rgb(252,165,165)`, its own danger-red tone, not generic admin-text);
+confirmed light mode (`data-admin-theme` removed) still reads the original `rgb(17,24,39)`. **Not
+verified**: an actual click-through by a real logged-in admin, or a real participant page with dark
+mode toggled on — same standing no-login limitation as everywhere else in this file, though this is
+the third dark-mode session in a row to run into exactly this same wall and find a real bug anyway
+via computed-style checks on live-mounted real components, which is worth remembering as the
+reliable fallback technique specifically for this class of bug (a color is either right or wrong,
+independent of whether a human clicked to see it).

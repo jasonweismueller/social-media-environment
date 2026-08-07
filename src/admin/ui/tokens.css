@@ -69,6 +69,21 @@
   color: var(--admin-text);
   border-color: var(--admin-border);
 }
+
+/* Same gap, but for raw <button>s (e.g. RichTextInput's Bold/Italic/etc.
+   toolbar, and several ad-hoc "Download CSV"/"Copy"/"Refresh" buttons in
+   components-admin-surveys.jsx) — these already set background/border via
+   var(--admin-*) inline, but never set an explicit `color`. A <button>
+   doesn't inherit `color` from its ancestors like a normal block element
+   (the UA stylesheet gives it its own `buttontext` default), so it silently
+   stayed a fixed near-black regardless of theme — invisible-ish in light
+   mode by coincidence, genuinely unreadable in dark mode. Color only (not
+   background/border, unlike the rule above) — every real button that wants
+   its own background/border already sets it inline, and this shouldn't
+   paint a box behind buttons that were deliberately left transparent. */
+.admin-shell button {
+  color: var(--admin-text);
+}
 .admin-shell input::placeholder,
 .admin-shell textarea::placeholder {
   color: var(--admin-muted-2);
