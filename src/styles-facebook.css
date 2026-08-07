@@ -236,6 +236,25 @@ a:hover{text-decoration:underline}
    the card background in dark mode, not stay literal white. */
 .dark-mode .rx-stack .rx{ border-color:var(--card); background:var(--card); }
 
+/* Real Facebook's reaction icons have a subtle continuous idle "wobble" —
+   not perfectly still — rather than being static. Applied to the glyph
+   itself (ReactionGlyph, ui-posts-facebook.jsx), not the outer `.rx`
+   tooltip-hosting span, so the hover-name tooltip doesn't spin along with
+   it. Each icon gets a slightly staggered `animation-delay` (passed as an
+   inline style from the component) so a multi-reaction stack doesn't move
+   in perfect unison. */
+@keyframes rx-wobble {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.08) rotate(-8deg); }
+  40% { transform: scale(1.08) rotate(6deg); }
+  60% { transform: scale(1.04) rotate(-4deg); }
+  80% { transform: scale(1) rotate(2deg); }
+}
+.rx-wobble{ animation: rx-wobble 2.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .rx-wobble{ animation: none; }
+}
+
 /* — Tighten gap when reactions follow text directly (no image) — */
 .card-body + .bar-stats {
   margin-top: -1rem; /* adjust to taste: -1rem if you want tighter */

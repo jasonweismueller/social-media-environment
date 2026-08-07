@@ -484,51 +484,133 @@ function MenuPortal({ anchorRef, open, onClose, children }) {
   );
 }
 
-// Real Facebook's Like/Love reactions render as a distinctive colored
-// circle (blue/red) with a white icon — the biggest single gap between
-// this app's plain-unicode-emoji reactions and the real thing, per a
-// direct screenshot comparison. The other five (Care/Haha/Wow/Sad/Angry)
-// are yellow *faces*, which the plain emoji already approximates
-// reasonably well without redrawing Meta's actual character artwork
-// (a trademark/copyright line worth staying on the safe side of) — so only
-// Like/Love get a custom glyph here, everything else still renders through
-// REACTION_META's plain emoji exactly as before. Used everywhere a
-// reaction renders as an icon (the stacked summary under a post, the
-// reaction-picker flyout, and the active-reaction indicator on the Like
-// button itself) so all three stay visually consistent with each other.
-function ReactionGlyph({ rxKey, size = 16 }) {
+// Custom reaction icons — deliberately NOT the plain OS unicode emoji
+// (👍❤️🤗😆😮😢😡) this used to render, and deliberately NOT a redraw of
+// Meta's actual illustrated reaction characters either (their specific
+// gradient-shaded 3D art style is real brand IP, not something to trace).
+// This is a from-scratch, flat/generic "circle face" set — the same broad
+// visual language lots of emoji sets use (round face, simple dot/arc
+// features) — tuned to read as the right expression at a glance, matching
+// Facebook's own real *color* coding (blue Like, red Love, warm yellow for
+// the four happy/neutral faces, a redder-orange for Angry) without being a
+// copy of any one company's specific character illustrations.
+// `animate=false` opts individual call sites out of the idle wobble (e.g.
+// a disabled/inert context) — every current call site leaves it on.
+const RX_FACE_COLOR = "#664100";
+function RxFaceBase({ size, bg, children }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <circle cx="12" cy="12" r="11.5" fill={bg} />
+      {children}
+    </svg>
+  );
+}
+function ReactionGlyph({ rxKey, size = 16, animate = true, delay = 0 }) {
+  const wobbleStyle = { display: "inline-flex", animationDelay: `${delay}s` };
+  const wobbleClassName = animate ? "rx-wobble" : undefined;
+
   if (rxKey === "like") {
     return (
-      <span
-        style={{
-          display: "inline-flex", width: size, height: size, borderRadius: "999px",
-          background: "#0866FF", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
-        }}
-      >
-        <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} fill="#fff" aria-hidden="true">
-          <path d="M2 21h3V10H2v11zm19-11.5c0-1.1-.9-2-2-2h-5.6l.85-4.1.03-.32c0-.41-.16-.79-.43-1.06L12.17 1 6.59 6.59A2 2 0 0 0 6 8v11a2 2 0 0 0 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9.5Z" />
-        </svg>
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <span
+          style={{
+            display: "inline-flex", width: size, height: size, borderRadius: "999px",
+            background: "#0866FF", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+          }}
+        >
+          <svg viewBox="0 0 24 24" width={size * 0.6} height={size * 0.6} fill="#fff" aria-hidden="true">
+            <path d="M2 21h3V10H2v11zm19-11.5c0-1.1-.9-2-2-2h-5.6l.85-4.1.03-.32c0-.41-.16-.79-.43-1.06L12.17 1 6.59 6.59A2 2 0 0 0 6 8v11a2 2 0 0 0 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73V9.5Z" />
+          </svg>
+        </span>
       </span>
     );
   }
   if (rxKey === "love") {
     return (
-      <span
-        style={{
-          display: "inline-flex", width: size, height: size, borderRadius: "999px",
-          background: "#F33E58", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
-        }}
-      >
-        <svg viewBox="0 0 24 24" width={size * 0.62} height={size * 0.62} fill="#fff" aria-hidden="true">
-          {/* Same heart path used by IconLike (ui-core-facebook.jsx) — reused
-              rather than redrawn, so both places agree on one heart shape. */}
-          <path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3z" />
-        </svg>
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <span
+          style={{
+            display: "inline-flex", width: size, height: size, borderRadius: "999px",
+            background: "#F33E58", alignItems: "center", justifyContent: "center", flex: "0 0 auto",
+          }}
+        >
+          <svg viewBox="0 0 24 24" width={size * 0.62} height={size * 0.62} fill="#fff" aria-hidden="true">
+            {/* Same heart path used by IconLike (ui-core-facebook.jsx) — reused
+                rather than redrawn, so both places agree on one heart shape. */}
+            <path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3z" />
+          </svg>
+        </span>
       </span>
     );
   }
+
+  const stroke = RX_FACE_COLOR;
+  if (rxKey === "care") {
+    return (
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <RxFaceBase size={size} bg="#FFCC4D">
+          <path d="M7.5 10.2c.7-1 2-1 2.7 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M13.8 10.2c.7-1 2-1 2.7 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M9.7 20.5c-2.5-2.7-2.5-4.5-1.4-5.5 1-.9 2.3-.5 2.7.5.4-1 1.7-1.4 2.7-.5 1.1 1 1.1 2.8-1.4 5.5-.4.4-.9.6-1.3.6s-.9-.2-1.3-.6z" fill="#F3676F" />
+        </RxFaceBase>
+      </span>
+    );
+  }
+  if (rxKey === "haha") {
+    return (
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <RxFaceBase size={size} bg="#FFCC4D">
+          <path d="M7 10.8c.9-1.3 2.5-1.3 3.4 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M13.6 10.8c.9-1.3 2.5-1.3 3.4 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M7.3 14.5c1.2 3.4 3.2 5 4.7 5s3.5-1.6 4.7-5c.2-.6-.2-1-.7-.8-2.6 1.1-5.4 1.1-8 0-.5-.2-.9.2-.7.8z" fill={stroke} />
+          <path d="M9.7 15.3c1.5.5 3.1.5 4.6 0-.3 1.6-1.1 2.6-2.3 2.6s-2-.9-2.3-2.6z" fill="#F3676F" />
+        </RxFaceBase>
+      </span>
+    );
+  }
+  if (rxKey === "wow") {
+    return (
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <RxFaceBase size={size} bg="#FFCC4D">
+          <path d="M6.8 9.4c.5-.8 1.6-1.1 2.4-.8" fill="none" stroke={stroke} strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M17.2 9.4c-.5-.8-1.6-1.1-2.4-.8" fill="none" stroke={stroke} strokeWidth="1.3" strokeLinecap="round" />
+          <circle cx="8.7" cy="11.6" r="1.5" fill={stroke} />
+          <circle cx="15.3" cy="11.6" r="1.5" fill={stroke} />
+          <ellipse cx="12" cy="16.6" rx="2.1" ry="2.6" fill={stroke} />
+        </RxFaceBase>
+      </span>
+    );
+  }
+  if (rxKey === "sad") {
+    return (
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <RxFaceBase size={size} bg="#FFCC4D">
+          <path d="M7 10.6c.6-1 1.9-1.3 2.8-.7" fill="none" stroke={stroke} strokeWidth="1.3" strokeLinecap="round" />
+          <path d="M17 10.6c-.6-1-1.9-1.3-2.8-.7" fill="none" stroke={stroke} strokeWidth="1.3" strokeLinecap="round" />
+          <circle cx="8.9" cy="12.4" r="1.3" fill={stroke} />
+          <circle cx="15.1" cy="12.4" r="1.3" fill={stroke} />
+          <path d="M8.6 18c1.3-1.7 5.5-1.7 6.8 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M16 13.5c0 1.1-.9 2.4-1.6 2.4S12.8 14.6 12.8 13.5c0-1.1 1.6-2.6 1.6-2.6s1.6 1.5 1.6 2.6z" fill="#5AA7E8" />
+        </RxFaceBase>
+      </span>
+    );
+  }
+  if (rxKey === "angry") {
+    return (
+      <span className={wobbleClassName} style={wobbleStyle}>
+        <RxFaceBase size={size} bg="#F0793C">
+          <path d="M7 9.8l3 1.3" fill="none" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M17 9.8l-3 1.3" fill="none" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="9" cy="13" r="1.2" fill={stroke} />
+          <circle cx="15" cy="13" r="1.2" fill={stroke} />
+          <path d="M8.8 17.6c1.4-1 5-1 6.4 0" fill="none" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+        </RxFaceBase>
+      </span>
+    );
+  }
+
   return (
-    <span style={{ fontSize: size, lineHeight: 1, display: "inline-block" }}>
+    <span className={wobbleClassName} style={{ ...wobbleStyle, fontSize: size, lineHeight: 1 }}>
       {REACTION_META[rxKey]?.emoji || ""}
     </span>
   );
@@ -1590,7 +1672,7 @@ export function PostCard({
         aria-expanded={open}
         aria-label={label}
       >
-        <ReactionGlyph rxKey={rxKey} size={16} />
+        <ReactionGlyph rxKey={rxKey} size={16} delay={idx * 0.2} />
         {open && count > 0 && (
           <div
             role="tooltip"
@@ -2405,7 +2487,7 @@ export function PostCard({
                 onMouseLeave={!isMobile ? scheduleClose : undefined}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                {Object.keys(ALL_REACTIONS).map((key) => (
+                {Object.keys(ALL_REACTIONS).map((key, i) => (
                   <button
                     type="button"
                     key={key}
@@ -2414,7 +2496,7 @@ export function PostCard({
                     onClick={() => onPickReaction(key)}
                     title={key}
                   >
-                    <ReactionGlyph rxKey={key} size={24} />
+                    <ReactionGlyph rxKey={key} size={24} delay={i * 0.1} />
                   </button>
                 ))}
               </div>
