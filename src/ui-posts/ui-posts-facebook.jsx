@@ -551,6 +551,9 @@ function ReactionGlyph({ rxKey, size = 16, animate = true, delay = 0 }) {
         <RxFaceBase size={size} bg="#FFCC4D">
           <path d="M7.5 10.2c.7-1 2-1 2.7 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
           <path d="M13.8 10.2c.7-1 2-1 2.7 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
+          {/* Two arms curving in from either side to hug the heart. */}
+          <path d="M6.3 14.4c-1.7 1.6-2.1 3.9-1.5 5.6.2.5.9.6 1.2.2.5-.7.7-1.9.5-3" fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M17.7 14.4c1.7 1.6 2.1 3.9 1.5 5.6-.2.5-.9.6-1.2.2-.5-.7-.7-1.9-.5-3" fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" />
           <path d="M9.7 20.5c-2.5-2.7-2.5-4.5-1.4-5.5 1-.9 2.3-.5 2.7.5.4-1 1.7-1.4 2.7-.5 1.1 1 1.1 2.8-1.4 5.5-.4.4-.9.6-1.3.6s-.9-.2-1.3-.6z" fill="#F3676F" />
         </RxFaceBase>
       </span>
@@ -590,7 +593,8 @@ function ReactionGlyph({ rxKey, size = 16, animate = true, delay = 0 }) {
           <circle cx="8.9" cy="12.4" r="1.3" fill={stroke} />
           <circle cx="15.1" cy="12.4" r="1.3" fill={stroke} />
           <path d="M8.6 18c1.3-1.7 5.5-1.7 6.8 0" fill="none" stroke={stroke} strokeWidth="1.4" strokeLinecap="round" />
-          <path d="M16 13.5c0 1.1-.9 2.4-1.6 2.4S12.8 14.6 12.8 13.5c0-1.1 1.6-2.6 1.6-2.6s1.6 1.5 1.6 2.6z" fill="#5AA7E8" />
+          {/* Tear sits below the right eye (eye bottom ~y13.7), not on it. */}
+          <path d="M15.6 14.3c1.9 2 1.9 3.4.6 4.2-.4.3-.9.3-1.3 0-1.3-.8-1.3-2.2.7-4.2z" fill="#5AA7E8" />
         </RxFaceBase>
       </span>
     );
@@ -612,6 +616,86 @@ function ReactionGlyph({ rxKey, size = 16, animate = true, delay = 0 }) {
   return (
     <span className={wobbleClassName} style={{ ...wobbleStyle, fontSize: size, lineHeight: 1 }}>
       {REACTION_META[rxKey]?.emoji || ""}
+    </span>
+  );
+}
+
+// Module-level (not nested inside PostCard) on purpose: a component defined
+// inside another component's render body is re-created (new function
+// identity) on every parent render, which makes React unmount/remount it
+// instead of just re-rendering it — silently resetting its own `open` state
+// to false every time PostCard re-renders for any unrelated reason (e.g. a
+// video's frequent `timeupdate` ticks). That was causing this tooltip to
+// flicker open/closed repeatedly. Hoisting it here fixes that.
+function ReactionIconWithNames({ rxKey, count, z, post, idx = 0, onCloseFlyout }) {
+  const [open, setOpen] = React.useState(false);
+  const label = REACTION_META[rxKey]?.label || rxKey;
+  const { names, remaining } = fakeNamesFor(post.id, count, rxKey, 4);
+
+  return (
+    <span
+      className="rx"
+      style={{
+        zIndex: z,
+        position: "relative",
+        width: 22,
+        height: 22,
+        fontSize: 16,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "999px",
+        marginLeft: idx === 0 ? 0 : -2,
+        cursor: count > 0 ? "pointer" : "default",
+      }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onPointerDown={onCloseFlyout}
+      aria-haspopup="true"
+      aria-expanded={open}
+      aria-label={label}
+    >
+      {/* Static here — the idle wobble is reserved for the open reaction
+          picker (react-flyout), not the always-visible stacked summary. */}
+      <ReactionGlyph rxKey={rxKey} size={16} animate={false} />
+      {open && count > 0 && (
+        <div
+          role="tooltip"
+          style={{
+            position: "absolute",
+            bottom: "130%",
+            right: 0,
+            background: "#111827",
+            color: "white",
+            padding: "8px 10px",
+            borderRadius: 8,
+            fontSize: 12,
+            lineHeight: 1.25,
+            boxShadow: "0 6px 24px rgba(0,0,0,.2)",
+            whiteSpace: "nowrap",
+            zIndex: 50,
+            maxWidth: 260,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
+          {names.length ? (
+            <>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {names.map((n) => (
+                  <li key={n} style={{ margin: "2px 0" }}>
+                    {n}
+                  </li>
+                ))}
+              </ul>
+              {remaining > 0 && (
+                <div style={{ opacity: 0.8, marginTop: 4 }}>and {remaining} more</div>
+              )}
+            </>
+          ) : (
+            <div style={{ opacity: 0.8 }}>No {label.toLowerCase()} yet</div>
+          )}
+        </div>
+      )}
     </span>
   );
 }
@@ -1628,7 +1712,7 @@ export function PostCard({
   const LikeIcon = (p) =>
     myReaction ? (
       <span {...p}>
-        <ReactionGlyph rxKey={myReaction} size={18} />
+        <ReactionGlyph rxKey={myReaction} size={18} animate={false} />
       </span>
     ) : (
       <IconThumb {...p} />
@@ -1643,77 +1727,6 @@ export function PostCard({
       (window.SESSION?.participant_id || window.PARTICIPANT_ID)) ||
       null) ||
     "Participant";
-
-  function ReactionIconWithNames({ rxKey, count, z, post, idx = 0 }) {
-    const [open, setOpen] = React.useState(false);
-    const label = REACTION_META[rxKey]?.label || rxKey;
-    const { names, remaining } = fakeNamesFor(post.id, count, rxKey, 4);
-
-    return (
-      <span
-        className="rx"
-        style={{
-          zIndex: z,
-          position: "relative",
-          width: 22,
-          height: 22,
-          fontSize: 16,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: "999px",
-          marginLeft: idx === 0 ? 0 : -2,
-          cursor: count > 0 ? "pointer" : "default",
-        }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onPointerDown={closeNowAndSuppress}
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-label={label}
-      >
-        <ReactionGlyph rxKey={rxKey} size={16} delay={idx * 0.2} />
-        {open && count > 0 && (
-          <div
-            role="tooltip"
-            style={{
-              position: "absolute",
-              bottom: "130%",
-              right: 0,
-              background: "#111827",
-              color: "white",
-              padding: "8px 10px",
-              borderRadius: 8,
-              fontSize: 12,
-              lineHeight: 1.25,
-              boxShadow: "0 6px 24px rgba(0,0,0,.2)",
-              whiteSpace: "nowrap",
-              zIndex: 50,
-              maxWidth: 260,
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
-            {names.length ? (
-              <>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                  {names.map((n) => (
-                    <li key={n} style={{ margin: "2px 0" }}>
-                      {n}
-                    </li>
-                  ))}
-                </ul>
-                {remaining > 0 && (
-                  <div style={{ opacity: 0.8, marginTop: 4 }}>and {remaining} more</div>
-                )}
-              </>
-            ) : (
-              <div style={{ opacity: 0.8 }}>No {label.toLowerCase()} yet</div>
-            )}
-          </div>
-        )}
-      </span>
-    );
-  }
 
   const shouldShowGhosts = showReactions && baseCommentCount > 0;
 
@@ -2410,6 +2423,7 @@ export function PostCard({
                       z={10 - i}
                       post={post}
                       idx={i}
+                      onCloseFlyout={closeNowAndSuppress}
                     />
                   ))}
                   <span className="muted rx-count" style={{ marginLeft: 8 }}>
@@ -2496,7 +2510,7 @@ export function PostCard({
                     onClick={() => onPickReaction(key)}
                     title={key}
                   >
-                    <ReactionGlyph rxKey={key} size={24} delay={i * 0.1} />
+                    <ReactionGlyph rxKey={key} size={28} delay={i * 0.1} />
                   </button>
                 ))}
               </div>

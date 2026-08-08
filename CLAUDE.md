@@ -5628,3 +5628,471 @@ the third dark-mode session in a row to run into exactly this same wall and find
 via computed-style checks on live-mounted real components, which is worth remembering as the
 reliable fallback technique specifically for this class of bug (a color is either right or wrong,
 independent of whether a human clicked to see it).
+
+## Survey analysis hub: free-text numeric demographics + straight-lining flag rescoped (2026-08-08)
+
+Two small, unrelated fixes to `utils-survey-analysis.js`/`components-admin-participants-survey.jsx`,
+both from direct user reports.
+
+**Free-text "age" demographic couldn't be averaged.** A TEXT/TEXTAREA-type demographic question
+(e.g. "What is your age?" asked as an open text field, not a slider/choice) was hard-classified as
+`kind: "text"` purely from its question TYPE, regardless of what participants actually typed —
+`summarizeItem` then only ever reported an answered-count for it ("116 free-text response(s)"),
+never a mean, even when every real answer was a bare number. Fixed with a new `textItemLooksNumeric
+(item, rows)` check in `buildAnalysisDataset`: promotes a `"text"` item to `"numeric"` when ≥90% of
+its non-empty answers parse as finite numbers (≥3 answers required to decide either way) — a
+genuinely open-ended free-text question with non-numeric answers is untouched. `numericFromText:
+true` is stamped on the promoted item for traceability. Verified live: 8 fabricated numeric-string
+ages correctly produced mean/SD/median (32.9/13.5/29.5); a real open-ended question in the same
+dataset stayed `kind: "text"`.
+
+**Straight-lining flag was per-composite, producing false positives.** Previously flagged (and
+displayed a separate badge for) *every* individual composite scale a participant answered with the
+identical value throughout — but a single straight-lined 3-item matrix, when every *other* composite
+that participant answered was normal, is weak evidence on its own (the items in one scale are often
+closely related by design, so an identical answer can be a genuine consistent response, not
+inattention). Rewritten to compute one *overall* flag per participant: gathers every composite with
+≥3 items where all items were actually answered, and only fires when straight-lining is the dominant
+pattern — either it's the *only* composite that exists in the survey (nothing else to compare
+against), or a straight-lined majority (≥50%) of the composites the participant actually completed.
+Produces a single `"straightline:overall"` flag (previously one flag per composite id) naming which
+measure(s) were affected. Verified live against 4 scenarios: 1-of-4 composites straight-lined (with
+the other 3 normal) → correctly no flag; 2-of-4 → flag; 4-of-4 (all) → flag, "every measure"
+wording; all-normal → no flag.
+
+Both are pure client-side changes — nothing to redeploy on Supabase, no migration.
+
+## Realistic surroundings: screenshot-driven redesign, an avatar sub-toggle, and three real bugs (2026-08-08)
+
+Continuation of the previous session's Facebook "Realistic surroundings" rail work, prompted by two
+real Facebook screenshots the user provided directly (a tall-viewport one showing ~13 nav items and
+zero visible shortcuts, and a shorter one showing 8 visible nav items + a "See more" collapse + only
+2 shortcuts) — the original 6-nav-item/height-filling-shortcuts design read as having far more
+shortcuts than nav items relative to the reference, the opposite of real Facebook.
+
+**Nav/shortcuts redesign** (`ui-posts-facebook.jsx`, `App-facebook.jsx`, `styles-facebook.css`):
+- `LEFT_RAIL_NAV_ITEMS` expanded from 6 to 12 (added Feeds, Ads Manager, Birthdays, Events, Gaming
+  Video, Crisis response; renamed "Video"→"Reels" to match the real screenshots), each with its own
+  distinct colored icon glyph (`LEFT_RAIL_ICONS`).
+- Shortcuts capped low (2–4, height-dependent) instead of height-filling up to 10-12 — matches both
+  reference screenshots' "nav dominates, shortcuts are sparse" ratio.
+- Every one of the 12 `LEFT_RAIL_SHORTCUT_POOL` entries got its own distinct icon/color
+  (`LEFT_RAIL_SHORTCUT_ICONS`) instead of one shared "people" glyph repeated 12 times — per direct
+  feedback ("shouldn't all have the same icon, these are different groups").
+- Rows enlarged (bigger padding/gap/icon size in `.rail-real-item`/`.rail-real-list`) so fewer are
+  needed to visually fill the rail, per direct feedback that items read as too cramped.
+- **New independent opt-in sub-toggle**: `realistic_surroundings_avatars` — separate from
+  `realistic_surroundings` itself (never bundled, matching this repo's standing rule for every
+  realism feature), controls only whether decorative rail contacts get a real avatar photo; off
+  (default), they show the existing blank-circle placeholder, and — deliberately — the avatar pool
+  fetch is skipped entirely when off (no wasted network cost). Threaded through the full pipeline:
+  `utils-backend.js` (`normalizeFlagsForStore`/`-ForRead`), `utils-backend-supabase.js`
+  (`FLAG_PAIRS`), `components-admin-dashboard.jsx` (`FLAG_KINDS`, Facebook-only per the existing
+  Amazon-exclusion filter in `components-admin-feeds.jsx`), and all three `App-*.jsx` files' local
+  `normalizeFlags()` — the exact "N places to update or it silently no-ops for real participants"
+  footgun this file already documents extensively for the sibling realism flags.
+- **Removed the participant-facing admin gear FAB** (⚙, bottom-right, linking to `/admin`) from
+  Facebook's and Amazon's `RouteAwareTopbar` — per direct request, real participants should never see
+  a link into the admin login. Facebook kept the "← back to feed" link for when an admin is actually
+  already on `/admin` (a real, already-logged-in convenience, not participant-facing); Amazon's
+  branch was actually unreachable dead code already (the component returned `null` whenever
+  `onAdmin` was true, so the ternary's "back to feed" arm could never render) — simplified to just
+  removing the whole FAB block there. Instagram never had this at all, confirmed via grep.
+
+**Three real bugs found and fixed, each surfaced by the previous fix, in order**:
+1. **"Shortcuts and contacts are cut off"** — `.rail{height:calc(100vh - var(--rail-gap));
+   overflow:hidden}` was designed for the ghost skeleton (never taller than the viewport) but the
+   now-taller real content (12 nav rows + shortcuts + contacts) genuinely exceeds a shorter laptop
+   screen's rail height, silently clipping the bottom. First attempt added `overflow-y:auto` for an
+   internal scrollbar — **didn't actually work**, because `.rail` is deliberately
+   `pointer-events:none` (the decoration must stay fully inert), and an element with pointer events
+   disabled can't receive the wheel/scrollbar interaction needed to scroll its own overflow — so the
+   content stayed exactly as unreachable as a hard clip. Real fix: `.rail--content` now has
+   `height:auto; overflow:visible` (with a `min-height` floor so short content still looks
+   intentional) — content renders at its natural height, like a normal sticky sidebar, and the
+   *page's own* always-scrollable scroll (unaffected by the inert rail's pointer-events) reveals
+   the rest. Verified: a deliberately short 700px viewport with genuinely-1034px-tall content — the
+   rail no longer clips, and `document.body.scrollTop` can genuinely reach 746px+ to see it all.
+2. **"Menu items/shortcuts/contacts suddenly show twice"** — fixing bug 1 had a side effect: CSS
+   Grid gives a grid item's automatic minimum size as `0` only when the item's own `overflow` is
+   NOT `visible` (a real spec rule) — `.rail{overflow:hidden}` was relying on exactly this to let
+   `Feed`'s *own* internal rail-left/rail-right (rendered whenever `Feed` mounts at all, meant only
+   to be reachable when `Feed` is mounted standalone e.g. the admin's Feed Preview) get squeezed to
+   near-zero width when nested inside the real `PageWithRails`'s narrow ~700px feed column. Switching
+   to `overflow:visible` for the height fix silently un-hid this second, previously-invisible copy —
+   confirmed by tracing a live-mounted reproduction: with the old CSS the nested duplicate measured
+   0px wide (correctly invisible); after the height fix it measured a real, visible width. The right
+   fix wasn't more CSS trickery (a `min-width:0` alone stopped the width blowout but the drawn
+   content still visually painted outside its own zero-width box, since `overflow:visible` doesn't
+   clip) — it was **not rendering the duplicate DOM at all**: `Feed` gained a `showRails` prop
+   (default `true`, so the admin's Feed Preview — the only real standalone-mount caller — is
+   unaffected), and the real participant call site (`<FBFeed>` inside `App-facebook.jsx`'s
+   `PageWithRails`) now passes `showRails={false}`, since `PageWithRails` already renders the real
+   rails. Verified: the nested rail-left/rail-right no longer exist in the DOM at all when
+   `showRails={false}`; Feed Preview (default, no prop passed) still renders exactly one rail each
+   side at full width.
+3. **Contact names didn't match their avatar photo's gender.** `buildRailContacts` picked a
+   contact's name and avatar as two independent random draws from pools that merged both genders
+   together — could pair a female name with a male photo or vice versa. Fixed to pick gender once
+   per contact (seeded), then draw *both* name and avatar from that same gender's pool, using
+   separate running per-gender indices so `pickUniqueDeterministic`'s no-repeats guarantee still
+   holds within each gender's own list — mirrors how a real post's avatar/name pairing is driven by
+   one shared `authorType`, just auto-picked here instead of admin-chosen. Verified with
+   distinguishable fake pools (`FEM_*`/`MALE_*` markers): 0 mismatches across 20 fabricated contacts.
+
+**A fourth, smaller latent bug found and fixed along the way, unrelated to the three above**: the
+admin's Feed Preview (`components-admin-feeds.jsx`) builds its own `previewFlags` object from a
+hardcoded whitelist that only ever listed the five legacy `randomize_*` flags — meaning
+`realistic_engagement`/`_pacing`/`_surroundings`/`_surroundings_avatars` were **never previewable at
+all** (Feed Preview would always show the plain ghost skeleton for these, regardless of what's
+actually toggled on for the feed) since the very session those features were first built. Fixed to
+build the object generically from every entry in the `flagKinds` prop instead of a fixed list, so any
+future flag is automatically previewable too.
+
+**Verified live throughout** via the established dynamic-import/component-mount technique (real
+running dev server, cache-busted imports, fabricated data) — not a real click-through by a logged-in
+admin (standing limitation throughout this file).
+
+## CloudFront avatar CORS: root-caused end to end, including a second, subtler bug (2026-08-08)
+
+Direct user report: rail contacts (and, it turned out, the pre-existing "Randomize avatars" feature
+for real posts) never actually showed a photo — always the blank-circle fallback, even with every
+relevant toggle correctly on. Root-caused via direct `curl` testing against the real CDN
+(`d2bihrgvtn9bga.cloudfront.net`, bucket `my-video-feed`, distribution `ERUJLWKVJDMDM`) rather than
+guessing from code alone, since the code path itself (`getAvatarPool()` → `fetch(url, {mode:
+"cors"})` → `avatars/{female,male}/index.json`) looked correct on inspection.
+
+**Bug 1 — no CORS headers at all.** `curl -H "Origin: https://staging.studyfeed.org" .../index.json`
+came back with zero `Access-Control-Allow-Origin` header, and an `OPTIONS` preflight returned a flat
+`403` — meaning the browser blocks this fetch from *any* origin, not just this sandbox's localhost
+(ruling out the "just a local dev CORS quirk" theory from the previous session). This is the exact
+fetch the pre-existing "Randomize avatars" feature for real posts also depends on, so that was
+silently non-functional too, unrelated to anything from this session — a real, standing
+infrastructure gap, not a regression. Fix was entirely on the AWS side (Claude has no live AWS
+session in this sandbox — expired, `aws sts get-caller-identity` fails): user added a real S3 bucket
+CORS policy (`AllowedOrigins`: the real domains; `AllowedMethods`: GET/PUT/HEAD).
+
+**Bug 2 — found immediately after Bug 1 was "fixed," via testing multiple `Origin` values against
+the same URL.** Every origin tested (`staging.studyfeed.org`, `studyfeed.org`, `www.studyfeed.org`,
+`jasonweismueller.github.io`, even a deliberately-disallowed `evil-example.com`) got back the exact
+same `Access-Control-Allow-Origin: https://staging.studyfeed.org` — including origins that don't
+match it at all — every time as `x-cache: Hit from cloudfront`, same edge POP, even with a
+cache-busting query string (this distribution doesn't vary cache by query string either). Root
+cause: the CloudFront distribution has exactly one behavior (`Default (*)`) using
+`Managed-CachingOptimized`, whose cache key doesn't include the `Origin` header — so it cached
+whichever origin happened to request the URL first (`staging.studyfeed.org`, from earlier testing)
+and served that single stale response to every subsequent request regardless of actual origin. This
+would have made `studyfeed.org`/production fail even though staging happened to "work" by
+coincidence. Real fix (also AWS-side, user-applied): switched the `Default (*)` behavior's cache
+policy to AWS's managed **`Managed-CORS-S3Origin`** — built specifically for this scenario, includes
+`Origin` (plus the two CORS preflight headers) in the cache key so each origin gets its own correctly
+-matched cached response instead of one shared one.
+
+**One stale object survived even after both fixes** — `avatars/female/index.json` specifically kept
+returning the old cached (`staging`-only) response after the policy change (confirmed via repeated
+curl against the same edge POP, `SIN3-P5`), while `avatars/male/index.json` on the same distribution
+correctly showed a fresh per-origin response — a plain invalidation-hadn't-reached-this-one-object
+gap, not a config problem; resolved once the user ran the invalidation again.
+
+**Status: confirmed fully working** — user confirmed after the second round of fixes. Not
+independently re-tested by Claude after the final "all good" (no live AWS session in this sandbox to
+re-run the curl battery) — worth a quick re-check next session if avatar display is ever in question
+again, using the same `curl -H "Origin: <domain>" .../avatars/{female,male}/index.json` battery
+documented above (staging/production/www/github.io/a fake origin, checking both the
+`access-control-allow-origin` value matches the requested origin *and* `x-cache` behavior).
+
+## Dark mode, round 4: comment/share modals were a separate, untouched component tree (2026-08-08)
+
+Direct user report continuing the dark-mode work: reaction pill and emoji flyout had light
+backgrounds, and the comment/share modals were light throughout. Investigation found the comment/
+share modals are **not** built from the shared `.modal`/`.modal-backdrop` CSS class the earlier
+dark-mode sessions already fixed — `FacebookCommentModalDesktop`/`FacebookShareModalDesktop`
+(`ui-post-desktop-facebook.jsx`) and their mobile counterparts `FacebookCommentSheetMobile`/
+`FacebookShareSheetMobile`/`FacebookMenuSheet`/`MobileSheetBase` (`ui-post-mobile-facebook.jsx`) are
+entirely separate, bespoke, inline-styled components that were simply never touched by any prior
+dark-mode pass — every background/text/border color in all four (and their shared
+`DesktopOverlay`/`MobileSheetBase` wrappers) was a hardcoded literal hex, immune to any `.dark-mode`
+CSS class regardless of specificity since inline styles always win.
+
+**Fixed by converting every theme-dependent hardcoded literal to the matching CSS variable** (`var(
+--card)`/`var(--text)`/`var(--muted)`/`var(--line)`/`var(--blue)`, all of which resolve correctly in
+both light — defined at `:root` — and dark — overridden under `.dark-mode` — modes) across both
+files: modal/sheet backgrounds, borders, "No comments yet" muted text, ghost-comment name/text color,
+comment input background, the Post/Send button's active-vs-disabled color, friend-name labels in the
+Share modal, and the message-composer input in Share. Deliberately left alone: white text/icons
+sitting *on* a permanently-blue/colored surface (the Send button's white label, the selected-friend
+checkmark's white glyph and its white separation ring against a photo) — those don't need to change
+with theme, since the colored surface they sit on doesn't either.
+
+**Also fixed, one layer deeper**: the CSS classes governing the **post shown embedded inside** the
+desktop comment modal (`.fb-comment-modal-body`/`.fb-comment-modal-post-wrap`/`.fb-modal-post-shell`
+— including its `!important`-decorated `.card`/`.post-card` override combos — `.fb-comment-thread`/
+`.fb-comment-composer`/`.fb-comment-author`/`.fb-comment-text`, all in `styles-facebook.css`) had
+their own independent hardcoded `background:#fff`/`color:#111827`, some with `!important`. Added
+`.dark-mode` overrides for the whole cluster (matching `!important` where the base rule used it,
+since a higher-specificity non-important override can't beat a lower-specificity `!important` one) —
+without this, the modal's own chrome would go dark but the post pinned at the top of it would stay a
+stubborn white rectangle.
+
+**Reaction pill (`.rx-stack .rx`) and emoji flyout (`.react-flyout`)**: both hardcoded
+`background:#fff` (the pill's white separation ring between stacked icons, and the flyout's popup
+background) — added `.dark-mode` overrides to `var(--card)` for both.
+
+**Neutral avatar placeholders** (`neutralAvatarDataUrl`, `ui-core-facebook.jsx` — used for ghost
+comment avatars and Share-modal friend placeholders) are a **static inline SVG data URI**, which
+can't respond to CSS at all — colors have to be picked at generation time. Fixed by having the
+function check `document.body.classList.contains("dark-mode")` synchronously when called and choosing
+a dark-appropriate fill pair (`#3a3b3c`/`#b0b3b8`) instead of the fixed light one (`#e5e7eb`/
+`#9ca3af`) — safe as a plain DOM read (no React state needed) since dark-mode toggling always
+re-renders the surrounding tree anyway, so any `<img src={neutralAvatarDataUrl(...)}>` regenerates
+correctly on that same render.
+
+**Comment icon was solid-filled while Like/Share are outline** — `IconComment` (`ui-core-facebook.
+jsx`) used `fill="currentColor"` while `IconThumb`/`IconShare` are stroke-based; changed to
+`fill="none" stroke="currentColor"` on the same path for visual consistency, per direct feedback
+("shouldn't be filled in either mode").
+
+**Then a second, subtler icon bug, also from direct feedback** ("comment text isn't well aligned
+with the icon"): even though the SVG *element's* bounding box was already measured as correctly
+centered next to the label text (sub-pixel diff), the *path drawn inside it* wasn't — traced the
+actual path coordinates and found its shape's own bounding box was `y:[2,18]` (visual center
+y=10) against the 24-unit viewBox's true center y=12, because the speech-bubble tail dragged the
+shape asymmetrically downward. No amount of box-alignment CSS can fix a geometry problem like this.
+Replaced the path with a well-known, symmetric "message square" design (bounding box `x:[3,21]
+y:[3,21]`, centered exactly on `(12,12)` — verified by tracing its coordinates *before* using it, not
+after) and removed a leftover `transform: translateY(1px)` nudge that had been calibrated for the old
+*filled* icon's optical weight and was actively miscalibrated once the icon became an outline.
+
+**Verified live throughout**, via the same real-dev-server-plus-`getComputedStyle`/direct-path-
+tracing technique as every prior dark-mode round in this file: reaction pill, flyout, both modals'
+full color set (background/borders/text/inputs), and both icon fixes (drawn-path visual center now
+matches the label text center to ~0.004px, same as Like/Share) all confirmed correct in dark mode
+with light mode confirmed unchanged (regression-checked, not just assumed). Not verified: an actual
+click-through by a real logged-in participant/admin — same standing limitation as every dark-mode
+round in this file.
+
+## Real production bug: participants stuck unable to submit the final survey page (2026-08-08, urgent)
+
+Multiple real participants reported being unable to complete the survey: reaching the final page,
+clicking Submit, and being told "Please complete the highlighted questions" with **nothing actually
+highlighted** on the page they were looking at. One participant figured out the real problem was on
+a *previous* page. Investigated as a live, urgent bug affecting real (likely paid, Prolific) data
+collection.
+
+**Two separate, compounding root causes, both real, both fixed**:
+
+1. **Final-page Submit validates the whole survey, but the UI only ever highlighted/navigated to
+   errors on the current page.** `validateSurveyResponses` (`utils-survey.js`) correctly scans every
+   page for unanswered required questions — this looks intentional (a real safety net against a
+   question that becomes reachable/required only via a later interaction) — but `SurveyScreen`/
+   `SurveyScreenMobile` only ever look up `errors[q.id]` for questions on the *currently visible*
+   page, and nothing anywhere maps a returned error back to the page it actually belongs to. So a
+   real cross-page validation failure produced a banner with zero visible highlighting and no way to
+   find the problem — exactly the reported symptom. **Fixed**: both files gained a new effect that,
+   when `errors` contains a question id not on the current page, jumps to the earliest page (in
+   participant-visible order) that contains it — generalizing the existing preview-only
+   `initialQuestionId` jump mechanism (`ui-survey.jsx`) to real participant delivery. Also fixed a
+   smaller, related bug in the same area: all three `App-*.jsx`'s `handleSurveySubmit` called
+   `validateSurveyResponses(linkedSurvey, surveyResponses)` **without** `{feedId: activeFeedId}`,
+   while the live render path always passes the real `feedId` — meant submit-time validation was
+   slightly *more lenient* than the real page for any question scoped by `visible_in_feeds` (opposite
+   direction from the reported bug, but a real correctness gap in the same function). Fixed in all
+   three files.
+
+2. **The actual reason participants could get so far in the first place** (found by asking "how did
+   per-page validation let this happen?" and checking the real survey definition directly, not just
+   reasoning about it): per-page "Next" validation (`validateCurrentPage`, in both `ui-survey.jsx`
+   and `ui-survey-mobile.jsx`) has a hardcoded rule that unconditionally exempts **every**
+   `post_reminder`-type question from required-checking — correct before the "recall" feature
+   existed (post_reminder really was always display-only then), but never updated once recall
+   questions made `required` a real, meaningful field on a post_reminder (see the "Interactive
+   post-reminder questions"/recall entries earlier in this file). Confirmed via a live, read-only
+   query against the actual production survey ("Study 1 - Main", `survey_t9919ylm52omnt277u3`) that
+   it has exactly this shape: `PL_RECALL`/`PS_RECALL`, both `type: "post_reminder"`,
+   `recall_enabled: true`, `required: true` — a participant could click straight past that page
+   without picking an option, no block, no warning at all, and only discover the problem at the very
+   end. **Fixed** in both files: the skip condition now only exempts a post_reminder when it's
+   **not** `recall_enabled`; and `isEmptyRequiredValue` in both files gained a dedicated
+   `post_reminder` case checking `value.selected_option` specifically (matching
+   `utils-survey.js`'s canonical `isQuestionAnswered`) — needed because a recall question's response
+   object gets `dwell_ms`/`dwell_s` populated from viewport dwell tracking *before* any option is
+   picked, and the previous generic "does this object have any keys at all" check would have wrongly
+   read that as "answered."
+
+**Verified live for both fixes**, via fabricated multi-page surveys mounted against the real running
+dev server: (1) unanswered required question on an earlier page + reaching the last page + Submit →
+correctly jumps back to the exact page/question and highlights it, banner text now accurate;
+answering it and resubmitting → succeeds normally. (2) A required, unanswered recall post_reminder
+question on page 1 of 2 → clicking "Next" now correctly blocks with "Please answer this question.",
+stays on page 1; selecting the real post option and clicking Next → correctly advances. Both fixes
+are pure frontend (no Supabase/migration needed) — ships through the normal build/deploy pipeline.
+
+**Not verified**: whether any already-submitted (or permanently-abandoned, stuck-participant)
+responses from before this fix need remediation — worth a spot-check against real `survey_responses`
+rows for "Study 1 - Main" once this is live, and worth checking `git log production..main` given the
+urgency (this may warrant a faster-than-usual promotion to `production`/`studyfeed.org`).
+
+## Oversized per-post images: root-caused, fix script written, not yet run (2026-08-08)
+
+Direct report of a specific slow-loading image
+(`images/Feed 2 - Prebunk Short/1759746741013_jack_williams_post_pic.jpeg`) — confirmed via
+`sips`: 5280×3520px, 1.44MB, a full camera-resolution original. This is the exact category flagged
+as "not addressed" during the 2026-08-02 avatar/topic-image compression pass (per-post uploads
+aren't a randomization pool, so weren't touched then) — now a confirmed real, ongoing problem, not
+just a theoretical gap.
+
+**No live AWS session in this sandbox** (same expiry as the CloudFront work above), so — matching
+this repo's established pattern for risky S3/CloudFront writes — wrote (did not run)
+`resize_post_images.sh`, left in the scratchpad, for the user to review and run themselves:
+- Scans every file under `s3://my-video-feed/images/` (excluding the 20 real topic-image pool
+  folders already resized on 2026-08-02, matched by name).
+- Skips anything already ≤1400px wide (same "never upscale a file that's already reasonably sized"
+  rule the earlier pass used, and the same 1400px target — `--feed-max:700px` at 2x retina).
+- For everything oversized: backs up the untouched original to `images_originals_backup_<date>/` in
+  the same bucket (bucket has no versioning), resizes to max 1400px wide (JPEG quality 80; PNG gets
+  dimension-only reduction, since `sips` has no PNG quality knob), re-uploads to the **same key** —
+  no URLs or stored post records change — then creates one CloudFront invalidation covering exactly
+  the files it touched.
+- Fixed two issues while writing it: a leftover no-op `grep` line, and (a real, previously-hit bug in
+  this exact repo's history) missing URL-encoding of spaces in folder names like "Feed 2 - Prebunk
+  Short" for the CloudFront invalidation paths — encodes each `/`-separated path segment individually
+  via `urllib.parse.quote`, matching how the 2026-08-02 topic-image pass's own invalidation had to be
+  fixed for the same reason.
+- Has a `DRY_RUN=1` mode (lists what would be resized — path, current width, current size — touches
+  nothing) recommended as the first step before the real pass, given this touches real per-post study
+  content, some of which may be deliberately high-res for legibility.
+
+**Status: not yet run.** The user had not reported back on the dry-run results as of this session's
+end — check in on this next session if it comes up, and remember the script lives in this session's
+scratchpad path (ephemeral — if it's gone next session, it will need rewriting, though the design
+notes above are enough to reconstruct it quickly).
+
+## Realistic engagement counts: reaction fallback was silently gated on a field that defaults off (2026-08-08)
+
+Direct user report: "the engagement toggle just affects comments and shares, I haven't seen the
+emojis at all when it's on." Confirmed as a real bug, not a missing feature — no new toggle needed.
+
+**Root cause**: the reaction-count fallback (`baseReactions` in `PostCard`, `ui-posts-facebook.jsx`)
+had an extra condition comments/shares never had — it only injected `fallbackEngagementStats`'s
+reaction numbers when the post's own `showReactions` field was `true`. That field **defaults to
+`false`** for every newly-created post (`components-admin-dashboard.jsx`'s blank-post template) and
+isn't something an admin would think to flip per-post — so in practice, unless a post happened to
+already have it manually enabled, the reaction fallback silently never fired, while comments/shares
+(which never had this extra gate, "no dedicated show/hide toggle of their own" per the existing code
+comment) always worked. Checked whether removing the gate would break the original intent (a real
+per-post on/off switch for a study deliberately manipulating reaction visibility as an IV) before
+touching it: confirmed `hasRx` (whether the reaction row renders at all) already ignores
+`showReactions` by default in the live feed — it's gated by a separate `respectShowReactions` prop
+that defaults to `false` and is never passed `true` anywhere in the app — so the gate wasn't actually
+protecting any currently-working manipulation, just silently breaking the fallback for everyone.
+
+**Fixed**: removed the `showReactions` requirement from the fallback-injection condition, so
+reactions now fall back the same unconditional way comments/shares already do (`!hasExplicit &&
+engagementFallback` instead of `!hasExplicit && showReactions && engagementFallback`).
+
+**Verified live**, three cases: no explicit reactions + `showReactions:false` (today's real default)
++ toggle on → now correctly shows fallback emojis and count alongside comments/shares, matching what
+the toggle's own label promises; toggle off → still nothing (no regression); explicit admin-authored
+reaction count set → still shows the real number, never overridden by the fallback.
+
+## Custom reaction icons: no OS unicode emoji, no Meta artwork, plus idle "wobble" animation (2026-08-08)
+
+Prompted by direct visual comparison against two real Facebook screenshots — the app's reactions were
+plain OS unicode emoji characters (👍❤️🤗😆😮😢😡, via `REACTION_META`/`ALL_REACTIONS`,
+`utils-core.js`/`ui-posts-facebook.jsx`), which render nothing like Facebook's actual reaction icon
+set. Built a **from-scratch custom icon set** — deliberately not a redraw of Meta's real illustrated
+reaction characters (their specific gradient-shaded 3D art style is real brand IP, a line worth
+staying clearly on the safe side of), and per explicit direct instruction, deliberately not the
+plain unicode emoji either.
+
+**New shared `ReactionGlyph({ rxKey, size, animate, delay })`** (`ui-posts-facebook.jsx`, a plain
+top-level function, not exported — used only within this file):
+- **Like**: blue (`#0866FF`) circle + white thumb icon (custom path).
+- **Love**: red (`#F33E58`) circle + white heart (reuses the exact same heart path already used by
+  `IconLike` in `ui-core-facebook.jsx`, rather than a second hand-drawn heart, so both agree on one
+  shape).
+- **Care/Haha/Wow/Sad/Angry**: five new flat "circle face" icons (warm yellow `#FFCC4D` for the
+  first four, a redder-orange `#F0793C` for Angry — matching Facebook's real per-reaction color
+  coding), each with simple geometric features (arcs/circles/small paths) tuned to read as the
+  correct distinct expression at a glance: closed happy eyes + a small heart for Care; laughing open
+  mouth + tongue for Haha; round shocked eyes + round "o" mouth for Wow; worried eyes + a teardrop +
+  frown for Sad; angled brows + frown for Angry. Verified legibility by rendering all five at 100px
+  in isolation before trusting them at the real ~16-24px render size — all five read clearly and
+  distinctly.
+- Used consistently across all three places a reaction renders as an icon: the stacked summary
+  under a post (`ReactionIconWithNames`), the reaction-picker flyout (`.react-flyout` buttons), and
+  the active-reaction indicator on the Like button itself (`LikeIcon`) — replacing `REACTION_META[
+  rxKey].emoji`/`ALL_REACTIONS[key]` at all three call sites with `<ReactionGlyph .../>`, so all
+  three stay visually consistent with each other by construction (one shared implementation, not
+  three copies).
+
+**Idle "wobble" animation**, per direct feedback that real Facebook's reaction icons visibly move,
+not sit static: new `@keyframes rx-wobble` (`styles-facebook.css`, a gentle rotate+scale loop,
+2.6s) applied via a `.rx-wobble` class (not inline `animation`, specifically so `prefers-reduced-
+motion: reduce` can cleanly disable it) with a per-icon `animation-delay` passed as `delay` — staggered
+0.2s apart in the stacked summary and 0.1s apart in the flyout picker (both using the array index
+already available at each call site) so a multi-reaction stack doesn't move in perfect unison.
+
+**Reaction-pill overlap reduced** (separate, earlier direct feedback the same day, before the icon
+redesign above): `.rx-stack .rx`'s `margin-right` went from `-4px` to `-2px` — noted here since it's
+the same visual area; a closer look afterward found the *actual* rendered overlap is 4px (not 2px),
+because `ReactionIconWithNames`'s own inline `marginLeft:-2` on each non-first icon compounds with
+this CSS `margin-right`, something not caught at the time — worth a from-scratch look at both margins
+together if the current overlap still looks like too much.
+
+**Verified live**: colors/shapes confirmed via `getComputedStyle`/direct SVG attribute checks for
+Like (`rgb(8,102,255)`)/Love (`rgb(243,62,88)`)/Haha's circle fill (`#FFCC4D`) inside the real
+mounted `Feed` component; animation confirmed via computed `animation-name`/`-duration`/`-delay`
+(`rx-wobble`/`2.6s`/staggered `0s,0.2s,0.4s`) on the real stacked-summary icons. Only the
+stacked-summary call site was directly screenshotted/measured this way — the flyout picker (opens on
+hover) and the active-Like-button state (needs a real click-to-react) both depend on browser
+interactions that don't reliably trigger through this sandbox's synthetic events (attempted hover
+`dispatchEvent`, plain `.click()`, and a full pointerdown/mouseup/click sequence — none reliably
+toggled `myReaction` state here); since all three call sites share the one `ReactionGlyph`
+implementation, high confidence they render identically, just not independently confirmed for those
+two.
+
+## Session handoff (2026-08-08) — read this first if picking up fresh
+
+Long, dense session covering seven separate pieces of work, roughly in this order: (1) two small
+Survey Participants analysis-hub fixes (free-text numeric demographics, straight-lining flag
+rescoped to an overall assessment); (2) a screenshot-driven redesign of Facebook's "Realistic
+surroundings" rails plus a new avatar sub-toggle, which surfaced three real bugs (rail content
+getting clipped, a previously-invisible duplicate rail becoming visible, and gender-mismatched
+contact avatars) plus a Feed Preview flags gap found along the way; (3) root-causing and fixing a
+real CORS/CloudFront-caching problem that had silently broken avatar photos everywhere, including the
+pre-existing "Randomize avatars" feature; (4) a fourth round of dark-mode fixes, finding the comment/
+share modals were an entirely separate, never-before-touched component tree; (5) an urgent real
+production bug — participants unable to submit surveys, root-caused to two compounding causes and
+fixed; (6) writing (but not running — no AWS access) a script to fix slow-loading oversized per-post
+images; (7) a real bug in the "Realistic engagement counts" toggle (reactions silently gated off) and
+a full custom reaction-icon redesign with animation, both prompted by direct visual comparison against
+real Facebook.
+
+**Everything in this session is a pure frontend change** (JS/JSX/CSS only) — no Supabase migrations,
+no Edge Function redeploys needed for anything above. Two things happened entirely outside the
+codebase and needed the user's own access, not Claude's: the CloudFront/S3 CORS and cache-policy
+fixes (AWS console, confirmed working by the user), and the oversized-image resize script (written,
+not yet run).
+
+**Given this session included a genuinely urgent, live production bug** (the survey-submission one),
+worth checking `git log production..main` first thing next session and considering whether it needs
+a faster-than-usual promotion to `studyfeed.org` rather than waiting for the normal cadence — same
+logic CLAUDE.md has flagged before for time-sensitive fixes.
+
+**What's genuinely not done/verified, in priority order**:
+1. **The oversized-image resize script hasn't been run yet** — `resize_post_images.sh`, written to
+   this session's scratchpad (ephemeral; may need rewriting from scratch next session if it's gone —
+   the design notes in the section above are enough to reconstruct it quickly). Recommend the
+   `DRY_RUN=1` pass first given it touches real per-post study content.
+2. **No real click-through by a logged-in admin/participant for any of this session's UI work** —
+   same standing limitation as every session in this file; everything was verified via direct
+   component mounts, computed-style checks, or (for the flyout/active-reaction-icon paths
+   specifically) not verified interactively at all due to this sandbox's hover/click-simulation
+   limitations, though high-confidence by shared-implementation reasoning.
+3. **Whether any participants got stuck/lost data before the survey-submission fix shipped** — worth
+   a spot-check against real `survey_responses` rows for "Study 1 - Main" specifically.
+4. **The reaction-pill overlap math** — noted as still slightly off from what was intended (actual
+   overlap ~4px, not the ~2px last measured) due to a compounding inline `marginLeft` on top of the
+   CSS `margin-right`; not revisited since raised after the fact, worth a clean look if it comes up
+   again.
