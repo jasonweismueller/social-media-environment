@@ -1048,9 +1048,17 @@ export function PostCard({
   // explicitly-authored value. See fallbackEngagementStats (utils-core.js)
   // for why this can't introduce a between-condition confound.
   const realisticEngagementOn = !!flags?.realistic_engagement;
+  // Separate opt-in sub-toggle: draw the fallback numbers independently per
+  // participant (keyed on the same runSeed used for avatar/name/time
+  // randomization) instead of once, fixed forever, per post. See
+  // fallbackEngagementStats for why that avoids a fixed-per-item confound.
+  const engagementRandomizeOn = !!flags?.realistic_engagement_randomize;
   const engagementFallback = useMemo(
-    () => (realisticEngagementOn ? fallbackEngagementStats(post.id) : null),
-    [realisticEngagementOn, post.id]
+    () =>
+      realisticEngagementOn
+        ? fallbackEngagementStats(post.id, engagementRandomizeOn ? runSeed || "run" : "")
+        : null,
+    [realisticEngagementOn, engagementRandomizeOn, post.id, runSeed]
   );
 
   const baseReactions = useMemo(() => {

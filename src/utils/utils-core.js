@@ -409,8 +409,8 @@ export function fakeNamesList(postId, kindOrCount, countMaybe, maxShow = 5) {
 // not a replacement: any explicit `post.reactions`/`post.metrics` value an
 // admin actually set always wins (see call sites in ui-posts-*.jsx).
 //
-// Seeded purely by `postId` — deliberately NOT by participant, run, feed,
-// or project. Two things this buys:
+// By default, seeded purely by `postId` — deliberately NOT by participant,
+// run, feed, or project. Two things this buys:
 // 1. It matches reality: a real post's like count is a property of the
 //    post, not of who's looking at it, so it should be identical for every
 //    participant who sees that post.
@@ -421,9 +421,30 @@ export function fakeNamesList(postId, kindOrCount, countMaybe, maxShow = 5) {
 //    every condition's copy of that post gets the exact same numbers,
 //    so displayed "popularity" can never accidentally correlate with which
 //    arm a participant is in.
+//
+// Optional `variantSeed` (used only when the separate, opt-in "Randomize
+// engagement counts per participant" flag is on — see realistic_engagement_
+// randomize call sites in ui-posts-*.jsx): folds a per-participant value
+// (the same `runSeed` used elsewhere for avatar/name/time randomization)
+// into the hash, so each participant gets their own independent draw for a
+// given post instead of one number fixed for that post forever. This trades
+// "identical numbers across conditions for a shared post" for a different,
+// often more important safety property: a fixed-per-item random draw is
+// itself an *item confound* — if it happens to land low or high for one
+// specific post, every participant who ever sees that post is exposed to
+// that number as a permanent, uncontrolled property of the stimulus, which
+// can bias analyses of that item's effect. Randomizing per participant
+// instead makes the draw independent of both item and condition, so it
+// averages out across the sample rather than sticking to one post. Since
+// the draw stays independent of experiment group either way, this never
+// introduces a between-condition confound — only the per-item one changes.
 const ENGAGEMENT_REACTION_WEIGHT_KEYS = ["like", "love", "care", "haha", "wow", "sad", "angry"];
-export function fallbackEngagementStats(postId) {
-  const seed = hashStrToInt_(`${postId || ""}::engagement-realism::v1`);
+export function fallbackEngagementStats(postId, variantSeed = "") {
+  const seed = hashStrToInt_(
+    variantSeed
+      ? `${postId || ""}::${variantSeed}::engagement-realism::v2`
+      : `${postId || ""}::engagement-realism::v1`
+  );
   const rnd = mulberry32_(seed);
 
   // Long-tail distribution: most posts land modest (single/low-double

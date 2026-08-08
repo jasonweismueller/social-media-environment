@@ -577,6 +577,15 @@ export function AdminDashboard({
     // blank. See `fallbackEngagementStats` (utils-core.js) for why it's safe
     // against experimental confounds.
     engagement: { backendField: "realistic_engagement", savingKey: "savingEng", readKeys: ["realistic_engagement"], label: "Realistic engagement counts" },
+    // A separate opt-in sub-toggle of `engagement` above, not bundled into
+    // it (same pattern as `surroundingsAvatars` below) — when on, each
+    // participant gets their own independent random draw for a post's
+    // fallback engagement numbers instead of one number fixed to that post
+    // for every participant forever. Trades "identical numbers across
+    // conditions for a shared post" for avoiding a fixed-per-item confound;
+    // see fallbackEngagementStats (utils-core.js). Has no effect without
+    // `engagement` also being on.
+    engagementRandomize: { backendField: "realistic_engagement_randomize", savingKey: "savingEngRand", readKeys: ["realistic_engagement_randomize"], label: "Randomize engagement counts per participant" },
     // Per direct instruction: each realism feature is its own independent
     // toggle, never bundled — nothing here should become "standard" behavior
     // a study can't opt out of. Same safe-by-default posture as `engagement`

@@ -165,6 +165,7 @@ function normalizeFlags(raw) {
     // identical across all three App-*.jsx files avoids yet another
     // near-duplicate drift.)
     realistic_engagement: truthy(f.realistic_engagement ?? false),
+    realistic_engagement_randomize: truthy(f.realistic_engagement_randomize ?? false),
     realistic_pacing: truthy(f.realistic_pacing ?? false),
     realistic_surroundings: truthy(f.realistic_surroundings ?? false),
     realistic_surroundings_avatars: truthy(f.realistic_surroundings_avatars ?? false),

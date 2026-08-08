@@ -512,9 +512,16 @@ const timeLabel = useMemo(() => {
   // own likes/comments/shares blank — an explicitly-authored value always
   // wins.
   const realisticEngagementOn = !!effectiveFlags?.realistic_engagement;
+  // Separate opt-in sub-toggle: draw the fallback numbers independently per
+  // participant instead of once, fixed forever, per post — see the matching
+  // comment in ui-posts-facebook.jsx / fallbackEngagementStats (utils-core.js).
+  const engagementRandomizeOn = !!effectiveFlags?.realistic_engagement_randomize;
   const engagementFallback = useMemo(
-    () => (realisticEngagementOn ? fallbackEngagementStats(id) : null),
-    [realisticEngagementOn, id]
+    () =>
+      realisticEngagementOn
+        ? fallbackEngagementStats(id, engagementRandomizeOn ? runSeed || "run" : "")
+        : null,
+    [realisticEngagementOn, engagementRandomizeOn, id, runSeed]
   );
   const explicitLikes = sumReactions(reactions);
   const baseLikes = useMemo(

@@ -1594,6 +1594,15 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.realistic_engagement !== "undefined") {
     out.realistic_engagement = !!flags.realistic_engagement;
   }
+  // A separate opt-in sub-toggle of "realistic_engagement" (not bundled into
+  // it, same pattern as realistic_surroundings_avatars below) — when on, a
+  // post's fallback engagement numbers are drawn independently per
+  // participant instead of once, fixed forever, per post. See
+  // fallbackEngagementStats (utils-core.js) for why that's the safer default
+  // against item-level confounds once a researcher wants that tradeoff.
+  if (typeof flags.realistic_engagement_randomize !== "undefined") {
+    out.realistic_engagement_randomize = !!flags.realistic_engagement_randomize;
+  }
   if (typeof flags.realistic_pacing !== "undefined") {
     out.realistic_pacing = !!flags.realistic_pacing;
   }
@@ -1624,6 +1633,7 @@ export function normalizeFlagsForRead(flags) {
   out.randomize_images = !!(out.randomize_images ?? out.random_image);
   out.randomize_bios = !!(out.randomize_bios ?? out.random_bio);
   out.realistic_engagement = !!out.realistic_engagement;
+  out.realistic_engagement_randomize = !!out.realistic_engagement_randomize;
   out.realistic_pacing = !!out.realistic_pacing;
   out.realistic_surroundings = !!out.realistic_surroundings;
   out.realistic_surroundings_avatars = !!out.realistic_surroundings_avatars;
