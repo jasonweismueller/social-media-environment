@@ -463,8 +463,17 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .hoverable-metric[aria-expanded="true"]{ cursor:default; text-decoration:underline; }
 
 /* ===== Placeholder top rail (aligned to page grid) ===== */
+/* Purely decorative (aria-hidden, no interactive children — TopRailPlaceholder,
+   ui-core-instagram.jsx) — pointer-events:none so it can visually (correctly)
+   cover post content scrolling underneath it without also swallowing clicks
+   meant for that content, e.g. a post's own menu button landing right at
+   this bar's ~52px band mid-scroll. Same fix applied to Facebook's identical
+   .top-rail-placeholder (styles-facebook.css) after a real reported bug
+   there; Amazon's TopRailPlaceholder returns null (no top bar rendered), so
+   its copy of this rule is unused and wasn't touched. */
 .top-rail-placeholder{
   position: sticky; top: 0; z-index: 100; background:#fff; border-bottom:1px solid var(--ig-line);
+  pointer-events: none;
 }
 .top-rail-placeholder .trp-inner{
   width: 100%; display:grid;

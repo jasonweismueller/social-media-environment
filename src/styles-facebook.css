@@ -285,7 +285,18 @@ a:hover{text-decoration:underline}
   overflow: visible;
   justify-content: center;
 }
-.page .container.feed{max-width: var(--feed-max) !important; width: 100% !important; padding: 0 !important; margin: 0 auto !important;}
+/* position+z-index here (not left implicit) is load-bearing, not decorative:
+   `.rail` (a sibling grid column, below) is `position:sticky` with no
+   z-index of its own — an "auto" stacking level. Two sticky/positioned
+   siblings with ambiguous (auto) z-index compared against each other is
+   exactly the class of bug this codebase already had to explicitly fix once
+   for mobile (see ".rx-stack .rx"/"Reaction summary must stay underneath
+   the flyout" below in the @media(max-width:768px) block) — reaction
+   tooltips and other popovers inside the feed column were reported
+   rendering behind the left rail on desktop. Pinning both sides to explicit
+   numbers removes the ambiguity instead of relying on default stacking-
+   context ordering, which can vary by browser/GPU-compositing path. */
+.page .container.feed{max-width: var(--feed-max) !important; width: 100% !important; padding: 0 !important; margin: 0 auto !important; position:relative; z-index:1;}
 .page .feed > .card:first-child{margin-top:var(--feed-gap)}
 
 .rail{
@@ -293,6 +304,7 @@ a:hover{text-decoration:underline}
   height: calc(100vh - var(--rail-gap));
   overflow: hidden; pointer-events: none; user-select: none;
   filter: grayscale(1) blur(1px); opacity:.55; width:100%;
+  z-index: 0;
 }
 .rail > *:first-child{margin-top:0 !important}
 
@@ -646,6 +658,19 @@ a:hover{text-decoration:underline}
   z-index: 100;
   background:#fff;
   border-bottom:1px solid var(--line);
+  /* Purely decorative (aria-hidden, no interactive children — see
+     TopRailPlaceholder/TopRailReal in ui-core-facebook.jsx) — same
+     pointer-events:none treatment `.rail` already gets. Without it, this bar
+     visually (correctly) covers whatever post content scrolls underneath it
+     as the participant scrolls, but ALSO silently swallows clicks meant for
+     that content — most noticeably the "..." post menu button, which sits
+     near the top of each card-head and can end up positioned right at this
+     bar's ~52px band mid-scroll. Reported as "the '...' menu doesn't open,
+     often for whichever post is at the top of the screen" — confirmed via
+     elementFromPoint() at the dots button's coordinates while scrolled to
+     that exact position: the click was landing on this bar, not the button,
+     even though the button was (partially) visible right at the boundary. */
+  pointer-events: none;
 }
 .top-rail-placeholder .trp-inner{
   width: 100%;
