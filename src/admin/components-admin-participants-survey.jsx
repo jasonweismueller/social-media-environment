@@ -15,6 +15,10 @@ import {
   loadSurveyFromBackend,
   loadSurveyResponsesBySurveyRoster,
   loadSurveyOnlyRoster,
+  loadMultiFeedParticipantSurveyRoster,
+  loadPostsFromBackend,
+  orderedLinkedFeedIdsFromSurvey,
+  buildMultiFeedCsvHeaderLabels,
   buildAnalysisDataset,
   computeDemographicsSummary,
   computeMeasuresSummary,
@@ -1250,6 +1254,7 @@ export function SurveyParticipantsPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [downloadingFeedCsv, setDownloadingFeedCsv] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [customGroups, setCustomGroups] = useState([]);
 
@@ -1464,6 +1469,82 @@ export function SurveyParticipantsPage({
     }
   };
 
+  // For feed_then_survey / multi_feed_then_survey studies: "Download Survey
+  // CSV" above only ever produces survey-response columns, via
+  // loadSurveyOnlyRoster — it never had a merged option here, only the
+  // Surveys admin page's own "Launch" tab did (and, until a recent fix,
+  // that button was itself gated to multi_feed_then_survey only, so a plain
+  // single-feed study had no merged CSV anywhere in the admin UI). Reuses
+  // the exact same loadMultiFeedParticipantSurveyRoster + column-labeling
+  // pipeline that button already uses — it already handles a single-feed
+  // feedIds array correctly, nothing multi-feed-specific being relied on.
+  const feedIdsForSurvey = useMemo(() => orderedLinkedFeedIdsFromSurvey(survey), [survey]);
+
+  const downloadFeedSurveyCsv = async () => {
+    if (!surveyId || !feedIdsForSurvey.length) return;
+    try {
+      setDownloadingFeedCsv(true);
+
+      const [roster, loadedFeedPostsPairs] = await Promise.all([
+        loadMultiFeedParticipantSurveyRoster({
+          surveyId,
+          feedIds: feedIdsForSurvey,
+          projectId,
+        }),
+        Promise.all(
+          feedIdsForSurvey.map(async (fid) => {
+            try {
+              const loaded = await loadPostsFromBackend(fid, {
+                projectId: projectId || undefined,
+                force: true,
+              });
+              return [fid, Array.isArray(loaded) ? loaded : []];
+            } catch (_) {
+              return [fid, []];
+            }
+          })
+        ),
+      ]);
+
+      const postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
+      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+      if (!safeRows.length) {
+        toast.error("No feed + survey participant data found yet.");
+        return;
+      }
+
+      const header = Array.from(
+        safeRows.reduce((set, row) => {
+          Object.keys(row || {}).forEach((key) => set.add(key));
+          return set;
+        }, new Set())
+      );
+
+      const normalizedRows = safeRows.map((row) => {
+        const next = {};
+        header.forEach((key) => {
+          next[key] = normalizeCsvValue(row?.[key]);
+        });
+        return next;
+      });
+
+      const labels = buildMultiFeedCsvHeaderLabels(header, {
+        feedIds: feedIdsForSurvey,
+        postsByFeed,
+        projectId,
+      }).map(stripSurveyExportPrefix);
+      const csv = buildCsv(normalizedRows, header, labels);
+      const filename = `${safeFileStem(survey?.name || surveyId)}_feed_survey_${todayStamp()}.csv`;
+
+      triggerCsvDownload(filename, csv);
+    } catch (e) {
+      console.error("Feed + survey CSV download failed:", e);
+      toast.error("Failed to download feed + survey CSV.");
+    } finally {
+      setDownloadingFeedCsv(false);
+    }
+  };
+
   return (
     <>
       {!embed ? (
@@ -1508,6 +1589,22 @@ export function SurveyParticipantsPage({
               <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
                 Download Survey CSV
               </Button>
+              {feedIdsForSurvey.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={downloadFeedSurveyCsv}
+                  busy={downloadingFeedCsv}
+                  disabled={!surveyId || usingSimulated}
+                  title={
+                    usingSimulated
+                      ? "Not available for simulated data — simulated responses have no real feed engagement to merge with."
+                      : "Includes this survey's linked feed(s) participant/engagement data alongside the survey responses."
+                  }
+                >
+                  Download feed + survey CSV
+                </Button>
+              )}
             </>
           }
         />
@@ -1525,6 +1622,22 @@ export function SurveyParticipantsPage({
           <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
             Download Survey CSV
           </Button>
+          {feedIdsForSurvey.length > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={downloadFeedSurveyCsv}
+              busy={downloadingFeedCsv}
+              disabled={!surveyId || usingSimulated}
+              title={
+                usingSimulated
+                  ? "Not available for simulated data — simulated responses have no real feed engagement to merge with."
+                  : "Includes this survey's linked feed(s) participant/engagement data alongside the survey responses."
+              }
+            >
+              Download feed + survey CSV
+            </Button>
+          )}
         </div>
       )}
 

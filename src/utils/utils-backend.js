@@ -1359,6 +1359,113 @@ export async function loadMultiFeedParticipantSurveyRoster({
   };
 }
 
+// Companions to loadMultiFeedParticipantSurveyRoster above — resolving which
+// feed(s) a survey should export against, and turning its raw "feedN_..."
+// CSV columns into human-readable labels. Originally local to
+// components-admin-surveys.jsx (the "Download multi-feed CSV" button); moved
+// here once components-admin-participants-survey.jsx's own CSV download
+// needed the same logic — that file already imports SurveyParticipantsPage
+// FROM components-admin-surveys.jsx, so importing back the other way would
+// have been a circular dependency between the two component files. Living
+// next to loadMultiFeedParticipantSurveyRoster itself sidesteps that.
+export function normalizeLinkedFeedIds(input) {
+  return Array.isArray(input) ? input.map(String).filter(Boolean) : [];
+}
+
+export function orderedLinkedFeedIdsFromSurvey(source = {}, fallbackLinkedIds = []) {
+  const sequence = normalizeLinkedFeedIds(source?.feed_sequence_ids);
+  const linked = normalizeLinkedFeedIds(
+    sequence.length ? sequence : (source?.linked_feed_ids || fallbackLinkedIds)
+  );
+  const seen = new Set();
+  return linked.filter((fid) => {
+    if (!fid || seen.has(fid)) return false;
+    seen.add(fid);
+    return true;
+  });
+}
+
+const POST_METRIC_SUFFIXES_FOR_LABELS = [
+  "_reacted",
+  "_reaction_type",
+  "_expandable",
+  "_expanded",
+  "_commented",
+  "_comment_texts",
+  "_reported_misinfo",
+  "_dwell_s",
+  "_dwell_ms",
+  "_saved",
+  "_shared",
+  "_share_target",
+  "_share_text",
+  "_reposted",
+  "_cta_clicked",
+  "_bio_opened",
+  "_bio_url_clicked",
+  "_mention_clicked",
+  "_note_opened",
+  "_note_view_details",
+  "_note_link_clicked",
+  "_note_helpful_rated",
+  "_note_helpful_value",
+];
+
+function postDisplayNameFromMaps(postId, feedId, postsByFeed = {}, projectId = "") {
+  const id = String(postId || "").trim();
+  const fid = String(feedId || "").trim();
+  if (!id) return id;
+
+  const posts = Array.isArray(postsByFeed?.[fid]) ? postsByFeed[fid] : [];
+  const post = posts.find((p) => String(p?.id || "") === id);
+  const fromPost = String(post?.name || post?.postName || "").trim();
+  if (fromPost) return fromPost;
+
+  try {
+    const nameMap = readPostNames(projectId || getProjectId(), fid) || {};
+    const fromMap = String(nameMap?.[id] || "").trim();
+    if (fromMap) return fromMap;
+  } catch (_) {}
+
+  return id;
+}
+
+function splitPostMetricKeyForLabel(metricKey = "") {
+  const key = String(metricKey || "");
+  for (const suffix of POST_METRIC_SUFFIXES_FOR_LABELS) {
+    if (key.endsWith(suffix)) {
+      return {
+        postId: key.slice(0, -suffix.length),
+        suffix,
+      };
+    }
+  }
+  return null;
+}
+
+function labelMultiFeedCsvHeaderKey(key, { feedIds = [], postsByFeed = {}, projectId = "" } = {}) {
+  const rawKey = String(key || "");
+  const feedMatch = /^feed(\d+)_(.+)$/.exec(rawKey);
+  if (!feedMatch) return rawKey;
+
+  const feedIndex = Math.max(0, Number(feedMatch[1]) - 1);
+  const feedPrefix = `feed${feedIndex + 1}`;
+  const feedId = String(feedIds?.[feedIndex] || "").trim();
+  const remainder = feedMatch[2] || "";
+
+  const parsed = splitPostMetricKeyForLabel(remainder);
+  if (!parsed) return rawKey;
+
+  const displayName = postDisplayNameFromMaps(parsed.postId, feedId, postsByFeed, projectId);
+  return `${feedPrefix}_${displayName}${parsed.suffix}`;
+}
+
+export function buildMultiFeedCsvHeaderLabels(header = [], { feedIds = [], postsByFeed = {}, projectId = "" } = {}) {
+  return (Array.isArray(header) ? header : []).map((key) =>
+    labelMultiFeedCsvHeaderKey(key, { feedIds, postsByFeed, projectId })
+  );
+}
+
 export async function loadSurveyOnlyRoster({
   surveyId,
   projectId = getProjectId(),
