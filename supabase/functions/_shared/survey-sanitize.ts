@@ -601,6 +601,9 @@ export function normalizeQuestion(raw: any = {}): any {
     feed_overrides: feedOverrides,
     visible_to_group_ids: uniqueStringArray(raw.visible_to_group_ids),
     placeholder: String(raw.placeholder || ""),
+    numeric_only: !!raw.numeric_only,
+    numeric_min: Number.isFinite(raw.numeric_min) ? Number(raw.numeric_min) : null,
+    numeric_max: Number.isFinite(raw.numeric_max) ? Number(raw.numeric_max) : null,
     post_id: postId,
     post_label: postLabel,
     post_feed_id: postFeedId,
@@ -756,6 +759,13 @@ export function frontendQuestionToBackend(question: any = {}): any {
       return { ...base, required: false, next_delay_seconds: normalizePageDelaySeconds(q.next_delay_seconds) };
 
     case SURVEY_QUESTION_TYPES.TEXT:
+      return {
+        ...base,
+        numeric_only: !!q.numeric_only,
+        numeric_min: q.numeric_min,
+        numeric_max: q.numeric_max,
+      };
+
     case SURVEY_QUESTION_TYPES.TEXTAREA:
     case SURVEY_QUESTION_TYPES.INFO:
     default:

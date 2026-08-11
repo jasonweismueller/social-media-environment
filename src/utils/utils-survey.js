@@ -811,6 +811,15 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     feed_overrides: feedOverrides,
     visible_to_group_ids: uniqueStringArray(overrides.visible_to_group_ids),
     placeholder: String(overrides.placeholder || ""),
+    // Numeric-only mode for TEXT questions (e.g. "age") — a plain free-text
+    // field otherwise accepts any typo/unrealistic value with no feedback.
+    // Meaningless for other types, but stored unconditionally (like
+    // placeholder/min/max above) rather than type-gated — simpler than
+    // POST_REMINDER's type-gated fields, and nothing reads it for a
+    // non-TEXT question anyway.
+    numeric_only: !!overrides.numeric_only,
+    numeric_min: Number.isFinite(overrides.numeric_min) ? Number(overrides.numeric_min) : null,
+    numeric_max: Number.isFinite(overrides.numeric_max) ? Number(overrides.numeric_max) : null,
     post_id: String(overrides.post_id ?? ""),
     post_label: String(overrides.post_label ?? ""),
     post_feed_id: String(overrides.post_feed_id ?? ""),
@@ -953,6 +962,9 @@ export function normalizeQuestion(raw = {}) {
     feed_overrides: feedOverrides,
     visible_to_group_ids: uniqueStringArray(raw.visible_to_group_ids),
     placeholder: String(raw.placeholder || ""),
+    numeric_only: !!raw.numeric_only,
+    numeric_min: Number.isFinite(raw.numeric_min) ? Number(raw.numeric_min) : null,
+    numeric_max: Number.isFinite(raw.numeric_max) ? Number(raw.numeric_max) : null,
     post_id: postId,
     post_label: postLabel,
     post_feed_id: postFeedId,
@@ -1133,6 +1145,13 @@ export function frontendQuestionToBackend(question = {}) {
       };
 
     case SURVEY_QUESTION_TYPES.TEXT:
+      return {
+        ...base,
+        numeric_only: !!q.numeric_only,
+        numeric_min: q.numeric_min,
+        numeric_max: q.numeric_max,
+      };
+
     case SURVEY_QUESTION_TYPES.TEXTAREA:
     case SURVEY_QUESTION_TYPES.INFO:
     default:
@@ -1897,6 +1916,40 @@ export function isQuestionAnswered(q, value) {
   }
 }
 
+// Format/range check for a numeric_only TEXT question (e.g. "age") — kept
+// separate from isQuestionAnswered/isEmptyRequiredValue on purpose: whether
+// a question is *answered* is purely "is there a non-blank value", while
+// this is "is that value actually a valid number in range". Returns null
+// (no error) for a blank value — the required-check already owns that case
+// — and for any non-numeric_only TEXT question or other type entirely.
+export function getTextNumericRangeError(q, value) {
+  if (!q || q.type !== SURVEY_QUESTION_TYPES.TEXT || !q.numeric_only) return null;
+
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const hasMin = Number.isFinite(q.numeric_min);
+  const hasMax = Number.isFinite(q.numeric_max);
+
+  if (!/^-?\d+(\.\d+)?$/.test(raw) || !Number.isFinite(Number(raw))) {
+    return "Please enter a valid number.";
+  }
+
+  const n = Number(raw);
+  if (hasMin && n < q.numeric_min) {
+    return hasMax
+      ? `Please enter a number between ${q.numeric_min} and ${q.numeric_max}.`
+      : `Please enter a number of at least ${q.numeric_min}.`;
+  }
+  if (hasMax && n > q.numeric_max) {
+    return hasMin
+      ? `Please enter a number between ${q.numeric_min} and ${q.numeric_max}.`
+      : `Please enter a number of at most ${q.numeric_max}.`;
+  }
+
+  return null;
+}
+
 export function validateSurveyResponses(survey, responses, { feedId = "" } = {}) {
   const normalized = normalizeSurvey(survey);
   // experiment_assigned_group_id is stapled onto the survey object by the
@@ -1912,7 +1965,11 @@ export function validateSurveyResponses(survey, responses, { feedId = "" } = {})
       const value = responses?.[q.id];
       if (!isQuestionAnswered(q, value)) {
         errors[q.id] = "This question is required.";
+        continue;
       }
+
+      const rangeError = getTextNumericRangeError(q, value);
+      if (rangeError) errors[q.id] = rangeError;
     }
   }
 

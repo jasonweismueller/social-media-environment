@@ -513,6 +513,9 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     left_label: String(q?.left_label ?? ""),
     right_label: String(q?.right_label ?? ""),
     placeholder: String(q?.placeholder ?? ""),
+    numeric_only: !!q?.numeric_only,
+    numeric_min: Number.isFinite(q?.numeric_min) ? Number(q.numeric_min) : null,
+    numeric_max: Number.isFinite(q?.numeric_max) ? Number(q.numeric_max) : null,
     visible_if: q?.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q?.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q?.feed_overrides),
@@ -1227,6 +1230,15 @@ export function buildSavedQuestion(q, index) {
     min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
     max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
     placeholder: cleanQ.placeholder || "",
+    numeric_only: cleanQ.type === SURVEY_QUESTION_TYPES.TEXT ? !!cleanQ.numeric_only : false,
+    numeric_min:
+      cleanQ.type === SURVEY_QUESTION_TYPES.TEXT && Number.isFinite(cleanQ.numeric_min)
+        ? cleanQ.numeric_min
+        : null,
+    numeric_max:
+      cleanQ.type === SURVEY_QUESTION_TYPES.TEXT && Number.isFinite(cleanQ.numeric_max)
+        ? cleanQ.numeric_max
+        : null,
     visible_if: cleanQ.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(cleanQ.visible_in_feeds),
     feed_overrides: pruneFeedOverridesMap(
@@ -3726,6 +3738,15 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
     visible_if: q.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
+    numeric_only: nextType === SURVEY_QUESTION_TYPES.TEXT ? !!q.numeric_only : false,
+    numeric_min:
+      nextType === SURVEY_QUESTION_TYPES.TEXT && Number.isFinite(q.numeric_min)
+        ? q.numeric_min
+        : null,
+    numeric_max:
+      nextType === SURVEY_QUESTION_TYPES.TEXT && Number.isFinite(q.numeric_max)
+        ? q.numeric_max
+        : null,
     post_id: nextType === POST_REMINDER_TYPE ? String(q.post_id || "") : "",
     post_label: nextType === POST_REMINDER_TYPE ? String(q.post_label || "") : "",
     post_feed_id: nextType === POST_REMINDER_TYPE ? String(q.post_feed_id || "") : "",
@@ -3752,6 +3773,52 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
   }
 
   return merged;
+}
+
+function parseOptionalNumber(v) {
+  if (v === "" || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// "Numeric only" for a plain TEXT question — e.g. "age" — swaps the
+// participant-facing input to type="number" and adds an optional min/max
+// range (see getTextNumericRangeError, utils-survey.js), instead of forcing
+// the question into a dropdown of age *brackets* and losing the actual
+// value. Min/max are deliberately nullable (no forced default range like
+// Slider's 1-100) — an admin can set just a floor, just a ceiling, both, or
+// neither (numeric-format-only, no range check).
+function TextEditorBlock({ numericOnly, numericMin, numericMax, onNumericOnlyChange, onNumericMinChange, onNumericMaxChange }) {
+  return (
+    <FieldBlock
+      label="Answer format"
+      hint="On: participants can only type a number (a numeric keypad on mobile), optionally within a min/max range — catches typos and unrealistic values (e.g. an 'age' question) without turning it into a dropdown of brackets. Off (default): plain free text."
+    >
+      <Toggle
+        label="Numeric answers only"
+        checked={!!numericOnly}
+        onChange={onNumericOnlyChange}
+      />
+
+      {numericOnly && (
+        <div style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, marginTop: 10 }}>
+          <FieldBlock label="Min (optional)">
+            <NumberInput
+              value={numericMin ?? ""}
+              onChange={(v) => onNumericMinChange(parseOptionalNumber(v))}
+            />
+          </FieldBlock>
+
+          <FieldBlock label="Max (optional)">
+            <NumberInput
+              value={numericMax ?? ""}
+              onChange={(v) => onNumericMaxChange(parseOptionalNumber(v))}
+            />
+          </FieldBlock>
+        </div>
+      )}
+    </FieldBlock>
+  );
 }
 
 // Mutually exclusive by construction (isChoice/isMatrix/isBipolar/isSlider/
@@ -3868,6 +3935,26 @@ function renderTypeSpecificFields({
           onMaxChange={(v) => updateQuestion(index, { max: clampInt(v, 1, 100, q.max ?? 7) })}
           onLeftLabelChange={(v) => updateQuestion(index, { left_label: v })}
           onRightLabelChange={(v) => updateQuestion(index, { right_label: v })}
+        />
+      );
+    case SURVEY_QUESTION_TYPES.TEXT:
+      return (
+        <TextEditorBlock
+          numericOnly={!!q.numeric_only}
+          numericMin={q.numeric_min}
+          numericMax={q.numeric_max}
+          onNumericOnlyChange={(v) =>
+            updateQuestion(index, {
+              numeric_only: v,
+              // Clear any previously-set bounds when switching back to plain
+              // text — a stale min/max sitting inert on a non-numeric
+              // question would just be confusing if numeric mode is
+              // re-enabled later expecting a blank slate.
+              ...(v ? {} : { numeric_min: null, numeric_max: null }),
+            })
+          }
+          onNumericMinChange={(v) => updateQuestion(index, { numeric_min: v })}
+          onNumericMaxChange={(v) => updateQuestion(index, { numeric_max: v })}
         />
       );
     default:

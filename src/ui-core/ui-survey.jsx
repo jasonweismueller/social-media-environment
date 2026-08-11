@@ -20,6 +20,7 @@ import {
   makeEmptyPostInteractionAggregate,
   buildRecallReminderOptions,
   trackElementDwellMs,
+  getTextNumericRangeError,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -1436,6 +1437,10 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
         <input
           className="survey-input"
+          type={question.numeric_only ? "number" : "text"}
+          inputMode={question.numeric_only ? "numeric" : undefined}
+          min={question.numeric_only && Number.isFinite(question.numeric_min) ? question.numeric_min : undefined}
+          max={question.numeric_only && Number.isFinite(question.numeric_max) ? question.numeric_max : undefined}
           value={value ?? ""}
           onChange={handleTextChange}
         />
@@ -1894,14 +1899,17 @@ const isNextDelayed =
         // (validateSurveyResponses, utils-survey.js) correctly catches it,
         // but only after the participant has already moved on, often many
         // pages further, which is the actual real-world bug this fixes.
-        (q.type === SURVEY_QUESTION_TYPES.POST_REMINDER && !q.recall_enabled) ||
-        !q.required
+        (q.type === SURVEY_QUESTION_TYPES.POST_REMINDER && !q.recall_enabled)
       ) {
         return;
       }
 
       const value = responses?.[q.id];
 
+      // isEmptyRequiredValue no-ops for a non-required question (returns
+      // false), so this loop no longer needs its own `!q.required` bail-out
+      // — that removal is what lets the numeric range check below still run
+      // for an *optional* numeric_only TEXT question that has a value.
       if (isEmptyRequiredValue(q, value)) {
         if (
           q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
@@ -1912,7 +1920,11 @@ const isNextDelayed =
         } else {
           pageErrors[q.id] = "Please answer this question.";
         }
+        return;
       }
+
+      const rangeError = getTextNumericRangeError(q, value);
+      if (rangeError) pageErrors[q.id] = rangeError;
     });
 
     return {

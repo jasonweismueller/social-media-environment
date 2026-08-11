@@ -20,6 +20,7 @@ import {
   makeEmptyPostInteractionAggregate,
   buildRecallReminderOptions,
   trackElementDwellMs,
+  getTextNumericRangeError,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -1278,6 +1279,10 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
         <input
           className="survey-input"
+          type={question.numeric_only ? "number" : "text"}
+          inputMode={question.numeric_only ? "numeric" : undefined}
+          min={question.numeric_only && Number.isFinite(question.numeric_min) ? question.numeric_min : undefined}
+          max={question.numeric_only && Number.isFinite(question.numeric_max) ? question.numeric_max : undefined}
           value={value ?? ""}
           onChange={(e) => emitChange(e.target.value)}
         />
@@ -1537,14 +1542,16 @@ export function SurveyScreenMobile({
         // See ui-survey.jsx's SurveyScreen for the rationale — a
         // recall-enabled post_reminder is a real, answerable, potentially
         // required question, not a display-only one.
-        (q.type === SURVEY_QUESTION_TYPES.POST_REMINDER && !q.recall_enabled) ||
-        !q.required
+        (q.type === SURVEY_QUESTION_TYPES.POST_REMINDER && !q.recall_enabled)
       ) {
         return;
       }
 
       const value = responses?.[q.id];
 
+      // isEmptyRequiredValue no-ops for a non-required question (returns
+      // false), so this loop no longer needs its own `!q.required` bail-out
+      // — see ui-survey.jsx's identical comment for why that matters here.
       if (isEmptyRequiredValue(q, value)) {
         pageErrors[q.id] =
           q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
@@ -1552,7 +1559,11 @@ export function SurveyScreenMobile({
           q.type === SURVEY_QUESTION_TYPES.BIPOLAR
             ? "Please complete all rows."
             : "Please answer this question.";
+        return;
       }
+
+      const rangeError = getTextNumericRangeError(q, value);
+      if (rangeError) pageErrors[q.id] = rangeError;
     });
 
     return {
