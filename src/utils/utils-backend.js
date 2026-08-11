@@ -1251,8 +1251,31 @@ export async function loadMultiFeedParticipantSurveyRoster({
     ),
   ]);
 
-  const surveyResponses = (Array.isArray(allSurveyResponses) ? allSurveyResponses : [])
-    .filter((row) => String(row?.feed_id || "").trim() === sequence[sequence.length - 1]);
+  // Only feeds that actually have at least one participant row get their own
+  // "feedN_" column-group below — a feed linked to the survey purely as a
+  // post_reminder content source (never anyone's actual visited feed, e.g.
+  // when experiment groups route different participants to different single
+  // feeds — see the CLAUDE.md entry this fix came from) naturally has zero
+  // rows here and is excluded, with no "is this feed reminder-only"
+  // classification needed. This also renumbers the survivors 1..N instead of
+  // leaving gaps at whatever position they happened to occupy in the
+  // survey's full linked-feed list.
+  const realFeedGroups = participantGroups.filter(
+    (g) => Array.isArray(g.rows) && g.rows.length > 0
+  );
+
+  // No feed_id pre-filter on survey responses — loadSurveyResponsesBySurveyRoster
+  // already scopes to this survey_id, and the session/participant-id lookup
+  // below does the real per-participant matching. A feed_id filter here
+  // (this function used to hardcode `row.feed_id === sequence[sequence.length - 1]`,
+  // i.e. "whichever feed happens to be listed last") is correct only when
+  // every participant walks the exact same shared feed sequence — for a
+  // survey where different experiment groups are routed to different single
+  // feeds, any participant whose real feed isn't literally the last entry in
+  // the survey's static feed list would have their real, submitted survey
+  // answers silently dropped from this roster entirely. See CLAUDE.md for
+  // the live study this was found on.
+  const surveyResponses = Array.isArray(allSurveyResponses) ? allSurveyResponses : [];
 
   const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyResponses, { labelMode });
   const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
@@ -1262,7 +1285,7 @@ export async function loadMultiFeedParticipantSurveyRoster({
 
   const byParticipant = new Map();
 
-  participantGroups.forEach((group, index) => {
+  realFeedGroups.forEach((group, index) => {
     const fid = group.feedId;
     const prefix = `feed${index + 1}`;
     const rows = Array.isArray(group.rows) ? group.rows : [];
@@ -1282,10 +1305,18 @@ export async function loadMultiFeedParticipantSurveyRoster({
           entered_at_iso: row?.entered_at_iso ?? "",
           submitted_at_iso: "",
           duration_s: "",
+          _visitedFeedIds: [],
         });
       }
 
       const out = byParticipant.get(key);
+      // Tracks THIS participant's own real feed path, in the order their
+      // rows were actually found (which follows realFeedGroups' order, the
+      // survey's own configured feed order) — not a survey-wide constant.
+      // For a group-routed study a participant only ever has one row here;
+      // for a classic shared-sequence multi-feed study they can have
+      // several, and this preserves their real visited order.
+      out._visitedFeedIds.push(fid);
       out[`${prefix}_feed_id`] = fid;
       out[`${prefix}_entered_at_iso`] = row?.entered_at_iso ?? "";
       out[`${prefix}_submitted_at_iso`] = row?.submitted_at_iso ?? "";
@@ -1318,13 +1349,21 @@ export async function loadMultiFeedParticipantSurveyRoster({
     });
 
     const experimentGroupId = match?.raw?.experiment_group_id ?? "";
+    const visitedFeedIds = Array.isArray(participant._visitedFeedIds)
+      ? participant._visitedFeedIds
+      : [];
+    const { _visitedFeedIds, ...participantWithoutVisited } = participant;
 
     return {
-      ...participant,
+      ...participantWithoutVisited,
       submitted_at_iso: match?.raw?.submitted_at_iso ?? participant.submitted_at_iso ?? "",
       duration_s: msToSeconds(match?.raw?.duration_ms ?? ""),
-      feed_sequence_ids: sequence.join(" | "),
-      final_survey_feed_id: sequence[sequence.length - 1],
+      // This participant's OWN real feed path (usually just one feed for a
+      // group-routed study), not the survey's full static linked-feed list —
+      // see the "no feed_id pre-filter" comment above for why the old
+      // "always the survey's last linked feed" value was actively wrong.
+      feed_sequence_ids: visitedFeedIds.join(" | "),
+      final_survey_feed_id: visitedFeedIds[visitedFeedIds.length - 1] || "",
       ...(Array.isArray(surveyDefinition?.experiment_groups) && surveyDefinition.experiment_groups.length
         ? {
             experiment_group_id: experimentGroupId,
@@ -1347,7 +1386,7 @@ export async function loadMultiFeedParticipantSurveyRoster({
 
   return {
     rows,
-    participants: participantGroups.flatMap((g) => g.rows || []),
+    participants: realFeedGroups.flatMap((g) => g.rows || []),
     surveyResponses,
     survey: surveyDefinition || null,
     surveyColumns,
@@ -1355,7 +1394,7 @@ export async function loadMultiFeedParticipantSurveyRoster({
     surveyColumnLabels,
     hasSurvey: true,
     hasMergedSurveyColumns: !!surveyColumnKeys.length,
-    feedIds: sequence,
+    feedIds: realFeedGroups.map((g) => g.feedId),
   };
 }
 
@@ -1401,6 +1440,7 @@ const POST_METRIC_SUFFIXES_FOR_LABELS = [
   "_share_text",
   "_reposted",
   "_cta_clicked",
+  "_news_clicked",
   "_bio_opened",
   "_bio_url_clicked",
   "_mention_clicked",
@@ -1409,6 +1449,16 @@ const POST_METRIC_SUFFIXES_FOR_LABELS = [
   "_note_link_clicked",
   "_note_helpful_rated",
   "_note_helpful_value",
+  // Amazon-review-specific fields buildParticipantRow (utils-core.js) also
+  // writes per post — missing from this list before, so a review's own post
+  // id never got swapped for its friendly name in any multi-feed CSV label,
+  // unlike every other metric column for the same post.
+  "_review_helpful_removed",
+  "_review_reported",
+  "_review_read_more_ms",
+  "_review_read_more",
+  "_review_rating",
+  "_review_helpful",
 ];
 
 function postDisplayNameFromMaps(postId, feedId, postsByFeed = {}, projectId = "") {
@@ -1443,27 +1493,108 @@ function splitPostMetricKeyForLabel(metricKey = "") {
   return null;
 }
 
-function labelMultiFeedCsvHeaderKey(key, { feedIds = [], postsByFeed = {}, projectId = "" } = {}) {
+function labelMultiFeedCsvHeaderKey(key, { feedIds = [], postsByFeed = {}, projectId = "", feedNames = {} } = {}) {
   const rawKey = String(key || "");
   const feedMatch = /^feed(\d+)_(.+)$/.exec(rawKey);
   if (!feedMatch) return rawKey;
 
   const feedIndex = Math.max(0, Number(feedMatch[1]) - 1);
-  const feedPrefix = `feed${feedIndex + 1}`;
   const feedId = String(feedIds?.[feedIndex] || "").trim();
+  // Relabels the "feedN" prefix itself with the feed's own identity — a
+  // researcher's CSV name for it if one's been set (see readFeedCsvName/
+  // writeFeedCsvNameOnBackend), else the feed's own raw id. Previously this
+  // always stayed the bare positional "feedN", regardless of labelMode,
+  // which is exactly what made a merged CSV's feed columns unreadable once
+  // a survey's real feeds no longer occupy stable, memorable slots (e.g.
+  // once different experiment groups route to different single feeds).
+  const feedLabel =
+    String(feedNames?.[feedId] || "").trim() || feedId || `feed${feedIndex + 1}`;
   const remainder = feedMatch[2] || "";
 
   const parsed = splitPostMetricKeyForLabel(remainder);
-  if (!parsed) return rawKey;
+  if (!parsed) return `${feedLabel}_${remainder}`;
 
   const displayName = postDisplayNameFromMaps(parsed.postId, feedId, postsByFeed, projectId);
-  return `${feedPrefix}_${displayName}${parsed.suffix}`;
+  return `${feedLabel}_${displayName}${parsed.suffix}`;
 }
 
-export function buildMultiFeedCsvHeaderLabels(header = [], { feedIds = [], postsByFeed = {}, projectId = "" } = {}) {
+export function buildMultiFeedCsvHeaderLabels(
+  header = [],
+  { feedIds = [], postsByFeed = {}, projectId = "", feedNames = {} } = {}
+) {
   return (Array.isArray(header) ? header : []).map((key) =>
-    labelMultiFeedCsvHeaderKey(key, { feedIds, postsByFeed, projectId })
+    labelMultiFeedCsvHeaderKey(key, { feedIds, postsByFeed, projectId, feedNames })
   );
+}
+
+// A feed's own post metric columns (${postId}${suffix}, one group per
+// post) inside loadMultiFeedParticipantSurveyRoster's flat output are
+// discovered via Object.keys() across all rows — and since that data
+// round-trips through the `participants.extra` jsonb column, key order
+// there is Postgres's own canonical jsonb ordering, NOT the post-grouped
+// insertion order buildParticipantRow (utils-core.js) originally produced
+// client-side. jsonb does not preserve object key insertion order at all,
+// so the discovered header ends up grouped by ACTION across every post
+// ("...saved,...saved,...saved,...shared,...shared,...") instead of by
+// POST ("post1_saved,post1_shared,...,post2_saved,post2_shared,..."). This
+// rebuilds the header explicitly in the intended post-then-action order —
+// same set of columns, just reordered — falling back to the original
+// discovery order for anything it doesn't recognize (base participant
+// meta, feed_sequence_ids, experiment-group/attention-check/survey_*
+// columns, or a per-post column whose post id isn't in postsByFeed), so
+// nothing is ever silently dropped.
+const MULTI_FEED_STRUCTURAL_SUFFIXES = [
+  "_feed_id",
+  "_entered_at_iso",
+  "_submitted_at_iso",
+  "_duration_s",
+  "_survey_id",
+  "_experiment_group_id",
+  "_displayed_posts_json",
+];
+
+// The base participant-identity columns loadMultiFeedParticipantSurveyRoster
+// always sets first on every row — kept first in the rebuilt header too, so
+// a plain per-feed reorder doesn't shove session_id/participant_id/etc. all
+// the way to the end behind every feed's post columns.
+const MULTI_FEED_BASE_META_KEYS = [
+  "session_id",
+  "participant_id",
+  "ip_address",
+  "prolific_pid",
+  "entered_at_iso",
+  "submitted_at_iso",
+  "duration_s",
+];
+
+export function orderMultiFeedCsvHeader(header = [], { feedIds = [], postsByFeed = {} } = {}) {
+  const remaining = new Set(Array.isArray(header) ? header : []);
+  const ordered = [];
+
+  function take(key) {
+    if (remaining.has(key)) {
+      remaining.delete(key);
+      ordered.push(key);
+    }
+  }
+
+  MULTI_FEED_BASE_META_KEYS.forEach((key) => take(key));
+
+  (Array.isArray(feedIds) ? feedIds : []).forEach((fid, index) => {
+    const prefix = `feed${index + 1}`;
+    MULTI_FEED_STRUCTURAL_SUFFIXES.forEach((suffix) => take(`${prefix}${suffix}`));
+
+    const posts = Array.isArray(postsByFeed?.[fid]) ? postsByFeed[fid] : [];
+    posts.forEach((post) => {
+      const postId = String(post?.id || "").trim();
+      if (!postId) return;
+      POST_METRIC_SUFFIXES_FOR_LABELS.forEach((suffix) => take(`${prefix}_${postId}${suffix}`));
+    });
+  });
+
+  (Array.isArray(header) ? header : []).forEach((key) => take(key));
+
+  return ordered;
 }
 
 export async function loadSurveyOnlyRoster({
@@ -1728,6 +1859,15 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.allow_dark_mode !== "undefined") {
     out.allow_dark_mode = !!flags.allow_dark_mode;
   }
+  // Admin-only metadata, not a participant-facing flag — a researcher's own
+  // short label for this feed used only in multi-feed CSV column headers
+  // (labelMultiFeedCsvHeaderKey), exact mirror of a post's own "name for
+  // CSV" field. Lives in the same flags jsonb purely for storage
+  // convenience (no schema change needed); kept as a plain string, never
+  // boolean-coerced like every other key here.
+  if (typeof flags.csv_name !== "undefined") {
+    out.csv_name = String(flags.csv_name || "").trim();
+  }
 
   return out;
 }
@@ -1745,6 +1885,7 @@ export function normalizeFlagsForRead(flags) {
   out.realistic_surroundings = !!out.realistic_surroundings;
   out.realistic_surroundings_avatars = !!out.realistic_surroundings_avatars;
   out.allow_dark_mode = !!out.allow_dark_mode;
+  out.csv_name = String(out.csv_name || "").trim();
 
   delete out.random_time;
   delete out.random_avatar;

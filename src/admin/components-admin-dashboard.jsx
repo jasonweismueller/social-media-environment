@@ -642,6 +642,41 @@ export function AdminDashboard({
     }
   };
 
+  // Not one of FLAG_KINDS' booleans — a plain string a researcher sets once
+  // per feed, used only to label that feed's columns in a merged multi-feed
+  // CSV (loadMultiFeedParticipantSurveyRoster/labelMultiFeedCsvHeaderKey),
+  // exact mirror of a post's own "name for CSV" field. Same
+  // fetch-if-needed/single-flight-guard/reload-after-save shape as
+  // toggleFlag above, just setting an explicit value instead of flipping one.
+  const setFeedCsvName = async (targetFeedId, name) => {
+    const rowKey = keyFor(projectId, targetFeedId);
+
+    if (!feedFlags[rowKey]?.loaded && !feedFlags[rowKey]?.loading) {
+      await loadFlagsFor(targetFeedId);
+    }
+
+    const cur = feedFlags[rowKey] || {};
+    if (ALL_SAVING_KEYS.some((k) => cur[k]) || cur.savingCsvName) return;
+
+    setFeedFlags((m) => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingCsvName: true } }));
+
+    try {
+      const res = await setFeedFlagsOnBackend({
+        projectId,
+        feedId: targetFeedId,
+        patch: { csv_name: name },
+      });
+      if (!res?.ok) {
+        throw new Error(res?.err || "Failed to update feed CSV name.");
+      }
+      await loadFlagsFor(targetFeedId, { force: true });
+    } catch (e) {
+      toast.error(e.message || "Failed to update feed CSV name. Please re-login and try again.");
+    } finally {
+      setFeedFlags((m) => ({ ...m, [rowKey]: { ...(m[rowKey] || {}), savingCsvName: false } }));
+    }
+  };
+
   useEffect(() => {
     const syncFromUrl = () => {
       try {
@@ -1557,6 +1592,7 @@ export function AdminDashboard({
               onLoadStats={loadStatsFor}
               onLoadFlags={loadFlagsFor}
               onToggleFlag={toggleFlag}
+              onSetCsvName={setFeedCsvName}
               onDeleteFeed={handleDeleteFeed}
               onSetWipePolicy={handleSetWipePolicy}
               onCopyParticipantLink={handleCopyParticipantLink}

@@ -33,6 +33,8 @@ import {
   normalizeLinkedFeedIds,
   orderedLinkedFeedIdsFromSurvey,
   buildMultiFeedCsvHeaderLabels,
+  orderMultiFeedCsvHeader,
+  fetchFeedFlags,
 } from "../utils";
 
 import {
@@ -2115,21 +2117,37 @@ export function AdminSurveysPanel({
       return;
     }
 
-    const feedIds = orderedLinkedFeedIdsFromSurvey(survey);
-    if (!feedIds.length) {
+    const linkedFeedIds = orderedLinkedFeedIdsFromSurvey(survey);
+    if (!linkedFeedIds.length) {
       toast.error("Link at least one feed first.");
       return;
     }
 
     try {
-      const [roster, loadedFeedPostsPairs] = await Promise.all([
-        loadMultiFeedParticipantSurveyRoster({
-          surveyId: survey.survey_id,
-          feedIds,
-          projectId,
-        }),
+      const roster = await loadMultiFeedParticipantSurveyRoster({
+        surveyId: survey.survey_id,
+        feedIds: linkedFeedIds,
+        projectId,
+      });
+
+      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+      if (!safeRows.length) {
+        toast.error("No multi-feed participant data found yet.");
+        return;
+      }
+
+      // The roster's own feedIds — only the feeds that actually turned out
+      // to have real participant data, renumbered 1..N — not the survey's
+      // full linked-feed list, which can include feeds linked purely as
+      // post_reminder content sources (e.g. when experiment groups route
+      // different participants to different single feeds). Posts/CSV names
+      // are only fetched for these real feeds, so a merged download no
+      // longer wastes a network call on a feed nobody ever actually visits.
+      const realFeedIds = Array.isArray(roster?.feedIds) ? roster.feedIds : [];
+
+      const [loadedFeedPostsPairs, loadedFeedNamePairs] = await Promise.all([
         Promise.all(
-          feedIds.map(async (fid) => {
+          realFeedIds.map(async (fid) => {
             try {
               const loaded = await effectiveLoadFeedPosts(fid);
               return [fid, Array.isArray(loaded) ? loaded : []];
@@ -2138,21 +2156,31 @@ export function AdminSurveysPanel({
             }
           })
         ),
+        Promise.all(
+          realFeedIds.map(async (fid) => {
+            try {
+              const flags = await fetchFeedFlags({ projectId, feedId: fid });
+              return [fid, String(flags?.csv_name || "").trim()];
+            } catch (_) {
+              return [fid, ""];
+            }
+          })
+        ),
       ]);
 
       const postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
-      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
-      if (!safeRows.length) {
-        toast.error("No multi-feed participant data found yet.");
-        return;
-      }
+      const feedNames = Object.fromEntries(loadedFeedNamePairs || []);
 
-      const header = Array.from(
+      const discoveredHeader = Array.from(
         safeRows.reduce((set, row) => {
           Object.keys(row || {}).forEach((key) => set.add(key));
           return set;
         }, new Set())
       );
+      const header = orderMultiFeedCsvHeader(discoveredHeader, {
+        feedIds: realFeedIds,
+        postsByFeed,
+      });
 
       const normalizedRows = safeRows.map((row) => {
         const next = {};
@@ -2163,9 +2191,10 @@ export function AdminSurveysPanel({
       });
 
       const labels = buildMultiFeedCsvHeaderLabels(header, {
-        feedIds,
+        feedIds: realFeedIds,
         postsByFeed,
         projectId,
+        feedNames,
       }).map(stripSurveyExportPrefix);
       const csv = buildCsv(normalizedRows, header, labels);
       const filename = `${safeFileStem(survey.name || survey.survey_id)}_multi_feed_responses_${todayStamp()}.csv`;

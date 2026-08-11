@@ -6464,24 +6464,125 @@ matters here). Worth a real click-through on staging — split an existing multi
 "insert page break" and confirm neighboring blocks' content is untouched — before fully trusting
 this beyond what direct function-level verification already covers.
 
+## Merged feed+survey CSV: three real bugs found on a live study, plus a new per-feed CSV name field (2026-08-11, later)
+
+Direct report against a real downloaded CSV (`Study_2_-_Main_feed_survey_...csv`, survey
+`survey_zydn6xke6d7msnjl1xe` "Study 2 - Main", `project_1`): columns looked grouped by *action*
+across every post instead of by post, and every participant's feed columns were labeled "feed5"
+regardless of which of the study's 3 real routed feeds they'd actually seen. Investigated via
+`loadMultiFeedParticipantSurveyRoster`/`labelMultiFeedCsvHeaderKey` (`utils-backend.js`) and
+confirmed against the real survey's live config (`supabase db query --linked`, read-only): this
+survey links 5 feeds — 2 used only as `post_reminder` content sources, 3 actually routed to
+participants via 6 experiment groups' own `feed_sequence_ids` overrides (the "Experiment groups can
+route feed sequences" feature, 2026-08-03 above). That combination exposed a design assumption this
+function had never been updated for: it was built around one shared feed sequence every participant
+walks in the same order, and simply didn't work correctly once different participants could each be
+routed to one single, different feed. **Three separate bugs, one much more serious than the other
+two:**
+
+1. **Real data loss, confirmed live.** `surveyResponses` was pre-filtered to
+   `row.feed_id === sequence[sequence.length - 1]` — "whichever feed happens to be listed last" in
+   the survey's static `feed_sequence_ids`. Confirmed directly against the real database: this
+   survey's real (and, at the time, only) `survey_responses` row has `session_id
+   u7y45spwvrqmsnk8jed`, tied to `feed_3` — and a `participants` row with the *identical*
+   `session_id` exists for `feed_3` too (a real, genuine match) — but the survey's *current*
+   `feed_sequence_ids` last entry is `feed_2_rev`, not `feed_3`. So this real participant's actual,
+   submitted survey answers (the MI/AI/PL/PS/CONTROL composite columns) would show entirely blank in
+   a CSV downloaded from this exact survey right now, purely because their routed feed isn't
+   whichever one happens to sit last in an array — despite the correct match already existing one
+   step later, via session/participant-id (`surveyLookup.bySessionId`/`byParticipantId`), which this
+   filter ran *before* and therefore starved of candidates. **Fixed by deleting the filter
+   entirely** — `loadSurveyResponsesBySurveyRoster` already scopes to `survey_id`, and the existing
+   session/participant-id lookup is the correct match, with no feed_id involvement needed at all.
+2. **Every real feed got assigned a purely positional "feedN" slot** (1–5, based on where it sits in
+   the survey's full static linked-feed list) instead of a slot tied to its own identity — so a
+   participant's actual feed always landed under whatever number that feed happened to occupy
+   *survey-wide*, and the 2 reminder-only feeds got their own permanently-empty column-groups too.
+   **Fixed**: `loadMultiFeedParticipantSurveyRoster` now filters `participantGroups` down to feeds
+   that actually returned ≥1 participant row before assigning `feedN` prefixes — a feed linked purely
+   as reminder content naturally has zero rows and is excluded, no "is this feed reminder-only"
+   classification needed — and renumbers the survivors 1..N. `feed_sequence_ids`/
+   `final_survey_feed_id` per row also changed from a survey-wide constant to each participant's own
+   actually-visited feed(s), tracked in the order their rows were found (still correct for a classic
+   shared-sequence multi-feed study, where a participant has several rows).
+3. **Column order was action-grouped, not post-grouped**, e.g. every post's `_saved` column, then
+   every post's `_shared` column, instead of one post's full column set before the next. Root cause:
+   `participants.extra` is a Postgres `jsonb` column, and jsonb does **not** preserve object key
+   insertion order at all (a well-known Postgres behavior) — so `buildParticipantRow`
+   (`utils-core.js`), which *does* build its row post-grouped client-side at submission time, has
+   that order silently discarded the moment it round-trips through storage and back. **Fixed**:
+   new exported `orderMultiFeedCsvHeader()` rebuilds the CSV header explicitly — base participant
+   fields first, then each real feed's structural columns, then that feed's own posts (in the feed's
+   own order) × a fixed, ordered list of metric suffixes — falling back to original discovery order
+   for anything unrecognized, so nothing is ever silently dropped. Also found and fixed a smaller,
+   related gap while building the canonical suffix list: `POST_METRIC_SUFFIXES_FOR_LABELS` (used both
+   for this reordering and for substituting a post's friendly name into its columns) was missing 7
+   Amazon/news-specific suffixes (`_news_clicked`, `_review_rating`, `_review_helpful`,
+   `_review_helpful_removed`, `_review_reported`, `_review_read_more`, `_review_read_more_ms`) —
+   confirmed via the real attached CSV, which showed friendly post names for every metric *except*
+   these, still showing raw hashed post ids.
+
+**New feature, requested alongside the fixes**: a feed's own short label for CSV column headers
+(exact mirror of a post's existing "name for CSV" field), so "feedN" can read as e.g. "PS_FEED"
+instead of a bare positional number or raw feed id. **Design confirmed with the user first** (two
+real forks, both resolved via `AskUserQuestion` before writing code): global per feed rather than
+scoped to one survey's Feed Setup (matches the post-name precedent exactly — set once, reused in
+every CSV that includes that feed), and feed inclusion in the merged CSV driven by "has real
+participant data" (bug 2 above) rather than requiring explicit configuration.
+
+- **Storage**: a new `csv_name` string key in the same `feeds.flags` jsonb blob every other
+  per-feed toggle already lives in (`normalizeFlagsForStore`/`-ForRead` in `utils-backend.js`,
+  `supabaseSetFeedFlags`'s merge in `utils-backend-supabase.js`) — no migration needed, and
+  deliberately kept a plain string (never boolean-coerced like its neighbors).
+- **Admin UI**: new `FeedCsvNameField` in `components-admin-feeds.jsx`'s Feeds → Settings → Overview
+  card (editor-role-gated), a plain local-state input that only commits on blur/Enter/explicit Save
+  — not save-on-every-keystroke. `components-admin-dashboard.jsx` gained `setFeedCsvName`, mirroring
+  `toggleFlag`'s fetch-if-needed/single-flight-guard/reload-after-save shape but setting an explicit
+  value instead of flipping a boolean.
+- **Wired into labeling**: `labelMultiFeedCsvHeaderKey` now replaces the *entire* "feedN" prefix
+  (not just the post-id portion, which is all it touched before) with `feedNames[feedId] || feedId`
+  — so every "feedN_..." column, not only post-metric ones, gets a meaningful label. Both CSV
+  download call sites (`components-admin-surveys.jsx`'s "Download feed + survey CSV" button and
+  `components-admin-participants-survey.jsx`'s equivalent) now fetch each real feed's flags in
+  parallel with its posts and pass the resulting `feedNames` map through.
+
+**Verified**: `orderMultiFeedCsvHeader`/`buildMultiFeedCsvHeaderLabels`/`normalizeFlagsForStore`/
+`-ForRead` tested directly against the real running dev server with fabricated data shaped exactly
+like the real reported bug (action-grouped discovered header, Amazon review-suffix columns, a
+`feedNames` override) — confirmed post-grouped output with the full original column set intact,
+base participant fields kept first, and friendly labels applied throughout. The `FeedCsvNameField`
+UI was verified via a full real mount of `AdminFeedsPanel` (editor role faked via
+`localStorage.admin_role_v1`, same standing technique used throughout this file) — renders the
+seeded value, shows a Save button only once dirty, and calling Save invokes `onSetCsvName` with the
+trimmed new value. **Bug 1 (the data-loss one) was verified against real production data directly**
+(`supabase db query --linked`, read-only) rather than fabricated — confirmed the exact real
+session-id match that the old filter would have dropped and the new code recovers, as described
+above. **Not verified**: an actual click-through by a real logged-in admin downloading a CSV from
+this exact survey (standing no-login limitation throughout this file) — worth doing once this ships,
+specifically re-checking that this survey's one real response now shows its real answers instead of
+`NA` in a fresh download.
+
 ## Session handoff (2026-08-11) — read this first if picking up fresh
 
 **Supersedes** the "Session handoff (2026-08-08)" section above — that one is still accurate history
 (and its own "what's not done" list is addressed item-by-item below), just no longer the current
-status. This has been one long continuous session spanning both; the six sections directly above
+status. This has been one long continuous session spanning both; the seven sections directly above
 this one (reaction pill polish, engagement-count randomization, rail/top-bar click-interception
-fixes, the image-resize script actually running, two explanatory asides, and the two survey-editor/
-CSV fixes) are everything that happened since that earlier handoff was written.
+fixes, the image-resize script actually running, two explanatory asides, the two survey-editor/CSV
+fixes, and — added after this handoff was first written, see its own section just above — the
+merged feed+survey CSV fixes and new per-feed CSV name field) are everything that happened since the
+Aug-8 handoff was written.
 
-**Git state, confirmed just now**: `main`/`origin/main` clean working tree, pushed, at
-`1704a0d feed then survey csv download implementation`. **`production`/`origin/production` is 2
-commits behind** (`git log origin/production..origin/main`: `01863cf changes to question page`,
-`1704a0d feed then survey csv download implementation`) — meaning `studyfeed.org` **already has**
-everything through "fix feed layover issues" (the reaction-icon polish, tooltip-flicker fix,
-engagement-randomization toggle, and the rail-z-index/top-bar-pointer-events fixes are all already
-live), but is **missing both of today's pieces**: the survey editor block/page-number/filter sync
-work and the feed+survey CSV download fix. Neither is live on `studyfeed.org` yet — needs the usual
-deliberate promotion (merge/fast-forward `main` into `production`, push), not automatic.
+**Git state — check fresh, this has drifted since the handoff was first written**: as of the
+merged-CSV work landing, `main` has three new pieces beyond `1704a0d` (the missing-suffixes fix, the
+`loadMultiFeedParticipantSurveyRoster` rework, and the `FeedCsvNameField` UI) not yet committed by
+Claude — this repo's standing auto-commit pattern (the user's own GitHub Desktop app) applies here
+same as always, so check `git status`/`git log` rather than trusting the commit hash below once
+stale. **`production`/`origin/production` was already 2 commits behind `main`** before this
+session's CSV work (`01863cf`, `1704a0d` — the survey editor block/page-number/filter sync work and
+the original feed+survey CSV *download button* work), and is now further behind once the CSV
+*correctness* fixes land too. None of today's work is live on `studyfeed.org` yet — needs the usual
+deliberate promotion.
 
 **Resolved from the Aug-8 handoff's own "not done" list**:
 1. Oversized-image resize script — **done**, 53 files fixed and verified live against the CDN (see
@@ -6495,9 +6596,14 @@ deliberate promotion (merge/fast-forward `main` into `production`, push), not au
 4. The reaction-pill overlap math (~4px actual vs ~2px intended) — **not revisited**, still open.
 
 **New items for whoever picks this up next**:
-- **Promote `main` → `production`** for today's two commits when convenient — both are real,
-  user-reported bug fixes (survey editor sync, feed+survey CSV), not experimental or risky, so no
-  particular urgency beyond the normal cadence.
+- **Promote `main` → `production`** when convenient — all real, user-reported bug fixes (survey
+  editor sync, feed+survey CSV download, and now the CSV correctness/data-loss fixes above), not
+  experimental or risky. Given one of the CSV bugs was actively causing real submitted survey
+  answers to disappear from a merged CSV *for a live study right now*, this one is worth prioritizing
+  sooner rather than at the normal cadence.
+- **Once live, re-download "Study 2 - Main"'s (`survey_zydn6xke6d7msnjl1xe`) feed+survey CSV** and
+  confirm the one real response (`session_id u7y45spwvrqmsnk8jed`) now shows its real MI/AI/PL/PS/
+  CONTROL answers instead of `NA`, and that its feed column is labeled by identity, not "feed5".
 - **"Images still showing big in preview"** — diagnosed as a browser-cache issue (server confirmed
   correct), user given a hard-refresh fix, but never confirmed resolved. Worth a quick check-in.
 - **AWS access stays manual, per-session, by explicit user choice** — offered a persistent

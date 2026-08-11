@@ -214,6 +214,63 @@ function FeedListContent({
   );
 }
 
+// A feed's own short label used only in multi-feed CSV column headers
+// (loadMultiFeedParticipantSurveyRoster / labelMultiFeedCsvHeaderKey) —
+// exact mirror of a post's "name for CSV" field, just scoped to the feed
+// instead. Local input state so typing doesn't fight the debounced-fetch
+// `csvName` prop; only commits on blur/Enter, matching the "explicit save,
+// not save-on-every-keystroke" pattern the rest of this panel already uses
+// for text fields (rename, etc.).
+function FeedCsvNameField({ csvName, saving, disabled, onSave }) {
+  const [value, setValue] = useState(csvName || "");
+
+  useEffect(() => {
+    setValue(csvName || "");
+  }, [csvName]);
+
+  const dirty = value.trim() !== String(csvName || "").trim();
+
+  function commit() {
+    if (!dirty || saving) return;
+    onSave(value.trim());
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div>
+        <div style={{ color: "var(--admin-muted)", fontSize: 11, marginBottom: 4 }}>Feed name for CSV</div>
+        <input
+          type="text"
+          value={value}
+          disabled={disabled || saving}
+          placeholder="e.g. CONTROL_FEED (falls back to the feed id if blank)"
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            else if (e.key === "Escape") setValue(csvName || "");
+          }}
+          style={{
+            width: 320,
+            maxWidth: "100%",
+            boxSizing: "border-box",
+            height: 34,
+            padding: "0 10px",
+            border: "1px solid var(--admin-border)",
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        />
+      </div>
+      {dirty && (
+        <Button size="sm" variant="secondary" busy={saving} onClick={commit} style={{ marginTop: 18 }}>
+          Save
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Master-detail conversion of the old flat Feeds table + separate top-level
  * Posts/Feed-Participants pages, mirroring AdminSurveysPanel's layout so the
@@ -252,6 +309,7 @@ export function AdminFeedsPanel({
   onLoadStats,
   onLoadFlags,
   onToggleFlag,
+  onSetCsvName,
   onDeleteFeed,
   onSetWipePolicy,
   onCopyParticipantLink,
@@ -546,6 +604,16 @@ export function AdminFeedsPanel({
                       </Button>
                     )}
                   </div>
+                  <RoleGate min="editor">
+                    <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--admin-border-subtle)" }}>
+                      <FeedCsvNameField
+                        csvName={ff.csv_name}
+                        saving={!!ff.savingCsvName}
+                        disabled={!ff.loaded && !!anyFlagBusy}
+                        onSave={(name) => onSetCsvName(selectedFeedId, name)}
+                      />
+                    </div>
+                  </RoleGate>
                 </Card>
 
                 <RoleGate min="editor">

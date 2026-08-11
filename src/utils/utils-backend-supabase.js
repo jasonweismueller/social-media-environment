@@ -727,6 +727,12 @@ export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {
       merged[canonical] = !!(patch[canonical] ?? patch[legacy]);
     }
   }
+  // Admin-only string metadata (a feed's short label for CSV column
+  // headers) — not one of FLAG_PAIRS' booleans, so handled separately
+  // rather than forced through `!!()`.
+  if (patch && typeof patch.csv_name !== "undefined") {
+    merged.csv_name = String(patch.csv_name || "").trim();
+  }
 
   const { data, error } = await supabase
     .from("feeds")

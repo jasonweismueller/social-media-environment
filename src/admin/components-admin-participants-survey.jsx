@@ -19,6 +19,8 @@ import {
   loadPostsFromBackend,
   orderedLinkedFeedIdsFromSurvey,
   buildMultiFeedCsvHeaderLabels,
+  orderMultiFeedCsvHeader,
+  fetchFeedFlags,
   buildAnalysisDataset,
   computeDemographicsSummary,
   computeMeasuresSummary,
@@ -1485,14 +1487,28 @@ export function SurveyParticipantsPage({
     try {
       setDownloadingFeedCsv(true);
 
-      const [roster, loadedFeedPostsPairs] = await Promise.all([
-        loadMultiFeedParticipantSurveyRoster({
-          surveyId,
-          feedIds: feedIdsForSurvey,
-          projectId,
-        }),
+      const roster = await loadMultiFeedParticipantSurveyRoster({
+        surveyId,
+        feedIds: feedIdsForSurvey,
+        projectId,
+      });
+
+      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+      if (!safeRows.length) {
+        toast.error("No feed + survey participant data found yet.");
+        return;
+      }
+
+      // Only the feeds the roster found real participant data for
+      // (renumbered 1..N), not every feed the survey happens to link — see
+      // loadMultiFeedParticipantSurveyRoster's own comment for why a feed
+      // linked purely as a post_reminder content source must never get its
+      // own (always-empty) column-group.
+      const realFeedIds = Array.isArray(roster?.feedIds) ? roster.feedIds : [];
+
+      const [loadedFeedPostsPairs, loadedFeedNamePairs] = await Promise.all([
         Promise.all(
-          feedIdsForSurvey.map(async (fid) => {
+          realFeedIds.map(async (fid) => {
             try {
               const loaded = await loadPostsFromBackend(fid, {
                 projectId: projectId || undefined,
@@ -1504,21 +1520,31 @@ export function SurveyParticipantsPage({
             }
           })
         ),
+        Promise.all(
+          realFeedIds.map(async (fid) => {
+            try {
+              const flags = await fetchFeedFlags({ projectId, feedId: fid });
+              return [fid, String(flags?.csv_name || "").trim()];
+            } catch (_) {
+              return [fid, ""];
+            }
+          })
+        ),
       ]);
 
       const postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
-      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
-      if (!safeRows.length) {
-        toast.error("No feed + survey participant data found yet.");
-        return;
-      }
+      const feedNames = Object.fromEntries(loadedFeedNamePairs || []);
 
-      const header = Array.from(
+      const discoveredHeader = Array.from(
         safeRows.reduce((set, row) => {
           Object.keys(row || {}).forEach((key) => set.add(key));
           return set;
         }, new Set())
       );
+      const header = orderMultiFeedCsvHeader(discoveredHeader, {
+        feedIds: realFeedIds,
+        postsByFeed,
+      });
 
       const normalizedRows = safeRows.map((row) => {
         const next = {};
@@ -1529,9 +1555,10 @@ export function SurveyParticipantsPage({
       });
 
       const labels = buildMultiFeedCsvHeaderLabels(header, {
-        feedIds: feedIdsForSurvey,
+        feedIds: realFeedIds,
         postsByFeed,
         projectId,
+        feedNames,
       }).map(stripSurveyExportPrefix);
       const csv = buildCsv(normalizedRows, header, labels);
       const filename = `${safeFileStem(survey?.name || surveyId)}_feed_survey_${todayStamp()}.csv`;
