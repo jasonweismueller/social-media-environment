@@ -1150,10 +1150,32 @@ export async function supabaseLoadSurveyParticipantsStats({ surveyId }) {
   return { total: count || 0 };
 }
 
+// Deletes both halves of a survey's collected data: the survey_responses
+// rows themselves, and every participants row that was ever headed toward
+// this survey (participants.survey_id is stamped at feed-submit time — see
+// supabaseLogParticipant — for every feed in a feed_then_survey/
+// multi_feed_then_survey sequence linked to this survey, including anyone
+// who submitted the feed but abandoned before finishing the survey). Without
+// this, "Delete survey data" only cleared the survey half, leaving the
+// matching feed-engagement rows (and therefore their CSV rows) behind —
+// exactly what a researcher re-testing a study before real data collection
+// doesn't want. Both deletes are scoped purely by survey_id, so a feed
+// linked to more than one survey only loses the rows tied to this one.
 export async function supabaseDeleteSurveyResponses({ surveyId }) {
   const supabase = getSupabaseClient();
-  const { error } = await supabase.from("survey_responses").delete().eq("survey_id", surveyId);
-  if (error) throw new Error(error.message);
+
+  const { error: participantsErr } = await supabase
+    .from("participants")
+    .delete()
+    .eq("survey_id", surveyId);
+  if (participantsErr) throw new Error(participantsErr.message);
+
+  const { error: responsesErr } = await supabase
+    .from("survey_responses")
+    .delete()
+    .eq("survey_id", surveyId);
+  if (responsesErr) throw new Error(responsesErr.message);
+
   return true;
 }
 

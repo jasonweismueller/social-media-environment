@@ -3308,13 +3308,19 @@ export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId
 }
 
 /**
- * Deletes every submitted response row for a survey (SurveyResponses sheet),
- * without touching the survey definition itself. Use when a survey was
- * repeatedly test-run before real participants and the admin wants a clean
- * slate for the actual study — as opposed to deleteSurveyOnBackend, which
- * removes the survey (questions, pages, launch links) entirely.
+ * Deletes every submitted response row for a survey, AND every participants
+ * (feed-engagement) row that was ever sent toward this survey — see
+ * supabaseDeleteSurveyResponses for why both tables are in scope — without
+ * touching the survey definition itself. Use when a survey (and its linked
+ * feed(s)) was repeatedly test-run before real participants and the admin
+ * wants a clean slate for the actual study — as opposed to
+ * deleteSurveyOnBackend, which removes the survey (questions, pages, launch
+ * links) entirely.
  *
- * Destructive and irreversible server-side.
+ * Destructive and irreversible server-side. GAS's delete_survey_responses
+ * action only ever deleted the SurveyResponses sheet, not participants —
+ * that side isn't ported, since production has run on Supabase exclusively
+ * since the backend migration (see CLAUDE.md).
  */
 export async function deleteSurveyResponsesOnBackend({
   projectId = getProjectId(),

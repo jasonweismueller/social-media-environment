@@ -1360,9 +1360,11 @@ export function AdminSurveysPanel({
       message:
         `Delete all submitted responses for "${survey.name || survey.survey_id}"?\n\n` +
         "This permanently deletes every response row recorded for this survey " +
-        "(e.g. test submissions) so you can start collecting real data with a " +
+        "(e.g. test submissions), AND every feed row for anyone who was sent " +
+        "toward this survey — including feed engagement from people who never " +
+        "finished the survey — so you can start collecting real data with a " +
         "clean CSV. The survey itself — its questions, pages, and launch links — " +
-        "is not affected, only the collected response data. This cannot be undone.",
+        "is not affected, only the collected response/feed data. This cannot be undone.",
       danger: true,
       confirmLabel: "Delete",
     });
