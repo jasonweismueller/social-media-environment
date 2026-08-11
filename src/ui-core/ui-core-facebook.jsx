@@ -836,11 +836,9 @@ function TopRailReal() {
           </span>
           <span className="trp-real-btn">
             <TrpIcon size={19} stroke="#050505"><path d="M12 3C6.9 3 3 6.6 3 11.2c0 2.6 1.3 4.9 3.4 6.4V21l3.1-1.7c.8.2 1.6.3 2.5.3 5.1 0 9-3.6 9-8.4S17.1 3 12 3Z" /></TrpIcon>
-            <span className="trp-real-badge">2</span>
           </span>
           <span className="trp-real-btn">
             <TrpIcon size={19} stroke="#050505"><path d="M12 3a5.5 5.5 0 0 0-5.5 5.5c0 5-2.1 6.5-2.1 6.5h15.2s-2.1-1.5-2.1-6.5A5.5 5.5 0 0 0 12 3Z" /><path d="M9.7 18a2.3 2.3 0 0 0 4.6 0" /></TrpIcon>
-            <span className="trp-real-badge">3</span>
           </span>
           <span className="trp-real-avatar" />
         </div>

@@ -1179,6 +1179,14 @@ export default function App() {
 
   const [feedSubmitted, setFeedSubmitted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Set synchronously the instant Submit is clicked, when we already know
+  // (independent of the network write below) that this submit is heading
+  // into a linked survey — covers the real gap the "awkward transition"
+  // report was about: without this, nothing visually changes between the
+  // click and sendToSheet resolving (feedSubmitted/the loading overlay only
+  // flip on *after* that write finishes), so a slow write left the
+  // participant looking at an inert, merely-disabled feed with no feedback.
+  const [submittingToSurvey, setSubmittingToSurvey] = useState(false);
 
   const [flags, setFlags] = useState({
     randomize_times: false,
@@ -2986,6 +2994,14 @@ export default function App() {
       !assetsReady ||
       !minDelayDone);
 
+  // Covers the gap between clicking Submit and sendToSheet resolving —
+  // submittingToSurvey is set synchronously on click (before that network
+  // write), so this overlay appears with zero delay instead of leaving the
+  // participant looking at a merely-disabled feed until the write finishes
+  // and loadingNextStageOverlay (below) takes over.
+  const submittingToSurveyOverlay =
+    !onAdmin && !feedSubmitted && submittingToSurvey;
+
   const loadingNextStageOverlay =
     !onAdmin &&
     hasEntered &&
@@ -3035,6 +3051,7 @@ export default function App() {
       showSurveyOnlyLoadingOverlay,
       preparingFeedOverlay,
       loadingNextStageOverlay,
+      submittingToSurveyOverlay,
       shouldShowSurvey,
       shouldBlurShell,
       canShowFeed,
@@ -3049,6 +3066,7 @@ export default function App() {
     showSurveyOnlyLoadingOverlay,
     preparingFeedOverlay,
     loadingNextStageOverlay,
+    submittingToSurveyOverlay,
     shouldShowSurvey,
     shouldBlurShell,
     canShowFeed,
@@ -3081,6 +3099,7 @@ export default function App() {
           : "Loading the feed.",
     } :
     loadingNextStageOverlay ? { title: "Loading questions…", subtitle: "Preparing the next stage" } :
+    submittingToSurveyOverlay ? { title: "Submitting your responses…", subtitle: "Taking you to the survey" } :
     null;
 
   // A courtesy guard, not the real security boundary (that's server-side —
@@ -3291,6 +3310,15 @@ export default function App() {
 
                             setDisabled(true);
 
+                            // Known synchronously, independent of the
+                            // network write below — used to show a loading
+                            // overlay immediately on click instead of only
+                            // once sendToSheet resolves.
+                            const willAdvanceToSurvey =
+                              !(hasNextFeedStage && nextFeedIdInSequence) &&
+                              !!surveyBoot?.has_survey;
+                            if (willAdvanceToSurvey) setSubmittingToSurvey(true);
+
                             const ENTER_FRAC = Number.isFinite(
                               Number(VIEWPORT_ENTER_FRACTION)
                             )
@@ -3380,37 +3408,44 @@ export default function App() {
 
                             sendTimer.end({ ok });
 
-                            showToast(
-                              ok ? "Submitted ✔︎" : "Sync failed. Please try again."
-                            );
+                            if (!ok) {
+                              showToast("Sync failed. Please try again.");
+                              setSubmittingToSurvey(false);
+                            } else if (hasNextFeedStage && nextFeedIdInSequence) {
+                              showToast("Feed submitted ✔︎ Loading next feed…");
+                              await advanceToNextFeed(nextFeedIdInSequence);
+                            } else if (surveyBoot?.has_survey) {
+                              // No "Submitted ✔︎" toast here — the
+                              // participant isn't actually done yet (a
+                              // survey still follows), and pairing that
+                              // toast with the loading overlay's own
+                              // "Loading questions…" text read as
+                              // contradictory. The overlay (already showing,
+                              // via submittingToSurvey/loadingNextStageOverlay)
+                              // communicates progress on its own.
+                              setFeedSubmitted(true);
+                              const loadedSurvey = await ensureSurveyLoaded();
 
-                            if (ok) {
-                              if (hasNextFeedStage && nextFeedIdInSequence) {
-                                showToast("Feed submitted ✔︎ Loading next feed…");
-                                await advanceToNextFeed(nextFeedIdInSequence);
-                              } else if (surveyBoot?.has_survey) {
-                                setFeedSubmitted(true);
-                                const loadedSurvey = await ensureSurveyLoaded();
+                              dbg("feed submit survey load result", {
+                                loadedSurvey: !!loadedSurvey,
+                              });
 
-                                dbg("feed submit survey load result", {
-                                  loadedSurvey: !!loadedSurvey,
-                                });
-
-                                if (loadedSurvey) {
-                                  scrollSurveyViewToTop();
-                                } else {
-                                  setSurveyPhase("error");
-                                  setSurveyErrorMsg("Failed to load the survey.");
-                                  showToast(
-                                    "Feed submitted, but the survey could not be loaded."
-                                  );
-                                }
-                              } else {
-                                setFeedSubmitted(true);
+                              if (loadedSurvey) {
                                 scrollSurveyViewToTop();
+                              } else {
+                                setSurveyPhase("error");
+                                setSurveyErrorMsg("Failed to load the survey.");
+                                showToast(
+                                  "Feed submitted, but the survey could not be loaded."
+                                );
                               }
+                            } else {
+                              showToast("Submitted ✔︎");
+                              setFeedSubmitted(true);
+                              scrollSurveyViewToTop();
                             }
 
+                            setSubmittingToSurvey(false);
                             setDisabled(false);
                             t.end({ ok });
                           }}
