@@ -1030,7 +1030,15 @@ export function buildParticipantRow({
   survey_id,
   feed_checksum,
 }) {
-  const entered   = events.find(e => e.action === "participant_id_entered");
+  // "participant_id_auto_entered" — logged instead of "participant_id_entered"
+  // whenever the Participant Information overlay is skipped (every
+  // feed_then_survey/multi_feed_then_survey study, since a linked survey
+  // makes shouldSkipParticipantOverlay true — see App-*.jsx) — was never
+  // recognized here, so entered_at_iso/ms_enter_to_submit/
+  // ms_enter_to_last_interaction came out null for every such participant
+  // (confirmed: 100% null in real production data), while submitted_at_iso
+  // (a separate, correctly-matched action) was unaffected.
+  const entered   = events.find(e => e.action === "participant_id_entered" || e.action === "participant_id_auto_entered");
   const submitted = events.find(e => e.action === "feed_submit" || e.action === "survey_submit");
 
   const entered_at_iso   = entered?.timestamp_iso || null;

@@ -73,7 +73,15 @@ function buildCsv(rows = [], header = [], labels = []) {
 }
 
 function normalizeCsvValue(value) {
-  if (value == null) return "";
+  // null/undefined means genuinely missing/not-applicable data — e.g. a
+  // feedN_* column for a feed this particular participant never visited
+  // (group-routed studies route each participant to only one of several
+  // feeds) — and previously rendered as a blank cell, inconsistent with
+  // the survey side's own "NA" fill for a question that wasn't shown to
+  // this participant. A real empty *string* (e.g. "" for a share_target
+  // when nothing was shared) is left alone — that's meaningful "this
+  // didn't happen" data, not missing data, so it isn't caught here.
+  if (value == null) return "NA";
   if (Array.isArray(value)) return value.map(normalizeCsvValue).filter(Boolean).join(" | ");
   if (typeof value === "object") {
     try {

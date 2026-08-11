@@ -60,6 +60,13 @@ import {
 
 /* --------------------- App + endpoints ------------------------ */
 function msToSeconds(value) {
+  // A blank/missing value must return "" (no value), not fall through to
+  // Number(value) — Number("") and Number(null) both coerce to 0, which
+  // passed the old finite check unguarded and silently rendered as a real
+  // "0 seconds" duration in every CSV column that had no actual duration
+  // to report (e.g. a not-yet-fixed ms_enter_to_submit, or a feed a
+  // participant never visited) rather than staying blank.
+  if (value === "" || value == null) return "";
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return "";
   return Math.round((n / 1000) * 100) / 100;
