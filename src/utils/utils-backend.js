@@ -3325,6 +3325,7 @@ export async function deleteSurveyOnBackend(surveyId, { projectId = getProjectId
 export async function deleteSurveyResponsesOnBackend({
   projectId = getProjectId(),
   surveyId,
+  feedIds = [],
 } = {}) {
   if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
 
@@ -3333,7 +3334,12 @@ export async function deleteSurveyResponsesOnBackend({
 
   if (isSupabaseBackend()) {
     try {
-      await supabaseDeleteSurveyResponses({ surveyId: survey_id });
+      await supabaseDeleteSurveyResponses({
+        surveyId: survey_id,
+        projectId,
+        app: APP,
+        feedIds,
+      });
       return { ok: true, deleted_count: null };
     } catch (e) {
       return { ok: false, err: String(e?.message || e) };

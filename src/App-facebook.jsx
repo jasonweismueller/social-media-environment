@@ -3346,6 +3346,7 @@ export default function App() {
                               posts,
                               feed_id,
                               feed_checksum,
+                              survey_id: linkedSurvey?.survey_id || "",
                             });
 
                             const displayedPostSnapshots = orderedPosts

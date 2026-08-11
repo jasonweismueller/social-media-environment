@@ -2975,6 +2975,7 @@ export default function App() {
                               posts,
                               feed_id,
                               feed_checksum,
+                              survey_id: linkedSurvey?.survey_id || "",
                             });
                             row.experiment_group_id =
                               linkedSurvey?.experiment_assigned_group_id || "";

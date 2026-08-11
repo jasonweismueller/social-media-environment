@@ -1375,6 +1375,14 @@ export function AdminSurveysPanel({
       const res = await deleteSurveyResponsesOnBackend({
         projectId,
         surveyId: survey.survey_id,
+        // Real participants rows almost never actually have their own
+        // survey_id stamped (App-*.jsx never passes it at feed-submit time —
+        // see CLAUDE.md), so scoping the feed-data half of this delete by
+        // survey_id alone silently deletes nothing. Passing the survey's own
+        // currently-linked feed ids lets the backend delete by feed instead,
+        // matching exactly what the "feed + survey" CSV itself displays for
+        // this survey.
+        feedIds: orderedLinkedFeedIdsFromSurvey(survey),
       });
       if (!res?.ok) {
         toast.error(res?.err || "Failed to delete survey data.");
@@ -1384,7 +1392,7 @@ export function AdminSurveysPanel({
     } finally {
       setDeletingSurveyData(false);
     }
-  }, [survey?.survey_id, survey?.name, projectId, deletingSurveyData]);
+  }, [survey, projectId, deletingSurveyData]);
 
   useEffect(() => {
     if (Array.isArray(propFeeds)) {

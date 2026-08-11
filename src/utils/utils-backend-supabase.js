@@ -1151,24 +1151,44 @@ export async function supabaseLoadSurveyParticipantsStats({ surveyId }) {
 }
 
 // Deletes both halves of a survey's collected data: the survey_responses
-// rows themselves, and every participants row that was ever headed toward
-// this survey (participants.survey_id is stamped at feed-submit time — see
-// supabaseLogParticipant — for every feed in a feed_then_survey/
-// multi_feed_then_survey sequence linked to this survey, including anyone
-// who submitted the feed but abandoned before finishing the survey). Without
-// this, "Delete survey data" only cleared the survey half, leaving the
-// matching feed-engagement rows (and therefore their CSV rows) behind —
-// exactly what a researcher re-testing a study before real data collection
-// doesn't want. Both deletes are scoped purely by survey_id, so a feed
-// linked to more than one survey only loses the rows tied to this one.
-export async function supabaseDeleteSurveyResponses({ surveyId }) {
+// rows themselves, and every participants row tied to this survey's feed(s)
+// — without this, "Delete survey data" only cleared the survey half,
+// leaving the matching feed-engagement rows (and therefore their CSV rows)
+// behind, exactly what a researcher re-testing a study before real data
+// collection doesn't want.
+//
+// participants.survey_id is NOT reliably stamped in real data — App-*.jsx's
+// feed-submit code never actually passes survey_id through to
+// buildParticipantRow/sendToSheet (a real, separate bug — see CLAUDE.md),
+// so a delete scoped by that column alone silently removed nothing for
+// every existing study. The real signal is which feed(s) the participant
+// visited: feedIds (the survey's own currently-linked feed ids, from
+// orderedLinkedFeedIdsFromSurvey) is used to delete by participants.feed_id
+// instead, matching exactly what the "feed + survey" CSV itself displays
+// for this survey. The survey_id-scoped delete is kept alongside it as a
+// no-cost safety net for any row that *does* have it set (now or in the
+// future, once the feed-submit gap above is fixed).
+export async function supabaseDeleteSurveyResponses({ surveyId, projectId, app, feedIds = [] }) {
   const supabase = getSupabaseClient();
 
-  const { error: participantsErr } = await supabase
+  const { error: participantsBySurveyErr } = await supabase
     .from("participants")
     .delete()
     .eq("survey_id", surveyId);
-  if (participantsErr) throw new Error(participantsErr.message);
+  if (participantsBySurveyErr) throw new Error(participantsBySurveyErr.message);
+
+  const composedFeedIds = (Array.isArray(feedIds) ? feedIds : [])
+    .map((fid) => String(fid || "").trim())
+    .filter(Boolean)
+    .map((fid) => composeFeedId(projectId, app, fid));
+
+  if (composedFeedIds.length) {
+    const { error: participantsByFeedErr } = await supabase
+      .from("participants")
+      .delete()
+      .in("feed_id", composedFeedIds);
+    if (participantsByFeedErr) throw new Error(participantsByFeedErr.message);
+  }
 
   const { error: responsesErr } = await supabase
     .from("survey_responses")
