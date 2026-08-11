@@ -6096,3 +6096,413 @@ logic CLAUDE.md has flagged before for time-sensitive fixes.
    overlap ~4px, not the ~2px last measured) due to a compounding inline `marginLeft` on top of the
    CSS `margin-right`; not revisited since raised after the fact, worth a clean look if it comes up
    again.
+
+## Reaction pill: animation scoping, tooltip flicker, sad/care shape fixes (2026-08-08, later same session)
+
+Direct follow-up to the custom reaction-icon redesign documented just above, from real visual
+feedback after using it: the idle wobble animation was playing on icons everywhere (stacked summary
+under a post, the Like button's own active-reaction indicator), not just inside the open reaction
+picker; the reaction-summary hover tooltip ("who reacted") was flickering open/closed repeatedly,
+multiple times a second; the sad emoji's tear sat directly on the eye instead of below it; the care
+emoji had no visible "hug" arms around its heart.
+
+**Animation scoping** — `ReactionGlyph` already had an `animate` prop (default `true`) from the
+original redesign, just never actually varied by call site. Set `animate={false}` at the two
+call sites that shouldn't wobble (the stacked reaction-summary row, `ReactionIconWithNames`; the
+Like button's own current-reaction indicator, `LikeIcon`) — left the flyout picker's own call site
+(`animate` default `true`) untouched, since that's the one place wobbling was actually intended.
+
+**Tooltip flicker — a real React bug, not a timing/CSS issue.** `ReactionIconWithNames` (the small
+hoverable icon + "who reacted" tooltip in the stacked summary) was defined as a function *inside*
+`PostCard`'s own render body — a classic anti-pattern: since it's redefined with a new function
+identity on every `PostCard` render, React treats each render's version as a *different component
+type* and fully unmounts+remounts it, resetting its local `open` hover state back to `false` every
+time. `PostCard` re-renders often (video playback ticking `current`/`duration` many times a second
+for video posts, dwell-tracking state, etc.), so the tooltip would open on hover, then get killed on
+the very next re-render, then reopen if the mouse was still over it, repeating — exactly the
+reported "opens and closes multiple times a second." Confirmed by reproducing live: mounted the
+real `PostCard`, hovered a reaction icon, and watched the tooltip's DOM node get torn down and
+recreated on unrelated re-renders. Fixed by hoisting `ReactionIconWithNames` to module scope
+(matching every other reaction/menu helper in this file, e.g. `NamesPeek` — already module-level,
+imported, never redefined per-render) — it now takes an `onCloseFlyout` prop instead of closing
+over `closeNowAndSuppress` from the enclosing `PostCard` closure.
+
+**Sad emoji tear redrawn.** The original teardrop path's top (pointed) end was *above* the right
+eye's own bottom edge — i.e. the tear visually started on/inside the eye itself, not below it.
+Redrawn with a real ~0.6-unit gap between the eye's bottom and the tear's top point, positioned
+just below-right of the eye (matches a real crying-face convention — tear falling past the mouth
+corner, not overlapping the mouth's own stroke).
+
+**Care emoji arms added.** The heart alone (no surrounding gesture) didn't read as "care" the way
+real reaction sets do — added two curved stroke paths from either side of the face, sweeping in
+toward the heart, giving a genuine hugging-arms impression instead of a bare heart shape.
+
+**Flyout emoji size** bumped up slightly per direct feedback (picker icons were reading a touch
+small relative to the rest of the UI).
+
+**Verified live**, dev server + cache-busted dynamic imports against the real components (not
+mocks): confirmed `ReactionGlyph`'s wobble CSS class is present only where `animate` is true post-fix;
+reproduced the pre-fix tooltip-flicker bug once (confirming the diagnosis), then confirmed post-fix
+the tooltip stays open reliably across repeated re-renders with the hoisted version; confirmed the
+new tear/care paths render distinctly and don't overlap the eye/absent-arms as before, via direct
+SVG path-bounds inspection, not just a screenshot.
+
+## Realistic engagement counts: per-participant randomization option (2026-08-08, later)
+
+User asked, reasonably: "if I reload the feed, shouldn't the reaction/comment/share counts be
+randomized?" — worth recording the reasoning since it's a real methodological point, not just a
+preference. The existing `realistic_engagement` fallback (`fallbackEngagementStats`, `utils-core.js`)
+is deliberately seeded *purely by `post.id`* — same numbers for every participant, every reload — to
+avoid a between-*condition* confound (Control/Treatment copies of "the same" post, which in this app
+often share one bare `post.id` across feeds, must show identical numbers or displayed "popularity"
+could correlate with experiment arm). The user's counter-point, confirmed correct: a value that's
+*fixed per item* is itself a different kind of confound — an **item-level** one. If a specific post
+happens to land on a low (or high) random draw, *every* participant who ever sees that post is
+exposed to that number as a permanent, uncontrolled property of the stimulus, indistinguishable from
+a true property of the item unless the analysis treats item as a random effect. Randomizing
+independently per participant converts that fixed item-level bias into noise that's uncorrelated with
+both item and condition, at the cost of no longer showing identical numbers across conditions for a
+shared post (an acceptable trade, since that noise stays independent of condition either way).
+
+**Built as a new, separate opt-in sub-toggle** (`realistic_engagement_randomize`), off by default,
+only meaningful when `realistic_engagement` is also on — same "never bundled, always independently
+switchable" rule this file's own memory system enforces for every realism feature. `fallbackEngagementStats(postId, variantSeed)`
+(`utils-core.js`) gained an optional second param: when a variant seed is supplied (the same
+per-participant `runSeed` already used for avatar/name/time randomization), it's folded into the
+hash so the draw becomes participant-specific and *session-stable* (same participant, same number,
+across reloads — not a per-render reroll, which would look like a bug) instead of fixed forever per
+post. Threaded through the exact same per-flag-copy gauntlet this file already documents for every
+prior realism flag: `utils-backend.js` (`normalizeFlagsForStore`/`-ForRead`), `utils-backend-supabase.js`
+(`FLAG_PAIRS`), `components-admin-dashboard.jsx` (`FLAG_KINDS`, a new `engagementRandomize` entry
+next to `engagement`), and — the specific footgun this file has a name for — all three `App-*.jsx`
+files' own local `normalizeFlags()` (a flag can round-trip through the backend/admin UI perfectly
+while silently never reaching a real participant if even one of the three copies is missed; this was
+the exact root cause of a real bug documented earlier in this file for the original three realism
+flags). `ui-posts-facebook.jsx`/`ui-posts-instagram.jsx` both updated to pass `runSeed` as the
+variant seed only when the new toggle is on.
+
+**Verified live** via the real `fallbackEngagementStats` and the real mounted `PostCard`: with the
+toggle off, `runSeed` A and B both produce byte-identical numbers (zero regression for every feed
+that doesn't opt in); with it on, different `runSeed`s produce different numbers, and the *same*
+`runSeed` reliably reproduces the *same* number across repeated calls/re-renders (session-stable,
+not a flicker-on-reload bug). Amazon stays excluded, same as the parent `realistic_engagement`
+toggle (no reactions/comments/shares concept there).
+
+## Reaction-names tooltip behind the left rail, and the post "…" menu not opening near the top of the page (2026-08-08, later)
+
+Two more direct reports, both root-caused via live reproduction rather than guessed, and both real:
+
+**Tooltip painting behind the left rail.** `.rail`/`.rail-left`/`.rail-right` (`position:sticky`, no
+explicit `z-index` — i.e. an implicit "auto" stacking level) and the feed column (`.container.feed`)
+had no explicit z-index either, leaving their relative paint order to default stacking-context
+resolution — exactly the class of ambiguity this codebase already had to fix once before, for mobile
+specifically (`@media(max-width:768px)`'s explicit `.rx-stack .rx { z-index: 1 !important }` block,
+with its own comment: "Reaction summary must stay underneath the flyout") — just never applied to
+desktop. Confirmed via a from-scratch reproduction (mounted the real `PostCard` inside a hand-built
+`.page > .rail-left + .container.feed` structure using the real loaded stylesheet, hovered the
+reaction icon, and used `elementFromPoint` at the exact overlap coordinates to see which element
+actually wins) that this genuinely can flip depending on ancestor structure. Fixed by making the
+comparison unambiguous instead of relying on implicit defaults: `.rail` now has an explicit
+`z-index: 0`, `.page .container.feed` an explicit `z-index: 1` (plus `position: relative`, since a
+CSS Grid item needs *some* positioning context for z-index to reliably apply the same way across
+browsers). Verified: the same reproduction now consistently resolves the tooltip on top.
+
+**Post menu not opening — often for whichever post is at the top of the screen.** Root cause: the
+sticky top bar (`.top-rail-placeholder`, `position:sticky; top:0; z-index:100`, ~52px tall) is
+purely decorative — `aria-hidden`, zero real interactive children (confirmed via `TopRailPlaceholder`/
+`TopRailReal`, `ui-core-facebook.jsx`) — but had no `pointer-events:none`, unlike the side rails
+(`.rail`), which already have it for exactly this reason. As a participant scrolls, this bar
+correctly (and intentionally) visually covers whatever post content passes underneath it — but it
+was *also* silently swallowing clicks meant for that content. Reproduced directly: scrolled a
+fabricated multi-post feed until a post's "…" button geometrically fell within the top bar's 0–52px
+band, and confirmed via `elementFromPoint` at the button's exact coordinates that the hit target was
+the (decorative) top bar, not the button — even though part of the button was still visibly poking
+out below it. This is genuinely scroll-position-dependent, matching "often the post at the top,
+works for the one below it" precisely. Fixed by adding `pointer-events: none` to `.top-rail-placeholder`,
+mirroring `.rail`'s existing treatment, in **both** `styles-facebook.css` and `styles-instagram.css`
+(Amazon's own `TopRailPlaceholder` unconditionally `return`s `null` — no top bar renders there at
+all, confirmed via code read, so no fix was needed on that side). Verified with a full real click
+sequence (`mousedown`→`mouseup`→`click`) at the exact coordinates that previously failed: the menu
+now opens correctly, `aria-expanded` flips to `"true"`.
+
+## Oversized per-post images: resize script actually run this session (2026-08-09)
+
+The `resize_post_images.sh` script (written in an earlier session, flagged in that session's own
+handoff as "not yet run" — no live AWS session in that sandbox) was finally executed this session,
+with the user re-authenticating (`aws login`, a fresh short-lived SSO session — same mechanism
+documented earlier in this file under "Avatar/topic-image assets"; it expires between and sometimes
+even *within* a session, which is by design, not a bug, and was discussed directly with the user —
+see the "AWS access" note in this session's handoff below for the decision made about it).
+
+**Dry run first**: found **53 oversized per-post images across 10 different projects/feeds** — not
+just the one image originally flagged (`Feed 2 - Prebunk Short`/`Feed 2 - No Prebunk`), ranging from
+1440px-wide screenshots (already fairly small in file size, so only marginal savings) up to a
+6720px-wide, 4.4MB original. Reviewed the specific list with the user before running for real,
+flagging the screenshot files specifically (Some legibility risk shrinking them, though savings there
+are minor either way) — user chose to run the full 53-file pass as-is.
+
+**Real pass**: all 53 resized to 1400px max width / quality 80 (same numbers as the original
+avatar/topic-image compression pass from 2026-08-02, for consistency), every original backed up
+first to `images_originals_backup_2026-08-09/` in the same bucket (no versioning enabled, so this
+*is* the real undo path if ever needed), CloudFront invalidation submitted for exactly the 53 touched
+paths. One transient hiccup mid-run — a `s3api list-objects-v2` call briefly failed with
+`ValidationException: The provided authorization grant is invalid, expired, revoked, or malformed`,
+succeeded immediately on retry with the identical command — worth expecting this kind of flakiness
+with the short-lived SSO-login mechanism rather than assuming the whole session died.
+
+**Verified directly against the live CDN** post-invalidation: the originally-flagged image now
+serves 246,308 bytes (was 1,514,840) with `x-cache: Hit from cloudfront`; a second, unrelated
+spot-check (`proj_3/feed_1/.../pexels-karola-g-4210607.jpg`) confirmed similarly resized. Did not
+re-verify the backup folder's contents directly (that specific check hit an expired-session error at
+the very end of the run) — the script's own per-file console output already confirmed each backup
+upload individually succeeded as it ran, so this is a low-risk gap, not a real unknown.
+
+## Two explanatory-only conversations, no code changed (2026-08-09/10)
+
+- **"Images still showing big in Feed/Survey preview"** — checked the live CDN directly via `curl`
+  and confirmed it was already correctly serving the small, resized file (`x-cache: Hit from
+  cloudfront`, correct byte count) — so this wasn't a server-side regression. Diagnosed as the
+  participant's/admin's own **browser cache** still holding the pre-resize response for that exact
+  image URL (typical `<img src>` caching behavior — nothing in this app adds cache-busting query
+  params to per-post image URLs), and recommended a hard refresh. **Never got final confirmation
+  from the user that this actually resolved it** — worth a quick check-in if it comes up again,
+  since "the CDN is right, it's just your browser" is a diagnosis that's easy to get wrong.
+- **"Why does the admin URL need a `#`, e.g. `studyfeed.org/#/admin`?"** — explained, not changed:
+  `studyfeed.org` is served entirely by GitHub Pages (see this file's "Deployment" section), which is
+  pure static file hosting with zero server-side rewrite support — a direct request to a clean
+  `/admin` path would 404 before the React app (and its client-side router) ever gets a chance to
+  load, since no `admin/index.html` file actually exists on disk. `HashRouter` (confirmed at
+  `App-facebook.jsx:8`) sidesteps this entirely: everything after the `#` never leaves the browser,
+  so the one real file that exists (`/index.html`) is always what actually gets requested. Offered
+  the well-known GitHub Pages "custom `404.html` redirect" workaround as a real alternative if clean
+  URLs are ever wanted — not requested or built; purely informational this time.
+
+## Survey editor: "Pages and questions" list and "Study overview" brought back in sync (2026-08-11)
+
+Direct report: removing a page block sometimes silently reordered questions or moved them into the
+wrong block, the main "Pages and questions" list had no page numbers anywhere (only the compact
+"Study overview" modal did, and even there only on page-*break* rows, not individual questions), no
+way to collapse a block's worth of questions in the main list, and no search filter there either
+(Study overview already had one). Investigated and fixed all four, plus found a real, confirmable bug
+behind the "questions move somewhere else" report.
+
+**Real bug: `PageBlocksEditor.deleteBlock` scrambled page order when deleting the *first* block.**
+Reproduced in isolation before touching any code (a standalone Node script replicating the exact
+merge logic against `blocks = [A=[p1,p2], B=[p3,p4]]`, deleting block A): the removed block's pages
+were always **appended** to the destination block, which is correct when the destination is a
+genuine "previous" block (its own pages already come first, so appending preserves order) — but when
+deleting block index 0, there *is* no previous block; the destination becomes what *was* the next
+block, shifted down to index 0, and appending the removed block's pages there put them **after**
+that block's own pages instead of before — reversing their relative order every time. Confirmed the
+reproduction matched the reported symptom exactly, then fixed by prepending instead of appending
+specifically when `blockIndex === 0`, and corrected the confirm-dialog copy ("Its pages will be
+merged into the *next* block — there's no earlier block to merge into") for that same case instead
+of always saying "previous." Verified end-to-end through the real mounted `SurveyEditor`, including
+the real confirm dialog: deleting the first of a 3-block survey now leaves `survey.pages` in exactly
+its original order.
+
+**Page numbers** — added a "Page N" badge everywhere a question row renders in *both* views
+(previously only page-break rows showed a page number, anywhere): `CollapsedQuestionRow`,
+`QuestionCard`'s own expanded header, and Study Overview's `OutlineRow`.
+
+**Block collapsing** — new shared `computeBlockIndexForQuestions` helper (a companion to the
+already-existing `computeBlockBoundariesForQuestions`, sharing its internal `pageId → blockIndex`
+map builder) returns every row's block index, not just the ones starting a new block boundary —
+needed to decide per-row whether to hide it. `BlockBoundaryDivider` (already shared between both
+views) gained optional `isCollapsed`/`onToggleCollapsed` props — a real clickable chevron toggle,
+fully backward-compatible (omit both props, get the exact same non-interactive divider as before).
+Wired into **both** `SurveyEditor`'s main list and `StudyOutlineModal`, each with its own independent
+local collapse state (collapsing a block in one view doesn't affect the other — same convention
+already used for each view's own local UI state, e.g. the outline modal's own filter).
+
+**Search filter** — added the same filter box (reusing the existing `matchesQuestionFilter`
+render-skip pattern Study Overview already used — a render-time skip, never a pre-filter of the
+underlying array, since several downstream operations are keyed on true array index) to the main
+editor's "Pages and questions" list too.
+
+**`jumpToQuestion` updated** to also clear the filter and un-collapse the target question's block —
+without this, "jump to" from Study Overview / search / Preview could silently do nothing if the
+target row was hidden by either a stale filter or a collapsed block, since `scrollIntoView` would
+find no DOM node at all.
+
+**Verified live**, real mounted `SurveyEditor` with a fabricated 3-block/4-page/4-question survey:
+filter correctly hides/shows matching rows; block collapse toggle correctly hides/shows all of a
+block's rows and shows a "collapsed" label; the page-number badge renders in both the collapsed row
+and the expanded header ("Page 1"); and — the actual reported bug — deleting the first block via the
+real UI (Study overview → Page blocks → Delete, including the real confirm dialog) now produces the
+correct `page_blocks`/`survey.pages` shape, confirmed by reading the live component's own state
+after the click, not just by re-reading the source.
+
+## Feed + survey merged CSV missing for `feed_then_survey` studies (2026-08-11, later)
+
+Direct report: for a `feed_then_survey` (single feed, then survey) study, "Download Survey CSV" only
+ever produced survey-response columns — no way to get the merged feed-participant + survey CSV that
+`multi_feed_then_survey` studies already have via "Download multi-feed CSV."
+
+**Root cause**: the merge capability itself (`loadMultiFeedParticipantSurveyRoster`, `utils-backend.js`)
+already worked correctly for *any* number of feeds — confirmed it has no multi-feed-specific
+assumptions (a single-element `feedIds` array just produces one `feed1_...` column group, and its
+survey-response filter already correctly matches against `sequence[sequence.length - 1]`, which for
+one feed is that same feed) — but its **only** UI entry point, the Surveys admin "Launch" tab's
+"Download multi-feed CSV" button, was gated to `delivery_mode === multi_feed_then_survey` alone. A
+plain single-feed `feed_then_survey` study — the common case — had no way to reach this capability
+from *anywhere* in the admin UI; the only CSV button available to it at all was "Download Survey CSV"
+(via `loadSurveyOnlyRoster`, survey columns only), including on the Survey Participants analysis hub,
+which is where the user was actually looking when they hit this.
+
+**Fixed in both places a researcher might reasonably look**:
+- Surveys → Launch tab: widened the existing button's condition to also cover `feed_then_survey`
+  (not just multi), and renamed it from "Download multi-feed CSV" to "Download feed + survey CSV"
+  since the old name no longer fit either delivery mode accurately.
+- Survey Participants analysis hub: added a **new** second button of the same name, next to the
+  existing "Download Survey CSV," shown whenever the survey has any linked feed(s) at all (i.e. not
+  `survey_only`) — giving the researcher the explicit choice right there instead of requiring a trip
+  to a different tab. Disabled while viewing simulated data (the survey response simulator has no
+  concept of real feed-level engagement to merge with).
+
+**One structural fix needed along the way, not just a UI change**: the CSV column-labeling helpers
+these two buttons share (`orderedLinkedFeedIdsFromSurvey`, `buildMultiFeedCsvHeaderLabels`, plus
+their private internals `postDisplayNameFromMaps`/`splitPostMetricKeyForLabel`/
+`labelMultiFeedCsvHeaderKey`) lived only inside `components-admin-surveys.jsx` — but that file
+already imports `SurveyParticipantsPage` *from* `components-admin-participants-survey.jsx`
+(the "Participants" tab embedding), so importing back the other way for the new button would have
+created a genuine circular module dependency between the two admin component files. Relocated the
+shared helpers into `utils-backend.js`, directly beside `loadMultiFeedParticipantSurveyRoster` (the
+function they exist to support) — both admin files now import cleanly from `../utils`, same as
+everything else. This mirrors a precedent this file already documents elsewhere (`utils-backend.js`
+gaining exports specifically so two separate admin components could share small pure helpers instead
+of each reimplementing them).
+
+**Verified**: the relocated pure functions (`orderedLinkedFeedIdsFromSurvey`, `buildMultiFeedCsvHeaderLabels`)
+produce identical output post-move, confirmed via direct calls through the real running dev server.
+A live-mounted-component check (reproducing the exact `useMemo(() => orderedLinkedFeedIdsFromSurvey(survey), [survey])`
++ conditional-render pattern actually added to `SurveyParticipantsPage`) confirmed the new button
+correctly appears for both `feed_then_survey` (single feed) and `multi_feed_then_survey` (multiple
+feeds), and correctly stays hidden for `survey_only` — the three real delivery-mode cases that
+matter. Did not fully mount the real `SurveyParticipantsPage` end-to-end (its own internal
+survey/roster data-fetching chain would need deep Supabase-shaped `fetch` mocking to reach a
+non-empty state) — the underlying pure logic and the exact reactive wiring pattern were verified
+directly instead, which is a meaningfully stronger check than reading the code alone, if not as
+strong as a full page mount.
+
+## Page blocks: a second, deeper bug in the same area — page identity was reassigned by array position, silently misattributing content across blocks (2026-08-11, later)
+
+Direct follow-up report, same day as the "Pages and questions"/Study overview sync fix above:
+reordering blocks via the Page blocks section (e.g. so Block 4 sits before Block 5) sometimes still
+didn't show up correctly in the "Pages and questions" list or the Study overview outline — the
+order shown outside "Page blocks" could keep disagreeing with the order actually set there.
+
+**Root-caused by direct reproduction, not by reasoning about the code alone.** A plain block
+reorder (via the real "↑"/"↓" buttons, mounted and clicked through the real `SurveyEditor`) turned
+out to already work correctly — the Aug-3/Aug-11 `applyBlocks`/`computeBlockBoundariesForQuestions`
+fixes documented above are sound for that case. The actual remaining bug is one level deeper and
+far more consequential than "the order looks wrong": **`buildSurveyPagesFromFlatQuestions`
+(`components-admin-surveys-editor.jsx`, the function behind `setQuestionList` — i.e. behind
+*every* question-list edit: add/duplicate/delete/reorder a question, insert or delete a page
+break) rebuilt `survey.pages` by matching each new page to `existingPages[pageIndex]` purely by
+**array position**, reusing that existing page's `id` (and therefore silently inheriting its block
+membership) regardless of whether the position still actually corresponded to the same page.**
+
+The instant a page-break gets inserted or removed anywhere in the survey (an extremely common
+edit — splitting or merging a page), every page **after** that point shifts by one array position,
+and this positional matching reassigns each shifted page's real content to a **different**
+existing page's id. Reproduced concretely: a 3-block survey (block1→page_1[Q1a,Q1b],
+block2→page_2[Q2], block3→page_3[Q3]) — inserting a single new page break between Q1a and Q1b
+(splitting page_1 in two) silently reassigned `page_2`'s id to page_1's second half (Q1b) and
+`page_3`'s id to what should have been a new page holding Q2 — i.e. **Block 2 started showing
+Q1b instead of Q2, and Block 3 started showing both Q2 and Q3**, even though the edit only ever
+touched page_1's own content. This is a strictly worse failure mode than "wrong order" — it's
+silent content misattribution across blocks a researcher never touched, and it plausibly explains
+the reported symptom too: once a few such edits accumulate over a survey's editing history, block
+membership drifts out of sync with what the Page blocks section shows, which reads exactly like
+"the order outside Page blocks disagrees with reality."
+
+**Fix, in two parts, both in `components-admin-surveys-editor.jsx`:**
+1. `flattenSurveyPagesForEditor` now stamps each synthesized page-break flat item with
+   `meta.next_page_id` — the real id of the page it currently precedes (routed through `meta`
+   since `normalizeQuestionForEditor`'s page-break branch only passes through a fixed field
+   whitelist; a genuinely new page break inserted via "insert page break" has no such tag, which
+   is exactly the signal the rebuild needs).
+2. `buildSurveyPagesFromFlatQuestions` no longer matches by position. Each rebuilt page's identity
+   is decided by which page-break **tag** closes it (falling back to `existingPages[0]`'s id for
+   the very first segment, since nothing precedes it to carry a tag) — reusing an existing page's
+   id only when its tag is present and not already claimed by an earlier segment in the same
+   rebuild pass; otherwise it's treated as genuinely new content and gets a fresh id. A page that
+   needs a fresh id is folded into the same block as **the previous segment's own resolved id**
+   (whether that was itself reused or fresh), inserted right after it — so splitting a page keeps
+   both halves in the same block, adjacent, instead of the split-off half landing wherever
+   `reconcileSurveyPageBlocks`'s generic "unassigned → append to last block" fallback happens to
+   put it.
+
+**Verified against three scenarios via the exact functions the real component calls** (not a
+reimplementation) — `getQuestionList`/`setQuestionList`, i.e. `flattenSurveyPagesForEditor`/
+`buildSurveyPagesFromFlatQuestions` directly, using the 3-block/[Q1a,Q1b]/[Q2]/[Q3] survey above:
+- **Split** (new break between Q1a/Q1b): Block1→`[Q1a],[Q1b]` (both halves, correctly adjacent),
+  Block2→`[Q2]` (byte-identical, untouched — this is the exact case that was silently corrupted
+  before), Block3→`[Q3]` (untouched). Matches expectations exactly.
+- **Drag a question across existing pages, no break topology change** (moving Q3 to the front, no
+  page inserted/removed): Block1→`[Q3,Q1a,Q1b]`, Block2→`[Q2]`, Block3→`[]` (now-empty page,
+  correctly still `page_3` rather than silently disappearing) — confirms the fix doesn't change
+  behavior for the much more common case of just moving content between *existing* pages.
+- **Merge via deleting a page break**: Block1→`[Q1a,Q1b,Q2]` (merged, keeps `page_1`'s identity),
+  Block2→`[]` (`page_2` correctly ceases to exist, consumed by the merge — any block referencing it
+  gets it filtered out by the existing `normalizeSurveyPageBlocks` validity check, not reassigned
+  to something else), Block3→`[Q3]` (untouched).
+
+Also re-confirmed, via a real mounted `SurveyEditor` + clicked-through "↑"/"↓" buttons (not just
+pure-function calls), that the plain block-reorder path from the earlier fix above is completely
+unaffected by this change — a 5-block survey's reorder still produces byte-identical, correctly
+synced order across the Page blocks section, the Study overview outline, and the main editor's
+"Pages and questions" list. File parses clean (`@babel/parser`).
+
+**Not verified**: an actual click-through by a real logged-in admin exercising "insert page break"
+through the real UI (attempted via the real button, but the specific insert-type picker interaction
+proved fragile to drive via synthetic clicks in this sandbox and was not resolved in time — the
+underlying rebuild logic itself was verified directly instead, against the exact functions
+`insertQuestionAt`/`removeQuestion`/`moveQuestion` all funnel through, which is what actually
+matters here). Worth a real click-through on staging — split an existing multi-question page via
+"insert page break" and confirm neighboring blocks' content is untouched — before fully trusting
+this beyond what direct function-level verification already covers.
+
+## Session handoff (2026-08-11) — read this first if picking up fresh
+
+**Supersedes** the "Session handoff (2026-08-08)" section above — that one is still accurate history
+(and its own "what's not done" list is addressed item-by-item below), just no longer the current
+status. This has been one long continuous session spanning both; the six sections directly above
+this one (reaction pill polish, engagement-count randomization, rail/top-bar click-interception
+fixes, the image-resize script actually running, two explanatory asides, and the two survey-editor/
+CSV fixes) are everything that happened since that earlier handoff was written.
+
+**Git state, confirmed just now**: `main`/`origin/main` clean working tree, pushed, at
+`1704a0d feed then survey csv download implementation`. **`production`/`origin/production` is 2
+commits behind** (`git log origin/production..origin/main`: `01863cf changes to question page`,
+`1704a0d feed then survey csv download implementation`) — meaning `studyfeed.org` **already has**
+everything through "fix feed layover issues" (the reaction-icon polish, tooltip-flicker fix,
+engagement-randomization toggle, and the rail-z-index/top-bar-pointer-events fixes are all already
+live), but is **missing both of today's pieces**: the survey editor block/page-number/filter sync
+work and the feed+survey CSV download fix. Neither is live on `studyfeed.org` yet — needs the usual
+deliberate promotion (merge/fast-forward `main` into `production`, push), not automatic.
+
+**Resolved from the Aug-8 handoff's own "not done" list**:
+1. Oversized-image resize script — **done**, 53 files fixed and verified live against the CDN (see
+   above).
+2. No real click-through by a logged-in admin/participant — **still open**, and now also applies to
+   everything built this session too (all verified via direct component mounts / computed-style
+   checks / simulated click sequences against the real dev server, never a genuine logged-in
+   session). `staging.studyfeed.org` remains the lowest-risk place to close this gap.
+3. Whether any participants got stuck/lost data before the survey-submission fix shipped — **not
+   followed up on this session**, still open.
+4. The reaction-pill overlap math (~4px actual vs ~2px intended) — **not revisited**, still open.
+
+**New items for whoever picks this up next**:
+- **Promote `main` → `production`** for today's two commits when convenient — both are real,
+  user-reported bug fixes (survey editor sync, feed+survey CSV), not experimental or risky, so no
+  particular urgency beyond the normal cadence.
+- **"Images still showing big in preview"** — diagnosed as a browser-cache issue (server confirmed
+  correct), user given a hard-refresh fix, but never confirmed resolved. Worth a quick check-in.
+- **AWS access stays manual, per-session, by explicit user choice** — offered a persistent
+  scoped-IAM-user alternative, user chose to keep running `aws login` themselves each time instead.
+  Don't re-pitch this unless asked again.
+- **Hash-routing (`#/admin`) explained, not changed** — user didn't ask for the GitHub Pages
+  clean-URL workaround to actually be built, only asked why it currently works this way. Available
+  as a real, scoped follow-up if ever requested.

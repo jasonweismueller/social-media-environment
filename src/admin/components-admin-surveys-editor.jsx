@@ -551,6 +551,7 @@ export function flattenSurveyPagesForEditor(survey) {
     });
 
  if (pageIndex < pages.length - 1) {
+  const nextPageId = String(pages[pageIndex + 1]?.id || "").trim();
   flat.push(
     normalizeQuestionForEditor(
       {
@@ -558,6 +559,14 @@ export function flattenSurveyPagesForEditor(survey) {
         id: `page_break_${pageIndex + 1}`,
         type: EDITOR_PAGE_BREAK_TYPE,
         next_delay_seconds: normalizePageDelaySeconds(page?.next_delay_seconds),
+        // Stamps which real page this break currently precedes, so
+        // buildSurveyPagesFromFlatQuestions can re-derive that page's true
+        // identity by which BREAK closes it, not by raw array position —
+        // see the comment there for why pure positional matching corrupts
+        // block membership the moment a page gets split/merged. Routed
+        // through `meta` since normalizeQuestionForEditor's page-break
+        // branch only passes through a fixed whitelist of fields.
+        meta: nextPageId ? { next_page_id: nextPageId } : {},
       },
       flat.length
     )
@@ -574,42 +583,103 @@ export function buildSurveyPagesFromFlatQuestions(survey, items) {
 
   const flatItems = Array.isArray(items) ? items : [];
   const existingPages = Array.isArray(safeSurvey.pages) ? safeSurvey.pages : [];
+  const existingPageById = new Map(
+    existingPages
+      .map((page) => [String(page?.id || "").trim(), page])
+      .filter(([id]) => id)
+  );
+
+  // Which existing page each new segment "really is" is tracked via the
+  // next_page_id tag flattenSurveyPagesForEditor stamps onto each
+  // page-break item, not via raw array position — a break with no tag (a
+  // brand new one, e.g. from "insert page break") or a tag whose page was
+  // already claimed by an earlier segment means the content after it is
+  // genuinely new (split off from an existing page, or shuffled past more
+  // breaks than existed before) and must get a fresh id, never silently
+  // inherit whatever existing page happens to sit at that index. Plain
+  // positional matching used to reassign an existing page's id — and
+  // therefore its block membership — to unrelated content the instant a
+  // page break was inserted/removed anywhere earlier in the survey,
+  // corrupting which block "owns" what and, from the admin's view, making
+  // block order in "Pages and questions"/Study overview appear to silently
+  // disagree with the actual order set in the Page blocks section.
   const splitPages = [];
-let currentQuestions = [];
+  let currentQuestions = [];
+  let identityForCurrentSegment =
+    existingPages.length && existingPages[0]?.id
+      ? String(existingPages[0].id).trim()
+      : null;
 
-flatItems.forEach((item) => {
-  if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
-    splitPages.push({
-      questions: currentQuestions,
-      next_delay_seconds: normalizePageDelaySeconds(item?.next_delay_seconds),
-    });
-    currentQuestions = [];
-  } else {
-    currentQuestions.push(
-      normalizeQuestionForEditor(item, currentQuestions.length)
-    );
-  }
-});
+  flatItems.forEach((item) => {
+    if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
+      splitPages.push({
+        questions: currentQuestions,
+        next_delay_seconds: normalizePageDelaySeconds(item?.next_delay_seconds),
+        identity: identityForCurrentSegment,
+      });
+      currentQuestions = [];
+      identityForCurrentSegment =
+        String(item?.meta?.next_page_id || "").trim() || null;
+    } else {
+      currentQuestions.push(
+        normalizeQuestionForEditor(item, currentQuestions.length)
+      );
+    }
+  });
 
-splitPages.push({
-  questions: currentQuestions,
-  next_delay_seconds: 0,
-});
+  splitPages.push({
+    questions: currentQuestions,
+    next_delay_seconds: 0,
+    identity: identityForCurrentSegment,
+  });
 
-const pages = splitPages.map((pageData, pageIndex) => {
-  const existingPage = existingPages[pageIndex] || {};
-  return {
-    id: existingPage.id || `page_${pageIndex + 1}`,
-    title: String(existingPage.title ?? ""),
-    description: String(existingPage.description ?? ""),
-    next_delay_seconds: normalizePageDelaySeconds(
-      pageData?.next_delay_seconds ?? existingPage?.next_delay_seconds
-    ),
-    questions: (pageData?.questions || []).map((q, i) =>
-      normalizeQuestionForEditor(q, i)
-    ),
-  };
-});
+  const claimedIds = new Set();
+  let freshIdSeq = 0;
+  // { newId, originId } for a page needing a fresh id — folded into the
+  // same block as its origin below, right after it, so it doesn't land
+  // "unassigned" and get silently appended to whichever block happens to be
+  // last (reconcileSurveyPageBlocks' fallback for genuinely orphaned
+  // pages). The origin is the PREVIOUS segment's own resolved id — a fresh
+  // segment is, by construction, always a piece that split off from
+  // whatever page precedes it in the new flat order, whether or not the
+  // break separating them happened to carry a matching tag (it usually
+  // won't: the tag identifies what the break used to precede, not what a
+  // brand-new break inserted mid-page splits off from).
+  const splitOffFromExisting = [];
+  let previousPageId = null;
+
+  const pages = splitPages.map((pageData) => {
+    const wantedId = pageData.identity;
+    const canReuse =
+      wantedId && existingPageById.has(wantedId) && !claimedIds.has(wantedId);
+
+    let pageId;
+    let existingPage = null;
+    if (canReuse) {
+      claimedIds.add(wantedId);
+      pageId = wantedId;
+      existingPage = existingPageById.get(wantedId);
+    } else {
+      freshIdSeq += 1;
+      pageId = `page_${Date.now()}_${freshIdSeq}`;
+      if (previousPageId) {
+        splitOffFromExisting.push({ newId: pageId, originId: previousPageId });
+      }
+    }
+    previousPageId = pageId;
+
+    return {
+      id: pageId,
+      title: String(existingPage?.title ?? ""),
+      description: String(existingPage?.description ?? ""),
+      next_delay_seconds: normalizePageDelaySeconds(
+        pageData?.next_delay_seconds ?? existingPage?.next_delay_seconds
+      ),
+      questions: (pageData?.questions || []).map((q, i) =>
+        normalizeQuestionForEditor(q, i)
+      ),
+    };
+  });
 
   const nextSurvey = {
     ...safeSurvey,
@@ -624,6 +694,18 @@ const pages = splitPages.map((pageData, pageIndex) => {
           },
         ],
   };
+
+  if (splitOffFromExisting.length && Array.isArray(nextSurvey.page_blocks)) {
+    nextSurvey.page_blocks = nextSurvey.page_blocks.map((block) => {
+      const pageIds = Array.isArray(block.page_ids) ? [...block.page_ids] : [];
+      splitOffFromExisting.forEach(({ newId, originId }) => {
+        if (pageIds.includes(newId)) return;
+        const originIndex = pageIds.indexOf(originId);
+        if (originIndex >= 0) pageIds.splice(originIndex + 1, 0, newId);
+      });
+      return { ...block, page_ids: pageIds };
+    });
+  }
 
   return reconcileSurveyPageBlocks(nextSurvey);
 }
