@@ -12,6 +12,14 @@ import {
   hasAdminRole,
   wipeParticipantsOnBackend,
   median,
+  looksExpandable,
+  hasNote,
+  hasBio,
+  hasMention,
+  hasCta,
+  hasShareableSurface,
+  isRelevantPostMetricForExport,
+  parsePostMetricKey,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Modal, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 
@@ -27,16 +35,6 @@ const ms = (n) => {
   const sec = String(s % 60).padStart(2, "0");
   return `${m}:${sec}`;
 };
-
-const IG_ONLY = ["_saved", "_reposted"];
-
-const FB_ONLY = [
-  "_note_opened",
-  "_note_view_details",
-  "_note_link_clicked",
-  "_note_helpful_rated",
-  "_note_helpful_value",
-];
 
 const sShort = (n) => (Number.isFinite(Number(n)) ? `${Math.round(Number(n))}s` : "—");
 
@@ -219,59 +217,6 @@ function randomInt(rng, min, max) {
   const lo = Math.ceil(min);
   const hi = Math.floor(max);
   return Math.floor(rng() * (hi - lo + 1)) + lo;
-}
-
-function looksExpandable(post) {
-  if (!post) return false;
-  if (post.expandable === true) return true;
-  const txt = String(post.text || post.review_text || post.body || "");
-  return txt.length > 140;
-}
-
-function hasNote(post) {
-  if (!post) return false;
-  return !!(
-    post.note ||
-    post.noteText ||
-    post.note_text ||
-    post.communityNote ||
-    post.community_note ||
-    post.interventionType === "note" ||
-    post.intervention_type === "note" ||
-    post.showNote === true
-  );
-}
-
-function hasBio(post) {
-  if (!post) return false;
-  return !!(
-    post.showBio ||
-    post.bio_text ||
-    post.bio_url ||
-    post.bio_followers ||
-    post.bio_posts ||
-    post.bio_following
-  );
-}
-
-function hasMention(post) {
-  const txt = String(post?.text || "");
-  return /(^|\s)@\w+/.test(txt);
-}
-
-function hasCta(post) {
-  if (!post) return false;
-  return !!(
-    post.adType === "ad" ||
-    post.adButtonText ||
-    post.cta ||
-    post.ctaLabel ||
-    post.adUrl
-  );
-}
-
-function hasShareableSurface(post) {
-  return !!post;
 }
 
 function buildSimulatedParticipantId(index) {
@@ -1451,93 +1396,11 @@ function getPostByIdMap(posts = []) {
   return map;
 }
 
-function parsePostMetricKey(key = "") {
-  const suffixes = [
-    "_reacted",
-    "_reaction_type",
-    "_expandable",
-    "_expanded",
-    "_commented",
-    "_comment_texts",
-    "_reported_misinfo",
-    "_dwell_s",
-    "_dwell_ms",
-    "_saved",
-    "_shared",
-    "_share_target",
-    "_share_text",
-    "_reposted",
-    "_cta_clicked",
-    "_bio_opened",
-    "_bio_url_clicked",
-    "_mention_clicked",
-    "_note_opened",
-    "_note_view_details",
-    "_note_link_clicked",
-    "_note_helpful_rated",
-    "_note_helpful_value",
-    "_review_helpful",
-    "_review_helpful_removed",
-    "_review_reported",
-    "_review_read_more",
-    "_review_read_more_ms",
-    "_review_rating",
-  ];
-
-  for (const suffix of suffixes) {
-    if (key.endsWith(suffix)) {
-      return {
-        postId: key.slice(0, -suffix.length),
-        suffix,
-      };
-    }
-  }
-
-  return null;
-}
-
-function isRelevantPostMetricForExport(post, suffix, isIG) {
-  if (!post || !suffix) return true;
-
-  const isAMZ = isAmazonApp();
-
-  // Amazon reviews use review-specific helpful/report/read-more fields.
-  if (isAMZ) {
-    if (["_review_helpful", "_review_helpful_removed", "_review_reported", "_review_read_more", "_review_read_more_ms", "_review_rating", "_dwell_s", "_dwell_ms", "_expanded", "_expandable", "_reported_misinfo"].includes(suffix)) return true;
-    if (["_reacted", "_reaction_type", "_commented", "_comment_texts", "_saved", "_shared", "_share_target", "_share_text", "_cta_clicked", "_bio_opened", "_bio_url_clicked", "_mention_clicked", "_note_opened", "_note_view_details", "_note_link_clicked", "_note_helpful_rated", "_note_helpful_value"].includes(suffix)) return false;
-  }
-
-  // ❌ Remove FB-only metrics from IG
-  if (isIG && FB_ONLY.includes(suffix)) return false;
-
-  // ❌ Remove IG-only metrics from FB
-  if (!isIG && IG_ONLY.includes(suffix)) return false;
-
-  // ✅ IG-only
-  if (suffix === "_saved") return !!isIG;
-  if (suffix === "_reposted") return !!isIG;
-
-  // ✅ Feature-based filters
-  if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") {
-    return hasBio(post);
-  }
-
-  if (suffix === "_mention_clicked") {
-    return hasMention(post);
-  }
-
-  if (suffix === "_cta_clicked") {
-    return hasCta(post);
-  }
-
-  if (suffix === "_expandable" || suffix === "_expanded") {
-    return looksExpandable(post);
-  }
-
-  return true;
-}
-
-function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
+// parsePostMetricKey/isRelevantPostMetricForExport are imported from
+// "../utils" (utils-backend.js) — shared with orderMultiFeedCsvHeader's own
+// merged feed+survey CSV, which never filtered irrelevant columns at all
+// before that move. See that file for the full rationale/fix history.
+function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
   const postMap = getPostByIdMap(posts);
 
   return (Array.isArray(keys) ? keys : []).filter((key) => {
@@ -1554,7 +1417,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
     const post = postMap.get(parsed.postId);
     if (!post) return true;
 
-    return isRelevantPostMetricForExport(post, parsed.suffix, isIG);
+    return isRelevantPostMetricForExport(post, parsed.suffix);
   });
 }
 
@@ -1577,7 +1440,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
       normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
 
       const allKeys = Array.from(keySet);
-      const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
+      const keys = filterCsvKeysForCurrentFeed(allKeys, posts);
       const labels = keys.map((k) => labelForKey(k, nameStore));
       const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 
@@ -1607,7 +1470,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = [], isIG = false) {
       normalizedAll.forEach((r) => Object.keys(r).forEach((k) => keySet.add(k)));
 
       const allKeys = Array.from(keySet);
-      const keys = filterCsvKeysForCurrentFeed(allKeys, posts, IG);
+      const keys = filterCsvKeysForCurrentFeed(allKeys, posts);
       const labels = keys.map((k) => labelForKey(k, nameStore));
       const csv = makeCsvWithPrettyHeaders(normalizedAll, keys, labels);
 

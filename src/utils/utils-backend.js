@@ -1461,6 +1461,154 @@ const POST_METRIC_SUFFIXES_FOR_LABELS = [
   "_review_helpful",
 ];
 
+// Per-post CSV-column relevance — which of POST_METRIC_SUFFIXES_FOR_LABELS'
+// suffixes actually apply to a given post, so an export doesn't carry dead
+// columns for a feature the post (or the whole app) doesn't have — e.g.
+// Amazon's review_* fields showing up in a Facebook/Instagram CSV, or
+// note_opened/note_helpful_rated showing up for a post that was never a
+// community-note intervention. Originally local to and only used by
+// components-admin-participants-feed.jsx's single-feed CSV download; moved
+// here (and exported) so orderMultiFeedCsvHeader below — the merged
+// feed+survey CSV, which never filtered anything at all before this — can
+// share the exact same logic instead of drifting into its own copy.
+export function looksExpandable(post) {
+  if (!post) return false;
+  if (post.expandable === true) return true;
+  const txt = String(post.text || post.review_text || post.body || "");
+  return txt.length > 140;
+}
+
+export function hasNote(post) {
+  if (!post) return false;
+  return !!(
+    post.note ||
+    post.noteText ||
+    post.note_text ||
+    post.communityNote ||
+    post.community_note ||
+    post.interventionType === "note" ||
+    post.intervention_type === "note" ||
+    post.showNote === true
+  );
+}
+
+export function hasBio(post) {
+  if (!post) return false;
+  return !!(
+    post.showBio ||
+    post.bio_text ||
+    post.bio_url ||
+    post.bio_followers ||
+    post.bio_posts ||
+    post.bio_following
+  );
+}
+
+export function hasMention(post) {
+  const txt = String(post?.text || "");
+  return /(^|\s)@\w+/.test(txt);
+}
+
+export function hasCta(post) {
+  if (!post) return false;
+  return !!(
+    post.adType === "ad" ||
+    post.adButtonText ||
+    post.cta ||
+    post.ctaLabel ||
+    post.adUrl
+  );
+}
+
+export function hasNewsLink(post) {
+  if (!post) return false;
+  return String(post.adType || "none") === "news";
+}
+
+export function hasShareableSurface(post) {
+  return !!post;
+}
+
+const IG_ONLY_POST_METRIC_SUFFIXES = ["_saved", "_reposted"];
+const FB_ONLY_POST_METRIC_SUFFIXES = [
+  "_note_opened",
+  "_note_view_details",
+  "_note_link_clicked",
+  "_note_helpful_rated",
+  "_note_helpful_value",
+];
+const AMZ_ONLY_POST_METRIC_SUFFIXES = [
+  "_review_helpful",
+  "_review_helpful_removed",
+  "_review_reported",
+  "_review_read_more",
+  "_review_read_more_ms",
+  "_review_rating",
+];
+
+export function isRelevantPostMetricForExport(post, suffix) {
+  if (!post || !suffix) return true;
+
+  const isAmz = APP === "amz";
+  const isIg = APP === "ig";
+
+  // Amazon reviews use review-specific helpful/report/read-more fields —
+  // reaction/comment/share/cta/bio/mention/note columns don't exist in the
+  // Amazon review UI at all.
+  if (isAmz) {
+    if (AMZ_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return true;
+    if (
+      [
+        "_reacted", "_reaction_type", "_commented", "_comment_texts",
+        "_saved", "_shared", "_share_target", "_share_text",
+        "_cta_clicked", "_news_clicked", "_bio_opened", "_bio_url_clicked",
+        "_mention_clicked", "_note_opened", "_note_view_details",
+        "_note_link_clicked", "_note_helpful_rated", "_note_helpful_value",
+      ].includes(suffix)
+    ) return false;
+    return true;
+  }
+
+  // Every other app (fb/ig): the review_* fields are Amazon-only. This was
+  // previously unguarded outside the isAmz branch above, so a Facebook/
+  // Instagram export always carried Amazon's helpful/rating/read-more
+  // columns unconditionally, even though no post there could ever produce
+  // them.
+  if (AMZ_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+
+  // FB-only vs IG-only.
+  if (isIg && FB_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if (!isIg && IG_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if (suffix === "_saved" || suffix === "_reposted") return isIg;
+
+  // Feature-based filters: only show a metric's columns for a post that
+  // could actually produce that interaction — a plain post never had a
+  // "note" intervention, bio row, @mention, CTA button, or news link, so
+  // its columns are noise, not just empty. `hasNote` in particular was
+  // previously defined but never wired in here, so every Facebook post got
+  // note_opened/note_helpful_rated/etc. columns regardless of whether it
+  // was ever a community-note intervention post.
+  if (
+    suffix === "_note_opened" ||
+    suffix === "_note_view_details" ||
+    suffix === "_note_link_clicked" ||
+    suffix === "_note_helpful_rated" ||
+    suffix === "_note_helpful_value"
+  ) return hasNote(post);
+
+  if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") return hasBio(post);
+  if (suffix === "_mention_clicked") return hasMention(post);
+  if (suffix === "_cta_clicked") return hasCta(post);
+  if (suffix === "_news_clicked") return hasNewsLink(post);
+  if (suffix === "_expandable" || suffix === "_expanded") return looksExpandable(post);
+
+  return true;
+}
+
+export function parsePostMetricKey(key = "") {
+  return splitPostMetricKeyForLabel(key);
+}
+
 function postDisplayNameFromMaps(postId, feedId, postsByFeed = {}, projectId = "") {
   const id = String(postId || "").trim();
   const fid = String(feedId || "").trim();
@@ -1588,7 +1736,19 @@ export function orderMultiFeedCsvHeader(header = [], { feedIds = [], postsByFeed
     posts.forEach((post) => {
       const postId = String(post?.id || "").trim();
       if (!postId) return;
-      POST_METRIC_SUFFIXES_FOR_LABELS.forEach((suffix) => take(`${prefix}_${postId}${suffix}`));
+      POST_METRIC_SUFFIXES_FOR_LABELS.forEach((suffix) => {
+        const key = `${prefix}_${postId}${suffix}`;
+        // Drop (not just skip) an irrelevant column here — e.g. Amazon
+        // review fields on a Facebook feed, or note_* columns for a post
+        // that was never a community-note intervention — so the catch-all
+        // pass below (which keeps anything not already claimed) can't
+        // silently re-add it.
+        if (isRelevantPostMetricForExport(post, suffix)) {
+          take(key);
+        } else {
+          remaining.delete(key);
+        }
+      });
     });
   });
 
