@@ -504,8 +504,23 @@ export function LoadingOverlay({
   errorTitle = "Couldn’t load your feed",
   errorSubtitle = "We hit a network error. Please try again.",
   onRetry,
+  quiet = false,
 }) {
   const isError = status === "error";
+
+  // Wordless variant — blur + spinner only, no title/subtitle/card. Used
+  // for transitions that can resolve in well under a second (feed submit →
+  // survey): a modal dialog's text just flashes there, unreadable, which
+  // reads as a glitch rather than a loading state. Falls through to the
+  // normal dialog on error, since that genuinely needs explaining/a retry
+  // action, not a silent blur.
+  if (quiet && !isError) {
+    return (
+      <div className="quiet-transition-backdrop" aria-hidden="true">
+        <div className="spinner-ring" />
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop modal-backdrop-dim">

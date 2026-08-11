@@ -474,8 +474,20 @@ export function LoadingOverlay({
   errorTitle = "Couldn’t load your feed",
   errorSubtitle = "We hit a network error. Please try again.",
   onRetry,
+  quiet = false,
 }) {
   const isError = status === "error";
+
+  // Wordless variant — see ui-core-facebook.jsx's identical addition for
+  // the full rationale (a modal dialog's text just flashes unreadably for
+  // a transition that can resolve in well under a second).
+  if (quiet && !isError) {
+    return (
+      <div className="quiet-transition-backdrop" aria-hidden="true">
+        <div className="spinner-ring" />
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop modal-backdrop-dim">

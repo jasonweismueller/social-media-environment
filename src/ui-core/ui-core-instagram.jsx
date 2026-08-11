@@ -444,7 +444,18 @@ export function ParticipantOverlay({ initialValue = "", onSubmit }) {
   );
 }
 
-export function LoadingOverlay({ title = "Loading your feed…", subtitle = "This will only take a moment." }) {
+export function LoadingOverlay({ title = "Loading your feed…", subtitle = "This will only take a moment.", quiet = false }) {
+  // Wordless variant — see ui-core-facebook.jsx's identical addition for
+  // the full rationale (a modal dialog's text just flashes unreadably for
+  // a transition that can resolve in well under a second).
+  if (quiet) {
+    return (
+      <div className="quiet-transition-backdrop" aria-hidden="true">
+        <div className="spinner-ring" />
+      </div>
+    );
+  }
+
   return (
     <div className="modal-backdrop modal-backdrop-dim">
       <div className="modal modal-compact" style={{ textAlign: "center", paddingTop: 24 }}>

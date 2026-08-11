@@ -2733,8 +2733,10 @@ export default function App() {
           ? "Almost ready..."
           : "Loading the feed.",
     } :
-    loadingNextStageOverlay ? { title: "Loading questions…", subtitle: "Preparing the next stage" } :
-    submittingToSurveyOverlay ? { title: "Submitting your responses…", subtitle: "Taking you to the survey" } :
+    // Both quiet — see App-facebook.jsx's identical change for the full
+    // rationale.
+    loadingNextStageOverlay ? { quiet: true } :
+    submittingToSurveyOverlay ? { quiet: true } :
     null;
 
   // A courtesy guard, not the real security boundary (that's server-side —
@@ -3130,6 +3132,7 @@ export default function App() {
         <LoadingOverlay
           title={activeLoadingOverlay.title}
           subtitle={activeLoadingOverlay.subtitle}
+          quiet={!!activeLoadingOverlay.quiet}
         />
       )}
 

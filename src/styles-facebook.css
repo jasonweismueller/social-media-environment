@@ -495,6 +495,26 @@ a:hover{text-decoration:underline}
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Wordless loading transition (LoadingOverlay's `quiet` mode) — blur +
+   spinner only, no dialog card, nothing to read. Used for the feed-submit
+   -> survey transition specifically, which often resolves in well under a
+   second — a title/subtitle overlay just flashes there unreadably. Fades
+   in instead of popping instantly so it looks intentional regardless of
+   how briefly it's actually up. */
+.quiet-transition-backdrop{
+  position:fixed; inset:0; z-index:11000;
+  display:grid; place-items:center;
+  background:rgba(255,255,255,.55);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  animation:quiet-transition-fade-in .18s ease both;
+}
+.quiet-transition-backdrop .spinner-ring{ margin:0; }
+.dark-mode .quiet-transition-backdrop{ background:rgba(0,0,0,.45); }
+@keyframes quiet-transition-fade-in{ from{opacity:0} to{opacity:1} }
+@media (prefers-reduced-motion: reduce){
+  .quiet-transition-backdrop{ animation:none; }
+}
+
 /* Report acknowledgment overlay */
 .ack-overlay{
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
