@@ -758,6 +758,14 @@ export function computePageNumbersForQuestions(items = []) {
 // no-blocks-defined fallback), and showing a divider for that on every
 // single survey would be pure noise for the vast majority that never touch
 // this feature.
+function buildPageIdToBlockIndexMap(blocks) {
+  const map = new Map();
+  blocks.forEach((block, blockIndex) => {
+    block.page_ids.forEach((pageId) => map.set(pageId, blockIndex));
+  });
+  return map;
+}
+
 export function computeBlockBoundariesForQuestions(survey, currentQuestions, pageNumbers) {
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
   const blocks = normalizeSurveyPageBlocks(survey);
@@ -766,10 +774,7 @@ export function computeBlockBoundariesForQuestions(survey, currentQuestions, pag
     return currentQuestions.map(() => null);
   }
 
-  const pageIdToBlockIndex = new Map();
-  blocks.forEach((block, blockIndex) => {
-    block.page_ids.forEach((pageId) => pageIdToBlockIndex.set(pageId, blockIndex));
-  });
+  const pageIdToBlockIndex = buildPageIdToBlockIndexMap(blocks);
 
   function blockIndexForPageNumber(pageNumber) {
     const page = pages[pageNumber - 1];
@@ -793,10 +798,39 @@ export function computeBlockBoundariesForQuestions(survey, currentQuestions, pag
   });
 }
 
-function BlockBoundaryDivider({ boundary }) {
+// Companion to computeBlockBoundariesForQuestions above, but returns every
+// item's block index (not just the ones that start a new boundary) — used
+// to decide, per row, whether its block is currently collapsed. Returns all
+// nulls for the common single-block survey (nothing to collapse against),
+// same short-circuit as the boundary function above.
+export function computeBlockIndexForQuestions(survey, currentQuestions, pageNumbers) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const blocks = normalizeSurveyPageBlocks(survey);
+
+  if (blocks.length <= 1) {
+    return currentQuestions.map(() => null);
+  }
+
+  const pageIdToBlockIndex = buildPageIdToBlockIndexMap(blocks);
+
+  return currentQuestions.map((item, i) => {
+    const pageNumber = pageNumbers[i];
+    const page = pages[pageNumber - 1];
+    const pageId = String(page?.id || `page_${pageNumber}`);
+    return pageIdToBlockIndex.has(pageId) ? pageIdToBlockIndex.get(pageId) : null;
+  });
+}
+
+// `isCollapsed`/`onToggleCollapsed` are optional — StudyOutlineModal and
+// SurveyEditor's main "Pages and questions" list each pass their own
+// independent collapse state (not shared between the two views; collapsing
+// a block in one doesn't affect the other). Omitting both props renders the
+// divider exactly as before, non-interactive.
+function BlockBoundaryDivider({ boundary, isCollapsed = false, onToggleCollapsed }) {
   if (!boundary?.block) return null;
   const { block, blockIndex } = boundary;
   const groupCount = (block.visible_to_group_ids || []).length;
+  const collapsible = typeof onToggleCollapsed === "function";
 
   return (
     <div
@@ -812,6 +846,17 @@ function BlockBoundaryDivider({ boundary }) {
         border: "1px solid var(--admin-accent-border)",
       }}
     >
+      {collapsible && (
+        <IconOnlyButton
+          onClick={onToggleCollapsed}
+          title={isCollapsed ? "Expand block" : "Collapse block"}
+          aria-label={isCollapsed ? `Expand block ${blockIndex + 1}` : `Collapse block ${blockIndex + 1}`}
+          size={11}
+          style={{ width: 22, height: 22, flex: "0 0 auto" }}
+        >
+          <ChevronDownIcon size={11} open={!isCollapsed} />
+        </IconOnlyButton>
+      )}
       <span
         style={{
           fontSize: 11,
@@ -831,6 +876,9 @@ function BlockBoundaryDivider({ boundary }) {
         <span style={{ fontSize: 10.5, color: "var(--admin-accent)", fontWeight: 600 }}>
           Visible to {groupCount} group{groupCount === 1 ? "" : "s"}
         </span>
+      )}
+      {isCollapsed && (
+        <span style={{ fontSize: 10.5, color: "var(--admin-muted)", fontStyle: "italic" }}>collapsed</span>
       )}
     </div>
   );
@@ -3057,6 +3105,7 @@ function CollapsedQuestionRow({
   q,
   index,
   displayNumber,
+  pageNumber,
   totalQuestions,
   type,
   isDuplicateId = false,
@@ -3115,6 +3164,25 @@ function CollapsedQuestionRow({
           title={`Question ${displayNumber}`}
         >
           {`Q${displayNumber}`}
+        </span>
+      )}
+
+      {pageNumber != null && (
+        <span
+          title={`Page ${pageNumber}`}
+          style={{
+            fontSize: 9.5,
+            fontWeight: 700,
+            color: "var(--admin-muted)",
+            background: "var(--admin-surface-alt)",
+            border: "1px solid var(--admin-border-subtle)",
+            borderRadius: 4,
+            padding: "1px 5px",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {`P${pageNumber}`}
         </span>
       )}
 
@@ -3729,6 +3797,7 @@ function QuestionCard({
   q,
   index,
   displayNumber,
+  pageNumber,
   totalQuestions,
   isDuplicateId = false,
   hasBrokenCondition = false,
@@ -3862,7 +3931,7 @@ function QuestionCard({
         </span>
 
         <span style={{ fontSize: 12, color: "var(--admin-muted-2)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          Questions after this appear on the next page.
+          {pageNumber != null ? `Page ${pageNumber} starts below.` : "Questions after this appear on the next page."}
         </span>
 
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--admin-muted)", flex: "0 0 auto" }}>
@@ -3930,6 +3999,7 @@ function QuestionCard({
           q={q}
           index={index}
           displayNumber={displayNumber}
+          pageNumber={pageNumber}
           totalQuestions={totalQuestions}
           type={type}
           isDuplicateId={isDuplicateId}
@@ -3965,6 +4035,29 @@ function QuestionCard({
                 <ChevronDownIcon size={12} open />
               </IconOnlyButton>
             </TopField>
+
+            {pageNumber != null && (
+              <TopField label="">
+                <span
+                  title={`Page ${pageNumber}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    height: INPUT_HEIGHT,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--admin-muted)",
+                    background: "var(--admin-surface-alt)",
+                    border: "1px solid var(--admin-border-subtle)",
+                    borderRadius: 6,
+                    padding: "0 8px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {`Page ${pageNumber}`}
+                </span>
+              </TopField>
+            )}
 
             <div style={{ width: 220, flexShrink: 0 }}>
               <TopField label="Type">
@@ -4385,6 +4478,25 @@ function OutlineRow({
       >
         {displayNumber != null ? `Q${displayNumber}` : ""}
       </span>
+
+      {pageNumber != null && (
+        <span
+          title={`Page ${pageNumber}`}
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            color: "var(--admin-muted)",
+            background: "var(--admin-surface-alt)",
+            border: "1px solid var(--admin-border-subtle)",
+            borderRadius: 4,
+            padding: "1px 4px",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {`P${pageNumber}`}
+        </span>
+      )}
 
       <input
         value={item.id || ""}
@@ -4848,7 +4960,10 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     if (blocks.length <= 1) return;
     const ok = await confirm({
       title: "Delete this block?",
-      message: "Its pages will be merged into the previous block.",
+      message:
+        blockIndex === 0
+          ? "Its pages will be merged into the next block (there's no earlier block to merge into)."
+          : "Its pages will be merged into the previous block.",
       danger: true,
       confirmLabel: "Delete",
     });
@@ -4859,13 +4974,23 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     if (blocks.length <= 1) return;
     const removed = blocks[blockIndex];
     const next = blocks.filter((_, index) => index !== blockIndex);
-    const destinationIndex = Math.max(0, blockIndex - 1);
+    // Deleting block 0 has no real "previous" block to merge into — the
+    // destination is what WAS the next block, now shifted down to index 0.
+    // That means the removed block's pages must be PREPENDED (they used to
+    // come first), not appended like every other case (where the
+    // destination genuinely is the previous block, whose own pages already
+    // came first). Getting this backwards was a real bug: deleting the
+    // first block silently pushed its questions to the END of the survey
+    // instead of leaving them at the front, which is exactly the "pages
+    // suddenly go somewhere else and lose their order" symptom reported.
+    const isFirstBlock = blockIndex === 0;
+    const destinationIndex = isFirstBlock ? 0 : blockIndex - 1;
+    const destination = next[destinationIndex];
     next[destinationIndex] = {
-      ...next[destinationIndex],
-      page_ids: [
-        ...next[destinationIndex].page_ids,
-        ...(removed?.page_ids || []),
-      ],
+      ...destination,
+      page_ids: isFirstBlock
+        ? [...(removed?.page_ids || []), ...destination.page_ids]
+        : [...destination.page_ids, ...(removed?.page_ids || [])],
     };
     applyBlocks(next);
   }
@@ -5087,6 +5212,25 @@ function StudyOutlineModal({
     [survey, currentQuestions, pageNumbers]
   );
 
+  const blockIndexPerQuestion = useMemo(
+    () => computeBlockIndexForQuestions(survey, currentQuestions, pageNumbers),
+    [survey, currentQuestions, pageNumbers]
+  );
+
+  // Independent from SurveyEditor's own collapsedBlockIds below — collapsing
+  // a block here doesn't affect (and isn't affected by) the main editor's
+  // "Pages and questions" list, same as every other bit of local UI state
+  // in this modal (outlineFilter, etc.).
+  const [collapsedBlockIds, setCollapsedBlockIds] = useState(() => new Set());
+  function toggleBlockCollapsed(blockIndex) {
+    setCollapsedBlockIds((current) => {
+      const next = new Set(current);
+      if (next.has(blockIndex)) next.delete(blockIndex);
+      else next.add(blockIndex);
+      return next;
+    });
+  }
+
   const duplicateQuestionIds = useMemo(
     () => computeDuplicateQuestionIds(currentQuestions),
     [currentQuestions]
@@ -5165,9 +5309,18 @@ function StudyOutlineModal({
             ) : (
               currentQuestions.map((item, i) => {
                 if (!matchesQuestionFilter(item, outlineFilter)) return null;
+                const boundary = blockBoundaries[i];
+                const itemBlockIndex = blockIndexPerQuestion[i];
+                const blockIsCollapsed =
+                  itemBlockIndex != null && collapsedBlockIds.has(itemBlockIndex);
                 return (
                 <React.Fragment key={item._editorId || i}>
-                <BlockBoundaryDivider boundary={blockBoundaries[i]} />
+                <BlockBoundaryDivider
+                  boundary={boundary}
+                  isCollapsed={boundary ? collapsedBlockIds.has(boundary.blockIndex) : false}
+                  onToggleCollapsed={boundary ? () => toggleBlockCollapsed(boundary.blockIndex) : undefined}
+                />
+                {!blockIsCollapsed && (
                 <OutlineRow
                 item={item}
                 flatIndex={i}
@@ -5210,6 +5363,7 @@ function StudyOutlineModal({
                 onDrop={onDrop}
                 onDragEnd={onDragEnd}
                 />
+                )}
                 </React.Fragment>
                 );
               })
@@ -5236,6 +5390,19 @@ export function SurveyEditor({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewQuestionId, setPreviewQuestionId] = useState(null);
   const [highlightedQuestionId, setHighlightedQuestionId] = useState(null);
+  const [questionFilter, setQuestionFilter] = useState("");
+  // Independent from StudyOutlineModal's own collapsedBlockIds — collapsing
+  // a block in one view doesn't affect the other, same reasoning as that
+  // modal's own local outlineFilter/collapse state.
+  const [collapsedBlockIds, setCollapsedBlockIds] = useState(() => new Set());
+  function toggleBlockCollapsed(blockIndex) {
+    setCollapsedBlockIds((current) => {
+      const next = new Set(current);
+      if (next.has(blockIndex)) next.delete(blockIndex);
+      else next.add(blockIndex);
+      return next;
+    });
+  }
 
   function openPreview(questionId = null) {
     setPreviewQuestionId(questionId);
@@ -5296,12 +5463,27 @@ export function SurveyEditor({
 
   function jumpToQuestion(editorId) {
     setOutlineOpen(false);
+    setQuestionFilter("");
     setCollapsedQuestionIds((current) => {
       if (!current.has(editorId)) return current;
       const next = new Set(current);
       next.delete(editorId);
       return next;
     });
+    // A collapsed block hides its rows entirely (unlike a collapsed
+    // question, which still renders a one-line summary) — without also
+    // un-collapsing the target's block here, scrollIntoView below would
+    // find no DOM node at all and silently no-op.
+    const targetIndex = currentQuestions.findIndex((item) => item._editorId === editorId);
+    const targetBlockIndex = targetIndex >= 0 ? blockIndexPerQuestion[targetIndex] : null;
+    if (targetBlockIndex != null) {
+      setCollapsedBlockIds((current) => {
+        if (!current.has(targetBlockIndex)) return current;
+        const next = new Set(current);
+        next.delete(targetBlockIndex);
+        return next;
+      });
+    }
     requestAnimationFrame(() => {
       const el = questionNodeRefs.current[editorId];
       if (!el) return;
@@ -5330,6 +5512,11 @@ export function SurveyEditor({
 
   const blockBoundaries = useMemo(
     () => computeBlockBoundariesForQuestions(survey, currentQuestions, pageNumbersForBlocks),
+    [survey, currentQuestions, pageNumbersForBlocks]
+  );
+
+  const blockIndexPerQuestion = useMemo(
+    () => computeBlockIndexForQuestions(survey, currentQuestions, pageNumbersForBlocks),
     [survey, currentQuestions, pageNumbersForBlocks]
   );
 
@@ -5602,9 +5789,39 @@ export function SurveyEditor({
           to insert new questions, or use Study overview above for a compact, scroll-free view of the full study.
         </div>
 
-        {currentQuestions.map((q, i) => (
+        {currentQuestions.length > 0 && (
+          <input
+            type="text"
+            value={questionFilter}
+            onChange={(e) => setQuestionFilter(e.target.value)}
+            placeholder="Filter by question ID, text, or type…"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              height: 34,
+              padding: "0 10px",
+              marginBottom: 14,
+              border: "1px solid var(--admin-border)",
+              borderRadius: 8,
+              fontSize: 12.5,
+            }}
+          />
+        )}
+
+        {currentQuestions.map((q, i) => {
+          if (!matchesQuestionFilter(q, questionFilter)) return null;
+          const boundary = blockBoundaries[i];
+          const itemBlockIndex = blockIndexPerQuestion[i];
+          const blockIsCollapsed =
+            itemBlockIndex != null && collapsedBlockIds.has(itemBlockIndex);
+          return (
           <React.Fragment key={q._editorId || i}>
-          <BlockBoundaryDivider boundary={blockBoundaries[i]} />
+          <BlockBoundaryDivider
+            boundary={boundary}
+            isCollapsed={boundary ? collapsedBlockIds.has(boundary.blockIndex) : false}
+            onToggleCollapsed={boundary ? () => toggleBlockCollapsed(boundary.blockIndex) : undefined}
+          />
+          {!blockIsCollapsed && (
           <div
             ref={(el) => {
               questionNodeRefs.current[q._editorId] = el;
@@ -5623,6 +5840,7 @@ export function SurveyEditor({
               q={q}
               index={i}
               displayNumber={questionDisplayNumbers[i]}
+              pageNumber={pageNumbersForBlocks[i]}
               totalQuestions={currentQuestions.length}
               isDuplicateId={q?.id ? duplicateQuestionIds.has(q.id) : false}
               hasBrokenCondition={q?.id ? brokenVisibleIfQuestionIds.has(q.id) : false}
@@ -5648,8 +5866,10 @@ export function SurveyEditor({
               onPreviewQuestion={openPreview}
             />
           </div>
+          )}
           </React.Fragment>
-        ))}
+          );
+        })}
 
         {currentQuestions.length === 0 && (
           <EmptyState
