@@ -123,6 +123,87 @@ function triggerCsvDownload(filename, csv) {
   URL.revokeObjectURL(url);
 }
 
+// Mirrors loadMultiFeedParticipantSurveyRoster's merged-row shape (feedN_...
+// structural + per-post engagement columns, survey_<QID> columns) but built
+// purely from already-simulated data — no backend call, matching every
+// other simulate-mode function in this file. Each simRows entry carries its
+// own feed_engagement (see simulateFeedEngagement/simulateSurveyResponseRows,
+// utils-survey-simulate.js), fabricated against the same real posts this
+// merge labels columns with. realFeedIds mirrors the real function's own
+// "only feeds actually used, renumbered 1..N" convention — computed from
+// which feed ids actually appear in simRows, in the survey's own feed order,
+// since every simulated participant is routed to exactly one feed (no
+// simulated multi-feed sequences).
+//
+// No separately-simulated "feed portion" vs "survey portion" duration
+// exists (simulateSurveyResponseRows only generates one whole-session
+// entered/submitted/duration) — split 35/65 here (feed/survey) purely for a
+// plausible-looking feedN_duration_s distinct from the overall duration_s,
+// not a claim about real timing.
+function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
+  const hasGroups = Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
+  const groupNameById = new Map((survey?.experiment_groups || []).map((g) => [g.id, g.name]));
+  const surveyColumns = flattenSurveyQuestions(survey, { labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT });
+  const attentionCheckItems = getSurveyAttentionCheckItems(survey);
+
+  const safeRows = Array.isArray(simRows) ? simRows : [];
+  const usedFeedIds = (Array.isArray(orderedFeedIds) ? orderedFeedIds : []).filter((fid) =>
+    safeRows.some((r) => r.feed_id === fid)
+  );
+  const prefixByFeedId = new Map(usedFeedIds.map((fid, i) => [fid, `feed${i + 1}`]));
+
+  const rows = safeRows.map((row) => {
+    const flat = flattenSurveyResponseRecord(row, surveyColumns);
+    Object.keys(flat).forEach((k) => {
+      if (flat[k] === "" || flat[k] == null) flat[k] = "NA";
+    });
+
+    const feedId = row.feed_id || "";
+    const prefix = feedId ? prefixByFeedId.get(feedId) : null;
+    const durationMs = Number(row.duration_ms) || 0;
+    const feedDurationMs = Math.round(durationMs * 0.35);
+    const enteredMs = row.entered_at_iso ? new Date(row.entered_at_iso).getTime() : NaN;
+
+    const out = {
+      session_id: row.session_id ?? "",
+      participant_id: row.participant_id ?? "",
+      ip_address: "NA",
+      prolific_pid: row.prolific_pid || "NA",
+      entered_at_iso: row.entered_at_iso ?? "",
+      submitted_at_iso: row.submitted_at_iso ?? "",
+      duration_s: Math.round(durationMs / 1000),
+      feed_sequence_ids: feedId,
+      final_survey_feed_id: feedId,
+      ...(hasGroups
+        ? {
+            experiment_group_id: row.experiment_group_id ?? "",
+            experiment_group_name: groupNameById.get(row.experiment_group_id) || row.experiment_group_id || "",
+          }
+        : {}),
+      ...(attentionCheckItems.length
+        ? { attention_checks_passed: countAttentionChecksPassed(attentionCheckItems, row.responses) }
+        : {}),
+    };
+
+    if (prefix) {
+      out[`${prefix}_feed_id`] = feedId;
+      out[`${prefix}_entered_at_iso`] = row.entered_at_iso ?? "";
+      out[`${prefix}_submitted_at_iso`] = Number.isFinite(enteredMs)
+        ? new Date(enteredMs + feedDurationMs).toISOString()
+        : "";
+      out[`${prefix}_duration_s`] = Math.round(feedDurationMs / 1000);
+
+      Object.entries(row.feed_engagement || {}).forEach(([k, v]) => {
+        out[`${prefix}_${k}`] = v;
+      });
+    }
+
+    return { ...out, ...flat };
+  });
+
+  return { rows, feedIds: usedFeedIds };
+}
+
 // Mirrors mergeParticipantRowsWithSurveyRows's column shape/order
 // (utils-backend.js, not exported) so a CSV built from simulated rows lines
 // up exactly with what "Download Survey CSV" produces from real data —
@@ -1131,6 +1212,7 @@ function SimulateResponsesCard({
   setSimLowEffort,
   onSimulate,
   onClear,
+  simulating,
 }) {
   const groups = Array.isArray(survey?.experiment_groups) ? survey.experiment_groups : [];
   const hasGroups = groups.length > 0;
@@ -1191,12 +1273,12 @@ function SimulateResponsesCard({
               </label>
             )}
 
-            <Button variant="secondary" onClick={onSimulate}>
+            <Button variant="secondary" onClick={onSimulate} busy={simulating} disabled={simulating}>
               Simulate {expectedN} response{expectedN === 1 ? "" : "s"}
             </Button>
 
             {usingSimulated && (
-              <Button variant="ghost" onClick={onClear}>
+              <Button variant="ghost" onClick={onClear} disabled={simulating}>
                 Clear simulation
               </Button>
             )}
@@ -1279,6 +1361,13 @@ export function SurveyParticipantsPage({
   const [simTotal, setSimTotal] = useState(100);
   const [simGroupEffect, setSimGroupEffect] = useState(0.45);
   const [simLowEffort, setSimLowEffort] = useState(true);
+  const [simulating, setSimulating] = useState(false);
+  // { feedId: posts[] } for whichever feed(s) the simulation actually fetched
+  // real posts for — cached alongside simRows so "Download feed + survey CSV"
+  // on simulated data reuses the exact same posts the engagement was
+  // generated against, instead of re-fetching (and risking a mismatch if the
+  // real feed's posts changed in between).
+  const [simPostsByFeed, setSimPostsByFeed] = useState({});
 
   useEffect(() => {
     if (controlled) {
@@ -1376,23 +1465,51 @@ export function SurveyParticipantsPage({
     return buildAnalysisDataset({ survey, responseRows: effectiveResponseRows });
   }, [survey, effectiveResponseRows]);
 
-  const runSimulation = () => {
+  const runSimulation = async () => {
     if (!survey) return;
-    const generated = simulateSurveyResponseRows({
-      survey,
-      participantsPerGroup: simPerGroup,
-      totalParticipants: simTotal,
-      groupEffectSize: simGroupEffect,
-      includeLowEffort: simLowEffort,
-      seed: surveyId,
-    });
-    setSimRows(generated);
-    setUsingSimulated(true);
+    setSimulating(true);
+    try {
+      // Real posts for whichever feed(s) this survey links — feeds a
+      // simulated participant might actually be routed to (see
+      // simulateSurveyResponseRows' own feedId round-robin). A survey_only
+      // survey has none, in which case postsByFeed stays {} and
+      // simulateFeedEngagement never runs — same as it already does for
+      // real survey_only data (no feed to merge).
+      const feedIds = orderedLinkedFeedIdsFromSurvey(survey);
+      const pairs = await Promise.all(
+        feedIds.map(async (fid) => {
+          try {
+            const loaded = await loadPostsFromBackend(fid, { projectId: projectId || undefined });
+            return [fid, Array.isArray(loaded) ? loaded : []];
+          } catch (_) {
+            return [fid, []];
+          }
+        })
+      );
+      const postsByFeed = Object.fromEntries(pairs);
+
+      const generated = simulateSurveyResponseRows({
+        survey,
+        participantsPerGroup: simPerGroup,
+        totalParticipants: simTotal,
+        groupEffectSize: simGroupEffect,
+        includeLowEffort: simLowEffort,
+        seed: surveyId,
+        postsByFeed,
+        app: APP,
+      });
+      setSimPostsByFeed(postsByFeed);
+      setSimRows(generated);
+      setUsingSimulated(true);
+    } finally {
+      setSimulating(false);
+    }
   };
 
   const clearSimulation = () => {
     setUsingSimulated(false);
     setSimRows([]);
+    setSimPostsByFeed({});
   };
 
   const demographics = useMemo(() => (dataset ? computeDemographicsSummary(dataset) : []), [dataset]);
@@ -1495,40 +1612,28 @@ export function SurveyParticipantsPage({
     try {
       setDownloadingFeedCsv(true);
 
-      const roster = await loadMultiFeedParticipantSurveyRoster({
-        surveyId,
-        feedIds: feedIdsForSurvey,
-        projectId,
-      });
+      let safeRows;
+      let realFeedIds;
+      let postsByFeed;
+      let feedNames = {};
 
-      const safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
-      if (!safeRows.length) {
-        toast.error("No feed + survey participant data found yet.");
-        return;
-      }
-
-      // Only the feeds the roster found real participant data for
-      // (renumbered 1..N), not every feed the survey happens to link — see
-      // loadMultiFeedParticipantSurveyRoster's own comment for why a feed
-      // linked purely as a post_reminder content source must never get its
-      // own (always-empty) column-group.
-      const realFeedIds = Array.isArray(roster?.feedIds) ? roster.feedIds : [];
-
-      const [loadedFeedPostsPairs, loadedFeedNamePairs] = await Promise.all([
-        Promise.all(
-          realFeedIds.map(async (fid) => {
-            try {
-              const loaded = await loadPostsFromBackend(fid, {
-                projectId: projectId || undefined,
-                force: true,
-              });
-              return [fid, Array.isArray(loaded) ? loaded : []];
-            } catch (_) {
-              return [fid, []];
-            }
-          })
-        ),
-        Promise.all(
+      if (usingSimulated) {
+        const built = buildSimulatedFeedSurveyCsvRows(survey, simRows, feedIdsForSurvey);
+        safeRows = built.rows;
+        realFeedIds = built.feedIds;
+        // Reuse the exact posts the simulation was generated against —
+        // fabricated engagement is keyed off these same post ids, so
+        // re-fetching fresh posts here could drift out of sync if the real
+        // feed's posts changed since Simulate was clicked.
+        postsByFeed = simPostsByFeed;
+        if (!safeRows.length) {
+          toast.error("Simulate some responses first.");
+          return;
+        }
+        // The real feed's own CSV display name is still worth reusing here
+        // (it's real feed metadata, not participant data) — a cheap extra
+        // read, not a simulation concern.
+        const namePairs = await Promise.all(
           realFeedIds.map(async (fid) => {
             try {
               const flags = await fetchFeedFlags({ projectId, feedId: fid });
@@ -1537,11 +1642,57 @@ export function SurveyParticipantsPage({
               return [fid, ""];
             }
           })
-        ),
-      ]);
+        );
+        feedNames = Object.fromEntries(namePairs);
+      } else {
+        const roster = await loadMultiFeedParticipantSurveyRoster({
+          surveyId,
+          feedIds: feedIdsForSurvey,
+          projectId,
+        });
 
-      const postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
-      const feedNames = Object.fromEntries(loadedFeedNamePairs || []);
+        safeRows = Array.isArray(roster?.rows) ? roster.rows : [];
+        if (!safeRows.length) {
+          toast.error("No feed + survey participant data found yet.");
+          return;
+        }
+
+        // Only the feeds the roster found real participant data for
+        // (renumbered 1..N), not every feed the survey happens to link — see
+        // loadMultiFeedParticipantSurveyRoster's own comment for why a feed
+        // linked purely as a post_reminder content source must never get its
+        // own (always-empty) column-group.
+        realFeedIds = Array.isArray(roster?.feedIds) ? roster.feedIds : [];
+
+        const [loadedFeedPostsPairs, loadedFeedNamePairs] = await Promise.all([
+          Promise.all(
+            realFeedIds.map(async (fid) => {
+              try {
+                const loaded = await loadPostsFromBackend(fid, {
+                  projectId: projectId || undefined,
+                  force: true,
+                });
+                return [fid, Array.isArray(loaded) ? loaded : []];
+              } catch (_) {
+                return [fid, []];
+              }
+            })
+          ),
+          Promise.all(
+            realFeedIds.map(async (fid) => {
+              try {
+                const flags = await fetchFeedFlags({ projectId, feedId: fid });
+                return [fid, String(flags?.csv_name || "").trim()];
+              } catch (_) {
+                return [fid, ""];
+              }
+            })
+          ),
+        ]);
+
+        postsByFeed = Object.fromEntries(loadedFeedPostsPairs || []);
+        feedNames = Object.fromEntries(loadedFeedNamePairs || []);
+      }
 
       const discoveredHeader = Array.from(
         safeRows.reduce((set, row) => {
@@ -1569,7 +1720,7 @@ export function SurveyParticipantsPage({
         feedNames,
       }).map(stripSurveyExportPrefix);
       const csv = buildCsv(normalizedRows, header, labels);
-      const filename = `${safeFileStem(survey?.name || surveyId)}_feed_survey_${todayStamp()}.csv`;
+      const filename = `${safeFileStem(survey?.name || surveyId)}_feed_survey_${todayStamp()}${usingSimulated ? "_SIMULATED" : ""}.csv`;
 
       triggerCsvDownload(filename, csv);
     } catch (e) {
@@ -1630,10 +1781,10 @@ export function SurveyParticipantsPage({
                   variant="secondary"
                   onClick={downloadFeedSurveyCsv}
                   busy={downloadingFeedCsv}
-                  disabled={!surveyId || usingSimulated}
+                  disabled={!surveyId}
                   title={
                     usingSimulated
-                      ? "Not available for simulated data — simulated responses have no real feed engagement to merge with."
+                      ? "Includes each simulated participant's fabricated engagement with their assigned feed's posts, alongside their simulated survey responses."
                       : "Includes this survey's linked feed(s) participant/engagement data alongside the survey responses."
                   }
                 >
@@ -1725,6 +1876,7 @@ export function SurveyParticipantsPage({
               setSimLowEffort={setSimLowEffort}
               onSimulate={runSimulation}
               onClear={clearSimulation}
+              simulating={simulating}
             />
             <DemographicsSection dataset={dataset} demographics={demographics} />
             <CustomGroupsSection

@@ -29,6 +29,16 @@ import {
   materializePagesFromBlocks,
   isQuestionVisible,
 } from "./utils-survey";
+import {
+  hasBio,
+  hasMention,
+  hasCta,
+  hasNote,
+  hasNewsLink,
+  looksExpandable,
+  isRelevantPostMetricForExport,
+} from "./utils-backend";
+import { REACTION_META } from "./utils-core";
 
 /* ----------------------------- seeded RNG ----------------------------- */
 
@@ -340,6 +350,141 @@ function getCompositeTheta(questionId, theta, groupShift, rng, cache) {
   return val;
 }
 
+/* ----------------------------- feed engagement ----------------------------- */
+// Fabricates one participant's engagement with one feed's posts, shaped
+// exactly like buildParticipantRow's per-post columns (utils-core.js) — so
+// it merges into the same "feed + survey" CSV shape real data produces,
+// keyed the same way (`${postId}${suffix}`). Reuses the real per-post
+// relevance gate (isRelevantPostMetricForExport, utils-backend.js — the
+// same logic the actual CSV export uses to hide e.g. Amazon-only fields on
+// a Facebook feed, or note_* fields on a post that was never a community-
+// note intervention) so a simulated CSV can't drift out of sync with what a
+// real export would consider relevant for the same post.
+
+// Skewed toward "like" — real reaction distributions lean heavily on the
+// default reaction rather than spreading evenly across all seven.
+const REACTION_WEIGHTS = { like: 55, love: 20, haha: 10, wow: 6, sad: 5, care: 3, angry: 1 };
+
+const FAKE_COMMENTS = [
+  "Great post!",
+  "Thanks for sharing this.",
+  "I didn't know that.",
+  "Interesting perspective.",
+  "This is helpful.",
+  "Wow, really?",
+  "Not sure I agree with this one.",
+  "Following for more like this.",
+];
+
+function pickWeighted(rng, weights) {
+  const entries = Object.entries(weights);
+  const total = entries.reduce((sum, [, w]) => sum + w, 0);
+  let roll = rng() * total;
+  for (const [key, w] of entries) {
+    roll -= w;
+    if (roll <= 0) return key;
+  }
+  return entries[entries.length - 1][0];
+}
+
+/**
+ * @param {Array} posts - a feed's real posts (as loaded by loadPostsFromBackend).
+ * @param {object} ctx - { rng, theta, groupShift, isLowEffort, app }. `theta`/
+ *   `groupShift`/`isLowEffort` mirror the same participant's survey-answer
+ *   generation (see simulateSurveyResponseRows below) so a "low-effort"
+ *   participant is also a low-engagement one in the feed, not just on the
+ *   survey. `app` ("fb"/"ig"/"amz") gates the platform-specific fields
+ *   (Amazon's review_* shape vs. the reaction/comment/share shape everywhere
+ *   else, Instagram-only saved/reposted).
+ * @returns {object} `${postId}${suffix}` -> value, for every post/suffix
+ *   isRelevantPostMetricForExport says applies.
+ */
+export function simulateFeedEngagement(posts, { rng, theta = 0, groupShift = 0, isLowEffort = false, app = "fb" } = {}) {
+  const engagementLevel = isLowEffort
+    ? 0.35
+    : clampNum(0.65 + (theta + groupShift) * 0.12, 0.15, 1);
+  const isAmz = app === "amz";
+  const isIg = app === "ig";
+  const row = {};
+
+  (Array.isArray(posts) ? posts : []).forEach((post) => {
+    const id = post?.id;
+    if (!id) return;
+
+    const attach = (suffix, value) => {
+      if (isRelevantPostMetricForExport(post, suffix)) row[`${id}${suffix}`] = value;
+    };
+
+    const expandable = looksExpandable(post);
+    const dwellSeconds = isLowEffort
+      ? clampNum(1 + rng() * 3, 0, 8)
+      : clampNum(3 + engagementLevel * 6 + randNormal(rng) * 3, 1, 30);
+    attach("_dwell_s", Math.round(dwellSeconds));
+    attach("_expandable", expandable ? 1 : 0);
+
+    if (isAmz) {
+      const readMore = expandable && rng() < engagementLevel * 0.4;
+      const reported = rng() < 0.02;
+      attach("_expanded", readMore ? 1 : 0);
+      attach("_review_helpful", rng() < engagementLevel * 0.35 ? 1 : 0);
+      attach("_review_helpful_removed", 0);
+      attach("_review_reported", reported ? 1 : 0);
+      attach("_review_read_more", readMore ? 1 : 0);
+      attach("_review_read_more_ms", readMore ? String(Math.round(1500 + rng() * 4000)) : "");
+      attach("_review_rating", "");
+      attach("_reported_misinfo", reported ? 1 : 0);
+      return;
+    }
+
+    const reacted = rng() < engagementLevel * 0.7;
+    attach("_reacted", reacted ? 1 : 0);
+    attach("_reaction_type", reacted ? pickWeighted(rng, REACTION_WEIGHTS) : "");
+
+    const expanded = expandable && rng() < engagementLevel * 0.35;
+    attach("_expanded", expanded ? 1 : 0);
+
+    const commented = rng() < engagementLevel * 0.15;
+    attach("_commented", commented ? 1 : 0);
+    attach("_comment_texts", commented ? FAKE_COMMENTS[Math.floor(rng() * FAKE_COMMENTS.length)] : "");
+
+    attach("_reported_misinfo", rng() < 0.02 ? 1 : 0);
+
+    const shared = rng() < engagementLevel * 0.08;
+    attach("_shared", shared ? 1 : 0);
+    attach("_share_target", shared && rng() < 0.4 ? "Friend" : "");
+    attach("_share_text", "");
+
+    if (isIg) {
+      attach("_saved", rng() < engagementLevel * 0.1 ? 1 : 0);
+      attach("_reposted", rng() < engagementLevel * 0.04 ? 1 : 0);
+    }
+
+    if (hasCta(post)) attach("_cta_clicked", rng() < engagementLevel * 0.2 ? 1 : 0);
+    if (hasNewsLink(post)) attach("_news_clicked", rng() < engagementLevel * 0.25 ? 1 : 0);
+
+    if (hasBio(post)) {
+      const bioOpened = rng() < engagementLevel * 0.12;
+      attach("_bio_opened", bioOpened ? 1 : 0);
+      attach("_bio_url_clicked", bioOpened && rng() < 0.3 ? 1 : 0);
+    }
+
+    if (hasMention(post)) attach("_mention_clicked", rng() < engagementLevel * 0.15 ? 1 : 0);
+
+    if (hasNote(post)) {
+      const noteOpened = rng() < engagementLevel * 0.3;
+      const viewDetails = noteOpened && rng() < 0.5;
+      const helpfulRated = noteOpened && rng() < 0.4;
+      attach("_note_opened", noteOpened ? 1 : 0);
+      attach("_note_view_details", viewDetails ? 1 : 0);
+      attach("_note_link_clicked", viewDetails && rng() < 0.3 ? 1 : 0);
+      attach("_note_helpful_rated", helpfulRated ? 1 : 0);
+      attach("_note_helpful_value", helpfulRated ? (rng() < 0.6 ? "yes" : "no") : "");
+    }
+  });
+
+  return row;
+}
+
 /* ----------------------------- main entry point ----------------------------- */
 
 /**
@@ -355,7 +500,17 @@ function getCompositeTheta(questionId, theta, groupShift, rng, cache) {
  *   detection in components-admin-participants-survey.jsx.
  * @param {string} seed - optional extra seed component so re-running with the
  *   same inputs reproduces the same data (or differs deliberately if changed).
- * @returns {Array<{session_id, participant_id, submitted_at_iso, experiment_group_id, responses}>}
+ * @param {object} postsByFeed - optional { feedId: posts[] } map (as loaded
+ *   by loadPostsFromBackend, one entry per feed the survey links). When
+ *   provided, each row also gets `feed_engagement` — that participant's
+ *   fabricated engagement with the posts on their assigned feed (see
+ *   simulateFeedEngagement above), so a feed_then_survey/
+ *   multi_feed_then_survey study's simulated data can drive the merged
+ *   "feed + survey" CSV, not just the survey-only one. Omitted (default `{}`)
+ *   for a survey_only study, which has no feeds to engage with.
+ * @param {string} app - "fb"/"ig"/"amz", forwarded to simulateFeedEngagement
+ *   to pick the right platform-specific engagement shape.
+ * @returns {Array<{session_id, participant_id, submitted_at_iso, experiment_group_id, responses, feed_engagement}>}
  */
 export function simulateSurveyResponseRows({
   survey,
@@ -364,6 +519,8 @@ export function simulateSurveyResponseRows({
   groupEffectSize = 0.45,
   includeLowEffort = true,
   seed = "",
+  postsByFeed = {},
+  app = "fb",
 } = {}) {
   const normalized = normalizeSurvey(survey || {});
   const groups = normalizeExperimentGroups(normalized.experiment_groups);
@@ -435,6 +592,24 @@ export function simulateSurveyResponseRows({
     const enteredTs = baseNow - (3600 * 1000 + Math.floor(rng() * 21 * 24 * 3600 * 1000));
     const durationMs = 90_000 + Math.floor(rng() * 9 * 60_000);
 
+    // Same shape as a per-question groupShift (stable direction/magnitude,
+    // scaled by group position) — a fixed pseudo-question-id so groupEffectSize
+    // can also produce a plausible, condition-specific difference in overall
+    // feed engagement, not just in survey answers.
+    const feedGroupShift =
+      groupEffectSize * stableEffectMultiplier("feed_engagement") * (groupNorm - 0.5) * 2;
+    const feedPosts = feedId ? postsByFeed?.[feedId] : null;
+    const feedEngagement =
+      feedPosts && feedPosts.length
+        ? simulateFeedEngagement(feedPosts, {
+            rng,
+            theta,
+            groupShift: feedGroupShift,
+            isLowEffort,
+            app,
+          })
+        : {};
+
     rows.push({
       session_id: `sim_session_${String(i + 1).padStart(5, "0")}`,
       participant_id: `SIM_${String(i + 1).padStart(4, "0")}`,
@@ -446,6 +621,7 @@ export function simulateSurveyResponseRows({
       survey_id: normalized.survey_id || "",
       experiment_group_id: p.groupId || "",
       responses,
+      feed_engagement: feedEngagement,
     });
   });
 
