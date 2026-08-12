@@ -6612,3 +6612,67 @@ deliberate promotion.
 - **Hash-routing (`#/admin`) explained, not changed** — user didn't ask for the GitHub Pages
   clean-URL workaround to actually be built, only asked why it currently works this way. Available
   as a real, scoped follow-up if ever requested.
+
+## Study overview: collapsible page cards + whole-page drag-reorder (2026-08-12)
+
+Direct request: in the survey editor's "Study overview" modal, group the flat "Pages and
+questions" list into collapsible **page** cards (not just block-level collapse, which already
+existed) and allow dragging an **entire page** as a unit (not just individual questions, and not
+just whole blocks via `PageBlocksEditor`'s ↑/↓ controls). Scoped to `components-admin-surveys-
+editor.jsx`'s `StudyOutlineModal` only, per the request — the main editor's own "Pages and
+questions" list (outside the modal) is unchanged.
+
+**New shared helper, extracted not duplicated**: `applyPageBlocksAndSyncPages(prevSurvey,
+nextBlocks)` — pulled verbatim out of `PageBlocksEditor`'s `applyBlocks` (which now just calls it),
+so the new page-card drag logic and the existing block/page-move controls funnel through the exact
+same function that keeps `survey.pages` (raw array order — what the "Pages and questions" list
+actually reads, independent of `page_blocks`) in sync with block/page order. Reusing this was the
+deciding factor in the design: reordering *whole pages* now works by directly reordering `survey.
+page_blocks[i].page_ids` (exactly what `PageBlocksEditor`'s own ↑/↓ page controls already do) and
+letting this shared function propagate it into `survey.pages`, rather than trying to splice/re-tag
+the flat editor-projection array (`flattenSurveyPagesForEditor`'s output) — the latter was
+seriously considered first and rejected: moving a page's own leading page-break marker to a new
+list position (e.g. becoming the very first page, which never has one) turns out to corrupt
+`buildSurveyPagesFromFlatQuestions`'s break-tag-based page-identity matching (the exact mechanism
+the 2026-08-11 "page identity was reassigned by array position" fix above depends on) in a new way
+— reordering directly against `page_blocks`/`survey.pages` sidesteps that whole class of bug
+entirely by never touching the flat projection for this operation.
+
+**New pure helper**: `computePageGroupsForQuestions(survey, currentQuestions, pageNumbers)` —
+groups the same flat item list `computeBlockBoundariesForQuestions`/`computeBlockIndexForQuestions`
+already operate on into one entry per real page (a page's own leading page-break row, if any, plus
+every question up to the next break), each carrying the real page id. `StudyOutlineModal` now maps
+over these groups instead of the flat list directly, rendering one bordered "page card" per group
+— a header (drag handle, collapse chevron, "Page N", page title if set, live question count) plus
+the existing per-question `OutlineRow`s underneath, unchanged. Block-boundary dividers and their
+own collapse behavior are unchanged, just now anchored to whichever page group starts a new block.
+
+**Page drag is deliberately scoped to reordering *within* the page's current block only** — same
+reasoning as `PageBlocksEditor`'s own page controls being block-scoped: moving a page to a
+*different* block requires deciding both a new position and new block membership from one drop,
+which is ambiguous by drag alone. Dragging a page card over a page in a different block sets
+`dropEffect: "none"` (dashed, muted border instead of the normal accent highlight) and drops are a
+verified no-op; moving a page to a different block still goes through `PageBlocksEditor`'s
+existing explicit block-picker `<select>`, unchanged.
+
+**Verified live** via the established dynamic-import/component-mount technique this file documents
+using repeatedly (real running dev server, `@babel/parser` clean). A first pass of the question-
+level drag regression check appeared to silently fail (dragging Q1a onto Q1b produced no reorder)
+— traced to a test-fixture bug, not a real one: hand-fabricated survey objects that skip the
+one-time `buildSurveyPagesFromFlatQuestions(x, flattenSurveyPagesForEditor(x))` round-trip real
+survey loads always go through (`components-admin-surveys.jsx`'s own load handler) never get a
+persisted `_editorId` baked onto their question objects, so `getQuestionList(survey)` regenerates
+fresh random ids on every separate call — including the one inside `handleQuestionDrop`, which
+therefore could never match the id captured at drag-start. Confirmed via a temporary debug log
+directly in the real handler (removed after), then fixed the test fixture (ran it through the same
+one-time normalization real loads use) rather than touching any app code. With correctly-normalized
+fixture data, confirmed: dragging a page card reorders `page_blocks[i].page_ids` and `survey.pages`
+together (byte-identical relative order); dragging across a block boundary is a genuine no-op
+(`dropEffect: "none"`, state unchanged); the page-card collapse chevron hides/shows its question
+rows independent of block collapse; collapsing a block still hides every page card inside it while
+the block's own divider (with its toggle) stays visible; the search filter still works per-page
+(a page whose only match is its own always-passing leading break row shows just that row, matching
+the pre-existing filter's own page-break-always-matches convention); and individual question-level
+drag reordering (pre-existing, unchanged code) still works correctly nested inside the new page
+cards. **Not verified**: an actual click-through/drag by a real logged-in admin — same standing
+no-login limitation as everywhere else in this file.

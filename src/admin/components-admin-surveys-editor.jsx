@@ -817,6 +817,33 @@ export function reconcileSurveyPageBlocks(survey) {
   };
 }
 
+// Shared by PageBlocksEditor (block/page reorder via its ↑/↓ controls and
+// "move to block" select) and StudyOutlineModal's page-card drag-reorder —
+// both funnel every block/page-order change through this single function so
+// survey.pages (which the "Pages and questions" list reads in its own raw
+// array order, independent of page_blocks) never drifts out of sync with
+// block order, the exact disagreement bug documented elsewhere in this file.
+export function applyPageBlocksAndSyncPages(prevSurvey, nextBlocks) {
+  const safePrev = prevSurvey && typeof prevSurvey === "object" ? prevSurvey : makeEmptySurvey();
+  const normalizedBlocks = normalizeSurveyPageBlocks({
+    ...safePrev,
+    page_blocks: nextBlocks,
+  });
+
+  const prevPages = Array.isArray(safePrev.pages) ? safePrev.pages : [];
+  const pageById = new Map(
+    prevPages.map((page, index) => [String(page?.id || `page_${index + 1}`), page])
+  );
+  const orderedPageIds = normalizedBlocks.flatMap((block) => block.page_ids);
+  const orderedPages = orderedPageIds.map((pageId) => pageById.get(pageId)).filter(Boolean);
+
+  return {
+    ...safePrev,
+    pages: orderedPages.length === prevPages.length ? orderedPages : prevPages,
+    page_blocks: normalizedBlocks,
+  };
+}
+
 // Shared by SurveyEditor's "Pages and questions" list and StudyOutlineModal
 // (the "Study overview" popup) — both flatten survey.pages into one list
 // with page-break marker rows in between; this maps each flat index to its
@@ -904,6 +931,35 @@ export function computeBlockIndexForQuestions(survey, currentQuestions, pageNumb
     const pageId = String(page?.id || `page_${pageNumber}`);
     return pageIdToBlockIndex.has(pageId) ? pageIdToBlockIndex.get(pageId) : null;
   });
+}
+
+// Groups the flat currentQuestions/pageNumbers pair (as returned by
+// getQuestionList/computePageNumbersForQuestions) into one entry per real
+// page — each page's own leading page-break row (if any; page 1 never has
+// one) plus every question row that follows it, up to the next page break.
+// Used by StudyOutlineModal to render one collapsible, draggable "page card"
+// per page instead of one flat row per question. Each entry also carries the
+// real page id (survey.pages[pageNumber-1].id, same derivation
+// computeBlockBoundariesForQuestions/computeBlockIndexForQuestions already
+// use) so page-card drag-reorder can look up block membership directly.
+export function computePageGroupsForQuestions(survey, currentQuestions, pageNumbers) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const groups = [];
+  currentQuestions.forEach((item, i) => {
+    const pageNumber = pageNumbers[i];
+    const last = groups[groups.length - 1];
+    if (last && last.pageNumber === pageNumber) {
+      last.items.push({ item, flatIndex: i });
+    } else {
+      const page = pages[pageNumber - 1];
+      groups.push({
+        pageNumber,
+        pageId: String(page?.id || `page_${pageNumber}`),
+        items: [{ item, flatIndex: i }],
+      });
+    }
+  });
+  return groups;
 }
 
 // `isCollapsed`/`onToggleCollapsed` are optional — StudyOutlineModal and
@@ -5069,42 +5125,17 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
     ])
   );
 
+  // Block order (and page order within/across blocks) is what actually
+  // determines participant-facing page sequence (materializePagesFromBlocks
+  // in utils-survey.js iterates blocks in array order, each block's own
+  // page_ids in order) — but the "Pages and questions" editor reads
+  // survey.pages in its own raw array order, independent of page_blocks.
+  // applyPageBlocksAndSyncPages (shared with StudyOutlineModal's page-card
+  // drag-reorder below) is the one place every block/page-order change
+  // funnels through to keep survey.pages in sync with it.
   const applyBlocks = useCallback(
     (nextBlocks) => {
-      onSurveyChange((prev) => {
-        const normalizedBlocks = normalizeSurveyPageBlocks({
-          ...prev,
-          page_blocks: nextBlocks,
-        });
-
-        // Block order (and page order within/across blocks) is what
-        // actually determines participant-facing page sequence
-        // (materializePagesFromBlocks in utils-survey.js iterates blocks in
-        // array order, each block's own page_ids in order) — but the
-        // "Pages and questions" editor below reads survey.pages in its own
-        // raw array order, independent of page_blocks. Without this, moving
-        // a block/page here had zero visible effect on that list, even
-        // though it silently changed the real delivery order. Every block
-        // reorder/page-move funnels through this one function, so this is
-        // the single place that needs to keep survey.pages in sync.
-        const prevPages = Array.isArray(prev.pages) ? prev.pages : [];
-        const pageById = new Map(
-          prevPages.map((page, index) => [
-            String(page?.id || `page_${index + 1}`),
-            page,
-          ])
-        );
-        const orderedPageIds = normalizedBlocks.flatMap((block) => block.page_ids);
-        const orderedPages = orderedPageIds
-          .map((pageId) => pageById.get(pageId))
-          .filter(Boolean);
-
-        return {
-          ...prev,
-          pages: orderedPages.length === prevPages.length ? orderedPages : prevPages,
-          page_blocks: normalizedBlocks,
-        };
-      });
+      onSurveyChange((prev) => applyPageBlocksAndSyncPages(prev, nextBlocks));
     },
     [onSurveyChange]
   );
@@ -5386,6 +5417,20 @@ function StudyOutlineModal({
     [survey, currentQuestions, pageNumbers]
   );
 
+  const pageGroups = useMemo(
+    () => computePageGroupsForQuestions(survey, currentQuestions, pageNumbers),
+    [survey, currentQuestions, pageNumbers]
+  );
+
+  const blocks = useMemo(() => normalizeSurveyPageBlocks(survey), [survey]);
+  const pageIdToBlockIndex = useMemo(() => {
+    const map = new Map();
+    blocks.forEach((block, blockIndex) => {
+      block.page_ids.forEach((pageId) => map.set(pageId, blockIndex));
+    });
+    return map;
+  }, [blocks]);
+
   // Independent from SurveyEditor's own collapsedBlockIds below — collapsing
   // a block here doesn't affect (and isn't affected by) the main editor's
   // "Pages and questions" list, same as every other bit of local UI state
@@ -5398,6 +5443,83 @@ function StudyOutlineModal({
       else next.add(blockIndex);
       return next;
     });
+  }
+
+  // Same independent-local-state convention as collapsedBlockIds above, but
+  // per page instead of per block — collapsing a page card here hides its
+  // question rows without affecting the main editor's own list.
+  const [collapsedPageIds, setCollapsedPageIds] = useState(() => new Set());
+  function togglePageCollapsed(pageId) {
+    setCollapsedPageIds((current) => {
+      const next = new Set(current);
+      if (next.has(pageId)) next.delete(pageId);
+      else next.add(pageId);
+      return next;
+    });
+  }
+
+  // Page-card drag state, separate from the question-level draggingId/
+  // dragOverId props threaded through from SurveyEditor — dragging a whole
+  // page and dragging a single question row are independent interactions
+  // that can both live on the same list at once.
+  const [draggingPageId, setDraggingPageId] = useState(null);
+  const [dragOverPageId, setDragOverPageId] = useState(null);
+
+  // Reordering a page across a different block's page range would mean
+  // deciding both a new position AND a new block membership from one drop —
+  // ambiguous and easy to get wrong silently. Page drag here is scoped to
+  // reordering within the page's own current block (mirrors
+  // PageBlocksEditor's ↑/↓ page controls above, just via drag); moving a
+  // page to a *different* block stays the "Page blocks" section's explicit
+  // block picker, unchanged.
+  function movePage(fromPageId, toPageId) {
+    if (!fromPageId || !toPageId || fromPageId === toPageId) return;
+    const fromBlockIndex = pageIdToBlockIndex.get(fromPageId);
+    const toBlockIndex = pageIdToBlockIndex.get(toPageId);
+    if (fromBlockIndex == null || toBlockIndex == null || fromBlockIndex !== toBlockIndex) return;
+    const block = blocks[fromBlockIndex];
+    if (!block) return;
+    const fromIndex = block.page_ids.indexOf(fromPageId);
+    const toIndex = block.page_ids.indexOf(toPageId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+    const nextBlocks = blocks.map((b, i) =>
+      i === fromBlockIndex ? { ...b, page_ids: reorderArray(b.page_ids, fromIndex, toIndex) } : b
+    );
+    onSurveyChange((prev) => applyPageBlocksAndSyncPages(prev, nextBlocks));
+  }
+
+  function handlePageDragStart(e, pageId) {
+    setDraggingPageId(pageId);
+    setDragOverPageId(pageId);
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(pageId));
+    } catch {}
+  }
+
+  function handlePageDragOver(e, pageId) {
+    e.preventDefault();
+    const crossBlock =
+      draggingPageId != null &&
+      pageIdToBlockIndex.get(draggingPageId) !== pageIdToBlockIndex.get(pageId);
+    try {
+      e.dataTransfer.dropEffect = crossBlock ? "none" : "move";
+    } catch {}
+    if (dragOverPageId !== pageId) setDragOverPageId(pageId);
+  }
+
+  function handlePageDrop(e, targetPageId) {
+    e.preventDefault();
+    const sourcePageId = draggingPageId;
+    setDraggingPageId(null);
+    setDragOverPageId(null);
+    if (!sourcePageId || sourcePageId === targetPageId) return;
+    movePage(sourcePageId, targetPageId);
+  }
+
+  function handlePageDragEnd() {
+    setDraggingPageId(null);
+    setDragOverPageId(null);
   }
 
   const duplicateQuestionIds = useMemo(
@@ -5423,7 +5545,7 @@ function StudyOutlineModal({
   return (
     <Modal
       title="Study overview"
-      subtitle={`${questionCount} ${questionCount === 1 ? "question" : "questions"} across ${pageCount} ${pageCount === 1 ? "page" : "pages"}. Drag to reorder, edit IDs inline, insert a page break, delete, or click question text to jump to it.`}
+      subtitle={`${questionCount} ${questionCount === 1 ? "question" : "questions"} across ${pageCount} ${pageCount === 1 ? "page" : "pages"}. Drag a question to reorder it, drag a page's header to move the whole page within its block, collapse a page or block to tidy the list, edit IDs inline, or click question text to jump to it.`}
       onClose={onClose}
       width={860}
       footer={
@@ -5476,64 +5598,181 @@ function StudyOutlineModal({
             {currentQuestions.length === 0 ? (
               <EmptyState compact title="No questions yet." />
             ) : (
-              currentQuestions.map((item, i) => {
-                if (!matchesQuestionFilter(item, outlineFilter)) return null;
-                const boundary = blockBoundaries[i];
-                const itemBlockIndex = blockIndexPerQuestion[i];
+              pageGroups.map((group) => {
+                const filteredItems = group.items.filter(({ item }) =>
+                  matchesQuestionFilter(item, outlineFilter)
+                );
+                if (outlineFilter.trim() && filteredItems.length === 0) return null;
+
+                const firstFlatIndex = group.items[0].flatIndex;
+                const boundary = blockBoundaries[firstFlatIndex];
+                const groupBlockIndex = blockIndexPerQuestion[firstFlatIndex];
                 const blockIsCollapsed =
-                  itemBlockIndex != null && collapsedBlockIds.has(itemBlockIndex);
+                  groupBlockIndex != null && collapsedBlockIds.has(groupBlockIndex);
+
+                // Mirrors the old per-row logic exactly: a page that starts a
+                // (now-collapsed) block still renders its boundary divider
+                // (the toggle control itself), every other page inside that
+                // same collapsed block renders nothing at all.
+                if (blockIsCollapsed && !boundary) return null;
+
+                const pageIsCollapsed = collapsedPageIds.has(group.pageId);
+                const isPageDragging = draggingPageId === group.pageId;
+                const isPageDragOver = dragOverPageId === group.pageId;
+                const isCrossBlockTarget =
+                  draggingPageId != null &&
+                  pageIdToBlockIndex.get(draggingPageId) !== pageIdToBlockIndex.get(group.pageId);
+                const realQuestionCount = group.items.filter(
+                  ({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE
+                ).length;
+                const pageTitle = String(survey?.pages?.[group.pageNumber - 1]?.title || "").trim();
+
                 return (
-                <React.Fragment key={item._editorId || i}>
-                <BlockBoundaryDivider
-                  boundary={boundary}
-                  isCollapsed={boundary ? collapsedBlockIds.has(boundary.blockIndex) : false}
-                  onToggleCollapsed={boundary ? () => toggleBlockCollapsed(boundary.blockIndex) : undefined}
-                />
-                {!blockIsCollapsed && (
-                <OutlineRow
-                item={item}
-                flatIndex={i}
-                displayNumber={displayNumbers[i]}
-                pageNumber={pageNumbers[i]}
-                isDuplicateId={item?.id ? duplicateQuestionIds.has(item.id) : false}
-                hasBrokenCondition={item?.id ? brokenVisibleIfQuestionIds.has(item.id) : false}
-                totalCount={currentQuestions.length}
-                onMoveUp={() => moveQuestion(i, i - 1)}
-                onMoveDown={() => moveQuestion(i, i + 1)}
-                onJump={() => onJumpTo(item._editorId)}
-                onIdChange={(nextValue) => {
-                  const cleanedId = sanitizeQuestionId(nextValue, "");
-                  let nextQuestion = { ...item, id: cleanedId };
-                  if (cleanedId && shouldAutoRewriteRowValues(nextQuestion)) {
-                    nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
-                  }
-                  updateQuestion(i, nextQuestion);
-                }}
-                onDuplicate={() => duplicateQuestion(i)}
-                onInsertPageBreakAfter={() =>
-                  insertQuestionAt(i, EDITOR_PAGE_BREAK_TYPE, "below")
-                }
-                onDelete={async () => {
-                  const isBreak = item.type === EDITOR_PAGE_BREAK_TYPE;
-                  if (
-                    await confirm({
-                      title: isBreak ? "Delete this page break?" : "Delete this question?",
-                      danger: true,
-                      confirmLabel: "Delete",
-                    })
-                  ) {
-                    removeQuestion(i);
-                  }
-                }}
-                draggingId={draggingId}
-                dragOverId={dragOverId}
-                onDragStart={onDragStart}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                onDragEnd={onDragEnd}
-                />
-                )}
-                </React.Fragment>
+                  <React.Fragment key={group.pageId}>
+                    <BlockBoundaryDivider
+                      boundary={boundary}
+                      isCollapsed={boundary ? collapsedBlockIds.has(boundary.blockIndex) : false}
+                      onToggleCollapsed={
+                        boundary ? () => toggleBlockCollapsed(boundary.blockIndex) : undefined
+                      }
+                    />
+                    {!blockIsCollapsed && (
+                      <div
+                        style={{
+                          marginBottom: 6,
+                          border: isPageDragOver
+                            ? isCrossBlockTarget
+                              ? "2px dashed var(--admin-muted-2)"
+                              : "2px solid var(--admin-accent)"
+                            : "1px solid var(--admin-border-subtle)",
+                          borderRadius: 8,
+                          background: "var(--admin-surface)",
+                          opacity: isPageDragging ? 0.6 : 1,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          onDragOver={(e) => handlePageDragOver(e, group.pageId)}
+                          onDrop={(e) => handlePageDrop(e, group.pageId)}
+                          title="Drag to reorder pages within this block"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "5px 8px",
+                            background: "var(--admin-surface-sunken)",
+                            borderBottom: pageIsCollapsed ? "none" : "1px solid var(--admin-border-subtle)",
+                          }}
+                        >
+                          <CompactDragHandle
+                            onDragStart={(e) => handlePageDragStart(e, group.pageId)}
+                            onDragEnd={handlePageDragEnd}
+                          />
+                          <IconOnlyButton
+                            onClick={() => togglePageCollapsed(group.pageId)}
+                            title={pageIsCollapsed ? "Expand page" : "Collapse page"}
+                            aria-label={
+                              pageIsCollapsed
+                                ? `Expand page ${group.pageNumber}`
+                                : `Collapse page ${group.pageNumber}`
+                            }
+                            size={11}
+                            style={{ width: 20, height: 20, flex: "0 0 auto" }}
+                          >
+                            <ChevronDownIcon size={11} open={!pageIsCollapsed} />
+                          </IconOnlyButton>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 800,
+                              color: "var(--admin-text)",
+                              flex: "0 0 auto",
+                            }}
+                          >
+                            Page {group.pageNumber}
+                          </span>
+                          {pageTitle && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--admin-muted)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                minWidth: 0,
+                              }}
+                            >
+                              {pageTitle}
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              fontSize: 10,
+                              color: "var(--admin-muted-2)",
+                              marginLeft: "auto",
+                              flex: "0 0 auto",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {realQuestionCount} {realQuestionCount === 1 ? "question" : "questions"}
+                            {pageIsCollapsed ? " · collapsed" : ""}
+                          </span>
+                        </div>
+
+                        {!pageIsCollapsed && (
+                          <div style={{ padding: "6px 6px 4px" }}>
+                            {filteredItems.map(({ item, flatIndex }) => (
+                              <OutlineRow
+                                key={item._editorId || flatIndex}
+                                item={item}
+                                flatIndex={flatIndex}
+                                displayNumber={displayNumbers[flatIndex]}
+                                pageNumber={pageNumbers[flatIndex]}
+                                isDuplicateId={item?.id ? duplicateQuestionIds.has(item.id) : false}
+                                hasBrokenCondition={
+                                  item?.id ? brokenVisibleIfQuestionIds.has(item.id) : false
+                                }
+                                totalCount={currentQuestions.length}
+                                onMoveUp={() => moveQuestion(flatIndex, flatIndex - 1)}
+                                onMoveDown={() => moveQuestion(flatIndex, flatIndex + 1)}
+                                onJump={() => onJumpTo(item._editorId)}
+                                onIdChange={(nextValue) => {
+                                  const cleanedId = sanitizeQuestionId(nextValue, "");
+                                  let nextQuestion = { ...item, id: cleanedId };
+                                  if (cleanedId && shouldAutoRewriteRowValues(nextQuestion)) {
+                                    nextQuestion = rewriteQuestionRowValues(nextQuestion, cleanedId);
+                                  }
+                                  updateQuestion(flatIndex, nextQuestion);
+                                }}
+                                onDuplicate={() => duplicateQuestion(flatIndex)}
+                                onInsertPageBreakAfter={() =>
+                                  insertQuestionAt(flatIndex, EDITOR_PAGE_BREAK_TYPE, "below")
+                                }
+                                onDelete={async () => {
+                                  const isBreak = item.type === EDITOR_PAGE_BREAK_TYPE;
+                                  if (
+                                    await confirm({
+                                      title: isBreak ? "Delete this page break?" : "Delete this question?",
+                                      danger: true,
+                                      confirmLabel: "Delete",
+                                    })
+                                  ) {
+                                    removeQuestion(flatIndex);
+                                  }
+                                }}
+                                draggingId={draggingId}
+                                dragOverId={dragOverId}
+                                onDragStart={onDragStart}
+                                onDragOver={onDragOver}
+                                onDrop={onDrop}
+                                onDragEnd={onDragEnd}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </React.Fragment>
                 );
               })
             )}
