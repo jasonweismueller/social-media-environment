@@ -605,9 +605,9 @@ export function RouteAwareTopbar() {
   const location = useLocation();
   const isMobile = useIsMobile(700);
 
-  let onAdmin = location.pathname === "/admin";
+  let onAdmin = location.pathname.startsWith("/admin");
   if (!onAdmin && typeof window !== "undefined") {
-    onAdmin = window.location.hash.startsWith("#/admin");
+    onAdmin = window.location.hash.startsWith("#/admin"); // legacy hash-bookmark fallback
   }
 
   const onSurvey =

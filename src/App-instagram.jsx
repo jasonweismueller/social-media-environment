@@ -5,7 +5,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import { HashRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import "./styles-instagram.css";
 
 import {
@@ -885,7 +885,7 @@ export default function App() {
   const [projectId, setProjectIdState] = useState(() => getProjectIdUtil() || "");
 
   const onAdmin =
-    typeof window !== "undefined" && window.location.hash.startsWith("#/admin");
+    typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
 
   const [activeFeedId, setActiveFeedId] = useState(
     !onAdmin ? getFeedIdFromUrl() : null
@@ -1102,7 +1102,7 @@ export default function App() {
 
   useEffect(() => {
     const apply = () => {
-      const isAdmin = window.location.hash.startsWith("#/admin");
+      const isAdmin = window.location.pathname.startsWith("/admin");
       if (isAdmin) {
         document.body.classList.remove("debug-vp");
         return;
@@ -3118,7 +3118,11 @@ export default function App() {
                     await adminLogout();
                   } catch {}
                   setAdminAuthed(false);
-                  window.location.hash = "#/admin";
+                  // Real path nav (not a hash change, now that this app uses
+                  // BrowserRouter) done imperatively via the History API, since this
+                  // callback runs outside any component that could call useNavigate().
+                  window.history.pushState(null, "", "/admin");
+                  window.dispatchEvent(new PopStateEvent("popstate"));
                 }}
               />
             }

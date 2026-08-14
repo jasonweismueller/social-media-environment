@@ -6676,3 +6676,84 @@ the pre-existing filter's own page-break-always-matches convention); and individ
 drag reordering (pre-existing, unchanged code) still works correctly nested inside the new page
 cards. **Not verified**: an actual click-through/drag by a real logged-in admin — same standing
 no-login limitation as everywhere else in this file.
+
+## Admin URL: `/admin` instead of `/#/admin` (2026-08-14)
+
+Per direct follow-up to an earlier "why does the admin URL need a `#`" question (2026-08-11 above,
+which had only explained the mechanism, not changed it) — the user asked for it to actually be
+built this time, clean-URL style, testable on staging first.
+
+**All three `App-*.jsx` files switched `HashRouter` → `BrowserRouter`.** This only ever affects the
+`/admin/*` route tree — the participant-facing `/` route (survey/feed/preface) is entirely
+state-driven, not path-branched, confirmed by reading each file's own `<Routes>` block before
+touching anything, so nothing about participant delivery changes.
+
+**New `public/404.html`** implements the standard GitHub Pages SPA-redirect trick (rafgraph's
+well-known script — encodes the requested path into a query string and redirects to the real
+`index.html`, since GitHub Pages is pure static hosting with no server-side rewrites and a direct
+request to `/admin/dashboard/feeds` 404s before any file exists on disk to serve it).
+`pathSegmentsToKeep = 0` for both deployments, since `studyfeed.org` and `staging.studyfeed.org`
+are both custom domains served from the root (not a `username.github.io/reponame/` path) —
+confirmed via both `.github/workflows/deploy.yml` (production, `production` branch) and
+`deploy-staging.yml` (staging, `main` branch, separate `studyfeed-staging` repo); both just
+`npm run build` and publish `dist/`, and Vite copies `public/*` into `dist/` verbatim, so no
+workflow changes were needed for either.
+
+**`index.html` gained the matching decode half** (a plain `<script>`, run before the existing
+module-script gate) — reconstructs the real pathname from 404.html's query-string encoding via
+`history.replaceState`, before `isAdminRoute`/`hasLaunchParams` (the existing "don't load an app
+bundle for a bare-domain visit" gate) ever evaluates. `isAdminRoute` itself switched from checking
+`hash.replace(/^#/, "")...startsWith("/admin")` to `window.location.pathname.startsWith("/admin")`.
+
+**A second, unprompted addition**: a one-time migration for old bookmarked `#/admin/...` links
+(this app had exactly one real admin, so this is low-stakes but free to add) — if the real pathname
+is still `/` and the hash starts with `#/`, rewrites it into a real path (merging any hash-embedded
+query string with the real one) before the module script's gate runs. Verified this specifically
+needs a **fresh page load** to fire — a hash-only change on an already-loaded document doesn't
+reload the page or re-run inline scripts, so testing it by mutating `location.hash` on a live tab
+produces a false negative; a real bookmark click (a fresh navigation) works correctly. `getCombinedSearchParams()`
+(`utils-core.js`) and every `setFeedIdInUrl`/`setSurveyIdInUrl`/`setProjectId` helper already
+operated on `url.search`/`history.pushState` directly against the real URL object, never the hash,
+so none of those needed any change — confirmed by reading, not assumed.
+
+**Three other hash-dependent spots per `App-*.jsx`** (near-duplicate-file footgun, all three
+checked identically): the pre-Router `onAdmin` flag (computed before `<Router>` even mounts, so it
+can't use `useLocation()`) switched to a pathname check; the debug-vp effect's own `isAdmin` check,
+same switch; and `onLogout`'s `window.location.hash = "#/admin"` replaced with
+`window.history.pushState(null, "", "/admin"); window.dispatchEvent(new PopStateEvent("popstate"))`
+— plain `<BrowserRouter>`'s internal history object only listens for real `popstate` events, not
+`pushState` calls, so a synthetic dispatch is the standard way to make it pick up a URL change
+triggered from outside any component that could call `useNavigate()` (this callback runs above
+`<Router>`, passed down as a prop). **`RouteAwareTopbar`** (`ui-core-*.jsx`, all three) already used
+`useLocation()` correctly and had its own independent onAdmin check with a hash fallback — the
+primary check (`location.pathname === "/admin"`) was broadened to `.startsWith("/admin")` so it
+correctly matches nested routes like `/admin/dashboard/feeds` too (previously silently `false` for
+every nested route, papered over by the fallback); the hash fallback itself was kept as harmless
+defense-in-depth, not removed.
+
+**Every `Navigate to=`/`NavLink to=`/`navigate(...)` call site in the admin tree was already
+absolute** (confirmed via grep before touching anything — this repo's own documented "every
+NavLink/Navigate must be an absolute path" HashRouter-era gotcha, from the original admin dashboard
+redesign, turned out to already hold universally) — so react-router's own nested-route resolution
+inside `AdminEntry.jsx`/`AdminShell.jsx`/etc. needed zero changes; that machinery works identically
+under either router type.
+
+**Verified live** via the sandbox's real `npm run dev` (confirmed working per "Build/dev notes"):
+all six touched `.jsx` files parse clean (`@babel/parser`); `/admin` (no hash) loads the real Admin
+Login page directly with zero console errors; the bare domain (`/`) still correctly renders the
+static 404 (regression check — the participant-facing gate is untouched); a fabricated
+404-redirect URL (`/?/admin/dashboard/feeds&token=abc~and~x=1`, matching exactly what 404.html's
+own encoding formula produces) correctly decodes to `/admin/dashboard/feeds?token=abc&x=1`; a
+fresh-tab load of an old-style `/#/admin/dashboard/feeds?foo=bar` bookmark correctly migrates to
+the clean path and loads the login page. One apparent regression during testing
+(`?feed_id=test_feed&project=proj_1&app=fb` rendering a "404 Not Found" block) was traced via
+`read_network_requests` to **not** be a routing bug at all — the app bundle loaded correctly
+(confirmed `main-facebook.jsx` and Supabase client requests both fired), and what rendered was the
+app's own genuine, already-documented "bad feed_id" 404 screen (2026-08-04, "Default feed concept
+removed" section above) — which deliberately uses byte-identical markup to the bootstrap gate's own
+404, since `test_feed` is a fabricated id with no matching row in this sandbox's Supabase project.
+**Not verified**: an actual click-through by a real logged-in admin, or the 404.html trick against
+a real GitHub Pages deploy (only simulated locally, since Vite's own dev server already serves
+`index.html` for any unmatched path without needing 404.html at all — the real GitHub Pages
+static-hosting 404 path can only be exercised once this ships to staging). Per direct instruction,
+this should be tested on `staging.studyfeed.org` first, not pushed straight to `main`+`production`.
