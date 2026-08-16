@@ -3317,11 +3317,23 @@ export default function App() {
                             // Known synchronously, independent of the
                             // network write below — used to show a loading
                             // overlay immediately on click instead of only
-                            // once sendToSheet resolves.
+                            // once sendToSheet resolves. Covers BOTH forward
+                            // transitions (to the next feed in a multi-feed
+                            // sequence, or on to the survey) — originally
+                            // this only covered the to-survey case, leaving
+                            // a real dead gap (submit button just disabled,
+                            // nothing visibly happening) during the network
+                            // write on every non-final feed of a multi-feed
+                            // study. submittingToSurveyOverlay/loadingNextStageOverlay
+                            // below don't care which destination triggered
+                            // them, so no new overlay state was needed.
+                            const willAdvanceToNextFeed =
+                              hasNextFeedStage && !!nextFeedIdInSequence;
                             const willAdvanceToSurvey =
-                              !(hasNextFeedStage && nextFeedIdInSequence) &&
-                              !!surveyBoot?.has_survey;
-                            if (willAdvanceToSurvey) setSubmittingToSurvey(true);
+                              !willAdvanceToNextFeed && !!surveyBoot?.has_survey;
+                            if (willAdvanceToNextFeed || willAdvanceToSurvey) {
+                              setSubmittingToSurvey(true);
+                            }
 
                             const ENTER_FRAC = Number.isFinite(
                               Number(VIEWPORT_ENTER_FRACTION)
@@ -3416,7 +3428,16 @@ export default function App() {
                               showToast("Sync failed. Please try again.");
                               setSubmittingToSurvey(false);
                             } else if (hasNextFeedStage && nextFeedIdInSequence) {
-                              showToast("Feed submitted ✔︎ Loading next feed…");
+                              // No toast here either, same reasoning as the
+                              // to-survey branch just below: the overlay
+                              // (already showing, via submittingToSurvey,
+                              // then preparingFeedOverlay once
+                              // advanceToNextFeed flips feedPhase/contentPhase
+                              // to "loading") already communicates progress —
+                              // a "Feed submitted ✔︎ Loading next feed…" toast
+                              // on top of that read as redundant, and (worse)
+                              // could still be visible/fading when the next
+                              // feed's own real content is already showing.
                               await advanceToNextFeed(nextFeedIdInSequence);
                             } else if (surveyBoot?.has_survey) {
                               // No "Submitted ✔︎" toast here — the

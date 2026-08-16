@@ -6805,3 +6805,51 @@ returning `[]` with the "missing admin session" console warning before the filte
 **Not verified**: an actual click-through by a real logged-in admin downloading Study 3's CSV —
 worth confirming on staging (or production, since this file is a pure bug fix with no schema
 change) once deployed, that it now shows 0 rows instead of Study 2's 344.
+
+## Multi-feed transition: same "dead gap after submit" smoothing applied as the feed→survey case (2026-08-17)
+
+Direct report: on a `multi_feed_then_survey` study, clicking Submit on a non-final feed had a long
+uncovered gap before anything visibly happened, then a "Feed submitted ✔︎ Loading next feed…"
+toast — worse UX than the already-smoothed feed→survey transition (see "Survey/posts loading
+performance fixes" 2026-08-01 and the `submittingToSurvey` state it introduced). A second part of
+the report — the page "going completely grey," presumably an error — turned out to be the user's
+own network connection; they tried multiple times afterward and couldn't reproduce it, so that part
+was dropped rather than chased with fabricated repro attempts.
+
+**Root cause, precisely traced**: `submittingToSurvey` (`App-facebook.jsx`/`App-amazon.jsx` — same
+near-duplicate-file pair as everywhere multi-feed logic lives; Instagram has no multi-feed support
+at all, confirmed elsewhere in this file) is set synchronously on Submit click *only* when the
+click will lead to the survey (`willAdvanceToSurvey`) — never when it'll advance to the next feed
+in the sequence (`hasNextFeedStage && nextFeedIdInSequence`). Since `submittingToSurveyOverlay`
+(the quiet, immediate-on-click overlay) depends entirely on that flag, and `feedSubmitted` never
+flips true for the next-feed case either, there was a real, uncovered window between click and
+`sendToSheet`'s network write resolving where literally nothing changed on screen except the
+Submit button going inert — before `advanceToNextFeed` ever runs and `preparingFeedOverlay`
+("Preparing your feed…") takes over.
+
+**Fix**: `willAdvanceToSurvey`'s condition split into `willAdvanceToNextFeed` (new) and
+`willAdvanceToSurvey` (now only true when *not* advancing to a next feed), and `submittingToSurvey`
+is now set on click for *either* — no new overlay state needed, since `submittingToSurveyOverlay`/
+`preparingFeedOverlay` already don't care which destination triggered them, only that `feedSubmitted`
+is still false. Also dropped the "Feed submitted ✔︎ Loading next feed…" toast on the next-feed
+branch, mirroring the *exact* reasoning the to-survey branch's own comment already gives for not
+showing a toast there (redundant with, and potentially visually contradicting, an overlay that's
+already communicating progress). Applied identically to both `App-facebook.jsx` and
+`App-amazon.jsx`.
+
+**Verified end-to-end against a real disposable multi-feed study**, not just by reading the code:
+built a throwaway `zzclaudetest_multifeed` project (2 feeds, 1 post each, a `multi_feed_then_survey`
+survey linking both via `feed_surveys`) directly via `supabase db query --linked`, then drove the
+real local dev server through it as a genuine participant — loaded Feed A, clicked Submit, landed
+cleanly on Feed B with zero console errors (only the known, sandbox-only CloudFront-CORS noise from
+avatar-pool preloading, unrelated — `localhost` isn't on that CDN's allowed-origins list, same gap
+documented earlier this session for the "Realistic surroundings" work), clicked Submit again, landed
+cleanly on the survey's own question page. Cleaned up afterward — confirmed zero rows left across
+`projects`/`feeds`/`posts`/`surveys`/`feed_surveys`/`participants`/`survey_responses`. **Not
+independently screenshotted mid-transition** — local dev-server latency is fast enough that a
+between-clicks screenshot landed *after* the transition had already completed rather than mid-flight,
+so the overlay's actual on-screen appearance during the gap was verified by precise reading of the
+overlay ternary's priority order and each state flag's exact set/reset timing, not by catching it
+visually. **Not verified**: an actual click-through by a real logged-in admin/participant on staging
+or production, or a real multi-feed study with slower/real-world network latency where the dead gap
+would have been more visible in the first place.
