@@ -6757,3 +6757,51 @@ a real GitHub Pages deploy (only simulated locally, since Vite's own dev server 
 `index.html` for any unmatched path without needing 404.html at all — the real GitHub Pages
 static-hosting 404 path can only be exercised once this ships to staging). Per direct instruction,
 this should be tested on `staging.studyfeed.org` first, not pushed straight to `main`+`production`.
+
+## Real bug found and fixed: "feed + survey" CSV leaked another survey's participants when feeds were shared (2026-08-17)
+
+Direct report: **"Study 3 - Main"** (`survey_a1tg0kkkwokmsebagku`, `multi_feed_then_survey`, still
+`draft`, zero real participants of its own) reuses three of **"Study 2 - Main"**'s
+(`survey_zydn6xke6d7msnjl1xe`, `feed_then_survey`) linked feeds (`feed_3`/`feed_4`/`feed_5`) — and
+downloading Study 3's "feed + survey" CSV showed Study 2's real participant data instead.
+
+**Root-caused against the live database before writing any fix** (`supabase db query --linked`,
+read-only): all 344 real `participants` rows for the three shared feeds (121/112/111) are stamped
+`survey_id = survey_zydn6xke6d7msnjl1xe` (Study 2's id) — zero are blank, zero are Study 3's.
+`loadMultiFeedParticipantSurveyRoster` (`utils-backend.js`, the function behind both the Surveys →
+Launch tab's "Download feed + survey CSV" button and the Survey Participants hub's equivalent —
+see the 2026-08-11 "Feed + survey merged CSV missing" and "three real bugs" entries above, which
+built and then hardened this exact function but never touched this specific gap) calls
+`loadParticipantsRoster(feedId)` per linked feed, which returns **every** participant who ever
+visited that raw feed_id, with zero regard for which survey's flow actually routed them there. So
+Study 3's download pulled in all 344 of Study 2's real rows (attached to `NA` survey-answer
+columns, since none of those sessions have a Study-3 `survey_responses` row), which is exactly the
+reported symptom.
+
+Each `participants` row already carries the correct signal for this — `survey_id`, stamped from
+whichever survey was linked at feed-submit time (`buildParticipantRow`/`sendToSheet`/
+`supabaseLogParticipant` already thread it through correctly for current submissions; a stale
+comment in `utils-backend-supabase.js` claiming this is "NOT reliably stamped in real data" turned
+out to be about old pre-stamp historical rows, not a live code bug — the live query above shows
+100% of these specific 344 rows are correctly stamped) — the merge function just never used it to
+filter. **Fix**: `loadMultiFeedParticipantSurveyRoster`'s per-feed `loadParticipantsRoster` call
+now filters each feed's rows to `!row.survey_id || row.survey_id === effectiveSurveyId` before they
+ever reach the merge — keeps a row if it's explicitly tagged for this survey, or untagged (kept
+rather than dropped, since excluding genuinely-ambiguous legacy rows would silently lose real data
+for the ordinary case where a feed only ever belonged to one survey). `loadSurveyOnlyRoster` (the
+plain single-feed "Download Survey CSV" button) was checked and confirmed **not** to share this bug
+— it derives its participant rows entirely from `survey_responses` (already strictly `survey_id`-
+scoped), never from a raw per-feed `loadParticipantsRoster` call.
+
+**Verified**: the filter logic tested in isolation against the real confirmed shape (121 rows
+stamped Study 2's id + 2 fabricated legacy blank-survey_id rows) — Study 2's own query correctly
+keeps all 123 (its real rows + the ambiguous legacy ones), Study 3's query correctly keeps only the
+2 ambiguous ones, none of Study 2's real rows. Live end-to-end calls through the real dev server
+were attempted but both surveys came back empty regardless of survey_id — traced to
+`loadParticipantsRoster`'s own `hasAdminSession()` gate (correctly refuses without a real admin
+session, which this sandbox never has — same standing no-login limitation as everywhere else in
+this file), not the fix itself; confirmed via a direct isolated call to `loadParticipantsRoster`
+returning `[]` with the "missing admin session" console warning before the filter even runs.
+**Not verified**: an actual click-through by a real logged-in admin downloading Study 3's CSV —
+worth confirming on staging (or production, since this file is a pure bug fix with no schema
+change) once deployed, that it now shows 0 rows instead of Study 2's 344.

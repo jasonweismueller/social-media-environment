@@ -1251,10 +1251,27 @@ export async function loadMultiFeedParticipantSurveyRoster({
       signal,
     }),
     Promise.all(
-      sequence.map(async (fid) => ({
-        feedId: fid,
-        rows: await loadParticipantsRoster(fid, { projectId, signal }),
-      }))
+      sequence.map(async (fid) => {
+        const rawRows = await loadParticipantsRoster(fid, { projectId, signal });
+        // A feed can be linked to more than one survey (e.g. reused across
+        // two related studies' own multi-feed sequences) — loadParticipantsRoster
+        // returns EVERY participant who ever visited this feed, regardless of
+        // which survey's flow actually routed them there. participants.survey_id
+        // records exactly that (stamped from whichever survey was linked at
+        // feed-submit time), so scope to it instead of blindly including
+        // every visitor — otherwise a survey sharing a feed with another,
+        // more-active survey shows that other survey's participants instead
+        // of (or mixed in with) its own. Rows with no survey_id at all
+        // (predating this stamp, or a feed never shared between surveys) are
+        // kept rather than dropped — ambiguous, not wrong, and excluding them
+        // would silently lose real historical data for the common case where
+        // a feed only ever belonged to one survey. See CLAUDE.md.
+        const rows = (Array.isArray(rawRows) ? rawRows : []).filter((row) => {
+          const rowSurveyId = String(row?.survey_id || "").trim();
+          return !rowSurveyId || rowSurveyId === effectiveSurveyId;
+        });
+        return { feedId: fid, rows };
+      })
     ),
   ]);
 
