@@ -730,6 +730,14 @@ body.admin-mode .ig-topbar { display:none !important; }
     background:#fff !important;
   }
 
+  /* Dark-mode counterpart — this mobile "edge to edge" layout predates dark
+     mode and was missed by every earlier dark-mode pass (all tested at
+     desktop width; this block only applies ≤700px). Matching !important
+     since the base rule uses it. */
+  .dark-mode .insta-card{
+    background:var(--ig-card) !important;
+  }
+
   /* ensure the mobile stories strip is visible */
   .ig-stories-bar{ display:block !important; visibility:visible !important; }
 
@@ -760,6 +768,10 @@ body.admin-mode .ig-topbar { display:none !important; }
     border-bottom:1px solid var(--ig-line);
     padding:8px 12px 10px;   /* <= 12px must match sidePad in JS */
     margin:0;
+  }
+
+  .dark-mode .ig-stories-bar.noscroll{
+    background:var(--ig-card);
   }
   .ig-stories-row{
     display:flex;
@@ -2181,6 +2193,10 @@ body.survey-mode .rail-right {
     background: #fff;
   }
 
+  .dark-mode .survey-page {
+    background: var(--ig-card);
+  }
+
   .survey-page .survey-shell {
     max-width: 100%;
   }
@@ -2710,6 +2726,10 @@ body.survey-mode .rail-right {
   .survey-page {
     padding: 0;
     background: #fff;
+  }
+
+  .dark-mode .survey-page {
+    background: var(--ig-card);
   }
 
   .survey-page .survey-shell {

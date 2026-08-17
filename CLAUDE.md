@@ -6987,3 +6987,80 @@ held. Content-level spot check, not just row-count: queried staging's copy of "S
 refresh, not just a row-existence check. Scratch JSON/SQL files deleted from the sandbox afterward,
 same discipline as the 2026-08-05 entry. CLI relinked back to production
 (`yrzqnlhbawzuzlrrocfd`) at the end, confirmed via a real-data sanity query (`project` count = 7).
+
+## Dark mode, round 5: a whole mobile-width media query block predates dark mode entirely, still hardcoded white (2026-08-17)
+
+Direct report: "on production, the live preview in dark mode still shows light buttons for the
+posts." Reproduced live via the established dynamic-import/component-mount technique (real running
+dev server, faked `admin_theme_v1` session, real `FeedPreviewModal` mounted with a fabricated post)
+— but only at a **narrow viewport** (this sandbox's default automation width, 400px, well under the
+`max-width: 768px`/`700px` breakpoints these three stylesheets use for their "edge to edge" mobile
+post-card layout). At real desktop width (1280px) the same mount rendered correctly dark — every
+prior dark-mode round (1 through 4) was tested at desktop width only, so this specific gap was never
+caught.
+
+**Root cause**: `@media (max-width: 768px)` (`styles-facebook.css`/`styles-amazon.css`, ~line 2084)
+and `@media (max-width: 700px)` (`styles-instagram.css`, Instagram's own real feed-card breakpoint)
+each contain a "strip all card chrome, go edge-to-edge" block that **predates dark mode entirely**
+— `html`/`body`/`#root`, `.page`, `.container.feed`, `.card`/`.post-card`, `.react-flyout`, and
+`.top-rail-placeholder` (FB/Amazon) or `.insta-card`/`.ig-stories-bar.noscroll`/`.survey-page`
+(Instagram) all hardcode `background: #fff` (several with `!important`) inside these blocks, with
+zero `.dark-mode` awareness — confirmed via direct `getComputedStyle` on the live-mounted preview:
+`.post-card`'s `--card` custom property correctly resolved to the dark value (`#242526`) on the
+element, but its actual `background-color` still computed to white, meaning some *other*, more
+specific/important rule was winning outright — traced to exactly this media query block, not a
+custom-property cascade bug like the ones earlier rounds fixed.
+
+**Fix**: added `.dark-mode` counterparts for every hardcoded rule in all three blocks, matching
+`!important` weight where the base rule uses it (a lower-specificity non-important override can't
+beat a higher-specificity `!important` one, but `.dark-mode .card` *is* already more specific than
+bare `.card`, so matching weight is what actually matters here) — `var(--bg)`/`var(--card)` for
+Facebook/Amazon (shared generic tokens), `var(--ig-bg)`/`var(--ig-card)` for Instagram (its own
+prefixed tokens, matching "pure black" per its own real-Instagram-styled dark mode). Amazon has the
+byte-identical block (confirmed via diff before fixing — same footgun as always, checked both from
+the start rather than fixing Facebook and waiting for the same report on Amazon).
+
+**Verified**: at 400px (the exact width that reproduced the bug), the same live-mounted
+`FeedPreviewModal` now correctly renders `.post-card`'s background as `rgb(36, 37, 38)` — confirmed
+via `getComputedStyle` and a screenshot (author name/text now legible, previously near-invisible
+light-grey-on-white). Regression-checked light mode at the same width — still renders white,
+unaffected. Spot-checked Instagram's `.insta-card` and Amazon's `.card`/`.post-card` resolve to their
+correct dark values too, via a lighter-weight synthetic-DOM check (not a full component mount for
+those two, given the fix is CSS-only and structurally identical to the Facebook one already fully
+verified). Brace-balance checked on all three stylesheets post-edit. **Not verified**: an actual
+narrow/mobile-width click-through by a real logged-in admin — same standing no-login limitation as
+everywhere else in this file, though this is the first dark-mode round in this file's history to
+actually catch a real bug via *viewport width* rather than DOM structure/cascade order, worth
+remembering as another axis to check (alongside "is this really the element the user sees" from
+round 4) the next time a dark-mode report doesn't reproduce at normal desktop width.
+
+## Investigated, not reproduced: "bio/enable profile view" toggle becoming unreachable after toggling (2026-08-17)
+
+Direct report: "when I click the bio/enable profile view toggle, it switches but then the toggle is
+out of the window, not reachable anymore to deactivate again." Strong textual match to the Facebook
+post editor's `EditorSection title="Facebook Profile / Bio"` → `Toggle label="Enable profile
+preview"` (`components-admin-editor-facebook.jsx`) — enabling it reveals ~5 new fields (bio text,
+URL, posts/followers/following) below the toggle, growing the section's height.
+
+**Live-reproduced the real component, not a guess**: mounted the actual `AdminPostEditor` (Facebook)
+inside the actual real `Modal` (`ui-core-facebook.jsx` — the same generic modal component, confirmed
+`.modal{max-height:90vh; display:flex; flex-direction:column}` / `.modal-body{flex:1 1 auto;
+overflow:auto}`, a completely standard scroll-internally pattern) via the dev server, at both normal
+desktop width (1280px) and the editor grid's own responsive-collapse breakpoint (900px, below the
+980px where `.editor-grid` stacks into one column per earlier CLAUDE.md notes). Clicked the real
+`[role="switch"]` toggle both times, measured `getBoundingClientRect()` before/after against the
+modal body's own bounds, and screenshotted. **In both cases the toggle stayed fully visible and
+reachable** — new fields correctly appeared below it, the modal body grew and its internal scroll
+area adjusted, but the toggle's own position relative to the modal never left the visible bounds.
+Confirmed no `autoFocus`/`scrollIntoView`/`scrollTo` calls exist anywhere in the toggle's onChange
+path or `EditorSection` that could explain a jump. Instagram's equivalent (`EditorSection title="Author
+Bio"` → `Toggle label="Show Bio"`) is structurally identical (same `Toggle`/`EditorSection`/`Field`
+components, same `.modal`/`.modal-body` CSS) — no code-level reason to expect a different outcome
+there, not independently mounted given the strong structural match already ruled out the mechanism
+this session tested.
+
+**Status: not reproduced, cause unknown.** Whatever's happening isn't explained by anything in the
+toggle/section/modal code itself as currently written, at either of the two most likely widths.
+Genuinely need more from the user to make progress here — which app (FB/IG — Amazon has no bio/avatar
+concept at all, confirmed via grep), roughly what window size or device, and ideally a screenshot of
+the toggle's out-of-reach position — rather than continuing to guess at viewport widths blindly.

@@ -2017,6 +2017,38 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .submit-wrap {
     margin-top: 0 !important;
   }
+
+  /* Dark-mode counterparts for the hardcoded #fff backgrounds above — this
+     whole mobile "edge to edge" layout predates dark mode and was missed by
+     every earlier dark-mode pass (all tested at desktop width; this block
+     only applies ≤768px). Matching !important where the base rule uses it,
+     since a higher-specificity non-important rule can't beat a
+     lower-specificity !important one. */
+  body.dark-mode,
+  .dark-mode #root {
+    background: var(--bg) !important;
+  }
+
+  .dark-mode .page {
+    background: var(--bg) !important;
+  }
+
+  .dark-mode .container.feed,
+  .dark-mode .page .container.feed,
+  .dark-mode .page .feed,
+  .dark-mode main.container.feed {
+    background: var(--bg) !important;
+  }
+
+  .dark-mode .card,
+  .dark-mode .post-card,
+  .dark-mode .card.post-card {
+    background: var(--card) !important;
+  }
+
+  .dark-mode .react-flyout {
+    background: var(--card);
+  }
 }
 
 @media (max-width: 768px) {
@@ -2027,6 +2059,10 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     z-index: 100;
     background: #fff;
     border-bottom: 1px solid var(--line);
+  }
+
+  .dark-mode .top-rail-placeholder {
+    background: var(--card);
   }
 
   .top-rail-placeholder .trp-inner {
