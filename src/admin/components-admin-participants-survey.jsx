@@ -1832,10 +1832,10 @@ export function SurveyParticipantsPage({
               variant="secondary"
               onClick={downloadFeedSurveyCsv}
               busy={downloadingFeedCsv}
-              disabled={!surveyId || usingSimulated}
+              disabled={!surveyId}
               title={
                 usingSimulated
-                  ? "Not available for simulated data — simulated responses have no real feed engagement to merge with."
+                  ? "Includes each simulated participant's fabricated engagement with their assigned feed's posts, alongside their simulated survey responses."
                   : "Includes this survey's linked feed(s) participant/engagement data alongside the survey responses."
               }
             >
