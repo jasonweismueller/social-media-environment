@@ -6853,3 +6853,137 @@ overlay ternary's priority order and each state flag's exact set/reset timing, n
 visually. **Not verified**: an actual click-through by a real logged-in admin/participant on staging
 or production, or a real multi-feed study with slower/real-world network latency where the dead gap
 would have been more visible in the first place.
+
+## Real bug found and fixed: submission rate limiter (10/10min) too tight for real multi-feed testing (2026-08-17)
+
+Direct follow-up to the multi-feed smoothing fix above: the user reported "after the last feed, it's
+not transitioning to the survey anymore," then — after more back-and-forth — "it doesn't let me
+submit at all anymore," then a real symptom: intermittent HTTP 400s, working for a while and then
+failing again. This pointed straight at the submission rate limiter added in "Submission abuse
+guards" (2026-08-06 above) — 10 inserts / 10 minutes per IP, platform-wide, across both
+`participants` and `survey_responses` — a Postgres `RAISE EXCEPTION` that PostgREST surfaces as an
+HTTP 400, matching the reported error exactly.
+
+**Confirmed against real data before changing anything**: queried `submission_events` (the
+rate-limiter's own tracking table) for the last 30 minutes — one IP had accumulated **18 events in a
+17-minute span**, comfortably enough to trip and re-trip the old 10-per-10-minutes cap repeatedly,
+matching "worked for a while and then got 400 error again" precisely.
+
+**Root cause of why this only bit now**: the limiter's original design comment assumed "a real
+participant's browser only ever produces 1-2 inserts for an entire session" — true for a
+single-feed `feed_then_survey` study, but not for `multi_feed_then_survey`: one real participant's
+single run through "Study 3 - Main" (5 feeds, the largest live today) already produces 5
+`participants` inserts + 1 `survey_responses` insert = 6. Two ordinary QA run-throughs of that same
+study from one tester's IP — completely normal manual testing, not abuse — already exceeds 10. This
+was a real, pre-existing gap in the rate limiter's own calibration, not something introduced by the
+smoothing fix directly above — the smoothing fix likely just made repeated testing faster and easier
+to do in quick succession, surfacing a cap that was already too tight for this delivery mode.
+
+**Fix**: new migration `20260801000023_raise_submission_rate_limit.sql`, `CREATE OR REPLACE
+FUNCTION public.enforce_submission_rate_limit()` (same function as the original migration, just the
+one constant changed) — `rate_limit_max` raised **10 → 40**. Window (10 minutes) and IP-resolution
+logic (`cf-connecting-ip`/`sb-forwarded-for`) unchanged. 40 still meaningfully blocks a scripted
+flood (a bot hammering the endpoint trips this within seconds regardless) while giving real headroom
+for several full run-throughs of even a much larger multi-feed study than anything live today.
+Applied directly via `supabase db query --linked` to **both** Supabase projects — production
+(`yrzqnlhbawzuzlrrocfd`) first, since that's where the user was actively blocked, then staging
+(`hgctbgunlsesygzglbdv`, relinked back to production afterward, this repo's standard default) — no
+Edge Function involved, so this took effect immediately on each project once applied, no redeploy
+step needed.
+
+**Verified**: confirmed via `pg_proc.prosrc` on both projects that the live function body now reads
+`rate_limit_max constant int := 40` post-migration. **Not independently re-verified against a live
+submission** (would need to either wait out the existing 10-minute window on the same test IP, which
+already had 18 events logged, or use a different IP/network — neither attempted, given the fix is a
+single-constant, low-risk change to an already-reasoned-through function, and the user's own
+continued testing is the natural next confirmation).
+
+**Worth flagging for the future**: if a real multi-feed study ever grows meaningfully past 5 feeds
+per sequence, or if concurrent recruitment (e.g., "participants arrive concurrently — often ~10 at
+once," per the dropout-aware-assignment entry above) ever routes many real participants through a
+shared network/NAT (same IP), this same class of false-positive could recur — worth checking
+`submission_events` the same way this session did before assuming a future 400 report is a code bug
+rather than the rate limiter again.
+
+**Update, same day, per direct user instruction**: the 40-per-10-minutes raise above was reverted —
+new migration `20260801000024_revert_submission_rate_limit_to_10.sql`, same
+`CREATE OR REPLACE FUNCTION`, `rate_limit_max` back to `10`. Kept as its own migration rather than
+deleting/rewriting `20260801000023` so the history stays honest about what was actually tried.
+User's stated reasoning: keep production's abuse-prevention threshold as originally calibrated, and
+do multi-feed testing on **staging** instead going forward, where there's no real-participant-data
+stake either way. Applied to both Supabase projects (production `yrzqnlhbawzuzlrrocfd` first, then
+staging `hgctbgunlsesygzglbdv`, relinked back to production after) — confirmed via `pg_proc.prosrc`
+on both.
+
+**Worth flagging, not yet acted on**: the user's own testing that triggered the original 400s
+happened against **production** (confirmed — the 18-events-in-17-minutes `submission_events` row
+checked above was queried while linked to `yrzqnlhbawzuzlrrocfd`), meaning some number of real
+`participants`/`survey_responses` rows from that testing are now sitting in production mixed in with
+real study data, on whichever real feed(s)/survey they used. Not identified or removed — no
+`session_id`/timestamp was captured to isolate them from genuine participants, and deleting live
+production rows without explicit confirmation of exactly which ones isn't a call to make
+unprompted. Worth cleaning up if the user wants to identify the specific rows (e.g., by an unusual
+`session_id` pattern or the exact timestamp window `18:07`–`18:24 UTC` on 2026-08-16).
+
+## Staging content re-synced from production (participant data untouched) (2026-08-17)
+
+Direct follow-up to the rate-limit revert above — the user asked to "bring staging database up to
+speed, mirroring the production database (apart from participants)" now that they plan to do
+ongoing multi-feed testing there. This is the same operation as "Staging fully wired up: ... content
+copy" (2026-08-05, above), re-run to catch up on ~12 days of production content changes — with one
+real methodological upgrade this time: the original 2026-08-05 copy was effectively insert-only
+(fresh, empty staging tables); this time staging already had a full (if 12-days-stale) copy of the
+same rows, so a plain insert would have done nothing for any row whose *content* had changed since
+then without also changing its id — e.g., "Study 1 - Main"'s "Recall and Intervention" block, added
+directly to the live `definition` jsonb on 2026-08-07 (see that section above), would have been
+silently missed by an insert-only copy despite the survey row itself already existing on both sides.
+
+**Interpretation of "apart from participants," stated explicitly since the phrase is shorthand**:
+excluded the same three tables the 2026-08-05 precedent excluded and reasoned through —
+`participants`, `survey_responses`, `experiment_assignments` — not just the literal `participants`
+table. Same rationale as before: real, potentially-IRB-scoped human-subjects data shouldn't
+proliferate into a second environment just because its parent study's *content* is being refreshed
+there. `custom_measure_groups` was checked and confirmed still genuinely empty on production (0
+rows, this feature has never been used) — nothing to sync. `project_access`/`profiles`/Auth were
+correctly left alone — those are per-Supabase-project identity/access tables, not study content, and
+blindly copying them would reference user ids that don't (and shouldn't) exist in the other project.
+
+**Mechanism — upsert, not insert-then-nothing or delete-then-reinsert**: for each of `projects`,
+`feeds`, `surveys`, `posts`, `feed_surveys`, `experiment_groups` (in that FK-safe order), dumped the
+full row set from production (`select jsonb_agg(t) from public.<table> t`), then on staging ran
+`insert into <table> select * from jsonb_populate_recordset(null::public.<table>, $sync$...$sync$)
+on conflict (<pk>) do update set <every non-pk column> = excluded.<column>` — refreshes existing
+rows' content in place *and* inserts genuinely new ones, in a single pass, without ever deleting
+anything. Deliberately **not** a delete-then-reinsert or `TRUNCATE`-based mirror, even though that
+would be a more literal reading of "mirroring" — `feed_id`/`survey_id` values are shared identifiers
+between `feeds`/`surveys` and the untouched `participants`/`survey_responses`/`experiment_assignments`
+tables, and this session had no time to fully audit every FK's `ON DELETE` behavior across all of
+them; upsert-only sidesteps that whole risk category by construction, since nothing referencing those
+ids is ever invalidated. One real, minor wrinkle hit and fixed mid-run: `feed_surveys` also has an
+independent `unique(feed_id, survey_id)` constraint (its `id` is just a synthetic PK, not the natural
+key) — the first attempt's `on conflict (id)` correctly inserted rows with new ids but then hit that
+second constraint on a genuine duplicate; fixed by targeting the *actual* natural key
+(`on conflict (feed_id, survey_id) do nothing`) for that one table specifically, nothing else needed
+adjusting. Whole operation wrapped in one transaction (all six tables, ~1.3MB of JSON payload) so a
+failure partway (as the `feed_surveys` constraint hit initially was) rolled back cleanly with zero
+partial state — confirmed via row counts before and after the failed attempt matching exactly.
+
+**Deliberately not a literal "mirror"**: any row that exists on staging but no longer exists on
+production (none found this run, but the mechanism doesn't check) would be left alone, not deleted —
+matches the same "don't silently destroy something on staging that might be there on purpose"
+posture as every other "known gap" already flagged in the 2026-08-05 entry's own build-out. Flagging
+this explicitly rather than letting "mirror" imply something more destructive than what was actually
+built.
+
+**Verified**: staging row counts before/after — `projects` 7→7, `feeds` 51→51, `posts` 391→391 (no
+new rows, but content refreshed for any that changed), `surveys` 13→14 (picked up "Study 3 - Main",
+created in production after the 2026-08-05 snapshot), `feed_surveys` 28→33, `experiment_groups`
+21→27 (both grew consistent with Study 3's own 5 newly-synced feed links and groups) —
+**`participants` 6→6 and `survey_responses` 5→5, byte-for-byte unchanged**, confirming the exclusion
+held. Content-level spot check, not just row-count: queried staging's copy of "Study 1 - Main"
+(`survey_t9919ylm52omnt277u3`) post-sync and confirmed `definition->'page_blocks'` now contains
+`block_recall_intervention` — the block added directly to production's live `definition` on
+2026-08-07, well after the original 2026-08-05 staging snapshot — proving this was a genuine content
+refresh, not just a row-existence check. Scratch JSON/SQL files deleted from the sandbox afterward,
+same discipline as the 2026-08-05 entry. CLI relinked back to production
+(`yrzqnlhbawzuzlrrocfd`) at the end, confirmed via a real-data sanity query (`project` count = 7).
