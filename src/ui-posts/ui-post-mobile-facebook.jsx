@@ -1,5 +1,10 @@
 import React from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
+// Shared with the desktop comment modal (and Instagram's own comment
+// rendering, ui-posts-instagram.jsx) — same seeded avatar-color/line-width
+// variety for ghost/placeholder comment rows, so none of them drift into
+// independent copies (see CLAUDE.md's near-duplicate-file footgun).
+import { ghostCommentVariant, MAX_GHOST_COMMENTS } from "../utils";
 
 /* -------------------------------------------------------------------------- */
 /* Swipe to close hook                                                        */
@@ -184,11 +189,14 @@ export function FacebookCommentSheetMobile({
   shouldShowGhosts,
   baseCommentCount,
   participantId,
+  postId,
 }) {
   if (!open) return null;
 
+  // The exact displayed count, not a fixed cap — see the matching comment in
+  // ui-post-desktop-facebook.jsx.
   const totalVisibleComments =
-    (shouldShowGhosts ? Math.min(5, baseCommentCount) : 0) +
+    (shouldShowGhosts ? Math.min(MAX_GHOST_COMMENTS, baseCommentCount) : 0) +
     (mySubmittedComment ? 1 : 0);
 
   const hasAnyComments = totalVisibleComments > 0;
@@ -244,54 +252,52 @@ export function FacebookCommentSheetMobile({
           ) : (
             <>
               {shouldShowGhosts &&
-                Array.from({ length: Math.min(5, baseCommentCount) }).map((_, i) => (
-                  <div
-                    key={`ghost-${i}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <img
-                      src={neutralAvatarDataUrl(32)}
-                      alt=""
-                      width={32}
-                      height={32}
-                      style={{ borderRadius: "50%", flexShrink: 0 }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 14,
-                          marginBottom: 5,
-                          color: "var(--text)",
-                        }}
-                      >
-                        User {i + 1}
+                Array.from({ length: Math.min(MAX_GHOST_COMMENTS, baseCommentCount) }).map((_, i) => {
+                  const variant = ghostCommentVariant(`${postId || ""}::${i}`, 32);
+                  return (
+                    <div
+                      key={`ghost-${i}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        marginBottom: 16,
+                      }}
+                    >
+                      <img
+                        src={variant.avatarUrl}
+                        alt=""
+                        width={32}
+                        height={32}
+                        style={{ borderRadius: "50%", flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 14,
+                            marginBottom: 5,
+                            color: "var(--text)",
+                          }}
+                        >
+                          User {i + 1}
+                        </div>
+                        {variant.lineWidths.map((w, li) => (
+                          <div
+                            key={li}
+                            style={{
+                              height: 10,
+                              background: "var(--line)",
+                              width: w,
+                              marginBottom: li < variant.lineWidths.length - 1 ? 6 : 0,
+                              borderRadius: 999,
+                            }}
+                          />
+                        ))}
                       </div>
-                      <div
-                        style={{
-                          height: 10,
-                          background: "var(--line)",
-                          width: "78%",
-                          marginBottom: 6,
-                          borderRadius: 999,
-                        }}
-                      />
-                      <div
-                        style={{
-                          height: 10,
-                          background: "var(--line)",
-                          width: "48%",
-                          borderRadius: 999,
-                        }}
-                      />
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
               {!!mySubmittedComment && (
                 <div

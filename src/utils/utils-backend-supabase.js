@@ -704,6 +704,7 @@ const FLAG_PAIRS = [
   // separately per feed, nothing should become standard/always-on.
   ["realistic_engagement", "realistic_engagement"],
   ["realistic_engagement_randomize", "realistic_engagement_randomize"],
+  ["realistic_engagement_comments", "realistic_engagement_comments"],
   ["realistic_pacing", "realistic_pacing"],
   ["realistic_surroundings", "realistic_surroundings"],
   ["realistic_surroundings_avatars", "realistic_surroundings_avatars"],

@@ -166,6 +166,7 @@ function normalizeFlags(raw) {
     // near-duplicate drift.)
     realistic_engagement: truthy(f.realistic_engagement ?? false),
     realistic_engagement_randomize: truthy(f.realistic_engagement_randomize ?? false),
+    realistic_engagement_comments: truthy(f.realistic_engagement_comments ?? false),
     realistic_pacing: truthy(f.realistic_pacing ?? false),
     realistic_surroundings: truthy(f.realistic_surroundings ?? false),
     realistic_surroundings_avatars: truthy(f.realistic_surroundings_avatars ?? false),

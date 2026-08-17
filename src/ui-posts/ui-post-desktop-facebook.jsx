@@ -1,5 +1,10 @@
 import React, { useEffect, useRef } from "react";
 import { neutralAvatarDataUrl } from "../ui-core";
+// ghostCommentVariant/MAX_GHOST_COMMENTS live in utils-core.js (not this
+// file) so Instagram's own ghost-comment rendering (ui-posts-instagram.jsx)
+// can share the exact same implementation instead of drifting into its own
+// copy — a cross-app, not Facebook-only, concern.
+import { ghostCommentVariant, MAX_GHOST_COMMENTS } from "../utils";
 
 /* -------------------------------------------------------------------------- */
 /* Desktop Overlay Wrapper                                                    */
@@ -57,6 +62,7 @@ export function FacebookCommentModalDesktop({
   shouldShowGhosts,
   baseCommentCount,
   participantId,
+  postId,
   focusTick,
 }) {
   const inputRef = useRef(null);
@@ -71,7 +77,12 @@ export function FacebookCommentModalDesktop({
 
   if (!open) return null;
 
-  const ghostCount = shouldShowGhosts ? Math.min(5, baseCommentCount || 0) : 0;
+  // The exact displayed count, not a fixed cap — a badge that says "32
+  // comments" should open to 32 rows, not 5. MAX_GHOST_COMMENTS only guards
+  // against a pathological admin-typed explicit count; the realistic
+  // fallback itself never generates anywhere near that many (see its own
+  // comment in utils-core.js).
+  const ghostCount = shouldShowGhosts ? Math.min(MAX_GHOST_COMMENTS, baseCommentCount || 0) : 0;
   const hasParticipantComment = !!String(mySubmittedComment || "").trim();
 
   return (
@@ -138,54 +149,52 @@ export function FacebookCommentModalDesktop({
                 </div>
               ) : (
                 <>
-                  {Array.from({ length: ghostCount }).map((_, i) => (
-                    <div
-                      key={`ghost-${i}`}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 10,
-                        marginBottom: 16,
-                      }}
-                    >
-                      <img
-                        src={neutralAvatarDataUrl(34)}
-                        alt=""
-                        width={34}
-                        height={34}
-                        style={{ borderRadius: "50%", flexShrink: 0 }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 14,
-                            marginBottom: 5,
-                            color: "var(--text)",
-                          }}
-                        >
-                          User {i + 1}
+                  {Array.from({ length: ghostCount }).map((_, i) => {
+                    const variant = ghostCommentVariant(`${postId || ""}::${i}`, 34);
+                    return (
+                      <div
+                        key={`ghost-${i}`}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 10,
+                          marginBottom: 16,
+                        }}
+                      >
+                        <img
+                          src={variant.avatarUrl}
+                          alt=""
+                          width={34}
+                          height={34}
+                          style={{ borderRadius: "50%", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 14,
+                              marginBottom: 5,
+                              color: "var(--text)",
+                            }}
+                          >
+                            User {i + 1}
+                          </div>
+                          {variant.lineWidths.map((w, li) => (
+                            <div
+                              key={li}
+                              style={{
+                                height: 10,
+                                width: w,
+                                background: "var(--line)",
+                                borderRadius: 999,
+                                marginBottom: li < variant.lineWidths.length - 1 ? 6 : 0,
+                              }}
+                            />
+                          ))}
                         </div>
-                        <div
-                          style={{
-                            height: 10,
-                            width: "78%",
-                            background: "var(--line)",
-                            borderRadius: 999,
-                            marginBottom: 6,
-                          }}
-                        />
-                        <div
-                          style={{
-                            height: 10,
-                            width: "48%",
-                            background: "var(--line)",
-                            borderRadius: 999,
-                          }}
-                        />
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {hasParticipantComment && (
                     <div className="fb-comment-item">

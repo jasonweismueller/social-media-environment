@@ -2025,6 +2025,15 @@ export function normalizeFlagsForStore(flags) {
   if (typeof flags.realistic_engagement_randomize !== "undefined") {
     out.realistic_engagement_randomize = !!flags.realistic_engagement_randomize;
   }
+  // A fully independent sibling of "realistic_engagement" (not a sub-toggle
+  // of it, unlike realistic_engagement_randomize above) — per direct
+  // feedback, fabricating a plausible comment count (and the matching ghost
+  // rows shown when the comment thread is opened) is a different enough
+  // claim from fabricating reaction/share counts that it deserves its own
+  // on/off switch, not a bundled side effect of turning reactions/shares on.
+  if (typeof flags.realistic_engagement_comments !== "undefined") {
+    out.realistic_engagement_comments = !!flags.realistic_engagement_comments;
+  }
   if (typeof flags.realistic_pacing !== "undefined") {
     out.realistic_pacing = !!flags.realistic_pacing;
   }
@@ -2065,6 +2074,7 @@ export function normalizeFlagsForRead(flags) {
   out.randomize_bios = !!(out.randomize_bios ?? out.random_bio);
   out.realistic_engagement = !!out.realistic_engagement;
   out.realistic_engagement_randomize = !!out.realistic_engagement_randomize;
+  out.realistic_engagement_comments = !!out.realistic_engagement_comments;
   out.realistic_pacing = !!out.realistic_pacing;
   out.realistic_surroundings = !!out.realistic_surroundings;
   out.realistic_surroundings_avatars = !!out.realistic_surroundings_avatars;

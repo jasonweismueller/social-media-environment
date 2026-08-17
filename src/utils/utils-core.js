@@ -452,7 +452,14 @@ export function fallbackEngagementStats(postId, variantSeed = "") {
   // heavily toward the low end before the +3..+18 floor keeps every post
   // above a bare, suspicious-looking single digit.
   const reactionsTotal = Math.round(Math.pow(rnd(), 2.2) * 380) + 3 + Math.round(rnd() * 15);
-  const commentsTotal = Math.round(reactionsTotal * (0.04 + rnd() * 0.12));
+  // Comments deliberately land lower than shares (which are themselves
+  // already a small fraction of reactions) — real threads usually have far
+  // fewer comments than reactions, and per direct feedback this fallback was
+  // reading as comment-heavy relative to reactions/shares. Also keeps the
+  // ghost-comment UI (which renders one row per comment, not capped — see
+  // ui-post-desktop-facebook.jsx/ui-post-mobile-facebook.jsx) from ever
+  // needing to render more than a handful of rows for a fallback-driven post.
+  const commentsTotal = Math.round(reactionsTotal * (0.008 + rnd() * 0.025));
   const sharesTotal = Math.round(reactionsTotal * (0.01 + rnd() * 0.05));
 
   // Reaction mix: "like" and "love" dominate, the rest are a light garnish
@@ -483,6 +490,73 @@ export function fallbackEngagementStats(postId, variantSeed = "") {
 
   return { reactions, comments: commentsTotal, shares: sharesTotal, likes: reactionsTotal };
 }
+
+/* ------------------------- ghost (placeholder) comments -------------------- */
+// Deterministic per-row visual variety for the ghost/placeholder comment rows
+// shown in the Facebook/Instagram comment thread when a post's comment count
+// comes from the "Realistic comment counts" fallback (or an admin-authored
+// count with no real comments behind it) — never real fabricated names,
+// avatars, or comment text (that would both need per-post-relevant content
+// to look right AND risk biasing a participant toward a particular reading
+// of the post — see the "realistic comments" discussion this was built
+// from). Just enough visual variation, seeded so it's stable across
+// re-renders, that a row of identical grey bars doesn't read as an obvious
+// repeating skeleton. Lives here (not in a per-app ui-posts-*.jsx file) so
+// Facebook's (ui-post-desktop-facebook.jsx/ui-post-mobile-facebook.jsx) and
+// Instagram's (ui-posts-instagram.jsx) comment UIs can share one
+// implementation instead of drifting into independent copies.
+const GHOST_AVATAR_PALETTE_LIGHT = ["#0ea5e9", "#22c55e", "#a855f7", "#f59e0b", "#ef4444", "#06b6d4", "#84cc16", "#6366f1"];
+const GHOST_AVATAR_PALETTE_DARK = ["#38bdf8", "#4ade80", "#c084fc", "#fbbf24", "#f87171", "#22d3ee", "#a3e635", "#818cf8"];
+// A handful of plausible one-/two-line placeholder-width pairs — real
+// comments vary in length; a single fixed pair for every row (the original
+// design) reads as an obvious skeleton rather than a real comment thread.
+const GHOST_LINE_WIDTH_PATTERNS = [
+  ["44%"],
+  ["61%"],
+  ["83%", "39%"],
+  ["70%", "52%"],
+  ["91%", "58%"],
+  ["55%"],
+  ["77%", "33%"],
+];
+
+function hashGhostSeed_(str) {
+  let h = 0;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+export function ghostCommentVariant(seed, size = 34) {
+  const h = hashGhostSeed_(seed);
+  const isDark =
+    typeof document !== "undefined" && document.body?.classList.contains("dark-mode");
+  const palette = isDark ? GHOST_AVATAR_PALETTE_DARK : GHOST_AVATAR_PALETTE_LIGHT;
+  const bg = palette[h % palette.length];
+  const lineWidths = GHOST_LINE_WIDTH_PATTERNS[Math.floor(h / palette.length) % GHOST_LINE_WIDTH_PATTERNS.length];
+
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32">
+  <defs><clipPath id="r"><rect x="0" y="0" width="32" height="32" rx="16" ry="16"/></clipPath></defs>
+  <g clip-path="url(#r)">
+    <rect width="32" height="32" fill="${bg}"/>
+    <circle cx="16" cy="12.5" r="6" fill="#ffffff" fill-opacity=".85"/>
+    <rect x="5" y="20" width="22" height="10" rx="5" fill="#ffffff" fill-opacity=".85"/>
+  </g>
+</svg>`;
+
+  return {
+    avatarUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+    lineWidths,
+  };
+}
+
+// Safety ceiling on how many ghost rows ever render — the "Realistic comment
+// counts" fallback itself never generates more than a handful (see
+// fallbackEngagementStats above), so this only bounds a pathological
+// admin-typed explicit comment count, not the normal realistic case (which
+// now shows the exact count, not a fixed cap).
+export const MAX_GHOST_COMMENTS = 50;
 
 export function neutralAvatarDataUrl(seed = "") {
   const s = String(seed || "");

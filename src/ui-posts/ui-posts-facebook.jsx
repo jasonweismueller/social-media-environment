@@ -1053,12 +1053,20 @@ export function PostCard({
   // randomization) instead of once, fixed forever, per post. See
   // fallbackEngagementStats for why that avoids a fixed-per-item confound.
   const engagementRandomizeOn = !!flags?.realistic_engagement_randomize;
+  // A fully independent sibling of realisticEngagementOn (not a sub-toggle —
+  // can be on while realisticEngagementOn is off, or vice versa) — per
+  // direct feedback, a fabricated comment count is a different enough claim
+  // from reaction/share counts to deserve its own switch, especially once
+  // opening the thread also has to show plausible-looking ghost comments to
+  // match. See `shouldShowGhosts`/ghost-row rendering below and in
+  // ui-post-desktop-facebook.jsx/ui-post-mobile-facebook.jsx.
+  const realisticEngagementCommentsOn = !!flags?.realistic_engagement_comments;
   const engagementFallback = useMemo(
     () =>
-      realisticEngagementOn
+      realisticEngagementOn || realisticEngagementCommentsOn
         ? fallbackEngagementStats(post.id, engagementRandomizeOn ? runSeed || "run" : "")
         : null,
-    [realisticEngagementOn, engagementRandomizeOn, post.id, runSeed]
+    [realisticEngagementOn, realisticEngagementCommentsOn, engagementRandomizeOn, post.id, runSeed]
   );
 
   const baseReactions = useMemo(() => {
@@ -1076,7 +1084,7 @@ export function PostCard({
     // shares already apply their own fallback unconditionally (no dedicated
     // show/hide toggle of their own); reactions now match that.
     const source =
-      !hasExplicit && engagementFallback
+      !hasExplicit && realisticEngagementOn && engagementFallback
         ? engagementFallback.reactions
         : explicit;
     return {
@@ -1089,7 +1097,7 @@ export function PostCard({
       angry: 0,
       ...source,
     };
-  }, [post.reactions, showReactions, engagementFallback]);
+  }, [post.reactions, showReactions, realisticEngagementOn, engagementFallback]);
 
   const liveReactions = useMemo(() => {
     const obj = { ...baseReactions };
@@ -1098,13 +1106,15 @@ export function PostCard({
   }, [baseReactions, myReaction]);
 
   const explicitCommentCount = Number(post.metrics?.comments) || 0;
-  // Comments/shares have no dedicated show/hide toggle of their own — they
-  // already display whenever nonzero regardless of `showReactions` — so the
-  // fallback applies independently of it too, matching that existing rule.
+  // Comments have no dedicated show/hide toggle of their own — they already
+  // display whenever nonzero regardless of `showReactions` — so this fallback
+  // applies independently of it too, matching that existing rule. Gated on
+  // realisticEngagementCommentsOn specifically (not realisticEngagementOn),
+  // now that comments are their own independent toggle.
   const baseCommentCount =
     explicitCommentCount > 0
       ? explicitCommentCount
-      : engagementFallback
+      : realisticEngagementCommentsOn && engagementFallback
         ? engagementFallback.comments
         : 0;
   const displayedCommentCount = baseCommentCount + participantComments;
@@ -1113,7 +1123,7 @@ export function PostCard({
   const baseShareCount =
     explicitShareCount > 0
       ? explicitShareCount
-      : engagementFallback
+      : realisticEngagementOn && engagementFallback
         ? engagementFallback.shares
         : 0;
   const [shareCountLocal, setShareCountLocal] = useState(0);
@@ -2577,6 +2587,7 @@ export function PostCard({
               shouldShowGhosts={shouldShowGhosts}
               baseCommentCount={baseCommentCount}
               participantId={String(myParticipantId)}
+              postId={post.id}
             />,
             document.body
           )
@@ -2594,6 +2605,7 @@ export function PostCard({
             shouldShowGhosts={shouldShowGhosts}
             baseCommentCount={baseCommentCount}
             participantId={String(myParticipantId)}
+            postId={post.id}
             postContent={
               <div className="fb-modal-post-shell">
                 {postContent}

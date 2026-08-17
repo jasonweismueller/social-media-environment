@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -516,22 +516,31 @@ const timeLabel = useMemo(() => {
   // participant instead of once, fixed forever, per post — see the matching
   // comment in ui-posts-facebook.jsx / fallbackEngagementStats (utils-core.js).
   const engagementRandomizeOn = !!effectiveFlags?.realistic_engagement_randomize;
+  // A fully independent sibling of realisticEngagementOn, not a sub-toggle of
+  // it — see the matching comment in ui-posts-facebook.jsx for why comments
+  // deserve their own on/off switch, separate from likes/shares.
+  const realisticEngagementCommentsOn = !!effectiveFlags?.realistic_engagement_comments;
   const engagementFallback = useMemo(
     () =>
-      realisticEngagementOn
+      realisticEngagementOn || realisticEngagementCommentsOn
         ? fallbackEngagementStats(id, engagementRandomizeOn ? runSeed || "run" : "")
         : null,
-    [realisticEngagementOn, engagementRandomizeOn, id, runSeed]
+    [realisticEngagementOn, realisticEngagementCommentsOn, engagementRandomizeOn, id, runSeed]
   );
   const explicitLikes = sumReactions(reactions);
   const baseLikes = useMemo(
-    () => (explicitLikes > 0 ? explicitLikes : engagementFallback ? engagementFallback.likes : 0),
-    [explicitLikes, engagementFallback]
+    () => (explicitLikes > 0 ? explicitLikes : realisticEngagementOn && engagementFallback ? engagementFallback.likes : 0),
+    [explicitLikes, realisticEngagementOn, engagementFallback]
   );
   const explicitComments = Number(metrics?.comments || 0);
-  const baseComments = explicitComments > 0 ? explicitComments : engagementFallback ? engagementFallback.comments : 0;
+  const baseComments =
+    explicitComments > 0
+      ? explicitComments
+      : realisticEngagementCommentsOn && engagementFallback
+        ? engagementFallback.comments
+        : 0;
   const explicitShares = Number(metrics?.shares || 0);
-  const baseShares = explicitShares > 0 ? explicitShares : engagementFallback ? engagementFallback.shares : 0;
+  const baseShares = explicitShares > 0 ? explicitShares : realisticEngagementOn && engagementFallback ? engagementFallback.shares : 0;
   const baseReposts = Number(metrics?.reposts || 0);
   const shouldShowGhosts = baseComments > 0;
 
@@ -1313,59 +1322,67 @@ onExpand={() => {
       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>
         No comments yet
       </div>
-      <div style={{ color: "#6b7280", fontSize: 14 }}>
+      <div style={{ color: "var(--ig-muted)", fontSize: 14 }}>
         Start the conversation.
       </div>
     </>
   ) : (
     <>
-      {/* Show up to 5 neutral users */}
-      {Array.from({ length: Math.min(5, baseComments) }).map((_, i) => (
-        <div
-          key={`ghost-${i}`}
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: ".6rem",
-            marginBottom: 14,
-            textAlign: "left",
-          }}
-        >
-          {/* Neutral avatar */}
-          <img
-            src={neutralAvatarDataUrl(32)}
-            alt=""
-            width={32}
-            height={32}
+      {/* The exact displayed count, not a fixed cap — a badge that says
+          "N comments" should open to N rows. MAX_GHOST_COMMENTS only guards
+          a pathological admin-typed explicit count. */}
+      {Array.from({ length: Math.min(MAX_GHOST_COMMENTS, baseComments) }).map((_, i) => {
+        const variant = ghostCommentVariant(`${id || ""}::${i}`, 32);
+        return (
+          <div
+            key={`ghost-${i}`}
             style={{
-              borderRadius: "999px",
-              background: "#e5e7eb",
-              flexShrink: 0,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: ".6rem",
+              marginBottom: 14,
+              textAlign: "left",
             }}
-          />
-
-          {/* Comment text placeholder */}
-          <div style={{ flex: 1 }}>
-            <div
+          >
+            {/* Neutral, seeded-color avatar — never a real photo/identity */}
+            <img
+              src={variant.avatarUrl}
+              alt=""
+              width={32}
+              height={32}
               style={{
-                fontWeight: 600,
-                fontSize: 14,
-                marginBottom: 4,
-              }}
-            >
-              User {i + 1}
-            </div>
-            <div
-              style={{
-                background: "#e5e7eb",
-                borderRadius: 6,
-                height: 12,
-                width: "80%",
+                borderRadius: "999px",
+                flexShrink: 0,
               }}
             />
+
+            {/* Comment text placeholder */}
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 14,
+                  marginBottom: 4,
+                }}
+              >
+                User {i + 1}
+              </div>
+              {variant.lineWidths.map((w, li) => (
+                <div
+                  key={li}
+                  style={{
+                    background: "var(--ig-line)",
+                    borderRadius: 6,
+                    height: 12,
+                    width: w,
+                    marginBottom: li < variant.lineWidths.length - 1 ? 6 : 0,
+                  }}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {!!mySubmittedComment && (
         <div
@@ -1667,7 +1684,7 @@ marginTop: "auto",
                   style={{
                     textAlign: "center",
                     marginTop: "40%",
-                    color: "#6b7280",
+                    color: "var(--ig-muted)",
                     fontSize: 14,
                   }}
                 >
@@ -1675,45 +1692,54 @@ marginTop: "auto",
                 </div>
               ) : (
                 <>
-                  {Array.from({ length: Math.min(5, baseComments) }).map(
-                    (_, i) => (
-                      <div
-                        key={`ghost-${i}`}
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: ".6rem",
-                          marginBottom: 14,
-                        }}
-                      >
-                        <img
-                          src={neutralAvatarDataUrl(32)}
-                          alt=""
-                          width={32}
-                          height={32}
-                          style={{ borderRadius: "999px", flexShrink: 0 }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div
-                            style={{
-                              fontWeight: 600,
-                              fontSize: 14,
-                              marginBottom: 4,
-                            }}
-                          >
-                            User {i + 1}
-                          </div>
-                          <div
-                            style={{
-                              background: "#e5e7eb",
-                              borderRadius: 6,
-                              height: 12,
-                              width: "80%",
-                            }}
+                  {/* The exact displayed count, not a fixed cap — see the
+                      matching comment above. */}
+                  {Array.from({ length: Math.min(MAX_GHOST_COMMENTS, baseComments) }).map(
+                    (_, i) => {
+                      const variant = ghostCommentVariant(`${id || ""}::mobile::${i}`, 32);
+                      return (
+                        <div
+                          key={`ghost-${i}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: ".6rem",
+                            marginBottom: 14,
+                          }}
+                        >
+                          <img
+                            src={variant.avatarUrl}
+                            alt=""
+                            width={32}
+                            height={32}
+                            style={{ borderRadius: "999px", flexShrink: 0 }}
                           />
+                          <div style={{ flex: 1 }}>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                fontSize: 14,
+                                marginBottom: 4,
+                              }}
+                            >
+                              User {i + 1}
+                            </div>
+                            {variant.lineWidths.map((w, li) => (
+                              <div
+                                key={li}
+                                style={{
+                                  background: "var(--ig-line)",
+                                  borderRadius: 6,
+                                  height: 12,
+                                  width: w,
+                                  marginBottom: li < variant.lineWidths.length - 1 ? 6 : 0,
+                                }}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )
+                      );
+                    }
                   )}
 
                   {!!mySubmittedComment && (

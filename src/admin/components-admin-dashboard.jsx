@@ -586,6 +586,12 @@ export function AdminDashboard({
     // see fallbackEngagementStats (utils-core.js). Has no effect without
     // `engagement` also being on.
     engagementRandomize: { backendField: "realistic_engagement_randomize", savingKey: "savingEngRand", readKeys: ["realistic_engagement_randomize"], label: "Randomize engagement counts per participant" },
+    // NOT a sub-toggle of `engagement` above — a fully independent sibling,
+    // per direct feedback that fabricating a plausible comment count (and
+    // showing matching ghost rows when the thread is opened) is a distinct
+    // enough claim from reaction/share counts to deserve its own switch. Can
+    // be on while `engagement` is off, or vice versa.
+    engagementComments: { backendField: "realistic_engagement_comments", savingKey: "savingEngComments", readKeys: ["realistic_engagement_comments"], label: "Realistic comment counts" },
     // Per direct instruction: each realism feature is its own independent
     // toggle, never bundled — nothing here should become "standard" behavior
     // a study can't opt out of. Same safe-by-default posture as `engagement`
