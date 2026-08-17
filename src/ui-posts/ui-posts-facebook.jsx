@@ -1736,7 +1736,15 @@ export function PostCard({
       null) ||
     "Participant";
 
-  const shouldShowGhosts = showReactions && baseCommentCount > 0;
+  // Comments have no dedicated show/hide toggle of their own (see the
+  // baseCommentCount comment above) — this used to also require
+  // showReactions, which is purely the reaction-row on/off switch and has
+  // nothing to do with comments. That made the comment modal's own ghost
+  // rows (the "User 1"/"User 2" skeleton, not real fabricated text — see
+  // FacebookCommentModalDesktop/FacebookCommentSheetMobile) almost never
+  // render, since showReactions defaults false for every post: the badge
+  // said "N comments" but opening the modal showed "No comments yet."
+  const shouldShowGhosts = baseCommentCount > 0;
 
   const fb = {
     wrap: { position: "relative" },
