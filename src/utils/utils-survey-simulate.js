@@ -74,6 +74,24 @@ function clampNum(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
 
+// Local, minimal stand-in for utils-backend.js's own (unexported)
+// normalizeFeedSequenceIds — just dedupe/stringify/drop-blank, no fallback
+// param needed here since every call site already picks its own fallback
+// explicitly.
+function normalizeFeedIdList(value) {
+  const arr = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const out = [];
+  arr.forEach((v) => {
+    const s = String(v ?? "").trim();
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  });
+  return out;
+}
+
 // Stable pseudo-random value in [0, 1) derived from a string id — used so
 // "this choice is popular" or "this question's group effect leans this way"
 // stays consistent across every simulated participant, not re-rolled per row.
@@ -502,15 +520,27 @@ export function simulateFeedEngagement(posts, { rng, theta = 0, groupShift = 0, 
  *   same inputs reproduces the same data (or differs deliberately if changed).
  * @param {object} postsByFeed - optional { feedId: posts[] } map (as loaded
  *   by loadPostsFromBackend, one entry per feed the survey links). When
- *   provided, each row also gets `feed_engagement` — that participant's
- *   fabricated engagement with the posts on their assigned feed (see
- *   simulateFeedEngagement above), so a feed_then_survey/
- *   multi_feed_then_survey study's simulated data can drive the merged
- *   "feed + survey" CSV, not just the survey-only one. Omitted (default `{}`)
- *   for a survey_only study, which has no feeds to engage with.
+ *   provided, each row also gets `feed_engagement_by_feed` — that
+ *   participant's fabricated engagement with the posts on *every* feed in
+ *   their own effective sequence (see simulateFeedEngagement above), so a
+ *   feed_then_survey/multi_feed_then_survey study's simulated data can drive
+ *   the merged "feed + survey" CSV, not just the survey-only one. Omitted
+ *   (default `{}`) for a survey_only study, which has no feeds to engage
+ *   with.
+ *
+ *   A participant's own effective sequence is their assigned experiment
+ *   group's `feed_sequence_ids` override when it's non-empty, otherwise the
+ *   survey's own default `feed_sequence_ids`/`linked_feed_ids` — mirroring
+ *   exactly how App-facebook.jsx/App-amazon.jsx resolve
+ *   `effectiveFeedSequenceIds` for a real participant (see CLAUDE.md,
+ *   "Experiment groups can now route feed(s) sequences"). Every simulated
+ *   participant walks their *entire* sequence, not one round-robin-picked
+ *   feed — a plain multi_feed_then_survey study with no groups previously
+ *   only ever gave each simulated participant one of the linked feeds' worth
+ *   of engagement, leaving most feedN_* CSV columns blank for most rows.
  * @param {string} app - "fb"/"ig"/"amz", forwarded to simulateFeedEngagement
  *   to pick the right platform-specific engagement shape.
- * @returns {Array<{session_id, participant_id, submitted_at_iso, experiment_group_id, responses, feed_engagement}>}
+ * @returns {Array<{session_id, participant_id, submitted_at_iso, experiment_group_id, responses, feed_id, feed_sequence_ids, feed_engagement_by_feed}>}
  */
 export function simulateSurveyResponseRows({
   survey,
@@ -525,10 +555,14 @@ export function simulateSurveyResponseRows({
   const normalized = normalizeSurvey(survey || {});
   const groups = normalizeExperimentGroups(normalized.experiment_groups);
   const hasGroups = groups.length > 0;
+  const groupById = new Map(groups.map((g) => [g.id, g]));
 
-  const feedIds = (normalized.feed_sequence_ids?.length
-    ? normalized.feed_sequence_ids
-    : normalized.linked_feed_ids) || [];
+  // The survey's own default feed sequence — used as-is for a survey with no
+  // experiment groups, and as the fallback for any group that doesn't define
+  // its own feed_sequence_ids override.
+  const defaultFeedIds = normalizeFeedIdList(
+    normalized.feed_sequence_ids?.length ? normalized.feed_sequence_ids : normalized.linked_feed_ids
+  );
 
   const seedBase = `${seed || "sim"}::${normalized.survey_id || normalized.name || "survey"}`;
 
@@ -552,7 +586,20 @@ export function simulateSurveyResponseRows({
     const rng = mulberry32(hashStr(participantSeed));
     const theta = randNormal(rng);
     const isLowEffort = !!includeLowEffort && rng() < 0.05;
-    const feedId = feedIds.length ? feedIds[i % feedIds.length] : "";
+
+    // This participant's own effective feed sequence — their assigned
+    // group's own feed_sequence_ids override when set, else the survey's
+    // default sequence. Every feed in it gets visited (see feedSequenceIds
+    // below), not just one round-robin-picked feed — a real participant in a
+    // multi_feed_then_survey study walks the whole sequence before reaching
+    // the survey.
+    const assignedGroup = p.groupId ? groupById.get(p.groupId) : null;
+    const groupFeedIds = normalizeFeedIdList(assignedGroup?.feed_sequence_ids);
+    const feedSequenceIds = groupFeedIds.length ? groupFeedIds : defaultFeedIds;
+    // The survey is rendered after the final feed in the sequence — matches
+    // isQuestionVisible's own "active feed" contract (utils-survey.js) and
+    // App-facebook.jsx's effectiveFeedSequenceIds-derived feed_id.
+    const feedId = feedSequenceIds.length ? feedSequenceIds[feedSequenceIds.length - 1] : "";
 
     const groupNorm = groups.length > 1 ? p.groupIndex / (groups.length - 1) : 0;
     const compositeThetaCache = new Map();
@@ -595,20 +642,24 @@ export function simulateSurveyResponseRows({
     // Same shape as a per-question groupShift (stable direction/magnitude,
     // scaled by group position) — a fixed pseudo-question-id so groupEffectSize
     // can also produce a plausible, condition-specific difference in overall
-    // feed engagement, not just in survey answers.
+    // feed engagement, not just in survey answers. Shared across every feed
+    // in this participant's sequence, same as a real condition effect would
+    // plausibly move engagement consistently across all of a participant's
+    // feeds, not independently per feed.
     const feedGroupShift =
       groupEffectSize * stableEffectMultiplier("feed_engagement") * (groupNorm - 0.5) * 2;
-    const feedPosts = feedId ? postsByFeed?.[feedId] : null;
-    const feedEngagement =
-      feedPosts && feedPosts.length
-        ? simulateFeedEngagement(feedPosts, {
-            rng,
-            theta,
-            groupShift: feedGroupShift,
-            isLowEffort,
-            app,
-          })
-        : {};
+    const feedEngagementByFeed = {};
+    feedSequenceIds.forEach((fid) => {
+      const feedPosts = postsByFeed?.[fid];
+      if (!feedPosts || !feedPosts.length) return;
+      feedEngagementByFeed[fid] = simulateFeedEngagement(feedPosts, {
+        rng,
+        theta,
+        groupShift: feedGroupShift,
+        isLowEffort,
+        app,
+      });
+    });
 
     rows.push({
       session_id: `sim_session_${String(i + 1).padStart(5, "0")}`,
@@ -618,10 +669,11 @@ export function simulateSurveyResponseRows({
       submitted_at_iso: new Date(enteredTs + durationMs).toISOString(),
       duration_ms: durationMs,
       feed_id: feedId || "",
+      feed_sequence_ids: feedSequenceIds,
       survey_id: normalized.survey_id || "",
       experiment_group_id: p.groupId || "",
       responses,
-      feed_engagement: feedEngagement,
+      feed_engagement_by_feed: feedEngagementByFeed,
     });
   });
 

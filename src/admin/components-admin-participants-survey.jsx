@@ -127,19 +127,25 @@ function triggerCsvDownload(filename, csv) {
 // structural + per-post engagement columns, survey_<QID> columns) but built
 // purely from already-simulated data — no backend call, matching every
 // other simulate-mode function in this file. Each simRows entry carries its
-// own feed_engagement (see simulateFeedEngagement/simulateSurveyResponseRows,
+// own feed_sequence_ids (every feed this simulated participant's assigned
+// group actually routes through, in visit order) and feed_engagement_by_feed
+// (see simulateFeedEngagement/simulateSurveyResponseRows,
 // utils-survey-simulate.js), fabricated against the same real posts this
-// merge labels columns with. realFeedIds mirrors the real function's own
+// merge labels columns with. usedFeedIds mirrors the real function's own
 // "only feeds actually used, renumbered 1..N" convention — computed from
-// which feed ids actually appear in simRows, in the survey's own feed order,
-// since every simulated participant is routed to exactly one feed (no
-// simulated multi-feed sequences).
+// which feed ids appear in ANY simulated participant's own sequence, in the
+// survey's own overall feed order (same "numbered by the survey's list, not
+// per-participant order" convention loadMultiFeedParticipantSurveyRoster
+// itself uses), so a group routed to a different feed subset than another
+// still lines up under the correct feedN_ column-group.
 //
 // No separately-simulated "feed portion" vs "survey portion" duration
 // exists (simulateSurveyResponseRows only generates one whole-session
-// entered/submitted/duration) — split 35/65 here (feed/survey) purely for a
-// plausible-looking feedN_duration_s distinct from the overall duration_s,
-// not a claim about real timing.
+// entered/submitted/duration) — the feed-time budget (35% of the total,
+// matching the original single-feed split) is divided evenly across however
+// many feeds this participant actually visited, laid out back-to-back from
+// entered_at_iso, purely for plausible-looking feedN_*_at_iso/duration_s
+// values, not a claim about real timing.
 function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
   const hasGroups = Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
   const groupNameById = new Map((survey?.experiment_groups || []).map((g) => [g.id, g.name]));
@@ -147,8 +153,14 @@ function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
   const attentionCheckItems = getSurveyAttentionCheckItems(survey);
 
   const safeRows = Array.isArray(simRows) ? simRows : [];
+  const visitedFeedIdSet = new Set();
+  safeRows.forEach((r) => {
+    (Array.isArray(r.feed_sequence_ids) ? r.feed_sequence_ids : []).forEach((fid) => {
+      if (fid) visitedFeedIdSet.add(fid);
+    });
+  });
   const usedFeedIds = (Array.isArray(orderedFeedIds) ? orderedFeedIds : []).filter((fid) =>
-    safeRows.some((r) => r.feed_id === fid)
+    visitedFeedIdSet.has(fid)
   );
   const prefixByFeedId = new Map(usedFeedIds.map((fid, i) => [fid, `feed${i + 1}`]));
 
@@ -158,10 +170,12 @@ function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
       if (flat[k] === "" || flat[k] == null) flat[k] = "NA";
     });
 
-    const feedId = row.feed_id || "";
-    const prefix = feedId ? prefixByFeedId.get(feedId) : null;
+    const visitedFeedIds = Array.isArray(row.feed_sequence_ids) ? row.feed_sequence_ids : [];
     const durationMs = Number(row.duration_ms) || 0;
-    const feedDurationMs = Math.round(durationMs * 0.35);
+    const totalFeedDurationMs = Math.round(durationMs * 0.35);
+    const perFeedDurationMs = visitedFeedIds.length
+      ? Math.round(totalFeedDurationMs / visitedFeedIds.length)
+      : 0;
     const enteredMs = row.entered_at_iso ? new Date(row.entered_at_iso).getTime() : NaN;
 
     const out = {
@@ -172,8 +186,8 @@ function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
       entered_at_iso: row.entered_at_iso ?? "",
       submitted_at_iso: row.submitted_at_iso ?? "",
       duration_s: Math.round(durationMs / 1000),
-      feed_sequence_ids: feedId,
-      final_survey_feed_id: feedId,
+      feed_sequence_ids: visitedFeedIds.join(" | "),
+      final_survey_feed_id: visitedFeedIds[visitedFeedIds.length - 1] || row.feed_id || "",
       ...(hasGroups
         ? {
             experiment_group_id: row.experiment_group_id ?? "",
@@ -185,18 +199,22 @@ function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
         : {}),
     };
 
-    if (prefix) {
-      out[`${prefix}_feed_id`] = feedId;
-      out[`${prefix}_entered_at_iso`] = row.entered_at_iso ?? "";
-      out[`${prefix}_submitted_at_iso`] = Number.isFinite(enteredMs)
-        ? new Date(enteredMs + feedDurationMs).toISOString()
-        : "";
-      out[`${prefix}_duration_s`] = Math.round(feedDurationMs / 1000);
+    let cursorMs = enteredMs;
+    visitedFeedIds.forEach((fid) => {
+      const prefix = prefixByFeedId.get(fid);
+      if (!prefix) return;
 
-      Object.entries(row.feed_engagement || {}).forEach(([k, v]) => {
+      out[`${prefix}_feed_id`] = fid;
+      out[`${prefix}_entered_at_iso`] = Number.isFinite(cursorMs) ? new Date(cursorMs).toISOString() : "";
+      const nextMs = Number.isFinite(cursorMs) ? cursorMs + perFeedDurationMs : NaN;
+      out[`${prefix}_submitted_at_iso`] = Number.isFinite(nextMs) ? new Date(nextMs).toISOString() : "";
+      out[`${prefix}_duration_s`] = Math.round(perFeedDurationMs / 1000);
+      cursorMs = nextMs;
+
+      Object.entries(row.feed_engagement_by_feed?.[fid] || {}).forEach(([k, v]) => {
         out[`${prefix}_${k}`] = v;
       });
-    }
+    });
 
     return { ...out, ...flat };
   });
