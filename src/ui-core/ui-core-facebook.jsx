@@ -358,7 +358,7 @@ export function Modal({ title, children, onClose, wide = false, footer = null })
 }
 
 /* ------------------------- Hover peek for names ---------------------------- */
-export function NamesPeek({ post, count = 0, kind, label, hideInlineLabel = false }) {
+export function NamesPeek({ post, count = 0, kind, label, hideInlineLabel = false, includeSelf = false }) {
   const [open, setOpen] = React.useState(false);
 
   // Prefer the real util; fall back to a global shim only if someone injected it.
@@ -367,7 +367,7 @@ export function NamesPeek({ post, count = 0, kind, label, hideInlineLabel = fals
     (typeof window !== "undefined" ? window.fakeNamesFor : null);
 
   const { names, remaining } = fn
-    ? fn(post.id, count, kind, 4)
+    ? fn(post.id, count, kind, 4, includeSelf)
     : { names: [], remaining: 0 };
 
   return (

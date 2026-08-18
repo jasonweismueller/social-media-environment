@@ -627,10 +627,10 @@ function ReactionGlyph({ rxKey, size = 16, animate = true, delay = 0 }) {
 // to false every time PostCard re-renders for any unrelated reason (e.g. a
 // video's frequent `timeupdate` ticks). That was causing this tooltip to
 // flicker open/closed repeatedly. Hoisting it here fixes that.
-function ReactionIconWithNames({ rxKey, count, z, post, idx = 0, onCloseFlyout }) {
+function ReactionIconWithNames({ rxKey, count, z, post, idx = 0, onCloseFlyout, includeSelf = false }) {
   const [open, setOpen] = React.useState(false);
   const label = REACTION_META[rxKey]?.label || rxKey;
-  const { names, remaining } = fakeNamesFor(post.id, count, rxKey, 4);
+  const { names, remaining } = fakeNamesFor(post.id, count, rxKey, 4, includeSelf);
 
   return (
     <span
@@ -2450,6 +2450,7 @@ export function PostCard({
                       post={post}
                       idx={i}
                       onCloseFlyout={closeNowAndSuppress}
+                      includeSelf={r.key === myReaction}
                     />
                   ))}
                   <span className="muted rx-count" style={{ marginLeft: 8 }}>
@@ -2459,6 +2460,7 @@ export function PostCard({
                       kind="reactions"
                       label="reactions"
                       hideInlineLabel
+                      includeSelf={!!myReaction}
                     />
                   </span>
                 </div>
@@ -2478,6 +2480,7 @@ export function PostCard({
                     count={displayedCommentCount}
                     kind="comments"
                     label={displayedCommentCount === 1 ? "comment" : "comments"}
+                    includeSelf={participantComments > 0}
                   />
                 )}
                 {hasShares && (
@@ -2486,6 +2489,7 @@ export function PostCard({
                     count={displayedShareCount}
                     kind="shares"
                     label={displayedShareCount === 1 ? "share" : "shares"}
+                    includeSelf={shareCountLocal > 0}
                   />
                 )}
               </div>

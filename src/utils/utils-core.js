@@ -360,7 +360,13 @@ function hashStrToInt_(s) {
   return h >>> 0;
 }
 
-export function fakeNamesFor(postId, a, b, maxShow = 5) {
+// `includeSelf`: true when the participant's own action (a reaction of this
+// kind, a comment, a share) is one of the `count` being displayed — the
+// counts passed in already include it (e.g. `liveReactions`/
+// `displayedCommentCount` in ui-posts-facebook.jsx add the participant's own
+// action before calling this). Without it, "You" would never appear and the
+// participant would see themselves attributed a random pool name instead.
+export function fakeNamesFor(postId, a, b, maxShow = 5, includeSelf = false) {
   let kind = "comments";
   let count = 0;
   if (typeof a === "string") {
@@ -383,9 +389,18 @@ export function fakeNamesFor(postId, a, b, maxShow = 5) {
     [idx[i], idx[j]] = [idx[j], idx[i]];
   }
 
-  const uniqueCount = Math.min(n, NAME_POOL.length);
-  const chosen = idx.slice(0, uniqueCount).map(i => NAME_POOL[i]);
-  const names = chosen.slice(0, Math.min(maxShow, chosen.length));
+  // "You" always fills the first slot when includeSelf is set — the rest of
+  // the (n - 1) slots are the same deterministic pool names as before, so
+  // toggling the participant's own action on/off doesn't reshuffle anyone
+  // else's name.
+  const otherCount = includeSelf ? Math.max(0, n - 1) : n;
+  const uniqueCount = Math.min(otherCount, NAME_POOL.length);
+  const others = idx.slice(0, uniqueCount).map(i => NAME_POOL[i]);
+
+  const maxOthers = includeSelf ? Math.max(0, maxShow - 1) : maxShow;
+  const shownOthers = others.slice(0, Math.min(maxOthers, others.length));
+  const names = includeSelf ? ["You", ...shownOthers] : shownOthers;
+
   const remaining = Math.max(0, n - names.length);
   return { names, remaining };
 }
