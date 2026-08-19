@@ -2697,6 +2697,7 @@ export function Feed({
   runSeed,
   participantSeed,
   onDisplayedPostSnapshot,
+  submitButtonLabel = "Submit",
   // Default true so every existing standalone mount (the admin's Feed
   // Preview is the only real one) keeps rendering its own rails exactly as
   // before. The real per-participant page (App-facebook.jsx) nests this
@@ -2974,7 +2975,7 @@ export function Feed({
             onClick={onSubmit}
             disabled={disabled === true}
           >
-            Submit
+            {submitButtonLabel}
           </button>
         </div>
       </main>

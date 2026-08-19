@@ -1941,7 +1941,7 @@ marginTop: "auto",
 }
 
 /* ---------------- Feed (IG) ---------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed }) {
+export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed, submitButtonLabel = "Submit" }) {
   const STEP = 6;
   const FIRST = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST);
@@ -1999,7 +1999,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
       onClick={onSubmit}
       disabled={disabled === true}
     >
-      Submit
+      {submitButtonLabel}
     </button>
   </div>
 )}

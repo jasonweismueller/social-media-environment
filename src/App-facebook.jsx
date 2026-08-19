@@ -3293,11 +3293,9 @@ export default function App() {
                           app={APP}
                           projectId={projectId}
                           submitButtonLabel={
-                            hasNextFeedStage
-                              ? `Submit Feed ${activeFeedIndex + 1} & Continue to Feed ${activeFeedIndex + 2}`
-                              : surveyBoot?.has_survey
-                                ? "Submit Feed & Continue to Questions"
-                                : "Submit Feed"
+                            hasNextFeedStage || surveyBoot?.has_survey
+                              ? "Continue"
+                              : "Submit"
                           }
                           feedId={activeFeedId}
                           avatarPools={avatarPools}
