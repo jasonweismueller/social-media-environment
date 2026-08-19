@@ -1,6 +1,7 @@
 // components-ui-interventions.jsx
 import React from "react";
 import { IconInfo, IconUsers } from "../ui-core"; // adjust path if needed
+import { resolveNoteReaderGroupSize } from "../utils";
 
 // --- NOTE: render URLs as real links that DO NOT trigger modal open ---
 function NoteRichText({ text, onLinkClick }) {
@@ -121,19 +122,25 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
 }
 
 // --- Helpers: build and render the "rated as helpful by ..." subline (restores sizes/types) ---
-function buildReaderGroups(post) {
+// `participantSeed` only matters for a group whose admin-set `sizeMode` is
+// "range" — see resolveNoteReaderGroupSize (utils-core.js) for why the draw
+// is seeded per participant rather than per post.
+function buildReaderGroups(post, participantSeed) {
   const enabled = !!post?.noteMetaEnabled;
   const groupsRaw = Array.isArray(post?.noteReaderGroups) ? post.noteReaderGroups : [];
   const normalized = groupsRaw
-    .map((g) => ({ type: String(g?.type || "").trim(), size: String(g?.size || "").trim() }))
+    .map((g, idx) => ({
+      type: String(g?.type || "").trim(),
+      size: resolveNoteReaderGroupSize(post?.id, idx, g, participantSeed),
+    }))
     .filter((g) => g.type || g.size)
     .slice(0, 2);
 
   return { enabled, normalized };
 }
 
-function RatedByLine({ post }) {
-  const { enabled, normalized } = buildReaderGroups(post);
+function RatedByLine({ post, participantSeed }) {
+  const { enabled, normalized } = buildReaderGroups(post, participantSeed);
   if (!(enabled && normalized.length > 0)) return null;
 
   const nice = (s) => String(s || "").trim();
@@ -374,7 +381,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   );
 }
 
-function NoteIntervention({ post, view, onAction }) {
+function NoteIntervention({ post, view, onAction, participantSeed }) {
   const [open, setOpen] = React.useState(false);
 
   const openModal = (source) => {
@@ -428,7 +435,7 @@ function NoteIntervention({ post, view, onAction }) {
               <div style={{ fontWeight: 800, lineHeight: 1.1 }}>Readers added context</div>
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.25 }}>
                 {/* ✅ restore sizes + types (bold) */}
-                <RatedByLine post={post} />
+                <RatedByLine post={post} participantSeed={participantSeed} />
               </div>
             </div>
           </div>
@@ -510,11 +517,11 @@ function LabelIntervention({ post, onAction }) {
   );
 }
 
-export function InterventionBlock({ post, onAction, view }) {
+export function InterventionBlock({ post, onAction, view, participantSeed }) {
   if (!post?.interventionType) return null;
 
   if (post.interventionType === "note") {
-    return <NoteIntervention post={post} view={view} onAction={onAction} />;
+    return <NoteIntervention post={post} view={view} onAction={onAction} participantSeed={participantSeed} />;
   }
 
   if (post.interventionType === "label") {

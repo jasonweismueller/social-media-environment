@@ -506,6 +506,51 @@ export function fallbackEngagementStats(postId, variantSeed = "") {
   return { reactions, comments: commentsTotal, shares: sharesTotal, likes: reactionsTotal };
 }
 
+// Resolves a context-note "contributor group" size (Facebook's "Context
+// note" intervention, admin editor's "Contributor groups" fields) for
+// display. A group is either a plain admin-authored fixed value (`size`,
+// free text — unchanged, whatever the admin typed, e.g. "Several") or, when
+// `sizeMode === "range"`, a whole number drawn deterministically from
+// [sizeMin, sizeMax] (inclusive).
+//
+// Seeded by (postId, groupIndex, participantSeed) — deliberately including
+// participantSeed, unlike fallbackEngagementStats' default (post-only)
+// seeding above. The whole point of choosing "range" over a fixed value is
+// per-participant variation the researcher can record and control for in
+// analysis (see buildParticipantRow's `_note_group{1,2}_size_shown` columns
+// below) — a range that resolved to the same number for every participant
+// would just be a hidden constant, not something worth "controlling for".
+// Still fully deterministic per participant: the same participant sees the
+// same drawn number on every re-render/re-visit (e.g. the same post shown
+// again in a survey post_reminder question), it just varies participant to
+// participant.
+export function resolveNoteReaderGroupSize(postId, groupIndex, group, participantSeed = "") {
+  const fixedSize = String(group?.size || "").trim();
+  if (!group || group.sizeMode !== "range") return fixedSize;
+
+  // Require both bounds to actually be filled in before switching on range
+  // behavior — Number("") is 0, which would otherwise silently treat a
+  // half-configured range (e.g. only sizeMax typed so far) as "0 to X".
+  const minStr = String(group.sizeMin ?? "").trim();
+  const maxStr = String(group.sizeMax ?? "").trim();
+  if (!minStr || !maxStr) return fixedSize;
+
+  const minRaw = Number(minStr);
+  const maxRaw = Number(maxStr);
+  if (!Number.isFinite(minRaw) || !Number.isFinite(maxRaw)) return fixedSize;
+
+  const lo = Math.round(Math.min(minRaw, maxRaw));
+  const hi = Math.round(Math.max(minRaw, maxRaw));
+  if (lo === hi) return String(lo);
+
+  const seed = hashStrToInt_(
+    `${postId || ""}::${groupIndex}::${participantSeed || ""}::note-group-size::v1`
+  );
+  const rnd = mulberry32_(seed);
+  const value = lo + Math.floor(rnd() * (hi - lo + 1));
+  return String(value);
+}
+
 /* ------------------------- ghost (placeholder) comments -------------------- */
 // Deterministic per-row visual variety for the ghost/placeholder comment rows
 // shown in the Facebook/Instagram comment thread when a post's comment count
@@ -1118,6 +1163,7 @@ export function buildParticipantRow({
   feed_id,
   survey_id,
   feed_checksum,
+  participantSeed = "",
 }) {
   // "participant_id_auto_entered" — logged instead of "participant_id_entered"
   // whenever the Participant Information overlay is skipped (every
@@ -1215,6 +1261,24 @@ export function buildParticipantRow({
     row[`${id}_review_read_more`] = (agg.review_read_more || agg.expanded) ? 1 : 0;
     row[`${id}_review_read_more_ms`] = agg.review_read_more_ms || "";
     row[`${id}_review_rating`] = agg.review_rating || (p.rating ?? p.stars ?? p.star_rating ?? "");
+
+    // Context-note "contributor group" size actually shown to this
+    // participant — static per-post config, not an interaction event, so
+    // read directly off the post object rather than through `agg`. Blank
+    // whenever the post isn't a note intervention, the contributor tooltip
+    // is off, or that particular group isn't configured — matches
+    // `buildReaderGroups`/`RatedByLine` (components-ui-interventions.jsx),
+    // which is the actual participant-facing rendering this mirrors.
+    const noteGroups =
+      p.interventionType === "note" && p.noteMetaEnabled && Array.isArray(p.noteReaderGroups)
+        ? p.noteReaderGroups
+        : [];
+    row[`${id}_note_group1_size_shown`] = noteGroups[0]
+      ? resolveNoteReaderGroupSize(id, 0, noteGroups[0], participantSeed)
+      : "";
+    row[`${id}_note_group2_size_shown`] = noteGroups[1]
+      ? resolveNoteReaderGroupSize(id, 1, noteGroups[1], participantSeed)
+      : "";
 
     const aggD = dwellAgg.get(id);
     row[`${id}_dwell_s`] = aggD ? aggD.dwell_s : 0;

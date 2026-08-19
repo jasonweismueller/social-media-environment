@@ -1473,6 +1473,8 @@ const POST_METRIC_SUFFIXES_FOR_LABELS = [
   "_note_link_clicked",
   "_note_helpful_rated",
   "_note_helpful_value",
+  "_note_group1_size_shown",
+  "_note_group2_size_shown",
   // Amazon-review-specific fields buildParticipantRow (utils-core.js) also
   // writes per post — missing from this list before, so a review's own post
   // id never got swapped for its friendly name in any multi-feed CSV label,
@@ -1560,6 +1562,8 @@ const FB_ONLY_POST_METRIC_SUFFIXES = [
   "_note_link_clicked",
   "_note_helpful_rated",
   "_note_helpful_value",
+  "_note_group1_size_shown",
+  "_note_group2_size_shown",
 ];
 const AMZ_ONLY_POST_METRIC_SUFFIXES = [
   "_review_helpful",
@@ -1588,6 +1592,7 @@ export function isRelevantPostMetricForExport(post, suffix) {
         "_cta_clicked", "_news_clicked", "_bio_opened", "_bio_url_clicked",
         "_mention_clicked", "_note_opened", "_note_view_details",
         "_note_link_clicked", "_note_helpful_rated", "_note_helpful_value",
+        "_note_group1_size_shown", "_note_group2_size_shown",
       ].includes(suffix)
     ) return false;
     return true;
@@ -1617,7 +1622,9 @@ export function isRelevantPostMetricForExport(post, suffix) {
     suffix === "_note_view_details" ||
     suffix === "_note_link_clicked" ||
     suffix === "_note_helpful_rated" ||
-    suffix === "_note_helpful_value"
+    suffix === "_note_helpful_value" ||
+    suffix === "_note_group1_size_shown" ||
+    suffix === "_note_group2_size_shown"
   ) return hasNote(post);
 
   if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") return hasBio(post);

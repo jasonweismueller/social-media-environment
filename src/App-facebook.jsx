@@ -3390,6 +3390,7 @@ export default function App() {
                               feed_id,
                               feed_checksum,
                               survey_id: linkedSurvey?.survey_id || "",
+                              participantSeed: participantId || sessionIdRef.current,
                             });
 
                             const displayedPostSnapshots = orderedPosts

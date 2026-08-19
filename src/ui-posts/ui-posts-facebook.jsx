@@ -2393,6 +2393,7 @@ export function PostCard({
       <InterventionBlock
         post={post}
         onAction={onAction}
+        participantSeed={participantSeed}
         view={{
           author: displayAuthor,
           avatarUrl: displayAvatar,

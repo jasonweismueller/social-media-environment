@@ -633,6 +633,66 @@ export function AdminPostEditor({
                   });
                 };
 
+                // Fixed value (free text, unchanged) or a random range —
+                // when a group is set to "range", each participant sees a
+                // deterministic-but-per-participant random whole number
+                // drawn from [min, max] (resolveNoteReaderGroupSize,
+                // utils-core.js), recorded to CSV as
+                // `<post_id>_note_group{1,2}_size_shown` so it can be
+                // controlled for in analysis.
+                const renderSizeControl = (idx, g) => {
+                  const mode = g.sizeMode === "range" ? "range" : "fixed";
+                  return (
+                    <Group
+                      label={`Group ${idx + 1} size`}
+                      hint={
+                        mode === "range"
+                          ? "Each participant sees a random whole number in this range. Recorded per participant for analysis."
+                          : undefined
+                      }
+                    >
+                      <RadioGroup
+                        name={`note-group${idx + 1}-size-mode`}
+                        value={mode}
+                        options={[
+                          { value: "fixed", label: "Fixed value" },
+                          { value: "range", label: "Random range" },
+                        ]}
+                        onChange={(val) => setGroup(idx, { sizeMode: val })}
+                      />
+                      {mode === "range" ? (
+                        <div className="grid-2">
+                          <Field label="Min">
+                            <input
+                              className="input"
+                              type="number"
+                              value={g.sizeMin ?? ""}
+                              onChange={(e) => setGroup(idx, { sizeMin: e.target.value })}
+                              placeholder="e.g., 40"
+                            />
+                          </Field>
+                          <Field label="Max">
+                            <input
+                              className="input"
+                              type="number"
+                              value={g.sizeMax ?? ""}
+                              onChange={(e) => setGroup(idx, { sizeMax: e.target.value })}
+                              placeholder="e.g., 120"
+                            />
+                          </Field>
+                        </div>
+                      ) : (
+                        <input
+                          className="input"
+                          value={g.size}
+                          onChange={(e) => setGroup(idx, { size: e.target.value })}
+                          placeholder='e.g., "Several" or "Many"'
+                        />
+                      )}
+                    </Group>
+                  );
+                };
+
                 return (
                   <Group label="Contributor groups" hint="This tooltip can show one or two contributor groups and their approximate sizes.">
                     <div className="grid-2">
@@ -645,14 +705,7 @@ export function AdminPostEditor({
                         />
                       </Field>
 
-                      <Field label="Group 1 size">
-                        <input
-                          className="input"
-                          value={g0.size}
-                          onChange={(e) => setGroup(0, { size: e.target.value })}
-                          placeholder='e.g., "Several" or "Many"'
-                        />
-                      </Field>
+                      {renderSizeControl(0, g0)}
                     </div>
 
                     <CheckRow
@@ -684,14 +737,7 @@ export function AdminPostEditor({
                           />
                         </Field>
 
-                        <Field label="Group 2 size">
-                          <input
-                            className="input"
-                            value={g1.size}
-                            onChange={(e) => setGroup(1, { size: e.target.value })}
-                            placeholder='e.g., "A few"'
-                          />
-                        </Field>
+                        {renderSizeControl(1, g1)}
                       </div>
                     )}
                   </Group>
