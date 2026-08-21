@@ -5,9 +5,11 @@ import {
   SURVEY_QUESTION_TYPES,
   VISIBLE_IF_ELIGIBLE_TYPES,
   ATTENTION_CHECK_ELIGIBLE_TYPES,
+  saveQuestionLibraryItemToBackend,
 } from "../utils";
-import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm } from "./ui";
+import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm, useToast, usePrompt } from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
+import { QuestionLibraryPickerModal } from "./components-admin-question-library";
 
 /* =========================
    Small helpers
@@ -1345,6 +1347,104 @@ export function buildSavedQuestion(q, index) {
 }
 
 /* =========================
+   Question library (Save to library / From library)
+   ========================= */
+
+export function makeLibraryItemId() {
+  return `lib_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+// Turns a slice of *editor*-shaped questions into a portable, backend-shaped
+// library item. Strips every field that only makes sense inside the
+// specific survey/project a question came from — visible_to_group_ids
+// (experiment groups), visible_in_feeds/feed_overrides (feed ids),
+// visible_if (unless it points at another question in the same saved
+// slice, in which case it's kept — the two questions travel together, e.g.
+// a "Gender" single-choice + its "please specify" follow-up gated on
+// Gender=Other). post_reminder questions are dropped entirely — they're
+// inherently tied to one specific post in one specific feed, so there's no
+// sensible portable form; the caller is told how many were skipped so
+// that's never silently confusing.
+export function buildLibraryQuestionsFromEditorQuestions(editorQuestions = []) {
+  const real = (Array.isArray(editorQuestions) ? editorQuestions : []).filter(
+    (q) => q?.type !== EDITOR_PAGE_BREAK_TYPE
+  );
+
+  const includedIds = new Set(
+    real.filter((q) => q?.type !== POST_REMINDER_TYPE).map((q) => sanitizeQuestionId(q?.id, ""))
+  );
+
+  const skippedPostReminders = real.filter((q) => q?.type === POST_REMINDER_TYPE).length;
+
+  const questions = real
+    .filter((q) => q?.type !== POST_REMINDER_TYPE)
+    .map((q, i) => {
+      const saved = buildSavedQuestion(q, i);
+      const keepVisibleIf =
+        saved.visible_if?.question_id && includedIds.has(sanitizeQuestionId(saved.visible_if.question_id, ""));
+
+      return {
+        ...saved,
+        visible_to_group_ids: [],
+        visible_in_feeds: [],
+        feed_overrides: {},
+        visible_if: keepVisibleIf ? saved.visible_if : null,
+      };
+    });
+
+  return { questions, skippedPostReminders };
+}
+
+// Inverse of the above: takes stored library questions (backend shape) and
+// the target survey's existing question ids, and returns editor-ready
+// questions with collision-safe ids. A saved id is kept as-is whenever it
+// doesn't collide (so inserting "GENDER" into a survey with no GENDER
+// question yet just gets "GENDER", not "GENDER_2") — only a genuine
+// collision gets a numeric suffix. Matrix/bipolar row values are rewritten
+// to match a remapped id (same convention normalizeQuestionForEditor
+// already enforces elsewhere), and any visible_if.question_id pointing at
+// another question *within this same inserted batch* is rewritten to match
+// that question's remapped id too, so a saved "Gender + please specify"
+// pair keeps working after insertion even if both ids had to be renamed.
+export function remapLibraryQuestionsForInsert(libraryQuestions = [], existingIds = []) {
+  const taken = new Set((Array.isArray(existingIds) ? existingIds : []).map((x) => String(x || "").trim()));
+  const idMap = new Map();
+
+  (Array.isArray(libraryQuestions) ? libraryQuestions : []).forEach((q) => {
+    const sourceId = sanitizeQuestionId(q?.id, `Q_${makeEditorId()}`);
+    let nextId = sourceId;
+    if (taken.has(nextId)) {
+      let suffix = 2;
+      while (taken.has(`${sourceId}_${suffix}`)) suffix += 1;
+      nextId = `${sourceId}_${suffix}`;
+    }
+    taken.add(nextId);
+    idMap.set(sourceId, nextId);
+  });
+
+  return (Array.isArray(libraryQuestions) ? libraryQuestions : []).map((q) => {
+    const sourceId = sanitizeQuestionId(q?.id, "");
+    const nextId = idMap.get(sourceId) || sourceId;
+
+    let next = { ...q, id: nextId };
+
+    if (shouldAutoRewriteRowValues(next)) {
+      next = rewriteQuestionRowValues(next, nextId);
+    }
+
+    if (next.visible_if?.question_id) {
+      const mappedSourceId = idMap.get(sanitizeQuestionId(next.visible_if.question_id, ""));
+      next = {
+        ...next,
+        visible_if: mappedSourceId ? { ...next.visible_if, question_id: mappedSourceId } : null,
+      };
+    }
+
+    return next;
+  });
+}
+
+/* =========================
    Small icon/button helpers
    ========================= */
 
@@ -1404,6 +1504,24 @@ function CopyIcon({ size = 16 }) {
     >
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function BookmarkIcon({ size = 16 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 4a1.5 1.5 0 0 0-1.5 1.5V20l7.5-4 7.5 4V5.5A1.5 1.5 0 0 0 18 4H6Z" />
     </svg>
   );
 }
@@ -2084,7 +2202,7 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
 // landing the button somewhere far from where anyone would look for it, at
 // a permanent 0.4 opacity meant for a hover-reveal border control, not a
 // primary call to action. `inline` skips all of that.
-function InsertAtBorderButton({ position = "top", onInsert, inline = false }) {
+function InsertAtBorderButton({ position = "top", onInsert, onInsertFromLibrary, inline = false }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [selectedType, setSelectedType] = useState(SURVEY_QUESTION_TYPES.TEXT);
@@ -2243,6 +2361,29 @@ function InsertAtBorderButton({ position = "top", onInsert, inline = false }) {
           >
             Add
           </button>
+
+          {onInsertFromLibrary && (
+            <button
+              type="button"
+              onClick={() => {
+                onInsertFromLibrary();
+                setOpen(false);
+              }}
+              style={{
+                marginTop: 6,
+                width: "100%",
+                padding: "6px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--admin-border)",
+                background: "none",
+                color: "var(--admin-accent-ink)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              From library…
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -3225,6 +3366,7 @@ function QuestionActions({
   onDragStart,
   onDragEnd,
   onPreviewQuestion,
+  onSaveToLibrary,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(q);
 
@@ -3285,6 +3427,16 @@ function QuestionActions({
         >
           <CopyIcon size={16} />
         </IconOnlyButton>
+
+        {onSaveToLibrary && q?.type !== POST_REMINDER_TYPE && (
+          <IconOnlyButton
+            onClick={() => onSaveToLibrary(index)}
+            title="Save to library"
+            style={{ borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+          >
+            <BookmarkIcon size={16} />
+          </IconOnlyButton>
+        )}
 
         <IconOnlyButton
           onClick={() => removeQuestion(index)}
@@ -4093,6 +4245,8 @@ function QuestionCard({
   moveQuestion,
   duplicateQuestion,
   insertQuestionAt,
+  onOpenLibraryInsert,
+  onSaveToLibrary,
   draggingId,
   dragOverId,
   onDragStart,
@@ -4198,10 +4352,12 @@ function QuestionCard({
         <InsertAtBorderButton
           position="top"
           onInsert={(nextType) => insertQuestionAt(index, nextType, "above")}
+          onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "above") : undefined}
         />
         <InsertAtBorderButton
           position="bottom"
           onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
+          onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "below") : undefined}
         />
 
         <DragHandle
@@ -4271,10 +4427,12 @@ function QuestionCard({
       <InsertAtBorderButton
         position="top"
         onInsert={(nextType) => insertQuestionAt(index, nextType, "above")}
+        onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "above") : undefined}
       />
       <InsertAtBorderButton
         position="bottom"
         onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
+        onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "below") : undefined}
       />
 
       {isCollapsed ? (
@@ -4371,6 +4529,7 @@ function QuestionCard({
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onPreviewQuestion={onPreviewQuestion}
+            onSaveToLibrary={onSaveToLibrary}
           />
         </div>
 
@@ -5453,6 +5612,7 @@ function StudyOutlineModal({
   onDragEnd,
   onJumpTo,
   onClose,
+  onSaveGroupToLibrary,
 }) {
   const confirm = useConfirm();
   const displayNumbers = useMemo(
@@ -5775,6 +5935,19 @@ function StudyOutlineModal({
                             {realQuestionCount} {realQuestionCount === 1 ? "question" : "questions"}
                             {pageIsCollapsed ? " · collapsed" : ""}
                           </span>
+                          {onSaveGroupToLibrary && realQuestionCount > 0 && (
+                            <IconOnlyButton
+                              onClick={() =>
+                                onSaveGroupToLibrary(group.items.map(({ item }) => item))
+                              }
+                              title="Save this page's questions to the library"
+                              aria-label={`Save page ${group.pageNumber} to the library`}
+                              size={11}
+                              style={{ width: 20, height: 20, flex: "0 0 auto" }}
+                            >
+                              <BookmarkIcon size={11} />
+                            </IconOnlyButton>
+                          )}
                         </div>
 
                         {!pageIsCollapsed && (
@@ -5879,6 +6052,94 @@ export function SurveyEditor({
     setPreviewOpen(false);
     setPreviewQuestionId(null);
   }
+
+  const libraryToast = useToast();
+  const libraryPrompt = usePrompt();
+  // null = closed. "append" = insert at the very end (the empty-survey
+  // "+ Add question" / "From library" path). {index, position} = insert
+  // relative to a specific existing question, mirroring insertQuestionAt's
+  // own (index, position) contract exactly.
+  const [libraryInsertTarget, setLibraryInsertTarget] = useState(null);
+
+  function openLibraryInsertAt(index, position) {
+    setLibraryInsertTarget({ index, position });
+  }
+
+  function openLibraryAppend() {
+    setLibraryInsertTarget("append");
+  }
+
+  function closeLibraryModal() {
+    setLibraryInsertTarget(null);
+  }
+
+  function insertLibraryQuestions(libraryQuestions) {
+    const target = libraryInsertTarget;
+    onSurveyChange((prev) => {
+      const current = getQuestionList(prev);
+      const existingIds = current
+        .filter((q) => q?.type !== EDITOR_PAGE_BREAK_TYPE)
+        .map((q) => q?.id)
+        .filter(Boolean);
+      const remapped = remapLibraryQuestionsForInsert(libraryQuestions, existingIds);
+      const editorQuestions = remapped.map((q, i) =>
+        normalizeQuestionForEditor(q, current.length + i)
+      );
+
+      const nextQuestions = [...current];
+      if (target && target !== "append") {
+        const insertIndex = target.position === "above" ? target.index : target.index + 1;
+        nextQuestions.splice(insertIndex, 0, ...editorQuestions);
+      } else {
+        nextQuestions.push(...editorQuestions);
+      }
+      return setQuestionList(prev, nextQuestions);
+    });
+    libraryToast.success(
+      `Added ${libraryQuestions.length} question${libraryQuestions.length === 1 ? "" : "s"} from the library.`
+    );
+  }
+
+  async function saveQuestionsToLibrary(questionsToSave) {
+    const { questions, skippedPostReminders } = buildLibraryQuestionsFromEditorQuestions(questionsToSave);
+    if (!questions.length) {
+      libraryToast.error("Nothing to save — post-reminder questions can't be added to the library.");
+      return;
+    }
+
+    const name = await libraryPrompt({
+      title: "Save to library",
+      message:
+        questions.length === 1
+          ? "Name shown when browsing the library."
+          : `Name for this ${questions.length}-question group.`,
+      defaultValue: questions.length === 1 ? questions[0].id || "Question" : `${questions.length} questions`,
+    });
+    if (!name) return;
+
+    const res = await saveQuestionLibraryItemToBackend({
+      id: makeLibraryItemId(),
+      name,
+      questions,
+    });
+
+    if (!res.ok) {
+      libraryToast.error(res.err || "Failed to save to the library.");
+      return;
+    }
+
+    libraryToast.success(
+      skippedPostReminders
+        ? `Saved to library (skipped ${skippedPostReminders} post-reminder question${skippedPostReminders === 1 ? "" : "s"} — they can't be reused across surveys).`
+        : "Saved to library."
+    );
+  }
+
+  function saveQuestionToLibrary(index) {
+    const q = currentQuestions[index];
+    if (q) saveQuestionsToLibrary([q]);
+  }
+
   // Question cards start collapsed by default (per direct user feedback) —
   // same set of ids collapseAllQuestions() below would produce, just as the
   // initial state instead of a user action.
@@ -6321,6 +6582,8 @@ export function SurveyEditor({
               moveQuestion={moveQuestion}
               duplicateQuestion={duplicateQuestion}
               insertQuestionAt={insertQuestionAt}
+              onOpenLibraryInsert={openLibraryInsertAt}
+              onSaveToLibrary={saveQuestionToLibrary}
               draggingId={draggingQuestionId}
               dragOverId={dragOverQuestionId}
               onDragStart={handleQuestionDragStart}
@@ -6342,14 +6605,23 @@ export function SurveyEditor({
             title="No questions yet"
             message="Add your first question to get started."
             action={
-              <InsertAtBorderButton
-                inline
-                onInsert={(nextType) => addQuestion(nextType)}
-              />
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                <InsertAtBorderButton
+                  inline
+                  onInsert={(nextType) => addQuestion(nextType)}
+                />
+                <Button variant="secondary" onClick={openLibraryAppend}>
+                  From library…
+                </Button>
+              </div>
             }
           />
         )}
       </Card>
+
+      {libraryInsertTarget !== null && (
+        <QuestionLibraryPickerModal onInsert={insertLibraryQuestions} onClose={closeLibraryModal} />
+      )}
 
       {outlineOpen && (
         <StudyOutlineModal
@@ -6367,6 +6639,7 @@ export function SurveyEditor({
           onDragStart={handleQuestionDragStart}
           onDragOver={handleQuestionDragOver}
           onDrop={handleQuestionDrop}
+          onSaveGroupToLibrary={saveQuestionsToLibrary}
           onDragEnd={handleQuestionDragEnd}
           onJumpTo={jumpToQuestion}
           onClose={() => setOutlineOpen(false)}

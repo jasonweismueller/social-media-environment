@@ -31,6 +31,7 @@ export {
   IconEye,
   IconSun,
   IconMoon,
+  IconBookmark,
 } from "./icons";
 export { ToastProvider, useToast } from "./Toast";
 export { ConfirmProvider, useConfirm } from "./ConfirmDialog";

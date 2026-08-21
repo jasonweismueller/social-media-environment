@@ -187,3 +187,11 @@ export function IconMoon(props) {
     </Base>
   );
 }
+
+export function IconBookmark(props) {
+  return (
+    <Base {...props}>
+      <path d="M6 4a1.5 1.5 0 0 0-1.5 1.5V20l7.5-4 7.5 4V5.5A1.5 1.5 0 0 0 18 4H6Z" />
+    </Base>
+  );
+}

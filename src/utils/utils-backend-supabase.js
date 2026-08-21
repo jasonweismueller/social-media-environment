@@ -918,6 +918,52 @@ export async function supabaseSaveCustomMeasureGroups({ surveyId, groups }) {
   return true;
 }
 
+// Reusable question/measure library (survey editor "Save to library" /
+// "From library" — CLAUDE.md). Deliberately global, not scoped by
+// survey_id/project_id like custom_measure_groups above — the whole point
+// is reuse *across* studies, so there's no natural project to scope it to.
+// Admin-only (no anon/public policy — nothing participant-facing reads
+// this), same posture as custom_measure_groups.
+export async function supabaseListQuestionLibraryItems() {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("question_library_items")
+    .select("id, name, description, questions, updated_at")
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row) => ({
+    id: row.id,
+    name: row.name || "",
+    description: row.description || "",
+    questions: Array.isArray(row.questions) ? row.questions : [],
+    updatedAt: row.updated_at || null,
+  }));
+}
+
+export async function supabaseSaveQuestionLibraryItem({ id, name, description, questions }) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("question_library_items").upsert(
+    {
+      id,
+      name: name || "",
+      description: description || "",
+      questions: Array.isArray(questions) ? questions : [],
+    },
+    { onConflict: "id" }
+  );
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function supabaseDeleteQuestionLibraryItem(id) {
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.from("question_library_items").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 /* ===================== Participant submission (writes) ====================
  * Uses a direct keepalive fetch against PostgREST rather than the
  * supabase-js client, mirroring the existing sendBeacon-first/fetch-fallback

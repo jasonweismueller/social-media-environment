@@ -56,6 +56,9 @@ import {
   supabaseSaveCustomMeasureGroups,
   supabaseListProjectAccess,
   supabaseSetUserProjectAccess,
+  supabaseListQuestionLibraryItems,
+  supabaseSaveQuestionLibraryItem,
+  supabaseDeleteQuestionLibraryItem,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -4106,6 +4109,56 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
 
   try {
     await supabaseSaveCustomMeasureGroups({ surveyId: survey_id, groups: Array.isArray(groups) ? groups : [] });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+/**
+ * Reusable question/measure library (survey editor "Save to library" /
+ * "From library"). Global — no project_id/survey_id param — since the
+ * point is reuse across studies. Supabase-only, same reasoning as custom
+ * measure groups above: this postdates the GAS cutover and has no GAS
+ * counterpart, so the fallback branch is a plain no-op.
+ */
+export async function listQuestionLibraryFromBackend() {
+  if (!hasAdminSession() || !isSupabaseBackend()) return [];
+  try {
+    return await supabaseListQuestionLibraryItems();
+  } catch (e) {
+    console.warn("listQuestionLibraryFromBackend failed:", e);
+    return [];
+  }
+}
+
+export async function saveQuestionLibraryItemToBackend({ id, name, description = "", questions }) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  const cleanId = String(id || "").trim();
+  if (!cleanId) return { ok: false, err: "id required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "the question library requires the Supabase backend" };
+
+  try {
+    await supabaseSaveQuestionLibraryItem({
+      id: cleanId,
+      name: String(name || "").trim() || "Untitled item",
+      description,
+      questions: Array.isArray(questions) ? questions : [],
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+export async function deleteQuestionLibraryItemFromBackend(id) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  const cleanId = String(id || "").trim();
+  if (!cleanId) return { ok: false, err: "id required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "the question library requires the Supabase backend" };
+
+  try {
+    await supabaseDeleteQuestionLibraryItem(cleanId);
     return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
