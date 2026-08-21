@@ -13,10 +13,11 @@ export function Badge({ children, tone = "neutral", style }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        padding: "2px 8px",
+        padding: "3px 9px",
         borderRadius: 999,
-        fontSize: 11,
+        fontSize: "var(--admin-text-2xs)",
         fontWeight: 700,
+        letterSpacing: "0.01em",
         background: t.background,
         color: t.color,
         border: `1px solid ${t.border}`,

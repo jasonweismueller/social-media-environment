@@ -29,6 +29,27 @@ import {
   LogoutButton,
 } from "./ui";
 
+function ProjectIconBadge() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 40,
+        height: 40,
+        flexShrink: 0,
+        borderRadius: "var(--admin-radius-md)",
+        background: "var(--admin-accent-soft)",
+        color: "var(--admin-accent-ink)",
+      }}
+    >
+      <IconFolder size={20} />
+    </span>
+  );
+}
+
 /**
  * Landing page after login: pick a project (or create/delete one), then
  * move on to the platform picker. Always shown on `/admin` regardless of
@@ -216,7 +237,12 @@ export function AdminProjectPicker({ onLogout }) {
             const busy = busyId === p.project_id;
 
             return (
-              <Card key={p.project_id} bodyStyle={{ padding: 16 }}>
+              <Card
+                key={p.project_id}
+                bodyStyle={{ padding: 16 }}
+                interactive
+                onClick={() => chooseProject(p.project_id, p.name)}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -226,20 +252,30 @@ export function AdminProjectPicker({ onLogout }) {
                     flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 15, fontWeight: 700, color: "var(--admin-text)" }}>
-                        {p.name || p.project_id}
-                      </span>
-                      {isDefault && <Badge tone="accent">default</Badge>}
-                      {isCurrent && <Badge>current</Badge>}
-                    </div>
-                    <div style={{ fontSize: 12, fontFamily: "monospace", color: "var(--admin-muted)", marginTop: 2 }}>
-                      {p.project_id}
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                    <ProjectIconBadge />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
+                          {p.name || p.project_id}
+                        </span>
+                        {isDefault && <Badge tone="accent">default</Badge>}
+                        {isCurrent && <Badge>current</Badge>}
+                      </div>
+                      <div style={{ fontSize: "var(--admin-text-xs)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "var(--admin-muted)", marginTop: 2 }}>
+                        {p.project_id}
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <div
+                    style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                    // Cards are now clickable as a whole (onClick above =
+                    // chooseProject) — without this, clicking any button
+                    // inside would bubble up and *also* fire that, e.g.
+                    // "Delete" would delete AND navigate in the same click.
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {hasAdminRole("editor") && (
                       <Button
                         size="sm"

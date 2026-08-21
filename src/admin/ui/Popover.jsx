@@ -102,8 +102,10 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
               background: "var(--admin-surface)",
               border: "1px solid var(--admin-border-subtle)",
               borderRadius: "var(--admin-radius-md)",
-              boxShadow: "var(--admin-shadow-md)",
+              boxShadow: "var(--admin-shadow-lg)",
               padding: 10,
+              animation: `admin-pop-in var(--admin-duration-fast) var(--admin-ease) both`,
+              transformOrigin: "top",
             }}
           >
             {children}

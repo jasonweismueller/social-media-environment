@@ -51,7 +51,7 @@ export function Toggle({
             height: 20,
             borderRadius: 999,
             background: checked ? "var(--admin-accent)" : "var(--admin-border)",
-            transition: "background 0.15s ease",
+            transition: "background var(--admin-duration-base) var(--admin-ease)",
             flexShrink: 0,
           }}
         >
@@ -65,7 +65,7 @@ export function Toggle({
               borderRadius: "50%",
               background: "#fff",
               boxShadow: "0 1px 2px rgba(15,23,42,0.35)",
-              transition: "left 0.15s ease",
+              transition: "left var(--admin-duration-base) var(--admin-ease)",
             }}
           />
         </span>

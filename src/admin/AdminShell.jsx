@@ -94,12 +94,14 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
           right underneath Feeds' own "Delete feed" — previously it was
           easy to miss there, blending into the list above it. */}
       <div
+        className={active ? undefined : "admin-row-hover"}
         style={{
           display: "flex",
           alignItems: "center",
           borderRadius: "var(--admin-radius-md)",
           background: active ? "var(--admin-accent-soft)" : "var(--admin-surface-alt)",
           border: active ? "1px solid transparent" : "1px solid var(--admin-border-subtle)",
+          transition: "background var(--admin-duration-fast) var(--admin-ease), border-color var(--admin-duration-fast) var(--admin-ease)",
         }}
       >
         <NavLink
@@ -115,21 +117,45 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
             // AdminShell that resets expandedKey on route change expands it.
           }}
           aria-expanded={active ? expanded : undefined}
+          className="admin-btn"
           style={{
             display: "flex",
             alignItems: "center",
             gap: 10,
-            padding: "7px 10px",
-            fontSize: 13,
+            padding: "8px 10px",
+            fontSize: "var(--admin-text-sm)",
             fontWeight: 600,
             textDecoration: "none",
             color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
             flex: 1,
             minWidth: 0,
+            borderRadius: "var(--admin-radius-md)",
           }}
         >
-          <span aria-hidden="true">{icon}</span>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "flex",
+              transition: "transform var(--admin-duration-base) var(--admin-ease)",
+              transform: active ? "scale(1.05)" : "none",
+            }}
+          >
+            {icon}
+          </span>
           <span style={{ flex: 1 }}>{label}</span>
+          <span
+            aria-hidden="true"
+            style={{
+              display: "flex",
+              color: "var(--admin-muted-2)",
+              transform: expanded && active ? "rotate(90deg)" : "none",
+              transition: "transform var(--admin-duration-base) var(--admin-ease)",
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 6 15 12 9 18" />
+            </svg>
+          </span>
         </NavLink>
         {active && (
           <span
@@ -210,6 +236,7 @@ export function AdminShell({
           flexDirection: "column",
           borderRight: "1px solid var(--admin-border-subtle)",
           background: "var(--admin-surface)",
+          boxShadow: "1px 0 0 rgba(15, 23, 42, 0.02), 2px 0 12px rgba(15, 23, 42, 0.03)",
           padding: "16px 12px",
         }}
       >
@@ -223,11 +250,15 @@ export function AdminShell({
             {backTo ? (
               <Link
                 to={backTo}
+                className="admin-row-hover"
                 style={{
-                  fontSize: 12,
+                  fontSize: "var(--admin-text-xs)",
                   fontWeight: 700,
                   color: "var(--admin-muted)",
                   textDecoration: "none",
+                  padding: "3px 6px",
+                  margin: "-3px -6px",
+                  borderRadius: "var(--admin-radius-sm)",
                 }}
               >
                 {backLabel}
@@ -242,11 +273,22 @@ export function AdminShell({
             </span>
           </div>
 
-          <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
+          <div
+            style={{
+              fontSize: "var(--admin-text-md)",
+              fontWeight: 800,
+              letterSpacing: "-0.01em",
+              color: "var(--admin-text)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={typeof title === "string" ? title : undefined}
+          >
             {title}
           </div>
           {subtitle && (
-            <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 3 }}>
+            <div style={{ fontSize: "var(--admin-text-2xs)", color: "var(--admin-muted)", marginTop: 3 }}>
               {subtitle}
             </div>
           )}

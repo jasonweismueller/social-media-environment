@@ -19,17 +19,31 @@ export function EmptyState({ icon: Icon = IconInbox, title, message, action, com
   }
 
   return (
-    <div style={{ textAlign: "center", padding: "48px 24px" }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "var(--admin-muted-2)" }}>
-        <Icon size={30} />
+    <div style={{ textAlign: "center", padding: "56px 24px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 56,
+          height: 56,
+          margin: "0 auto 14px",
+          borderRadius: "50%",
+          background: "var(--admin-surface-alt)",
+          color: "var(--admin-muted-2)",
+        }}
+      >
+        <Icon size={26} />
       </div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>{title}</div>
+      <div style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
+        {title}
+      </div>
       {message && (
-        <div style={{ fontSize: 13, color: "var(--admin-muted)", marginTop: 4, maxWidth: 360, marginInline: "auto" }}>
+        <div style={{ fontSize: "var(--admin-text-sm)", color: "var(--admin-muted)", marginTop: 5, maxWidth: 360, marginInline: "auto", lineHeight: 1.5 }}>
           {message}
         </div>
       )}
-      {action && <div style={{ marginTop: 16 }}>{action}</div>}
+      {action && <div style={{ marginTop: 18 }}>{action}</div>}
     </div>
   );
 }

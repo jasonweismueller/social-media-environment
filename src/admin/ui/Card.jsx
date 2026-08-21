@@ -5,17 +5,25 @@ import React from "react";
  * shape as the dashboard's old `Section` (section.card.admin-section >
  * header/body) so existing .admin-section* CSS keeps applying wherever it's
  * still referenced.
+ *
+ * `interactive` marks the whole card as a single clickable unit (e.g. a
+ * project/platform picker row) — picks up `.admin-card-interactive`'s
+ * hover-lift + shadow-tier transition instead of relying on an inner button
+ * alone for affordance. Purely visual; the caller still owns the actual
+ * onClick (usually on an inner Button, sometimes on the card itself).
  */
-export function Card({ title, subtitle, actions = null, children, style, bodyStyle }) {
+export function Card({ title, subtitle, actions = null, children, style, bodyStyle, interactive = false, onClick }) {
   return (
     <section
-      className="card admin-section"
+      className={["card admin-section", interactive && "admin-card-interactive"].filter(Boolean).join(" ")}
+      onClick={onClick}
       style={{
         border: "1px solid var(--admin-border-subtle)",
         borderRadius: "var(--admin-radius-lg)",
         background: "var(--admin-surface)",
         boxShadow: "var(--admin-shadow-sm)",
         overflow: "hidden",
+        transition: "box-shadow var(--admin-duration-base) var(--admin-ease), border-color var(--admin-duration-base) var(--admin-ease)",
         ...style,
       }}
     >
@@ -38,8 +46,9 @@ export function Card({ title, subtitle, actions = null, children, style, bodySty
                 <h3
                   style={{
                     margin: 0,
-                    fontSize: 14,
+                    fontSize: "var(--admin-text-base)",
                     fontWeight: 700,
+                    letterSpacing: "-0.01em",
                     color: "var(--admin-text)",
                   }}
                 >

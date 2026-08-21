@@ -53,6 +53,7 @@ export function Button({
   iconOnly = false,
   children,
   style,
+  className,
   title,
   onClick,
   type = "button",
@@ -68,6 +69,7 @@ export function Button({
       title={title}
       onClick={onClick}
       disabled={isDisabled}
+      className={["admin-btn", className].filter(Boolean).join(" ")}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -83,7 +85,6 @@ export function Button({
         cursor: isDisabled ? "not-allowed" : "pointer",
         opacity: isDisabled ? 0.55 : 1,
         whiteSpace: "nowrap",
-        transition: "background 0.12s ease, border-color 0.12s ease",
         ...variantStyle,
         ...style,
       }}

@@ -31,6 +31,7 @@ export function Tabs({ tabs = [], activeId, onChange, ariaLabel }) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
+            className={isActive ? "admin-btn" : "admin-btn admin-row-hover"}
             style={{
               minWidth: 148,
               flex: "1 0 auto",
@@ -42,6 +43,8 @@ export function Tabs({ tabs = [], activeId, onChange, ariaLabel }) {
               cursor: "pointer",
               textAlign: "left",
               boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
+              transition:
+                "background var(--admin-duration-fast) var(--admin-ease), color var(--admin-duration-fast) var(--admin-ease), border-color var(--admin-duration-fast) var(--admin-ease), box-shadow var(--admin-duration-fast) var(--admin-ease)",
             }}
           >
             <div style={{ fontSize: 14, fontWeight: 700 }}>{tab.label}</div>

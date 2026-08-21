@@ -1,7 +1,12 @@
 /* Admin design tokens — scoped under .admin-shell so they never leak into the
    participant-facing app, which has its own brand color (var(--blue)). */
 .admin-shell {
-  --admin-accent: #4f46e5;
+  /* Slightly richer/deeper than the original #4f46e5 — same indigo family
+     (existing --admin-accent-* callers don't need to change), tuned for
+     more contrast against both light and dark surfaces so it reads as a
+     considered brand color rather than an unmodified Tailwind default. */
+  --admin-accent: #4338ca;
+  --admin-accent-hover: #3730a3;
   --admin-accent-ink: #3730a3;
   --admin-accent-soft: #eef2ff;
   --admin-accent-border: #c7d2fe;
@@ -23,11 +28,16 @@
   --admin-muted-2: #9ca3af;
   --admin-surface: #ffffff;
   --admin-surface-alt: #f9fafb;
-  --admin-surface-sunken: #f8fafc;
+  --admin-surface-sunken: #f7f8fa;
+  /* One step deeper than -alt, for a sidebar/rail that wants to visually
+     separate from the main content surface without going all the way to
+     -sunken (the page background) — used by AdminShell's nav rail. */
+  --admin-surface-raised: #fcfcfd;
 
   --admin-radius-sm: 7px;
   --admin-radius-md: 10px;
   --admin-radius-lg: 14px;
+  --admin-radius-xl: 20px;
 
   --admin-warning: #f59e0b;
   --admin-warning-ink: #92400e;
@@ -39,18 +49,152 @@
   --admin-info-soft: #eff6ff;
   --admin-info-border: #bfdbfe;
 
-  --admin-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --admin-shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+  /* Layered (ambient + key-light) shadows rather than a single flat blur —
+     reads as real depth instead of a faint outline. Existing --admin-
+     shadow-sm/-md call sites (the vast majority of the app) get this
+     upgrade automatically, no call-site changes needed; -xs/-lg/-hover are
+     new tiers for finer control where one was needed. */
+  --admin-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --admin-shadow-sm: 0 1px 1px rgba(15, 23, 42, 0.03), 0 2px 6px rgba(15, 23, 42, 0.05);
+  --admin-shadow-md: 0 2px 6px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.09);
+  --admin-shadow-lg: 0 6px 16px rgba(15, 23, 42, 0.07), 0 20px 48px rgba(15, 23, 42, 0.14);
+  /* For an interactive card/row lifting on hover — distinct from -md (a
+     card's resting shadow) so the transition between the two reads as a
+     genuine lift, not just a swap. */
+  --admin-shadow-hover: 0 4px 10px rgba(15, 23, 42, 0.06), 0 14px 32px rgba(15, 23, 42, 0.12);
 
   /* Translucent accent wash for focus rings / active-row glows / drag-over
      highlights — same accent hue as --admin-accent but low-alpha, kept as
      its own token (rather than each call site hardcoding an rgba()) so it
      can be re-tuned per theme instead of a fixed indigo silently going
      invisible against a dark surface. */
-  --admin-accent-ring: rgba(79, 70, 229, 0.12);
+  --admin-accent-ring: rgba(67, 56, 202, 0.14);
+
+  /* Type scale — sizes only (line-heights are set per component, since the
+     right ratio varies with how tightly a given element is meant to sit).
+     Named by role, not just t-shirt size, so a call site reads as intent
+     ("this is a page title") rather than an arbitrary number. */
+  --admin-text-2xs: 11px;
+  --admin-text-xs: 12px;
+  --admin-text-sm: 13px;
+  --admin-text-base: 14px;
+  --admin-text-md: 15px;
+  --admin-text-lg: 17px;
+  --admin-text-xl: 20px;
+  --admin-text-2xl: 24px;
+  --admin-text-3xl: 30px;
+
+  /* Motion — one shared easing family (a gentle ease-out-expo, feels
+     responsive without overshooting) and three durations, so every
+     transition added across the admin UI moves at the same "speed" instead
+     of each component inventing its own timing. */
+  --admin-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --admin-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --admin-duration-fast: 120ms;
+  --admin-duration-base: 180ms;
+  --admin-duration-slow: 280ms;
+
+  /* Genuinely own this rather than inherit whichever participant-facing
+     platform stylesheet's `body{font-family}` rule happens to already be
+     loaded (fb/ig/amz all currently define the same stack, but only by
+     coincidence — nothing here actually declared it). -0.01em tightens
+     system fonts just slightly, which reads as more deliberate at UI sizes
+     without affecting legibility. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
 
   background: var(--admin-surface-sunken);
   color: var(--admin-text);
+}
+
+/* ── Shared interaction classes ───────────────────────────────────────────
+   Pseudo-classes (:hover/:active/:focus-visible) can't be expressed as
+   React inline styles, which is why buttons/rows/cards across this admin
+   UI had zero hover or press feedback before this — every color they use
+   is set inline, so these classes deliberately work via filter/transform/
+   box-shadow overlays instead of touching `background` directly, meaning
+   they layer correctly on top of *any* inline background a caller sets
+   (primary/secondary/danger/ghost alike) rather than needing one rule per
+   variant. */
+.admin-btn {
+  transition:
+    transform var(--admin-duration-fast) var(--admin-ease),
+    box-shadow var(--admin-duration-fast) var(--admin-ease),
+    filter var(--admin-duration-fast) var(--admin-ease),
+    border-color var(--admin-duration-fast) var(--admin-ease);
+}
+.admin-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: var(--admin-shadow-xs);
+}
+.admin-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.97);
+  transition-duration: 40ms;
+}
+.admin-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--admin-accent-ring);
+}
+
+/* A card or row that acts like a link/button as a whole (project/platform
+   picker cards, nav rows) — lifts slightly and picks up the hover shadow
+   tier instead of just changing color, so it reads as "this whole thing is
+   clickable", not just its inner button. */
+.admin-card-interactive {
+  cursor: pointer;
+  transition:
+    transform var(--admin-duration-base) var(--admin-ease),
+    box-shadow var(--admin-duration-base) var(--admin-ease),
+    border-color var(--admin-duration-base) var(--admin-ease);
+}
+.admin-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--admin-shadow-hover);
+  border-color: var(--admin-accent-border);
+}
+.admin-card-interactive:active {
+  transform: translateY(-1px);
+  transition-duration: 60ms;
+}
+
+/* Plain background-only hover, for table rows / nav rows / list items where
+   a lift would be too much motion for something this small/dense. */
+.admin-row-hover {
+  transition: background var(--admin-duration-fast) var(--admin-ease);
+}
+.admin-row-hover:hover {
+  background: var(--admin-surface-alt);
+}
+
+@keyframes admin-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes admin-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes admin-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Respect the OS-level motion preference — every transition/animation this
+   file defines collapses to effectively-instant rather than being removed
+   outright (removing them entirely would need a second, parallel set of
+   non-animated rules; collapsing duration is the standard low-effort way to
+   honor this preference without maintaining two code paths). */
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell *,
+  .admin-shell *::before,
+  .admin-shell *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* Baseline for raw <input>/<select>/<textarea> that don't carry the
@@ -102,6 +246,7 @@
    against --admin-surface (not just a flat wash). */
 html[data-admin-theme="dark"] .admin-shell {
   --admin-accent: #6366f1;
+  --admin-accent-hover: #818cf8;
   --admin-accent-ink: #c7d2fe;
   --admin-accent-soft: #23263f;
   --admin-accent-border: #4338ca;
@@ -134,9 +279,13 @@ html[data-admin-theme="dark"] .admin-shell {
   --admin-surface: #1a1d24;
   --admin-surface-alt: #22262f;
   --admin-surface-sunken: #101217;
+  --admin-surface-raised: #1e2129;
 
-  --admin-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --admin-shadow-md: 0 4px 20px rgba(0, 0, 0, 0.55);
+  --admin-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --admin-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --admin-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.45);
+  --admin-shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.4), 0 24px 56px rgba(0, 0, 0, 0.55);
+  --admin-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.4), 0 16px 36px rgba(0, 0, 0, 0.5);
   --admin-accent-ring: rgba(99, 102, 241, 0.35);
 
   /* The post-editor modal (components-admin-editor-ui.jsx) deliberately

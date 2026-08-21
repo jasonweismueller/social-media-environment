@@ -60,38 +60,38 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
 
         <div style={{ display: "grid", gap: 12 }}>
           {PLATFORMS.map((p) => (
-            <Card key={p.app} bodyStyle={{ padding: 16 }}>
+            <Card key={p.app} bodyStyle={{ padding: 16 }} interactive onClick={() => pick(p.app)}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
                   <span
                     aria-hidden="true"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      width: 40,
-                      height: 40,
+                      width: 44,
+                      height: 44,
                       borderRadius: "var(--admin-radius-md)",
                       background: "var(--admin-accent-soft)",
                       color: "var(--admin-accent-ink)",
                       flexShrink: 0,
                     }}
                   >
-                    <p.icon size={22} />
+                    <p.icon size={24} />
                   </span>
                   <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--admin-text)" }}>
+                    <div style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
                       {p.label}
                       {p.app === currentApp && (
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--admin-muted)", marginLeft: 8 }}>
+                        <span style={{ fontSize: "var(--admin-text-2xs)", fontWeight: 600, color: "var(--admin-muted)", marginLeft: 8 }}>
                           (currently loaded)
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 2 }}>{p.blurb}</div>
+                    <div style={{ fontSize: "var(--admin-text-xs)", color: "var(--admin-muted)", marginTop: 2 }}>{p.blurb}</div>
                   </div>
                 </div>
-                <Button variant="primary" onClick={() => pick(p.app)}>
+                <Button variant="primary" onClick={(e) => { e.stopPropagation(); pick(p.app); }}>
                   Open →
                 </Button>
               </div>

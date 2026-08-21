@@ -121,6 +121,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
         justifyContent: fullScreen ? "stretch" : "center",
         padding: fullScreen ? 0 : 20,
         zIndex: 2000,
+        animation: `admin-fade-in var(--admin-duration-base) var(--admin-ease) both`,
       }}
     >
       <div
@@ -138,9 +139,12 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
           flexDirection: "column",
           background: "var(--admin-surface)",
           borderRadius: fullScreen ? 0 : "var(--admin-radius-lg)",
-          boxShadow: fullScreen ? "none" : "var(--admin-shadow-md)",
+          boxShadow: fullScreen ? "none" : "var(--admin-shadow-lg)",
           overflow: "hidden",
           outline: "none",
+          animation: fullScreen
+            ? undefined
+            : `admin-modal-in var(--admin-duration-slow) var(--admin-ease) both`,
         }}
       >
         <div
@@ -155,7 +159,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--admin-text)" }}>
+            <h3 style={{ margin: 0, fontSize: "var(--admin-text-lg)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
               {title}
             </h3>
             {subtitle && (
@@ -168,14 +172,21 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
             type="button"
             onClick={onClose}
             aria-label="Close"
+            className="admin-btn"
             style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
               border: "none",
+              borderRadius: "var(--admin-radius-sm)",
               background: "transparent",
-              fontSize: 20,
+              fontSize: 18,
               lineHeight: 1,
               cursor: "pointer",
               color: "var(--admin-muted)",
-              padding: 2,
+              flexShrink: 0,
             }}
           >
             ×

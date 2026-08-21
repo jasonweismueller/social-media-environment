@@ -7131,3 +7131,106 @@ target question with no preface shown. All three touched files parse clean (`@ba
 **Not verified**: an actual click-through by a real logged-in admin — same standing limitation as
 everywhere else in this file. Worth a real look on `staging.studyfeed.org` before assuming this is
 pixel/behavior-perfect beyond what live component-mount verification already covered.
+
+## UI/UX modernization, phase 1: design-token overhaul + shared primitives + entry screens/nav chrome (2026-08-21)
+
+Direct request for "the kind of changes that really make a difference... state of the art... in
+terms of functionality but also UX and UI" — user picked **UI/UX modernization** specifically
+(offered alongside AI-assisted authoring, new platform surfaces, and deeper behavioral
+instrumentation, all deferred). Scoped as a genuine foundation pass rather than a per-screen
+reskin: every admin screen is built from `src/admin/ui/`'s shared primitives (`Button`/`Card`/
+`Table`/`Tabs`/`Toggle`/`Modal`/`Popover`/`Badge`/`EmptyState`/`PageHeader`), so upgrading those
+plus the design tokens they read from cascades everywhere automatically — this is phase 1 of that
+foundation, not a claim that every individual dashboard screen has now had its own dedicated pass.
+
+**Investigated before writing any CSS**, via live screenshots of the real login/project-picker
+pages and direct code reading of every `src/admin/ui/*.jsx` file, rather than guessing:
+- **Buttons had zero hover/press feedback anywhere** — `Button.jsx`'s only `transition` covered
+  `background`/`border-color`, but nothing ever changed those properties on hover (no `:hover`
+  rule exists for inline styles), so every button in the admin tool was, in practice, static until
+  clicked. Same gap in `IconPillButton`/`ThemeToggle`/`LogoutButton`/nav rows/tabs — all raw
+  `<button>`s styled purely inline.
+- **Table rows had no hover state**, `Modal`/`Popover` had no entrance animation (appeared
+  instantly), `Card`'s shadow was a single flat `0 1px 2px` blur with no real depth.
+- **The admin UI's own typography was never actually owned** — `.admin-shell` declared no
+  `font-family` at all; the whole admin tool's body font was an accidental side effect of
+  whichever participant-facing platform stylesheet (`styles-{facebook,instagram,amazon}.css`)
+  happened to already be loaded on the page, all three of which happen to declare an identical
+  stack today, purely by coincidence, not by design.
+
+**`src/admin/ui/tokens.css`** — the foundational layer, additive (no existing `--admin-*` token
+renamed, so no call site needed to change to benefit):
+- `.admin-shell` now declares its own `font-family` explicitly (a refined system-font stack,
+  `-webkit-font-smoothing: antialiased`, `letter-spacing: -0.01em`) instead of inheriting one by
+  coincidence.
+- New named type scale (`--admin-text-2xs` through `-3xl`), motion tokens (`--admin-ease`, three
+  duration tiers), and a deeper neutral/shadow system — `--admin-shadow-sm`/`-md` (already used
+  throughout the app) upgraded in place from flat single-blur shadows to layered ambient+key-light
+  shadows, so every existing card/dropdown/modal gets more realistic depth with zero call-site
+  changes; new `-xs`/`-lg`/`-hover` tiers added for finer control. Accent color deepened slightly
+  (`#4f46e5` → `#4338ca`) for more contrast/a less default-Tailwind feel.
+- **New shared interaction classes** — `.admin-btn` (hover: `filter: brightness()` + shadow bump;
+  active: scale-down; `:focus-visible`: accent ring — deliberately filter/transform/shadow-based,
+  not a `background` override, so it layers correctly on top of *any* inline background a variant
+  sets, one class for every button variant), `.admin-card-interactive` (hover-lift for whole
+  clickable cards), `.admin-row-hover` (background-only, for table/nav rows where a lift would be
+  too much motion). Plus `admin-fade-in`/`admin-modal-in`/`admin-pop-in` keyframes for real
+  entrance animation, and a `prefers-reduced-motion: reduce` block collapsing every transition/
+  animation duration to near-zero for users who've asked for that.
+- Both the light and dark token blocks got matching upgrades (new shadow tiers, `--admin-accent-
+  hover`, `--admin-surface-raised`) so nothing regresses between themes.
+
+**Primitives updated to actually use the new interaction classes** (mechanical, one line each in
+most cases): `Button`, `IconPillButton`, `ThemeToggle`, `LogoutButton`, `Tabs` (tab buttons),
+`Modal`'s close button — all gained `.admin-btn`. `Table`'s `Tr` now defaults to `.admin-row-hover`
+(opt-out via a new `hover={false}` prop for the rare non-interactive-row table). `Card` gained an
+`interactive` prop (+ `onClick`) that applies `.admin-card-interactive` for whole-card hover-lift,
+used by the project/platform pickers below. `Modal`/`Popover` gained real entrance animation
+(fade + scale/translate) and moved from `-shadow-md`/no-shadow to `-shadow-lg`. `EmptyState`'s icon
+now sits in a soft tinted circle instead of floating bare. `PageHeader`/`Card` title, `Badge`, and
+`Toggle` all moved onto the new type-scale tokens and the shared `--admin-ease`/duration tokens
+instead of ad-hoc per-component values.
+
+**`AdminShell.jsx` (the nav chrome every dashboard screen lives inside)**: nav rows gained real
+hover feedback (previously only active-vs-inactive static colors, nothing in between) and a
+chevron that rotates open/closed — there was previously zero visual indication a section was even
+expandable/collapsible, only discoverable by already knowing to click it again. Sidebar gained a
+barely-there directional shadow for separation from the main content pane (previously a bare
+1px border only). Title now truncates with a tooltip instead of silently overflowing for a long
+project name. The "back to projects" link gained a proper hover-highlight hit target.
+
+**`AdminProjectPicker.jsx`/`AdminPlatformPicker.jsx`** (the first two screens after login — the
+"front door", picked for dedicated attention beyond what the primitive upgrades alone provide):
+each project/platform row is now a genuinely clickable `Card` (`interactive`, whole-row `onClick`
+→ choose/pick, with `stopPropagation()` on the inner action buttons so "Delete"/"Set default"
+don't also trigger navigation) with hover-lift, not just a static card containing a separate
+"Choose"/"Open" button. Projects gained a folder-icon badge (platforms already had one) for
+visual rhythm/scannability down a list. Both moved onto the new type scale.
+
+**Deliberately not touched in this pass** (real scope limits, not oversights) — the individual
+Feeds/Surveys detail panels, the post/survey editors, and the Participants analysis hub's own
+charts/tables. These automatically inherit the primitive-level wins (button hover, card shadow,
+table row hover, type scale) wherever they already use the shared components, but none has had its
+own dedicated layout/hierarchy pass yet — a natural phase 2 if this direction continues.
+
+**Verified live**, dev server confirmed working in this environment (`npm run dev`, no login
+available — same standing limitation as everywhere else in this file, worked around with the
+established fake-session/mocked-fetch and direct-component-mount techniques already documented
+repeatedly in this file): a real screenshot of the live login/project-picker pages taken *before*
+any change, for an honest baseline (confirmed via that screenshot: flat cards, no depth, an
+orphaned-looking logout button that turned out to just be a narrow-viewport flex-wrap artifact —
+checked and ruled out at real desktop width via `getBoundingClientRect`, not a real layout bug).
+After the changes: confirmed via direct CSS-rule inspection (not just eyeballing a screenshot,
+since this sandbox's synthetic hover doesn't reliably trigger real `:hover` matching — the same
+caveat this file already documents for click/hover simulation elsewhere) that `.admin-btn`/
+`.admin-card-interactive`'s hover/active/focus rules are correctly registered and applied, with
+real computed `transition`/`box-shadow` values reading back correctly; live-mounted the real
+`Card`/`Badge`/`Button`/`PageHeader` primitives with fabricated project data and confirmed the new
+layered shadow, icon badges, and 2xl page-title scale render as designed, in both light and dark
+mode (screenshotted both); live-mounted the real `AdminShell` (wrapped in a `MemoryRouter`, since
+it needs real router context) with fabricated nav state and confirmed the rotating chevron, nav
+hover, and sidebar separation all render correctly in both themes. All 17 touched files parse
+clean (`@babel/parser`) and `tokens.css`'s braces balance. **Not verified**: an actual click-through
+by a real logged-in admin — same standing limitation as everywhere else in this file. Worth a real
+look on `staging.studyfeed.org` before assuming this is pixel-perfect beyond what live
+component-mount verification already covered.

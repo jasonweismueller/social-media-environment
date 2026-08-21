@@ -16,15 +16,17 @@ export function PageHeader({ title, subtitle, actions = null }) {
         <h1
           style={{
             margin: 0,
-            fontSize: 20,
+            fontSize: "var(--admin-text-2xl)",
+            lineHeight: 1.25,
             fontWeight: 800,
+            letterSpacing: "-0.02em",
             color: "var(--admin-text)",
           }}
         >
           {title}
         </h1>
         {subtitle && (
-          <div style={{ fontSize: 13, color: "var(--admin-muted)", marginTop: 4 }}>
+          <div style={{ fontSize: "var(--admin-text-sm)", color: "var(--admin-muted)", marginTop: 5 }}>
             {subtitle}
           </div>
         )}

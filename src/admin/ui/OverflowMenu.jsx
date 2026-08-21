@@ -47,6 +47,7 @@ export function OverflowMenu({ items = [], title = "More actions" }) {
               color: item.danger ? "var(--admin-danger-ink)" : "var(--admin-text)",
               cursor: item.disabled ? "not-allowed" : "pointer",
               opacity: item.disabled ? 0.5 : 1,
+              transition: "background var(--admin-duration-fast) var(--admin-ease)",
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = item.danger

@@ -61,9 +61,13 @@ export function Td({ children, style, dense, ...rest }) {
   );
 }
 
-export function Tr({ children, style, ...rest }) {
+export function Tr({ children, style, hover = true, className, ...rest }) {
   return (
-    <tr style={style} {...rest}>
+    <tr
+      className={[hover && "admin-row-hover", className].filter(Boolean).join(" ") || undefined}
+      style={style}
+      {...rest}
+    >
       {children}
     </tr>
   );
