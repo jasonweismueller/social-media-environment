@@ -8059,7 +8059,7 @@ export function SurveyEditor({
             variant="secondary"
             onClick={() => openPreview()}
             disabled={currentQuestions.length === 0}
-            title="See exactly what a participant would see, including conditional questions and group variations"
+            title="See exactly what a participant would see — the information/consent/instructions pages, then conditional questions and group variations"
           >
             Preview
           </Button>

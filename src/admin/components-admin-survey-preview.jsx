@@ -1,7 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Toggle, IconPillButton, IconShuffle, EmptyState, useToast, useAdminTheme } from "./ui";
-import { SurveyScreen, SurveyScreenMobile, ParticipantThemeToggle } from "../ui-core";
+import { SurveyScreen, SurveyScreenMobile, SurveyPrefaceFlow, ParticipantThemeToggle } from "../ui-core";
 import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
+
+// Same "does this HTML field actually have content" check SurveyPrefaceFlow
+// itself uses internally (it builds its own `steps` array from these same
+// three fields and renders nothing for a step whose html is empty) — kept
+// here too so this modal can decide *before* mounting SurveyPrefaceFlow
+// whether there's a preface stage to show at all, versus jumping straight
+// to the questions.
+function surveyHasPrefaceContent(survey) {
+  return !!(
+    (survey?.participant_information_html || "").trim() ||
+    (survey?.consent_text_html || "").trim() ||
+    (survey?.instructions_html || "").trim()
+  );
+}
 
 // Deliberately all-false — a stable, deterministic preview default. Any
 // per-question `apply_feed_randomization` setting (post_reminder questions)
@@ -101,6 +115,11 @@ export function SurveyPreviewModal({
   // block "Next"); the pill lets an admin turn that off to click through
   // quickly without answering everything.
   const [forceResponse, setForceResponse] = useState(true);
+  // Jumping straight to one question (via a question's own "Preview this
+  // question" icon) should land on that question, not force clicking
+  // through the preface first — starts already-"done" in that case.
+  const [prefaceDone, setPrefaceDone] = useState(!!initialQuestionId);
+  const hasPrefaceContent = useMemo(() => surveyHasPrefaceContent(survey), [survey]);
 
   const participantSeed = seedNonce === 0 ? "preview" : `preview-${seedNonce}`;
 
@@ -290,10 +309,22 @@ export function SurveyPreviewModal({
         </div>
       )}
 
-      {materializedPages.length === 0 ? (
+      {hasPrefaceContent && !prefaceDone ? (
+        <div className={previewIsDark ? "dark-mode" : ""}>
+          <SurveyPrefaceFlow
+            survey={survey}
+            participantDisplayId="PREVIEW"
+            onComplete={() => setPrefaceDone(true)}
+          />
+        </div>
+      ) : materializedPages.length === 0 ? (
         <EmptyState
           title="Nothing to preview yet"
-          message="Add at least one question to see the participant view."
+          message={
+            hasPrefaceContent
+              ? "No questions yet — the information/consent/instructions pages above are everything there is to see so far."
+              : "Add at least one question to see the participant view."
+          }
         />
       ) : (
         <div className={previewIsDark ? "dark-mode" : ""} style={{ position: "relative" }}>

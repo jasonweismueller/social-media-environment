@@ -43,9 +43,11 @@ import {
   buildSurveyPagesFromFlatQuestions,
   flattenSurveyPagesForEditor,
   normalizeQuestionForEditor,
+  normalizeSurveyExperimentGroups,
 } from "./components-admin-surveys-editor";
+import { SurveyPreviewModal } from "./components-admin-survey-preview";
 
-import { Card as AdminUiCard, Tabs, Button, Toggle, useToast, useConfirm, usePrompt, EmptyState, IconClipboard } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, Toggle, useToast, useConfirm, usePrompt, EmptyState, IconClipboard, IconEye } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -1291,6 +1293,8 @@ export function AdminSurveysPanel({
   const [linkedFeedPostsMap, setLinkedFeedPostsMap] = useState({});
   const [loadingReminderPosts, setLoadingReminderPosts] = useState(false);
   const [copiedLinkState, setCopiedLinkState] = useState("");
+  const [descriptionForceOpen, setDescriptionForceOpen] = useState(false);
+  const [globalPreviewOpen, setGlobalPreviewOpen] = useState(false);
   const [activeEditorTab, setActiveEditorTab] = useState("setup");
   const [experimentGroupCounts, setExperimentGroupCounts] = useState(null);
   const [experimentGroupCountsLoading, setExperimentGroupCountsLoading] = useState(false);
@@ -1303,6 +1307,15 @@ export function AdminSurveysPanel({
 
   const hasExperimentGroups =
     Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
+
+  // Feeds the global "Preview" button — reachable from every tab, not just
+  // Questions (which owns its own, separate preview instance keyed to a
+  // specific question). Mirrors exactly what SurveyEditor computes/receives
+  // for its own SurveyPreviewModal instance.
+  const experimentGroupsForPreview = useMemo(
+    () => (survey ? normalizeSurveyExperimentGroups(survey) : []),
+    [survey]
+  );
 
   const refreshExperimentGroupCounts = useCallback(async () => {
     if (!survey?.survey_id) {
@@ -1410,6 +1423,7 @@ export function AdminSurveysPanel({
 
   useEffect(() => {
     setActiveEditorTab("setup");
+    setDescriptionForceOpen(false);
   }, [selectedSurveyId]);
 
   // Shows the list the moment the lightweight survey list resolves — same
@@ -2438,6 +2452,16 @@ export function AdminSurveysPanel({
                   {pageCount === 1 ? "" : "s"}
                 </div>
 
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setGlobalPreviewOpen(true)}
+                  title="See exactly what a participant would see: the information/consent/instructions pages, then the questions"
+                >
+                  <IconEye size={14} />
+                  Preview
+                </Button>
+
                 <input
                   ref={importFileRef}
                   type="file"
@@ -2449,6 +2473,17 @@ export function AdminSurveysPanel({
                     sidebar, next to Save survey — mirrors Delete feed. */}
               </div>
             </div>
+
+            {globalPreviewOpen && (
+              <SurveyPreviewModal
+                survey={survey}
+                experimentGroups={experimentGroupsForPreview}
+                linkedFeeds={linkedFeedsForEditor}
+                linkedFeedPostsMap={linkedFeedPostsMap}
+                feedSequenceIds={selectedFeedIds}
+                onClose={() => setGlobalPreviewOpen(false)}
+              />
+            )}
 
             <Tabs
               ariaLabel="Survey editor sections"
@@ -2462,8 +2497,8 @@ export function AdminSurveysPanel({
                 },
                 {
                   id: "prefeed",
-                  label: "Pre-feed",
-                  summary: "Info, consent & instructions",
+                  label: "Participant flow",
+                  summary: "Consent, instructions & thank-you",
                 },
                 {
                   id: "questions",
@@ -2477,8 +2512,8 @@ export function AdminSurveysPanel({
                 },
                 {
                   id: "launch",
-                  label: "Launch & completion",
-                  summary: "Links, export & finish",
+                  label: "Launch & data",
+                  summary: "Links, IDs & CSV export",
                 },
               ]}
             />
@@ -2515,60 +2550,61 @@ export function AdminSurveysPanel({
                 />
               </FieldBlock>
 
-              <FieldBlock label="Description">
-                <TextAreaInput
-                  value={survey.description}
-                  onChange={(v) => setSurvey({ ...survey, description: v })}
-                  placeholder="Description"
-                  rows={3}
-                />
-              </FieldBlock>
-
-              <FieldBlock
-                label="Study flow"
-                hint="Choose whether participants see one linked feed, multiple linked feeds in sequence, or skip the feed and go directly to the survey."
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(220px, 1fr) minmax(220px, 1fr)",
+                  gap: "0 16px",
+                }}
               >
-                <SelectInput
-                  value={deliveryMode}
-                  onChange={(v) => {
-                    const nextMode = normalizeDeliveryMode(v);
-                    const ids = orderedLinkedFeedIdsFromSurvey(survey);
-                    setSurvey({
-                      ...survey,
-                      delivery_mode: nextMode,
-                      linked_feed_ids: ids,
-                      feed_sequence_ids: nextMode === DELIVERY_MODE_SURVEY_ONLY ? [] : ids,
-                      pre_feed_button_label:
-                        nextMode === DELIVERY_MODE_SURVEY_ONLY &&
-                        (!survey.pre_feed_button_label ||
-                          survey.pre_feed_button_label === DEFAULT_PRE_FEED_BUTTON_LABEL)
-                          ? "Start survey"
-                          : survey.pre_feed_button_label,
-                    });
-                  }}
+                <FieldBlock
+                  label="Study flow"
+                  hint="One feed, multiple feeds in sequence, or skip the feed entirely."
                 >
-                  <option value={DELIVERY_MODE_FEED_THEN_SURVEY}>
-                    One feed, then survey
-                  </option>
-                  <option value={DELIVERY_MODE_MULTI_FEED_THEN_SURVEY}>
-                    Multiple feeds, then survey
-                  </option>
-                  <option value={DELIVERY_MODE_SURVEY_ONLY}>
-                    Survey only (skip feed)
-                  </option>
-                </SelectInput>
-              </FieldBlock>
+                  <SelectInput
+                    value={deliveryMode}
+                    onChange={(v) => {
+                      const nextMode = normalizeDeliveryMode(v);
+                      const ids = orderedLinkedFeedIdsFromSurvey(survey);
+                      setSurvey({
+                        ...survey,
+                        delivery_mode: nextMode,
+                        linked_feed_ids: ids,
+                        feed_sequence_ids: nextMode === DELIVERY_MODE_SURVEY_ONLY ? [] : ids,
+                        pre_feed_button_label:
+                          nextMode === DELIVERY_MODE_SURVEY_ONLY &&
+                          (!survey.pre_feed_button_label ||
+                            survey.pre_feed_button_label === DEFAULT_PRE_FEED_BUTTON_LABEL)
+                            ? "Start survey"
+                            : survey.pre_feed_button_label,
+                      });
+                    }}
+                  >
+                    <option value={DELIVERY_MODE_FEED_THEN_SURVEY}>
+                      One feed, then survey
+                    </option>
+                    <option value={DELIVERY_MODE_MULTI_FEED_THEN_SURVEY}>
+                      Multiple feeds, then survey
+                    </option>
+                    <option value={DELIVERY_MODE_SURVEY_ONLY}>
+                      Survey only (skip feed)
+                    </option>
+                  </SelectInput>
+                </FieldBlock>
 
-              <FieldBlock
-                label="Participant appearance"
-                hint="Opt-in — off by default. When on, participants see a small toggle to switch the survey between light and dark."
-              >
-                <Toggle
-                  label="Allow dark mode for participants"
-                  checked={!!survey.allow_dark_mode}
-                  onChange={(v) => setSurvey({ ...survey, allow_dark_mode: v })}
-                />
-              </FieldBlock>
+                <FieldBlock
+                  label="Participant appearance"
+                  hint="Opt-in. Shows participants a light/dark toggle."
+                >
+                  <div style={{ height: 42, display: "flex", alignItems: "center" }}>
+                    <Toggle
+                      label="Allow dark mode for participants"
+                      checked={!!survey.allow_dark_mode}
+                      onChange={(v) => setSurvey({ ...survey, allow_dark_mode: v })}
+                    />
+                  </div>
+                </FieldBlock>
+              </div>
             </SectionCard>
             )}
 
@@ -2707,6 +2743,37 @@ export function AdminSurveysPanel({
                 </div>
               </FieldBlock>
 
+              {descriptionForceOpen || (survey.description && survey.description.trim()) ? (
+                <FieldBlock
+                  label="Study description"
+                  hint="Optional — used as the study summary at the top of the Ethics protocol export below. Not shown to participants."
+                >
+                  <TextAreaInput
+                    value={survey.description}
+                    onChange={(v) => setSurvey({ ...survey, description: v })}
+                    placeholder="Briefly describe this study for the ethics document..."
+                    rows={2}
+                  />
+                </FieldBlock>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDescriptionForceOpen(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    marginBottom: 14,
+                    color: "var(--admin-accent-ink)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Add a study description
+                </button>
+              )}
+
               <FieldBlock
                 label="Ethics protocol export"
                 hint="A participant-facing document of this survey's content, formatted for ethics applications."
@@ -2840,7 +2907,10 @@ export function AdminSurveysPanel({
             )}
 
             {activeEditorTab === "prefeed" && (
-            <SectionCard title="Pre-feed pages">
+            <SectionCard
+              title="Before the study"
+              subtitle="What participants see first: the information sheet, consent, and instructions."
+            >
               <FieldBlock
                 label="Participant information title"
                 hint="Shown as the heading on the participant information page before the feed."
@@ -2983,8 +3053,11 @@ export function AdminSurveysPanel({
             </SectionCard>
             )}
 
-            {activeEditorTab === "launch" && (
-            <SectionCard title="Completion / thank you">
+            {activeEditorTab === "prefeed" && (
+            <SectionCard
+              title="After the study"
+              subtitle="What participants see once they submit the survey."
+            >
               <FieldBlock
                 label="Completion mode"
                 hint="Choose whether participants see a thank you screen or are redirected automatically after survey submission."

@@ -7064,3 +7064,70 @@ toggle/section/modal code itself as currently written, at either of the two most
 Genuinely need more from the user to make progress here — which app (FB/IG — Amazon has no bio/avatar
 concept at all, confirmed via grep), roughly what window size or device, and ideally a screenshot of
 the toggle's out-of-reach position — rather than continuing to guess at viewport widths blindly.
+
+## Survey editor tabs: reorganized (Description relocated, Completion moved into "Participant flow"), plus a new "Preview" that now actually shows the preface (2026-08-21)
+
+Prompted directly, in response to open questions about the Surveys admin panel's 5 tabs (Setup/
+Pre-feed/Questions/Participants/Launch & completion, `components-admin-surveys.jsx`) — the
+Description field was called out specifically as barely-used clutter, plus general "should we
+rearrange/compact/add anything" questions.
+
+**Investigated before changing anything**: `survey.description` isn't dead — it's the one real
+consumer, `buildSurveyEthicsHtmlDocument`'s ethics-protocol export (`<p>${description}</p>` at the
+top of the generated Word/PDF document). Its problem wasn't that it's unused, it's that it sat at
+the very top of the Setup tab (the first thing every admin sees) for a field whose only actual
+payoff is a document most admins open rarely — pure prominence-vs-value mismatch, not deadness.
+
+**Changes, all in `components-admin-surveys.jsx` unless noted**:
+- **Description relocated**, not deleted — moved out of Setup's "Survey details" card into the
+  Launch tab's "Launch links and IDs" card, positioned directly above "Ethics protocol export" (its
+  actual and only consumer), with a hint explicitly naming that connection. Collapsed behind a
+  "+ Add a study description" disclosure link when empty (`descriptionForceOpen` state, reset on
+  survey switch via the existing survey-select effect) — expands automatically if the survey
+  already has one, so nothing existing is hidden.
+- **Setup tab compacted**: "Study flow" (select) and "Participant appearance" (dark-mode toggle) —
+  both short, single-control fields previously stacked full-width — now sit side by side in a
+  2-column grid. Verified via `getBoundingClientRect()` on a live-mounted copy of the exact grid
+  CSS: both fields share the same `top`, different `left` — genuinely side-by-side, not stacked.
+- **Tabs rearranged around a "before / after" framing**: "Pre-feed" renamed **"Participant flow"**
+  and split into two cards — "Before the study" (unchanged: participant info/consent/instructions)
+  and a new **"After the study"** card, which is the "Completion / thank you" card **moved
+  wholesale** from the Launch tab (same gating condition, same fields, just re-labeled and
+  relocated) — so every piece of participant-facing copy (what they read before, and what they see
+  after submitting) now lives in one tab, instead of split across two unrelated ones. Launch tab
+  renamed **"Launch & data"** (was "Launch & completion" — no longer accurate once Completion
+  moved out) and is now purely operational: IDs/links, the (relocated) description + ethics export,
+  CSV downloads, delete-data, experiment group balance.
+- **New: a "Preview" button reachable from every tab** (not just Questions), added to the survey
+  header row next to the name. Reuses the existing `SurveyPreviewModal` — the same data
+  (`linkedFeedsForEditor`/`linkedFeedPostsMap`/`selectedFeedIds`) and a locally-computed
+  `experimentGroupsForPreview` (`normalizeSurveyExperimentGroups(survey)`, already exported from
+  `components-admin-surveys-editor.jsx`) were already in scope at this level, so this needed no new
+  data plumbing.
+- **Real gap found and fixed while building the above, not assumed away**: `SurveyPreviewModal`
+  (`components-admin-survey-preview.jsx`) never actually rendered the preface at all — it always
+  jumped straight to `SurveyScreen`'s question pages, `materializePagesFromBlocks`-only, with zero
+  reference anywhere to `SurveyPrefaceFlow` or the participant-information/consent/instructions
+  fields. This was caught by live-mounting the real modal with fabricated preface content and
+  finding the rendered text never included it — not by reading the code and assuming it worked.
+  Fixed by importing the already-shared, fully self-contained `SurveyPrefaceFlow` (`../ui-core`,
+  `{survey, participantDisplayId, onComplete}` — the exact same component real participant delivery
+  uses) and rendering it first whenever the survey actually has preface content (`participant_
+  information_html`/`consent_text_html`/`instructions_html` non-empty), advancing to the normal
+  question view via its `onComplete` callback. A per-question "Preview this question" jump
+  (`initialQuestionId` set, the existing Questions-tab entry point) now starts with preface already
+  marked done, so it still lands directly on the target question as before — didn't change that
+  entry point's behavior, only the plain "Preview" entry point's.
+
+**Verified live**, via the dev server (confirmed working in this environment) and cache-busted
+dynamic-import component mounts (no admin login available — standing limitation throughout this
+file): the 2-column grid renders genuinely side-by-side; the description disclosure link correctly
+reveals/hides the textarea; the full preface flow was clicked through end-to-end with fabricated
+marker content — Participant Information → Consent (including the "No" branch correctly showing the
+real decline overlay) → Instructions (confirming the final step's button correctly reads the
+survey's own custom `pre_feed_button_label`) → then, and only then, the actual question — with zero
+console errors at any step; confirmed `initialQuestionId` still correctly skips straight to the
+target question with no preface shown. All three touched files parse clean (`@babel/parser`).
+**Not verified**: an actual click-through by a real logged-in admin — same standing limitation as
+everywhere else in this file. Worth a real look on `staging.studyfeed.org` before assuming this is
+pixel/behavior-perfect beyond what live component-mount verification already covered.
