@@ -168,6 +168,33 @@ export const QUESTION_TYPE_SHORT_LABELS = {
 
 export const INSERTABLE_TYPES = QUESTION_TYPE_CATALOG.map((item) => item.type);
 
+// "Recently used" row at the top of the Add Question gallery — persisted in
+// localStorage (not survey/session state) since it's a per-admin browsing
+// convenience, the same reasoning as every other localStorage-only admin UI
+// preference in this codebase, not something that needs to sync anywhere.
+const RECENT_QUESTION_TYPES_KEY = "admin_recent_question_types_v1";
+const MAX_RECENT_QUESTION_TYPES = 4;
+
+function loadRecentQuestionTypes() {
+  try {
+    const raw = window.localStorage.getItem(RECENT_QUESTION_TYPES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((t) => QUESTION_TYPE_CATALOG.some((item) => item.type === t))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordRecentQuestionType(type) {
+  try {
+    const current = loadRecentQuestionTypes().filter((t) => t !== type);
+    const next = [type, ...current].slice(0, MAX_RECENT_QUESTION_TYPES);
+    window.localStorage.setItem(RECENT_QUESTION_TYPES_KEY, JSON.stringify(next));
+  } catch {}
+}
+
 const INPUT_HEIGHT = 42;
 const TOP_ROW_LABEL_HEIGHT = 18;
 
@@ -216,6 +243,36 @@ export function preserveEmptyOrSanitize(value, fallback = "") {
   if (value === "") return "";
   if (value === null || value === undefined) return fallback;
   return sanitizeFreeformValue(value, fallback);
+}
+
+// Lets a whole question card/row be a native drag source — not just its
+// small dedicated drag-handle icon — while every interactive control inside
+// it (text inputs, the rich-text editor, selects, buttons, links) keeps
+// working exactly as before. Checked from inside a wrapper's own
+// `onDragStart`: if the gesture actually began on/inside one of these,
+// `dragstart` is cancelled so the browser falls back to its normal
+// click/text-selection behavior for that element instead of starting a
+// drag. The dedicated DragHandle/CompactDragHandle elements are unaffected
+// either way — they're their own explicit, always-draggable elements, not
+// gated by this check.
+const DRAG_BLOCKED_TARGET_SELECTOR =
+  'input, textarea, select, button, a[href], [contenteditable="true"], [role="slider"], [data-no-card-drag]';
+
+function isDragBlockedTarget(target) {
+  return !!(target && typeof target.closest === "function" && target.closest(DRAG_BLOCKED_TARGET_SELECTOR));
+}
+
+// Wraps a row/card's existing onDragStart(e, id) callback so the whole
+// element can be `draggable` while clicks/typing/selecting inside its
+// interactive children still work — see isDragBlockedTarget above.
+function makeWholeCardDragStart(onDragStart, id) {
+  return (e) => {
+    if (isDragBlockedTarget(e.target)) {
+      e.preventDefault();
+      return;
+    }
+    onDragStart(e, id);
+  };
 }
 
 function uniqueStringList(values = []) {
@@ -1132,6 +1189,244 @@ function BlockBoundaryDivider({ boundary, isCollapsed = false, onToggleCollapsed
   );
 }
 
+// Shared by StudyOutlineModal and SurveyEditor's own "Pages and questions"
+// list — both need { blocks, pageIdToBlockIndex } to know which block a
+// page belongs to (for collapse state and cross-block drag validation).
+// Extracted once so the two views can't drift out of sync with each other.
+function usePageIdToBlockIndexMap(survey) {
+  const blocks = useMemo(() => normalizeSurveyPageBlocks(survey), [survey]);
+  const pageIdToBlockIndex = useMemo(() => {
+    const map = new Map();
+    blocks.forEach((block, blockIndex) => {
+      block.page_ids.forEach((pageId) => map.set(pageId, blockIndex));
+    });
+    return map;
+  }, [blocks]);
+  return { blocks, pageIdToBlockIndex };
+}
+
+// Shared whole-page drag-to-reorder state/handlers — originally built once
+// for StudyOutlineModal, extracted so SurveyEditor's own "Pages and
+// questions" list can offer the identical page-card drag behavior without
+// a second, separately-maintained copy of this logic (the exact "N places
+// to update" duplication footgun this codebase already has a name for).
+// Each call site gets its own independent state (matches every other bit of
+// per-view local UI state already in this file) — collapsing/dragging a
+// page in one view never affects the other.
+//
+// Reordering a page across a different block's page range would mean
+// deciding both a new position AND a new block membership from one drop —
+// ambiguous and easy to get wrong silently. Page drag is deliberately
+// scoped to reordering within the page's own current block (mirrors
+// PageBlocksEditor's ↑/↓ page controls); moving a page to a *different*
+// block stays the "Page blocks" section's explicit block picker, unchanged.
+function usePageDragReorder(onSurveyChange, blocks, pageIdToBlockIndex) {
+  const [draggingPageId, setDraggingPageId] = useState(null);
+  const [dragOverPageId, setDragOverPageId] = useState(null);
+
+  function movePage(fromPageId, toPageId) {
+    if (!fromPageId || !toPageId || fromPageId === toPageId) return;
+    const fromBlockIndex = pageIdToBlockIndex.get(fromPageId);
+    const toBlockIndex = pageIdToBlockIndex.get(toPageId);
+    if (fromBlockIndex == null || toBlockIndex == null || fromBlockIndex !== toBlockIndex) return;
+    const block = blocks[fromBlockIndex];
+    if (!block) return;
+    const fromIndex = block.page_ids.indexOf(fromPageId);
+    const toIndex = block.page_ids.indexOf(toPageId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+    const nextBlocks = blocks.map((b, i) =>
+      i === fromBlockIndex ? { ...b, page_ids: reorderArray(b.page_ids, fromIndex, toIndex) } : b
+    );
+    onSurveyChange((prev) => applyPageBlocksAndSyncPages(prev, nextBlocks));
+  }
+
+  function handlePageDragStart(e, pageId) {
+    e.stopPropagation();
+    setDraggingPageId(pageId);
+    setDragOverPageId(pageId);
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(pageId));
+    } catch {}
+  }
+
+  function handlePageDragOver(e, pageId) {
+    e.preventDefault();
+    e.stopPropagation();
+    const crossBlock =
+      draggingPageId != null && pageIdToBlockIndex.get(draggingPageId) !== pageIdToBlockIndex.get(pageId);
+    try {
+      e.dataTransfer.dropEffect = crossBlock ? "none" : "move";
+    } catch {}
+    if (dragOverPageId !== pageId) setDragOverPageId(pageId);
+  }
+
+  function handlePageDrop(e, targetPageId) {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourcePageId = draggingPageId;
+    setDraggingPageId(null);
+    setDragOverPageId(null);
+    if (!sourcePageId || sourcePageId === targetPageId) return;
+    movePage(sourcePageId, targetPageId);
+  }
+
+  function handlePageDragEnd(e) {
+    e?.stopPropagation?.();
+    setDraggingPageId(null);
+    setDragOverPageId(null);
+  }
+
+  return {
+    draggingPageId,
+    dragOverPageId,
+    handlePageDragStart,
+    handlePageDragOver,
+    handlePageDrop,
+    handlePageDragEnd,
+  };
+}
+
+// Shared page-card header bar — drag handle (whole page), collapse chevron,
+// "Page N" + optional title, live question count, optional "save this
+// page's questions to the library" action. Used by both StudyOutlineModal
+// and SurveyEditor's own "Pages and questions" list so the two can't
+// visually drift apart; each wraps this in its own container styling
+// (StudyOutlineModal's is more compact than the main editor's).
+function PageCardHeader({
+  pageNumber,
+  pageTitle,
+  questionCount,
+  isCollapsed,
+  onToggleCollapsed,
+  isDragging,
+  isDragOver,
+  isCrossBlockTarget,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  onSaveToLibrary,
+  dense = false,
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        // Same interactive-descendant guard as makeWholeCardDragStart —
+        // can't reuse that helper directly here since this row's onDragStart
+        // prop already arrives pre-bound to a specific page id (from the
+        // caller's `(e) => handlePageDragStart(e, group.pageId)`), not the
+        // raw `(e, id)` shape that helper wraps.
+        if (isDragBlockedTarget(e.target)) {
+          e.preventDefault();
+          return;
+        }
+        onDragStart(e);
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      title="Drag to reorder pages within this block"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: dense ? 6 : 8,
+        padding: dense ? "5px 8px" : "8px 12px",
+        background: "var(--admin-surface-sunken)",
+        borderBottom: isCollapsed ? "none" : "1px solid var(--admin-border-subtle)",
+        opacity: isDragging ? 0.6 : 1,
+        cursor: isDragging ? "grabbing" : "grab",
+      }}
+    >
+      <CompactDragHandle onDragStart={onDragStart} onDragEnd={onDragEnd} />
+      <IconOnlyButton
+        onClick={onToggleCollapsed}
+        title={isCollapsed ? "Expand page" : "Collapse page"}
+        aria-label={isCollapsed ? `Expand page ${pageNumber}` : `Collapse page ${pageNumber}`}
+        size={dense ? 11 : 12}
+        style={{ width: dense ? 20 : 24, height: dense ? 20 : 24, flex: "0 0 auto" }}
+      >
+        <ChevronDownIcon size={dense ? 11 : 12} open={!isCollapsed} />
+      </IconOnlyButton>
+      <span
+        style={{
+          fontSize: dense ? 11 : 12.5,
+          fontWeight: 800,
+          color: "var(--admin-text)",
+          flex: "0 0 auto",
+        }}
+      >
+        Page {pageNumber}
+      </span>
+      {pageTitle && (
+        <span
+          style={{
+            fontSize: dense ? 11 : 12,
+            color: "var(--admin-muted)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+          }}
+        >
+          {pageTitle}
+        </span>
+      )}
+      <span
+        style={{
+          fontSize: dense ? 10 : 11,
+          color: "var(--admin-muted-2)",
+          marginLeft: "auto",
+          flex: "0 0 auto",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {questionCount} {questionCount === 1 ? "question" : "questions"}
+        {isCrossBlockTarget ? " · can't move here" : isCollapsed ? " · collapsed" : ""}
+      </span>
+      {onSaveToLibrary && questionCount > 0 && (
+        <IconOnlyButton
+          onClick={onSaveToLibrary}
+          title="Save this page's questions to the library"
+          aria-label={`Save page ${pageNumber} to the library`}
+          size={dense ? 11 : 12}
+          style={{ width: dense ? 20 : 24, height: dense ? 20 : 24, flex: "0 0 auto" }}
+        >
+          <BookmarkIcon size={dense ? 11 : 12} />
+        </IconOnlyButton>
+      )}
+    </div>
+  );
+}
+
+// Precise "drop here" affordance — a thin line pinned to the top or bottom
+// edge of whichever row is currently being dragged over, replacing a
+// whole-card border/glow highlight that only ever said "somewhere on this
+// card," never which side. Requires the row it's rendered inside to be
+// `position: relative`. Used by both QuestionCard and OutlineRow.
+function DropIndicatorLine({ position, dense = false }) {
+  if (!position) return null;
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: dense ? 4 : 8,
+        right: dense ? 4 : 8,
+        top: position === "above" ? (dense ? -3 : -4) : "auto",
+        bottom: position === "below" ? (dense ? -3 : -4) : "auto",
+        height: dense ? 2 : 3,
+        borderRadius: 999,
+        background: "var(--admin-accent)",
+        boxShadow: "0 0 0 3px var(--admin-accent-ring)",
+        zIndex: 5,
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 // Shared by the Study overview modal's search/filter box — matches on
 // question id, plain-text question content (HTML-stripped, same helper the
 // collapsed-row preview already uses), or type label. Page-break rows always
@@ -1590,6 +1885,27 @@ function PlusIcon({ size = 15 }) {
     >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function GridIcon({ size = 16 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
     </svg>
   );
 }
@@ -2592,7 +2908,7 @@ function AddQuestionCategoryChip({ label, count, active, onClick }) {
   );
 }
 
-function AddQuestionTypeCard({ item, onSelect }) {
+function AddQuestionTypeCard({ item, onSelect, isCurrent = false }) {
   const [hovered, setHovered] = useState(false);
   const tone = QUESTION_TYPE_BADGE_TONE[item.category] || QUESTION_TYPE_BADGE_TONE.content;
   const Icon = item.icon();
@@ -2613,8 +2929,14 @@ function AddQuestionTypeCard({ item, onSelect }) {
         textAlign: "left",
         padding: 13,
         borderRadius: "var(--admin-radius-md)",
-        border: `1px solid ${hovered ? "var(--admin-accent-border, var(--admin-accent))" : "var(--admin-border)"}`,
-        background: hovered ? "var(--admin-surface-alt)" : "var(--admin-surface)",
+        border: `1px solid ${
+          isCurrent
+            ? "var(--admin-accent)"
+            : hovered
+              ? "var(--admin-accent-border, var(--admin-accent))"
+              : "var(--admin-border)"
+        }`,
+        background: isCurrent ? "var(--admin-accent-soft)" : hovered ? "var(--admin-surface-alt)" : "var(--admin-surface)",
         boxShadow: hovered ? "var(--admin-shadow-sm)" : "none",
         cursor: "pointer",
         transition:
@@ -2638,7 +2960,7 @@ function AddQuestionTypeCard({ item, onSelect }) {
         >
           <Icon size={17} />
         </span>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--admin-text)" }}>
             {item.label}
           </div>
@@ -2646,6 +2968,23 @@ function AddQuestionTypeCard({ item, onSelect }) {
             {item.tagline}
           </div>
         </div>
+        {isCurrent && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: "var(--admin-accent-ink)",
+              background: "var(--admin-surface)",
+              border: "1px solid var(--admin-accent-border)",
+              borderRadius: 999,
+              padding: "2px 8px",
+              flex: "0 0 auto",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Current
+          </span>
+        )}
       </div>
 
       <div style={{ fontSize: 12, color: "var(--admin-muted)", lineHeight: 1.42 }}>
@@ -2672,10 +3011,26 @@ function AddQuestionTypeCard({ item, onSelect }) {
 // `onBrowseLibrary` is optional (undefined when this modal is opened from a
 // context that has no library-insert target wired up) — pass nothing and
 // the "From library…" action simply doesn't render.
-function AddQuestionTypeModal({ onSelectType, onBrowseLibrary, onClose }) {
+// `mode="change"` (used by QuestionCard's "browse question types" button
+// next to its Type dropdown) reuses this exact gallery for retyping an
+// *existing* question instead of inserting a new one — same cards, same
+// search/filter, just a different title/subtitle and no "From library"
+// action (browsing the library to replace one question's type in place
+// doesn't make sense — that flow inserts whole new questions). `currentType`
+// marks the question's current type with a "Current" badge so it's obvious
+// at a glance which card would be a no-op.
+function AddQuestionTypeModal({ mode = "add", currentType, onSelectType, onBrowseLibrary, onClose }) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState(null);
   const normalizedQuery = query.trim().toLowerCase();
+  const isChangeMode = mode === "change";
+
+  const recentTypes = useMemo(() => {
+    if (isChangeMode || normalizedQuery || activeCategory) return [];
+    return loadRecentQuestionTypes()
+      .map((t) => QUESTION_TYPE_CATALOG.find((item) => item.type === t))
+      .filter(Boolean);
+  }, [isChangeMode, normalizedQuery, activeCategory]);
 
   const sections = QUESTION_TYPE_CATEGORIES.map((cat) => ({
     ...cat,
@@ -2691,8 +3046,12 @@ function AddQuestionTypeModal({ onSelectType, onBrowseLibrary, onClose }) {
 
   return (
     <Modal
-      title="Add a question"
-      subtitle="Pick a question type below — click a card to add it to the survey."
+      title={isChangeMode ? "Change question type" : "Add a question"}
+      subtitle={
+        isChangeMode
+          ? "Pick a new type below — the question's existing text and answers carry over wherever they still make sense."
+          : "Pick a question type below — click a card to add it to the survey."
+      }
       onClose={onClose}
       width={780}
     >
@@ -2781,6 +3140,34 @@ function AddQuestionTypeModal({ onSelectType, onBrowseLibrary, onClose }) {
           </div>
         )}
 
+        {recentTypes.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "var(--admin-muted-2)",
+                marginBottom: 8,
+              }}
+            >
+              Recently used
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+                gap: 10,
+              }}
+            >
+              {recentTypes.map((item) => (
+                <AddQuestionTypeCard key={`recent_${item.type}`} item={item} onSelect={onSelectType} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {sections.map((section, sectionIndex) => (
             <div key={section.key} style={{ marginBottom: sectionIndex === sections.length - 1 ? 0 : 18 }}>
               <div
@@ -2803,7 +3190,12 @@ function AddQuestionTypeModal({ onSelectType, onBrowseLibrary, onClose }) {
                 }}
               >
                 {section.items.map((item) => (
-                  <AddQuestionTypeCard key={item.type} item={item} onSelect={onSelectType} />
+                  <AddQuestionTypeCard
+                    key={item.type}
+                    item={item}
+                    onSelect={onSelectType}
+                    isCurrent={isChangeMode && item.type === currentType}
+                  />
                 ))}
               </div>
             </div>
@@ -3778,6 +4170,19 @@ function QuestionAdvancedFeedTools({
    Question editor
    ========================= */
 
+// Every icon-only button in this row (Preview/Copy/Save-to-library) was
+// previously left at IconButton's own default size ("md", 36px) while its
+// siblings in the same row — DragHandle, the Required pill, and the ↑/↓
+// buttons — are all a fixed 42px (INPUT_HEIGHT). Same visual row, two
+// different heights side by side. Explicit sizing here matches them all.
+const ACTION_ROW_ICON_BUTTON_STYLE = {
+  width: INPUT_HEIGHT,
+  height: INPUT_HEIGHT,
+  flex: "0 0 auto",
+  borderColor: "var(--admin-border)",
+  background: "var(--admin-surface)",
+};
+
 function QuestionActions({
   q,
   index,
@@ -3837,7 +4242,7 @@ function QuestionActions({
           <IconOnlyButton
             onClick={() => onPreviewQuestion(q.id)}
             title="Preview this question"
-            style={{ borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+            style={ACTION_ROW_ICON_BUTTON_STYLE}
           >
             <EyeIcon size={16} />
           </IconOnlyButton>
@@ -3846,7 +4251,7 @@ function QuestionActions({
         <IconOnlyButton
           onClick={() => duplicateQuestion(index)}
           title="Copy question"
-          style={{ borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+          style={ACTION_ROW_ICON_BUTTON_STYLE}
         >
           <CopyIcon size={16} />
         </IconOnlyButton>
@@ -3855,7 +4260,7 @@ function QuestionActions({
           <IconOnlyButton
             onClick={() => onSaveToLibrary(index)}
             title="Save to library"
-            style={{ borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+            style={ACTION_ROW_ICON_BUTTON_STYLE}
           >
             <BookmarkIcon size={16} />
           </IconOnlyButton>
@@ -3865,6 +4270,7 @@ function QuestionActions({
           onClick={() => removeQuestion(index)}
           title="Delete question"
           danger
+          style={{ width: INPUT_HEIGHT, height: INPUT_HEIGHT, flex: "0 0 auto" }}
         />
       </div>
     </TopField>
@@ -3896,6 +4302,8 @@ function CollapsedQuestionRow({
   moveQuestion,
   removeQuestion,
   duplicateQuestion,
+  updateQuestion,
+  onSaveToLibrary,
   onDragStart,
   onDragEnd,
   onToggleCollapsed,
@@ -4028,18 +4436,48 @@ function CollapsedQuestionRow({
         </span>
       ) : null}
 
-      {q.required ? (
-        <span
-          title="Required"
+      {!isDisplayOnly && updateQuestion ? (
+        <button
+          type="button"
+          onClick={() => updateQuestion(index, { required: !q.required })}
+          title={q.required ? "Required — click to make optional" : "Optional — click to make required"}
+          aria-label={q.required ? "Make optional" : "Make required"}
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "var(--admin-danger)",
+            width: 16,
+            height: 16,
             flex: "0 0 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            border: "none",
+            background: "none",
+            cursor: "pointer",
           }}
-        />
-      ) : null}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: q.required ? "var(--admin-danger)" : "var(--admin-border)",
+            }}
+          />
+        </button>
+      ) : (
+        q.required && (
+          <span
+            title="Required"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "var(--admin-danger)",
+              flex: "0 0 auto",
+            }}
+          />
+        )
+      )}
 
       {hasBrokenCondition ? (
         <span
@@ -4127,6 +4565,22 @@ function CollapsedQuestionRow({
         >
           <CopyIcon size={11} />
         </IconOnlyButton>
+        {onSaveToLibrary && q?.type !== POST_REMINDER_TYPE && (
+          <IconOnlyButton
+            onClick={() => onSaveToLibrary(index)}
+            title="Save to library"
+            size={11}
+            style={{
+              width: 20,
+              height: 20,
+              flex: "0 0 auto",
+              borderColor: "var(--admin-border)",
+              background: "var(--admin-surface)",
+            }}
+          >
+            <BookmarkIcon size={11} />
+          </IconOnlyButton>
+        )}
         <IconOnlyButton
           onClick={() => removeQuestion(index)}
           title="Delete question"
@@ -4671,6 +5125,7 @@ function QuestionCard({
   onSaveToLibrary,
   draggingId,
   dragOverId,
+  dragOverPosition,
   onDragStart,
   onDragOver,
   onDrop,
@@ -4678,6 +5133,7 @@ function QuestionCard({
   isCollapsed,
   onToggleCollapsed,
   onPreviewQuestion,
+  onChangeTypeViaGallery,
 }) {
   const confirm = useConfirm();
   const type = q?.type;
@@ -4741,11 +5197,14 @@ function QuestionCard({
     linkedFeedPostsMap
   );
 
+  // The old isDragOver-driven accent border + glow highlighted the whole
+  // target card with no way to tell "insert above" from "insert below" —
+  // DropIndicatorLine (a precise top/bottom line) replaces that signal
+  // entirely now, so this shell no longer changes color/shadow on drag-over
+  // at all, just opacity while it's the item actually being dragged.
   const shellStyle = {
     position: "relative",
-    border: isDragOver
-      ? "2px solid var(--admin-accent)"
-      : `1px solid ${isPageBreak ? "var(--admin-muted-2)" : "var(--admin-border)"}`,
+    border: `1px solid ${isPageBreak ? "var(--admin-muted-2)" : "var(--admin-border)"}`,
     borderStyle: isPageBreak ? "dashed" : "solid",
     borderRadius: 12,
     padding: 14,
@@ -4753,12 +5212,21 @@ function QuestionCard({
     marginBottom: 26,
     background: isDragging ? "var(--admin-surface-sunken)" : isPageBreak ? "var(--admin-surface-alt)" : "var(--admin-surface)",
     opacity: isDragging ? 0.65 : 1,
-    boxShadow: isDragOver ? "0 0 0 3px var(--admin-accent-ring)" : "none",
+    // Deliberately not a permanent "grab" cursor here (only "grabbing" while
+    // actually dragging) — `cursor` is an inherited CSS property, and none
+    // of this card's text inputs/rich-text editor/selects set their own
+    // explicit `cursor`, so a permanent `grab` on this wrapper would
+    // silently override their normal text-caret cursor on hover, making
+    // every field look non-editable at a glance.
+    cursor: isDragging ? "grabbing" : undefined,
   };
 
   if (isPageBreak) {
     return (
       <div
+        draggable
+        onDragStart={makeWholeCardDragStart(onDragStart, q._editorId)}
+        onDragEnd={onDragEnd}
         onDragOver={(e) => onDragOver(e, q._editorId)}
         onDrop={(e) => onDrop(e, q._editorId)}
         style={{
@@ -4771,6 +5239,8 @@ function QuestionCard({
           gap: 10,
         }}
       >
+        <DropIndicatorLine position={isDragOver ? dragOverPosition : null} />
+
         <InsertAtBorderButton
           position="top"
           onOpenPicker={() => onOpenAddQuestion(index, "above")}
@@ -4832,6 +5302,7 @@ function QuestionCard({
             onClick={() => removeQuestionWithConfirm(index)}
             title="Delete page break"
             danger
+            style={{ width: INPUT_HEIGHT, height: INPUT_HEIGHT, flex: "0 0 auto" }}
           />
         </div>
       </div>
@@ -4840,10 +5311,15 @@ function QuestionCard({
 
   return (
     <div
+      draggable
+      onDragStart={makeWholeCardDragStart(onDragStart, q._editorId)}
+      onDragEnd={onDragEnd}
       onDragOver={(e) => onDragOver(e, q._editorId)}
       onDrop={(e) => onDrop(e, q._editorId)}
       style={shellStyle}
     >
+      <DropIndicatorLine position={isDragOver ? dragOverPosition : null} />
+
       <InsertAtBorderButton
         position="top"
         onOpenPicker={() => onOpenAddQuestion(index, "above")}
@@ -4866,6 +5342,8 @@ function QuestionCard({
           moveQuestion={moveQuestion}
           removeQuestion={removeQuestionWithConfirm}
           duplicateQuestion={duplicateQuestion}
+          updateQuestion={updateQuestion}
+          onSaveToLibrary={onSaveToLibrary}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
           onToggleCollapsed={onToggleCollapsed}
@@ -4918,20 +5396,38 @@ function QuestionCard({
               </TopField>
             )}
 
-            <div style={{ width: 220, flexShrink: 0 }}>
+            <div style={{ width: onChangeTypeViaGallery ? 258 : 220, flexShrink: 0 }}>
               <TopField label="Type">
-                <SelectInput
-                  value={q.type}
-                  onChange={(nextType) =>
-                    updateQuestion(index, computeQuestionAfterTypeChange(q, nextType, index))
-                  }
-                >
-                  {INSERTABLE_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {QUESTION_TYPE_LABELS[t] || t}
-                    </option>
-                  ))}
-                </SelectInput>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <SelectInput
+                    value={q.type}
+                    onChange={(nextType) =>
+                      updateQuestion(index, computeQuestionAfterTypeChange(q, nextType, index))
+                    }
+                    style={{ minWidth: 0 }}
+                  >
+                    {INSERTABLE_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {QUESTION_TYPE_LABELS[t] || t}
+                      </option>
+                    ))}
+                  </SelectInput>
+                  {onChangeTypeViaGallery && (
+                    <IconOnlyButton
+                      onClick={() => onChangeTypeViaGallery(index)}
+                      title="Browse question types (with descriptions and examples)"
+                      style={{
+                        width: INPUT_HEIGHT,
+                        height: INPUT_HEIGHT,
+                        flex: "0 0 auto",
+                        borderColor: "var(--admin-border)",
+                        background: "var(--admin-surface)",
+                      }}
+                    >
+                      <GridIcon size={16} />
+                    </IconOnlyButton>
+                  )}
+                </div>
               </TopField>
             </div>
           </div>
@@ -5220,6 +5716,7 @@ function OutlineRow({
   onDelete,
   draggingId,
   dragOverId,
+  dragOverPosition,
   onDragStart,
   onDragOver,
   onDrop,
@@ -5255,19 +5752,25 @@ function OutlineRow({
   if (isPageBreak) {
     return (
       <div
+        draggable
+        onDragStart={makeWholeCardDragStart(onDragStart, item._editorId)}
+        onDragEnd={onDragEnd}
         onDragOver={(e) => onDragOver(e, item._editorId)}
         onDrop={(e) => onDrop(e, item._editorId)}
         style={{
+          position: "relative",
           display: "flex",
           alignItems: "center",
           gap: 5,
           margin: "3px 0",
           padding: "2px 5px",
           borderRadius: 5,
-          borderTop: isDragOver ? "2px solid var(--admin-accent)" : "1px dashed var(--admin-muted-2)",
+          borderTop: "1px dashed var(--admin-muted-2)",
           opacity: isDragging ? 0.5 : 1,
+          cursor: isDragging ? "grabbing" : undefined,
         }}
       >
+        <DropIndicatorLine position={isDragOver ? dragOverPosition : null} dense />
         <CompactDragHandle
           onDragStart={(e) => onDragStart(e, item._editorId)}
           onDragEnd={onDragEnd}
@@ -5306,20 +5809,26 @@ function OutlineRow({
 
   return (
     <div
+      draggable
+      onDragStart={makeWholeCardDragStart(onDragStart, item._editorId)}
+      onDragEnd={onDragEnd}
       onDragOver={(e) => onDragOver(e, item._editorId)}
       onDrop={(e) => onDrop(e, item._editorId)}
       style={{
+        position: "relative",
         display: "flex",
         alignItems: "center",
         gap: 5,
         padding: "2px 5px",
         borderRadius: 6,
-        border: isDragOver ? "2px solid var(--admin-accent)" : "1px solid var(--admin-border-subtle)",
+        border: "1px solid var(--admin-border-subtle)",
         background: isDragging ? "var(--admin-surface-sunken)" : "var(--admin-surface)",
         opacity: isDragging ? 0.6 : 1,
         marginBottom: 2,
+        cursor: isDragging ? "grabbing" : undefined,
       }}
     >
+      <DropIndicatorLine position={isDragOver ? dragOverPosition : null} dense />
       <CompactDragHandle
         onDragStart={(e) => onDragStart(e, item._editorId)}
         onDragEnd={onDragEnd}
@@ -6024,6 +6533,7 @@ function StudyOutlineModal({
   removeQuestion,
   draggingId,
   dragOverId,
+  dragOverPosition,
   onDragStart,
   onDragOver,
   onDrop,
@@ -6058,14 +6568,7 @@ function StudyOutlineModal({
     [survey, currentQuestions, pageNumbers]
   );
 
-  const blocks = useMemo(() => normalizeSurveyPageBlocks(survey), [survey]);
-  const pageIdToBlockIndex = useMemo(() => {
-    const map = new Map();
-    blocks.forEach((block, blockIndex) => {
-      block.page_ids.forEach((pageId) => map.set(pageId, blockIndex));
-    });
-    return map;
-  }, [blocks]);
+  const { blocks, pageIdToBlockIndex } = usePageIdToBlockIndexMap(survey);
 
   // Independent from SurveyEditor's own collapsedBlockIds below — collapsing
   // a block here doesn't affect (and isn't affected by) the main editor's
@@ -6098,65 +6601,14 @@ function StudyOutlineModal({
   // dragOverId props threaded through from SurveyEditor — dragging a whole
   // page and dragging a single question row are independent interactions
   // that can both live on the same list at once.
-  const [draggingPageId, setDraggingPageId] = useState(null);
-  const [dragOverPageId, setDragOverPageId] = useState(null);
-
-  // Reordering a page across a different block's page range would mean
-  // deciding both a new position AND a new block membership from one drop —
-  // ambiguous and easy to get wrong silently. Page drag here is scoped to
-  // reordering within the page's own current block (mirrors
-  // PageBlocksEditor's ↑/↓ page controls above, just via drag); moving a
-  // page to a *different* block stays the "Page blocks" section's explicit
-  // block picker, unchanged.
-  function movePage(fromPageId, toPageId) {
-    if (!fromPageId || !toPageId || fromPageId === toPageId) return;
-    const fromBlockIndex = pageIdToBlockIndex.get(fromPageId);
-    const toBlockIndex = pageIdToBlockIndex.get(toPageId);
-    if (fromBlockIndex == null || toBlockIndex == null || fromBlockIndex !== toBlockIndex) return;
-    const block = blocks[fromBlockIndex];
-    if (!block) return;
-    const fromIndex = block.page_ids.indexOf(fromPageId);
-    const toIndex = block.page_ids.indexOf(toPageId);
-    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
-    const nextBlocks = blocks.map((b, i) =>
-      i === fromBlockIndex ? { ...b, page_ids: reorderArray(b.page_ids, fromIndex, toIndex) } : b
-    );
-    onSurveyChange((prev) => applyPageBlocksAndSyncPages(prev, nextBlocks));
-  }
-
-  function handlePageDragStart(e, pageId) {
-    setDraggingPageId(pageId);
-    setDragOverPageId(pageId);
-    try {
-      e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", String(pageId));
-    } catch {}
-  }
-
-  function handlePageDragOver(e, pageId) {
-    e.preventDefault();
-    const crossBlock =
-      draggingPageId != null &&
-      pageIdToBlockIndex.get(draggingPageId) !== pageIdToBlockIndex.get(pageId);
-    try {
-      e.dataTransfer.dropEffect = crossBlock ? "none" : "move";
-    } catch {}
-    if (dragOverPageId !== pageId) setDragOverPageId(pageId);
-  }
-
-  function handlePageDrop(e, targetPageId) {
-    e.preventDefault();
-    const sourcePageId = draggingPageId;
-    setDraggingPageId(null);
-    setDragOverPageId(null);
-    if (!sourcePageId || sourcePageId === targetPageId) return;
-    movePage(sourcePageId, targetPageId);
-  }
-
-  function handlePageDragEnd() {
-    setDraggingPageId(null);
-    setDragOverPageId(null);
-  }
+  const {
+    draggingPageId,
+    dragOverPageId,
+    handlePageDragStart,
+    handlePageDragOver,
+    handlePageDrop,
+    handlePageDragEnd,
+  } = usePageDragReorder(onSurveyChange, blocks, pageIdToBlockIndex);
 
   const duplicateQuestionIds = useMemo(
     () => computeDuplicateQuestionIds(currentQuestions),
@@ -6287,86 +6739,26 @@ function StudyOutlineModal({
                           overflow: "hidden",
                         }}
                       >
-                        <div
+                        <PageCardHeader
+                          dense
+                          pageNumber={group.pageNumber}
+                          pageTitle={pageTitle}
+                          questionCount={realQuestionCount}
+                          isCollapsed={pageIsCollapsed}
+                          onToggleCollapsed={() => togglePageCollapsed(group.pageId)}
+                          isDragging={isPageDragging}
+                          isDragOver={isPageDragOver}
+                          isCrossBlockTarget={isCrossBlockTarget}
+                          onDragStart={(e) => handlePageDragStart(e, group.pageId)}
                           onDragOver={(e) => handlePageDragOver(e, group.pageId)}
                           onDrop={(e) => handlePageDrop(e, group.pageId)}
-                          title="Drag to reorder pages within this block"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "5px 8px",
-                            background: "var(--admin-surface-sunken)",
-                            borderBottom: pageIsCollapsed ? "none" : "1px solid var(--admin-border-subtle)",
-                          }}
-                        >
-                          <CompactDragHandle
-                            onDragStart={(e) => handlePageDragStart(e, group.pageId)}
-                            onDragEnd={handlePageDragEnd}
-                          />
-                          <IconOnlyButton
-                            onClick={() => togglePageCollapsed(group.pageId)}
-                            title={pageIsCollapsed ? "Expand page" : "Collapse page"}
-                            aria-label={
-                              pageIsCollapsed
-                                ? `Expand page ${group.pageNumber}`
-                                : `Collapse page ${group.pageNumber}`
-                            }
-                            size={11}
-                            style={{ width: 20, height: 20, flex: "0 0 auto" }}
-                          >
-                            <ChevronDownIcon size={11} open={!pageIsCollapsed} />
-                          </IconOnlyButton>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 800,
-                              color: "var(--admin-text)",
-                              flex: "0 0 auto",
-                            }}
-                          >
-                            Page {group.pageNumber}
-                          </span>
-                          {pageTitle && (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "var(--admin-muted)",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                minWidth: 0,
-                              }}
-                            >
-                              {pageTitle}
-                            </span>
-                          )}
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: "var(--admin-muted-2)",
-                              marginLeft: "auto",
-                              flex: "0 0 auto",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {realQuestionCount} {realQuestionCount === 1 ? "question" : "questions"}
-                            {pageIsCollapsed ? " · collapsed" : ""}
-                          </span>
-                          {onSaveGroupToLibrary && realQuestionCount > 0 && (
-                            <IconOnlyButton
-                              onClick={() =>
-                                onSaveGroupToLibrary(group.items.map(({ item }) => item))
-                              }
-                              title="Save this page's questions to the library"
-                              aria-label={`Save page ${group.pageNumber} to the library`}
-                              size={11}
-                              style={{ width: 20, height: 20, flex: "0 0 auto" }}
-                            >
-                              <BookmarkIcon size={11} />
-                            </IconOnlyButton>
-                          )}
-                        </div>
+                          onDragEnd={handlePageDragEnd}
+                          onSaveToLibrary={
+                            onSaveGroupToLibrary
+                              ? () => onSaveGroupToLibrary(group.items.map(({ item }) => item))
+                              : undefined
+                          }
+                        />
 
                         {!pageIsCollapsed && (
                           <div style={{ padding: "6px 6px 4px" }}>
@@ -6411,6 +6803,7 @@ function StudyOutlineModal({
                                 }}
                                 draggingId={draggingId}
                                 dragOverId={dragOverId}
+                                dragOverPosition={dragOverPosition}
                                 onDragStart={onDragStart}
                                 onDragOver={onDragOver}
                                 onDrop={onDrop}
@@ -6443,6 +6836,9 @@ export function SurveyEditor({
 }) {
   const [draggingQuestionId, setDraggingQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
+  // "above" | "below" | null — which half of dragOverQuestionId's own row
+  // the cursor is currently over. See handleQuestionDragOver/handleQuestionDrop.
+  const [dragOverPosition, setDragOverPosition] = useState(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewQuestionId, setPreviewQuestionId] = useState(null);
@@ -6517,6 +6913,7 @@ export function SurveyEditor({
       addQuestion(type);
     }
     setAddQuestionTarget(null);
+    recordRecentQuestionType(type);
   }
 
   function handleBrowseLibraryFromAddQuestion() {
@@ -6527,6 +6924,33 @@ export function SurveyEditor({
     } else {
       openLibraryAppend();
     }
+  }
+
+  // Index of the question currently being retyped via the gallery (the
+  // "browse question types" button next to QuestionCard's Type dropdown),
+  // or null when that modal is closed. A separate target from
+  // addQuestionTarget above — this replaces an existing question's type in
+  // place rather than inserting a new one, and reuses the exact same
+  // computeQuestionAfterTypeChange logic the plain Type <select> already
+  // uses, so both paths behave identically.
+  const [changeTypeTarget, setChangeTypeTarget] = useState(null);
+
+  function openChangeQuestionType(index) {
+    setChangeTypeTarget(index);
+  }
+
+  function closeChangeTypeModal() {
+    setChangeTypeTarget(null);
+  }
+
+  function handleChangeQuestionType(type) {
+    const index = changeTypeTarget;
+    setChangeTypeTarget(null);
+    if (index == null) return;
+    const target = currentQuestions[index];
+    if (!target) return;
+    updateQuestion(index, computeQuestionAfterTypeChange(target, type, index));
+    recordRecentQuestionType(type);
   }
 
   function insertLibraryQuestions(libraryQuestions) {
@@ -6653,10 +7077,11 @@ export function SurveyEditor({
       next.delete(editorId);
       return next;
     });
-    // A collapsed block hides its rows entirely (unlike a collapsed
-    // question, which still renders a one-line summary) — without also
-    // un-collapsing the target's block here, scrollIntoView below would
-    // find no DOM node at all and silently no-op.
+    // A collapsed block or a collapsed page card both hide their rows
+    // entirely (unlike a collapsed question, which still renders a one-line
+    // summary) — without also un-collapsing whichever of those the target
+    // sits inside, scrollIntoView below would find no DOM node at all and
+    // silently no-op.
     const targetIndex = currentQuestions.findIndex((item) => item._editorId === editorId);
     const targetBlockIndex = targetIndex >= 0 ? blockIndexPerQuestion[targetIndex] : null;
     if (targetBlockIndex != null) {
@@ -6664,6 +7089,19 @@ export function SurveyEditor({
         if (!current.has(targetBlockIndex)) return current;
         const next = new Set(current);
         next.delete(targetBlockIndex);
+        return next;
+      });
+    }
+    const targetPageNumber = targetIndex >= 0 ? pageNumbersForBlocks[targetIndex] : null;
+    const targetPageId =
+      targetPageNumber != null
+        ? String(survey?.pages?.[targetPageNumber - 1]?.id || `page_${targetPageNumber}`)
+        : null;
+    if (targetPageId) {
+      setCollapsedPageIds((current) => {
+        if (!current.has(targetPageId)) return current;
+        const next = new Set(current);
+        next.delete(targetPageId);
         return next;
       });
     }
@@ -6702,6 +7140,40 @@ export function SurveyEditor({
     () => computeBlockIndexForQuestions(survey, currentQuestions, pageNumbersForBlocks),
     [survey, currentQuestions, pageNumbersForBlocks]
   );
+
+  // Groups the same flat currentQuestions/pageNumbersForBlocks pair into one
+  // entry per real page — same helper Study overview already uses — so the
+  // main "Pages and questions" list can render one collapsible, draggable
+  // page card per page instead of one flat run of question rows, matching
+  // what Study overview already does.
+  const pageGroups = useMemo(
+    () => computePageGroupsForQuestions(survey, currentQuestions, pageNumbersForBlocks),
+    [survey, currentQuestions, pageNumbersForBlocks]
+  );
+
+  const { blocks: pageBlocks, pageIdToBlockIndex } = usePageIdToBlockIndexMap(survey);
+
+  // Independent from StudyOutlineModal's own collapsedPageIds — collapsing a
+  // page card here doesn't affect (and isn't affected by) Study overview,
+  // same convention as collapsedBlockIds just above.
+  const [collapsedPageIds, setCollapsedPageIds] = useState(() => new Set());
+  function togglePageCollapsed(pageId) {
+    setCollapsedPageIds((current) => {
+      const next = new Set(current);
+      if (next.has(pageId)) next.delete(pageId);
+      else next.add(pageId);
+      return next;
+    });
+  }
+
+  const {
+    draggingPageId,
+    dragOverPageId,
+    handlePageDragStart,
+    handlePageDragOver,
+    handlePageDrop,
+    handlePageDragEnd,
+  } = usePageDragReorder(onSurveyChange, pageBlocks, pageIdToBlockIndex);
 
   const duplicateQuestionIds = useMemo(
     () => computeDuplicateQuestionIds(currentQuestions),
@@ -6833,46 +7305,73 @@ export function SurveyEditor({
   function handleQuestionDragStart(e, questionId) {
     setDraggingQuestionId(questionId);
     setDragOverQuestionId(questionId);
+    setDragOverPosition(null);
     try {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", String(questionId));
+      // A translucent native drag image (rather than the browser's default,
+      // which renders the *entire* card — including its full expanded rich-
+      // text editor for an uncollapsed question — under the cursor) keeps
+      // the ghost image readable regardless of how tall the real card is.
+      if (typeof e.dataTransfer.setDragImage === "function" && e.currentTarget) {
+        e.dataTransfer.setDragImage(e.currentTarget, 12, 12);
+      }
     } catch {}
   }
 
+  // Splits every question row's drop target into an upper and lower half
+  // (by cursor Y vs. the row's own vertical midpoint) instead of treating
+  // the whole card as one target — previously, dropping "on" a card always
+  // inserted the dragged item immediately after it when dragging downward
+  // (an artifact of reorderArray's splice-based semantics, not a deliberate
+  // "always below" rule), with no way to land immediately *above* a card
+  // you were dragging down toward. This is what a hover position actually
+  // decides now, rendered back as a thin insertion line via dragOverPosition
+  // (see DropIndicatorLine) rather than a whole-card highlight, so the
+  // target is exact instead of "somewhere on this card."
   function handleQuestionDragOver(e, questionId) {
     e.preventDefault();
     try {
       e.dataTransfer.dropEffect = "move";
     } catch {}
-    if (dragOverQuestionId !== questionId) {
-      setDragOverQuestionId(questionId);
-    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position = e.clientY - rect.top < rect.height / 2 ? "above" : "below";
+    if (dragOverQuestionId !== questionId) setDragOverQuestionId(questionId);
+    if (dragOverPosition !== position) setDragOverPosition(position);
   }
 
   function handleQuestionDrop(e, targetQuestionId) {
     e.preventDefault();
 
-    if (!survey || !draggingQuestionId || draggingQuestionId === targetQuestionId) {
-      setDraggingQuestionId(null);
-      setDragOverQuestionId(null);
-      return;
-    }
-
-    const questions = getQuestionList(survey);
-    const fromIndex = questions.findIndex((q) => q._editorId === draggingQuestionId);
-    const toIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
-
-    if (fromIndex >= 0 && toIndex >= 0 && fromIndex !== toIndex) {
-      moveQuestion(fromIndex, toIndex);
-    }
-
+    const draggingId = draggingQuestionId;
+    const position = dragOverPosition || "below";
     setDraggingQuestionId(null);
     setDragOverQuestionId(null);
+    setDragOverPosition(null);
+
+    if (!survey || !draggingId || draggingId === targetQuestionId) return;
+
+    const questions = getQuestionList(survey);
+    const fromIndex = questions.findIndex((q) => q._editorId === draggingId);
+    const targetIndex = questions.findIndex((q) => q._editorId === targetQuestionId);
+    if (fromIndex < 0 || targetIndex < 0) return;
+
+    // targetIndex is this row's position in the array *before* the dragged
+    // item is removed; reorderArray's second splice inserts into the array
+    // *after* removal. When the dragged item started earlier in the list,
+    // removing it shifts every later index left by one, so the "insert
+    // before/after targetIndex" position has to be adjusted by one to still
+    // land next to the same visual row once the earlier item is gone.
+    let toIndex = position === "above" ? targetIndex : targetIndex + 1;
+    if (fromIndex < targetIndex) toIndex -= 1;
+
+    if (toIndex !== fromIndex) moveQuestion(fromIndex, toIndex);
   }
 
   function handleQuestionDragEnd() {
     setDraggingQuestionId(null);
     setDragOverQuestionId(null);
+    setDragOverPosition(null);
   }
 
   return (
@@ -6968,8 +7467,10 @@ export function SurveyEditor({
 
       <Card title="Questions">
         <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 18 }}>
-          Drag items by the dotted handle to reorder them. Use the + buttons on the borders
-          to insert new questions, or use Study overview above for a compact, scroll-free view of the full study.
+          Drag a card anywhere (not just its dotted handle) to reorder it, and drop it above or
+          below another question to insert it exactly there. Use the + buttons on the borders to
+          insert new questions, drag a page's header to move the whole page, or use Study overview
+          above for a compact, scroll-free view of the full study.
         </div>
 
         {currentQuestions.length > 0 && (
@@ -6991,67 +7492,130 @@ export function SurveyEditor({
           />
         )}
 
-        {currentQuestions.map((q, i) => {
-          if (!matchesQuestionFilter(q, questionFilter)) return null;
-          const boundary = blockBoundaries[i];
-          const itemBlockIndex = blockIndexPerQuestion[i];
-          const blockIsCollapsed =
-            itemBlockIndex != null && collapsedBlockIds.has(itemBlockIndex);
+        {pageGroups.map((group) => {
+          const filteredItems = group.items.filter(({ item }) => matchesQuestionFilter(item, questionFilter));
+          if (questionFilter.trim() && filteredItems.length === 0) return null;
+
+          const firstFlatIndex = group.items[0].flatIndex;
+          const boundary = blockBoundaries[firstFlatIndex];
+          const groupBlockIndex = blockIndexPerQuestion[firstFlatIndex];
+          const blockIsCollapsed = groupBlockIndex != null && collapsedBlockIds.has(groupBlockIndex);
+
+          // Mirrors Study overview's own logic exactly: a page that starts a
+          // (now-collapsed) block still renders its boundary divider (the
+          // toggle control itself), every other page inside that same
+          // collapsed block renders nothing at all.
+          if (blockIsCollapsed && !boundary) return null;
+
+          const pageIsCollapsed = collapsedPageIds.has(group.pageId);
+          const isPageDragging = draggingPageId === group.pageId;
+          const isPageDragOver = dragOverPageId === group.pageId;
+          const isCrossBlockTarget =
+            draggingPageId != null &&
+            pageIdToBlockIndex.get(draggingPageId) !== pageIdToBlockIndex.get(group.pageId);
+          const realQuestionCount = group.items.filter(
+            ({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE
+          ).length;
+          const pageTitle = String(survey?.pages?.[group.pageNumber - 1]?.title || "").trim();
+
           return (
-          <React.Fragment key={q._editorId || i}>
-          <BlockBoundaryDivider
-            boundary={boundary}
-            isCollapsed={boundary ? collapsedBlockIds.has(boundary.blockIndex) : false}
-            onToggleCollapsed={boundary ? () => toggleBlockCollapsed(boundary.blockIndex) : undefined}
-          />
-          {!blockIsCollapsed && (
-          <div
-            ref={(el) => {
-              questionNodeRefs.current[q._editorId] = el;
-            }}
-            style={{
-              borderRadius: 14,
-              outline:
-                highlightedQuestionId === q._editorId
-                  ? "3px solid var(--admin-accent)"
-                  : "3px solid transparent",
-              outlineOffset: 4,
-              transition: "outline-color 0.2s ease",
-            }}
-          >
-            <QuestionCard
-              q={q}
-              index={i}
-              displayNumber={questionDisplayNumbers[i]}
-              pageNumber={pageNumbersForBlocks[i]}
-              totalQuestions={currentQuestions.length}
-              isDuplicateId={q?.id ? duplicateQuestionIds.has(q.id) : false}
-              hasBrokenCondition={q?.id ? brokenVisibleIfQuestionIds.has(q.id) : false}
-              linkedFeeds={orderedLinkedFeeds}
-              linkedFeedPostsMap={linkedFeedPostsMap}
-              experimentGroups={experimentGroups}
-              eligibleSourceQuestions={currentQuestions
-                .slice(0, i)
-                .filter((sq) => VISIBLE_IF_ELIGIBLE_TYPES.includes(sq?.type))}
-              updateQuestion={updateQuestion}
-              removeQuestion={removeQuestion}
-              moveQuestion={moveQuestion}
-              duplicateQuestion={duplicateQuestion}
-              onOpenAddQuestion={openAddQuestionAt}
-              onSaveToLibrary={saveQuestionToLibrary}
-              draggingId={draggingQuestionId}
-              dragOverId={dragOverQuestionId}
-              onDragStart={handleQuestionDragStart}
-              onDragOver={handleQuestionDragOver}
-              onDrop={handleQuestionDrop}
-              onDragEnd={handleQuestionDragEnd}
-              isCollapsed={collapsedQuestionIds.has(q._editorId)}
-              onToggleCollapsed={() => toggleQuestionCollapsed(q._editorId)}
-              onPreviewQuestion={openPreview}
-            />
-          </div>
-          )}
-          </React.Fragment>
+            <React.Fragment key={group.pageId}>
+              <BlockBoundaryDivider
+                boundary={boundary}
+                isCollapsed={boundary ? collapsedBlockIds.has(boundary.blockIndex) : false}
+                onToggleCollapsed={boundary ? () => toggleBlockCollapsed(boundary.blockIndex) : undefined}
+              />
+              {!blockIsCollapsed && (
+                <div
+                  style={{
+                    marginTop: 18,
+                    marginBottom: 26,
+                    border: isPageDragOver
+                      ? isCrossBlockTarget
+                        ? "2px dashed var(--admin-muted-2)"
+                        : "2px solid var(--admin-accent)"
+                      : "1px solid var(--admin-border-subtle)",
+                    borderRadius: 12,
+                    background: "var(--admin-surface-alt)",
+                    opacity: isPageDragging ? 0.6 : 1,
+                    overflow: "hidden",
+                  }}
+                >
+                  <PageCardHeader
+                    pageNumber={group.pageNumber}
+                    pageTitle={pageTitle}
+                    questionCount={realQuestionCount}
+                    isCollapsed={pageIsCollapsed}
+                    onToggleCollapsed={() => togglePageCollapsed(group.pageId)}
+                    isDragging={isPageDragging}
+                    isDragOver={isPageDragOver}
+                    isCrossBlockTarget={isCrossBlockTarget}
+                    onDragStart={(e) => handlePageDragStart(e, group.pageId)}
+                    onDragOver={(e) => handlePageDragOver(e, group.pageId)}
+                    onDrop={(e) => handlePageDrop(e, group.pageId)}
+                    onDragEnd={handlePageDragEnd}
+                    onSaveToLibrary={() =>
+                      saveQuestionsToLibrary(group.items.map(({ item }) => item))
+                    }
+                  />
+
+                  {!pageIsCollapsed && (
+                    <div style={{ padding: "16px 14px 2px" }}>
+                      {filteredItems.map(({ item: q, flatIndex: i }) => (
+                        <div
+                          key={q._editorId || i}
+                          ref={(el) => {
+                            questionNodeRefs.current[q._editorId] = el;
+                          }}
+                          style={{
+                            borderRadius: 14,
+                            outline:
+                              highlightedQuestionId === q._editorId
+                                ? "3px solid var(--admin-accent)"
+                                : "3px solid transparent",
+                            outlineOffset: 4,
+                            transition: "outline-color 0.2s ease",
+                          }}
+                        >
+                          <QuestionCard
+                            q={q}
+                            index={i}
+                            displayNumber={questionDisplayNumbers[i]}
+                            pageNumber={pageNumbersForBlocks[i]}
+                            totalQuestions={currentQuestions.length}
+                            isDuplicateId={q?.id ? duplicateQuestionIds.has(q.id) : false}
+                            hasBrokenCondition={q?.id ? brokenVisibleIfQuestionIds.has(q.id) : false}
+                            linkedFeeds={orderedLinkedFeeds}
+                            linkedFeedPostsMap={linkedFeedPostsMap}
+                            experimentGroups={experimentGroups}
+                            eligibleSourceQuestions={currentQuestions
+                              .slice(0, i)
+                              .filter((sq) => VISIBLE_IF_ELIGIBLE_TYPES.includes(sq?.type))}
+                            updateQuestion={updateQuestion}
+                            removeQuestion={removeQuestion}
+                            moveQuestion={moveQuestion}
+                            duplicateQuestion={duplicateQuestion}
+                            onOpenAddQuestion={openAddQuestionAt}
+                            onSaveToLibrary={saveQuestionToLibrary}
+                            draggingId={draggingQuestionId}
+                            dragOverId={dragOverQuestionId}
+                            dragOverPosition={dragOverPosition}
+                            onDragStart={handleQuestionDragStart}
+                            onDragOver={handleQuestionDragOver}
+                            onDrop={handleQuestionDrop}
+                            onDragEnd={handleQuestionDragEnd}
+                            isCollapsed={collapsedQuestionIds.has(q._editorId)}
+                            onToggleCollapsed={() => toggleQuestionCollapsed(q._editorId)}
+                            onPreviewQuestion={openPreview}
+                            onChangeTypeViaGallery={openChangeQuestionType}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
 
@@ -7076,6 +7640,15 @@ export function SurveyEditor({
           onSelectType={handleSelectQuestionType}
           onBrowseLibrary={handleBrowseLibraryFromAddQuestion}
           onClose={closeAddQuestionModal}
+        />
+      )}
+
+      {changeTypeTarget !== null && (
+        <AddQuestionTypeModal
+          mode="change"
+          currentType={currentQuestions[changeTypeTarget]?.type}
+          onSelectType={handleChangeQuestionType}
+          onClose={closeChangeTypeModal}
         />
       )}
 
