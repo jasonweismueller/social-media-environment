@@ -7,7 +7,7 @@ import {
   ATTENTION_CHECK_ELIGIBLE_TYPES,
   saveQuestionLibraryItemToBackend,
 } from "../utils";
-import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm, useToast, usePrompt } from "./ui";
+import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm, useToast, usePrompt, IconBookmark } from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
 import { QuestionLibraryPickerModal } from "./components-admin-question-library";
 
@@ -19,20 +19,138 @@ export const EDITOR_PAGE_BREAK_TYPE = "page_break";
 const POST_REMINDER_TYPE =
   SURVEY_QUESTION_TYPES.POST_REMINDER || "post_reminder";
 
-export const QUESTION_TYPE_LABELS = {
-  [SURVEY_QUESTION_TYPES.TEXT]: "Text",
-  [SURVEY_QUESTION_TYPES.TEXTAREA]: "Long text",
-  [SURVEY_QUESTION_TYPES.SINGLE]: "Single choice",
-  [SURVEY_QUESTION_TYPES.MULTI]: "Multiple choice",
-  [SURVEY_QUESTION_TYPES.DROPDOWN]: "Dropdown",
-  [SURVEY_QUESTION_TYPES.MATRIX_SINGLE]: "Matrix (single)",
-  [SURVEY_QUESTION_TYPES.MATRIX_MULTI]: "Matrix (multi)",
-  [SURVEY_QUESTION_TYPES.BIPOLAR]: "Bipolar scale",
-  [SURVEY_QUESTION_TYPES.SLIDER]: "Slider",
-  [SURVEY_QUESTION_TYPES.INFO]: "Info text",
-  [POST_REMINDER_TYPE]: "Post reminder",
-  [EDITOR_PAGE_BREAK_TYPE]: "Page break",
-};
+/* =========================
+   Question type catalog — single source of truth for the "Add question"
+   gallery (AddQuestionTypeModal, below) and every other place a question
+   type needs a label. Icon components referenced here are `function`
+   declarations defined further down this file (search "Question type
+   icons") — those hoist to the top of module scope in JS, so referencing
+   them in this array, defined earlier in the file, is safe.
+   ========================== */
+
+export const QUESTION_TYPE_CATEGORIES = [
+  { key: "choice", label: "Choice" },
+  { key: "text", label: "Text" },
+  { key: "scale", label: "Scale & rating" },
+  { key: "matrix", label: "Matrix / grid" },
+  { key: "content", label: "Content & display" },
+  { key: "structure", label: "Structure" },
+];
+
+export const QUESTION_TYPE_CATALOG = [
+  {
+    type: SURVEY_QUESTION_TYPES.TEXT,
+    category: "text",
+    label: "Short text",
+    tagline: "One line of written text",
+    description: "A single-line box for a brief written answer.",
+    example: "“What's the first word that comes to mind?”",
+    icon: () => TypeIconShortText,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.TEXTAREA,
+    category: "text",
+    label: "Long text",
+    tagline: "A paragraph of written text",
+    description: "A larger box for a longer, open-ended written answer.",
+    example: "“Describe a time you saw a post you thought was false.”",
+    icon: () => TypeIconLongText,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.SINGLE,
+    category: "choice",
+    label: "Single choice",
+    tagline: "Radio buttons — pick exactly one",
+    description: "A list of options where participants can select only one answer.",
+    example: "“What is your gender?” (one answer)",
+    icon: () => TypeIconSingleChoice,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.MULTI,
+    category: "choice",
+    label: "Multiple choice",
+    tagline: "Checkboxes — pick any number",
+    description: "A list of options where participants can select as many as apply.",
+    example: "“Which platforms do you use?” (select all that apply)",
+    icon: () => TypeIconMultiChoice,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.DROPDOWN,
+    category: "choice",
+    label: "Dropdown",
+    tagline: "Pick one from a dropdown menu",
+    description: "Same as single choice — one answer only — but the options sit in a dropdown menu. Better for long lists.",
+    example: "e.g. a list of 50 countries or U.S. states",
+    icon: () => TypeIconDropdown,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.MATRIX_SINGLE,
+    category: "matrix",
+    label: "Matrix — one answer per row",
+    tagline: "A grid of statements, same scale",
+    description: "Several statements rated on one shared scale, laid out as a grid. Each row allows exactly one answer — the classic Likert-scale layout.",
+    example: "Rate 5 statements from “Strongly disagree” to “Strongly agree”",
+    icon: () => TypeIconMatrixSingle,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.MATRIX_MULTI,
+    category: "matrix",
+    label: "Matrix — multiple per row",
+    tagline: "A grid where each row allows several",
+    description: "Same grid layout as above, but each row can have more than one column selected.",
+    example: "“Which of these applied to each post you saw?”",
+    icon: () => TypeIconMatrixMulti,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.BIPOLAR,
+    category: "scale",
+    label: "Bipolar scale",
+    tagline: "A scale between two opposite ends",
+    description: "One scale anchored by two opposite labels, one at each end — instead of a single agree/disagree axis.",
+    example: "Rate a post from “Unbelievable” to “Believable”",
+    icon: () => TypeIconBipolar,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.SLIDER,
+    category: "scale",
+    label: "Slider",
+    tagline: "Drag to pick a numeric value",
+    description: "A draggable handle on a continuous numeric scale.",
+    example: "“How likely are you to share this?” (0–100)",
+    icon: () => TypeIconSlider,
+  },
+  {
+    type: SURVEY_QUESTION_TYPES.INFO,
+    category: "content",
+    label: "Info text",
+    tagline: "Display-only — no answer needed",
+    description: "A block of read-only text with no input at all. Use it for instructions or to introduce a new section.",
+    example: "“The next section asks about your social media habits.”",
+    icon: () => TypeIconInfo,
+  },
+  {
+    type: POST_REMINDER_TYPE,
+    category: "content",
+    label: "Post reminder",
+    tagline: "Show a specific post again",
+    description: "Re-displays one post from the feed. Can be a plain reminder, a live interactive replica, or a recall test where participants pick the real post out of decoy versions.",
+    example: "“Which version of this post did you actually see?”",
+    icon: () => TypeIconPostReminder,
+  },
+  {
+    type: EDITOR_PAGE_BREAK_TYPE,
+    category: "structure",
+    label: "Page break",
+    tagline: "Start a new page here",
+    description: "Not a question — splits the survey at this point. Everything after it appears on a new page.",
+    example: null,
+    icon: () => TypeIconPageBreak,
+  },
+];
+
+export const QUESTION_TYPE_LABELS = Object.fromEntries(
+  QUESTION_TYPE_CATALOG.map((item) => [item.type, item.label])
+);
 
 export const QUESTION_TYPE_SHORT_LABELS = {
   [SURVEY_QUESTION_TYPES.TEXT]: "Txt",
@@ -48,20 +166,7 @@ export const QUESTION_TYPE_SHORT_LABELS = {
   [POST_REMINDER_TYPE]: "Post",
 };
 
-export const INSERTABLE_TYPES = [
-  SURVEY_QUESTION_TYPES.TEXT,
-  SURVEY_QUESTION_TYPES.TEXTAREA,
-  SURVEY_QUESTION_TYPES.SINGLE,
-  SURVEY_QUESTION_TYPES.MULTI,
-  SURVEY_QUESTION_TYPES.DROPDOWN,
-  SURVEY_QUESTION_TYPES.MATRIX_SINGLE,
-  SURVEY_QUESTION_TYPES.MATRIX_MULTI,
-  SURVEY_QUESTION_TYPES.BIPOLAR,
-  SURVEY_QUESTION_TYPES.SLIDER,
-  SURVEY_QUESTION_TYPES.INFO,
-  POST_REMINDER_TYPE,
-  EDITOR_PAGE_BREAK_TYPE,
-];
+export const INSERTABLE_TYPES = QUESTION_TYPE_CATALOG.map((item) => item.type);
 
 const INPUT_HEIGHT = 42;
 const TOP_ROW_LABEL_HEIGHT = 18;
@@ -2202,37 +2307,19 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
 // landing the button somewhere far from where anyone would look for it, at
 // a permanent 0.4 opacity meant for a hover-reveal border control, not a
 // primary call to action. `inline` skips all of that.
-function InsertAtBorderButton({ position = "top", onInsert, onInsertFromLibrary, inline = false }) {
-  const [open, setOpen] = useState(false);
+//
+// Clicking always opens the shared AddQuestionTypeModal (rendered once by
+// SurveyEditor, not per-button) via `onOpenPicker` — this button is only
+// ever the trigger now, not its own popup, which is what let the previous
+// version's inline `<select>` + click-outside/Escape-handling code be
+// deleted entirely.
+function InsertAtBorderButton({ position = "top", onOpenPicker, inline = false }) {
   const [hovered, setHovered] = useState(false);
-  const [selectedType, setSelectedType] = useState(SURVEY_QUESTION_TYPES.TEXT);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-        setOpen(false);
-      }
-    }
-
-    function handleEscape(e) {
-      if (e.key === "Escape") setOpen(false);
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, []);
-
   const isTop = position === "top";
-  const isActive = inline || hovered || open;
+  const isActive = inline || hovered;
 
   return (
     <div
-      ref={wrapRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={
@@ -2251,7 +2338,7 @@ function InsertAtBorderButton({ position = "top", onInsert, onInsertFromLibrary,
     >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={onOpenPicker}
         title={inline ? "Add question" : isTop ? "Insert above" : "Insert below"}
         style={
           inline
@@ -2290,103 +2377,439 @@ function InsertAtBorderButton({ position = "top", onInsert, onInsertFromLibrary,
         <PlusIcon size={inline ? 12 : 10} />
         {inline && "Add question"}
       </button>
+    </div>
+  );
+}
 
-      {open && (
-        <div
-          style={
-            inline
-              ? {
-                  // Deliberately NOT position:absolute here — the empty-
-                  // questions-list Card this renders inside has
-                  // overflow:hidden (see Card.jsx), and this button sits
-                  // near the bottom of that card's content, so an
-                  // absolutely-positioned panel opening "below" it would
-                  // get silently clipped by the card's own boundary
-                  // (reported directly: the panel visibly extended past
-                  // the card but its Add button was unreachable). Normal
-                  // flow just pushes the card taller instead, which is
-                  // safe here since this button is never surrounded by
-                  // other content competing for the space below it.
-                  marginTop: 10,
-                  display: "inline-block",
-                  textAlign: "left",
-                  minWidth: 220,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: "1px solid var(--admin-border)",
-                  background: "var(--admin-surface)",
-                  boxShadow: "var(--admin-shadow-md)",
-                }
-              : {
-                  position: "absolute",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  top: isTop ? "calc(100% + 6px)" : "auto",
-                  bottom: !isTop ? 28 : "auto",
-                  minWidth: 220,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: "1px solid var(--admin-border)",
-                  background: "var(--admin-surface)",
-                  boxShadow: "var(--admin-shadow-md)",
-                  zIndex: 10,
-                }
-          }
+/* =========================
+   Question type icons — small local set matching this file's existing
+   inline-SVG icon style (24x24 viewBox, stroke="currentColor",
+   strokeWidth 2). Used only by AddQuestionTypeCard below.
+   ========================== */
+
+function TypeIconBase({ size = 18, children }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function TypeIconShortText(props) {
+  return (
+    <TypeIconBase {...props}>
+      <line x1="4" y1="12" x2="16" y2="12" />
+      <line x1="20" y1="7" x2="20" y2="17" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconLongText(props) {
+  return (
+    <TypeIconBase {...props}>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="13" y2="18" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconSingleChoice(props) {
+  return (
+    <TypeIconBase {...props}>
+      <circle cx="6" cy="7" r="3" />
+      <circle cx="6" cy="7" r="1.1" fill="currentColor" stroke="none" />
+      <line x1="12.5" y1="7" x2="21" y2="7" />
+      <circle cx="6" cy="17" r="3" />
+      <line x1="12.5" y1="17" x2="21" y2="17" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconMultiChoice(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="3" y="4" width="6.5" height="6.5" rx="1.4" />
+      <path d="M4.6 7.2l1.2 1.2 2-2.4" />
+      <rect x="3" y="14" width="6.5" height="6.5" rx="1.4" />
+      <line x1="12.5" y1="7.2" x2="21" y2="7.2" />
+      <line x1="12.5" y1="17.2" x2="21" y2="17.2" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconDropdown(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="3" y="7" width="18" height="10" rx="2.2" />
+      <polyline points="9 11 12 14 15 11" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconMatrixSingle(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="1.6" />
+      <line x1="10" y1="4" x2="10" y2="20" />
+      <line x1="3" y1="9.3" x2="21" y2="9.3" />
+      <line x1="3" y1="14.6" x2="21" y2="14.6" />
+      <circle cx="15.5" cy="6.6" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="15.5" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconMatrixMulti(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="1.6" />
+      <line x1="10" y1="4" x2="10" y2="20" />
+      <line x1="3" y1="9.3" x2="21" y2="9.3" />
+      <line x1="3" y1="14.6" x2="21" y2="14.6" />
+      <rect x="14" y="5.5" width="3" height="2.2" rx="0.6" fill="currentColor" stroke="none" />
+      <rect x="14" y="10.8" width="3" height="2.2" rx="0.6" fill="currentColor" stroke="none" />
+      <rect x="14" y="16.1" width="3" height="2.2" rx="0.6" fill="currentColor" stroke="none" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconBipolar(props) {
+  return (
+    <TypeIconBase {...props}>
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <circle cx="4" cy="12" r="2.3" fill="currentColor" stroke="none" />
+      <circle cx="20" cy="12" r="2.3" />
+      <circle cx="12.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconSlider(props) {
+  return (
+    <TypeIconBase {...props}>
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <rect x="10.5" y="6" width="4" height="6" rx="1.4" fill="currentColor" stroke="none" />
+      <line x1="3" y1="17" x2="21" y2="17" />
+      <rect x="4.5" y="14" width="4" height="6" rx="1.4" fill="currentColor" stroke="none" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconInfo(props) {
+  return (
+    <TypeIconBase {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16.5" />
+      <circle cx="12" cy="7.4" r="1" fill="currentColor" stroke="none" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconPostReminder(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="7.5" cy="8.6" r="2" />
+      <line x1="11.5" y1="7.8" x2="18" y2="7.8" />
+      <line x1="11.5" y1="9.7" x2="16" y2="9.7" />
+      <line x1="4.5" y1="14" x2="19.5" y2="14" />
+      <line x1="4.5" y1="17" x2="14" y2="17" />
+    </TypeIconBase>
+  );
+}
+
+function TypeIconPageBreak(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="6" y="2" width="12" height="8" rx="1.4" />
+      <rect x="6" y="14" width="12" height="8" rx="1.4" />
+      <line x1="2" y1="12" x2="22" y2="12" strokeDasharray="2.5 2.5" />
+    </TypeIconBase>
+  );
+}
+
+/* =========================
+   Add-question type gallery — the modal that opens on every "+ Add
+   question" click (border-hover trigger and the empty-questions-list
+   button alike). Replaces the old inline flyout's bare `<select>` with a
+   browsable, searchable, categorized set of cards — icon, plain-language
+   name, one-line tagline, a short description, and a concrete example —
+   so picking a question type doesn't require already knowing what
+   "matrix (single)" or "bipolar" mean.
+   ========================== */
+
+const QUESTION_TYPE_BADGE_TONE = {
+  choice: { bg: "var(--admin-accent-soft)", fg: "var(--admin-accent-ink)" },
+  text: { bg: "var(--admin-info-soft)", fg: "var(--admin-info-ink)" },
+  scale: { bg: "var(--admin-success-soft)", fg: "var(--admin-success-ink)" },
+  matrix: { bg: "var(--admin-warning-soft)", fg: "var(--admin-warning-ink)" },
+  content: { bg: "var(--admin-surface-alt)", fg: "var(--admin-muted)" },
+  structure: { bg: "var(--admin-surface-alt)", fg: "var(--admin-muted)" },
+};
+
+function matchesQuestionTypeQuery(item, query) {
+  if (!query) return true;
+  const haystack = [item.label, item.tagline, item.description, item.example]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(query);
+}
+
+function AddQuestionCategoryChip({ label, count, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "5px 12px",
+        borderRadius: 999,
+        border: `1px solid ${active ? "var(--admin-accent-border, var(--admin-accent))" : "var(--admin-border)"}`,
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+        color: active ? "var(--admin-accent-ink)" : "var(--admin-muted)",
+        fontSize: 11.5,
+        fontWeight: 700,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+      {count != null && (
+        <span style={{ opacity: 0.7, fontWeight: 600, marginLeft: 5 }}>{count}</span>
+      )}
+    </button>
+  );
+}
+
+function AddQuestionTypeCard({ item, onSelect }) {
+  const [hovered, setHovered] = useState(false);
+  const tone = QUESTION_TYPE_BADGE_TONE[item.category] || QUESTION_TYPE_BADGE_TONE.content;
+  const Icon = item.icon();
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(item.type)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
+        gap: 8,
+        textAlign: "left",
+        padding: 13,
+        borderRadius: "var(--admin-radius-md)",
+        border: `1px solid ${hovered ? "var(--admin-accent-border, var(--admin-accent))" : "var(--admin-border)"}`,
+        background: hovered ? "var(--admin-surface-alt)" : "var(--admin-surface)",
+        boxShadow: hovered ? "var(--admin-shadow-sm)" : "none",
+        cursor: "pointer",
+        transition:
+          "border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease",
+        transform: hovered ? "translateY(-1px)" : "none",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: tone.bg,
+            color: tone.fg,
+          }}
         >
-          <div style={{ fontSize: 12, marginBottom: 6 }}>Add question</div>
+          <Icon size={17} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--admin-text)" }}>
+            {item.label}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 1 }}>
+            {item.tagline}
+          </div>
+        </div>
+      </div>
 
-          <SelectInput value={selectedType} onChange={setSelectedType}>
-            {INSERTABLE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {QUESTION_TYPE_LABELS[t] || t}
-              </option>
-            ))}
-          </SelectInput>
+      <div style={{ fontSize: 12, color: "var(--admin-muted)", lineHeight: 1.42 }}>
+        {item.description}
+      </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              onInsert(selectedType);
-              setOpen(false);
-            }}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              padding: "6px 8px",
-              borderRadius: 6,
-              border: "1px solid var(--admin-border)",
-              background: "var(--admin-surface)",
-              cursor: "pointer",
-            }}
-          >
-            Add
-          </button>
-
-          {onInsertFromLibrary && (
-            <button
-              type="button"
-              onClick={() => {
-                onInsertFromLibrary();
-                setOpen(false);
-              }}
-              style={{
-                marginTop: 6,
-                width: "100%",
-                padding: "6px 8px",
-                borderRadius: 6,
-                border: "1px solid var(--admin-border)",
-                background: "none",
-                color: "var(--admin-accent-ink)",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              From library…
-            </button>
-          )}
+      {item.example && (
+        <div
+          style={{
+            fontSize: 11.5,
+            color: "var(--admin-muted-2)",
+            fontStyle: "italic",
+            borderTop: "1px dashed var(--admin-border-subtle)",
+            paddingTop: 6,
+          }}
+        >
+          {item.example}
         </div>
       )}
-    </div>
+    </button>
+  );
+}
+
+// `onBrowseLibrary` is optional (undefined when this modal is opened from a
+// context that has no library-insert target wired up) — pass nothing and
+// the "From library…" action simply doesn't render.
+function AddQuestionTypeModal({ onSelectType, onBrowseLibrary, onClose }) {
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState(null);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const sections = QUESTION_TYPE_CATEGORIES.map((cat) => ({
+    ...cat,
+    items: QUESTION_TYPE_CATALOG.filter(
+      (item) =>
+        item.category === cat.key &&
+        (!activeCategory || activeCategory === cat.key) &&
+        matchesQuestionTypeQuery(item, normalizedQuery)
+    ),
+  })).filter((section) => section.items.length > 0);
+
+  const totalMatches = sections.reduce((n, s) => n + s.items.length, 0);
+
+  return (
+    <Modal
+      title="Add a question"
+      subtitle="Pick a question type below — click a card to add it to the survey."
+      onClose={onClose}
+      width={780}
+    >
+      {/*
+        Deliberately one scroll container, not two: search+chips used to sit
+        outside the card grid's own `overflowY:auto` div, which worked until
+        combined content (search row + chip row + every section) grew taller
+        than the *outer* Modal body's own `overflowY:auto` — at that point
+        the outer body started scrolling too, carrying the search box and
+        chips out of view while the inner grid still had its own separate
+        scrollbar. Confirmed live before fixing: scrolling the picker lost
+        the search/filter row entirely. Folding search+chips into this same
+        scrollable region as `position: sticky; top: 0` keeps them pinned to
+        whichever scroll happens to be active, with only one scrollbar ever
+        in play.
+      */}
+      <div style={{ maxHeight: "64vh", overflowY: "auto", paddingRight: 2, marginRight: -2 }}>
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 2,
+            background: "var(--admin-surface)",
+            paddingBottom: 10,
+            marginBottom: 4,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search question types…"
+              autoFocus
+              style={{
+                flex: "1 1 220px",
+                minWidth: 180,
+                height: 34,
+                boxSizing: "border-box",
+                padding: "0 10px",
+                border: "1px solid var(--admin-border)",
+                borderRadius: 8,
+                fontSize: 12.5,
+                background: "var(--admin-surface)",
+                color: "var(--admin-text)",
+              }}
+            />
+            {onBrowseLibrary && (
+              <Button variant="secondary" size="sm" onClick={onBrowseLibrary}>
+                <IconBookmark size={14} />
+                From library…
+              </Button>
+            )}
+          </div>
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <AddQuestionCategoryChip
+              label="All types"
+              active={!activeCategory}
+              onClick={() => setActiveCategory(null)}
+            />
+            {QUESTION_TYPE_CATEGORIES.map((cat) => (
+              <AddQuestionCategoryChip
+                key={cat.key}
+                label={cat.label}
+                active={activeCategory === cat.key}
+                onClick={() => setActiveCategory((cur) => (cur === cat.key ? null : cat.key))}
+              />
+            ))}
+          </div>
+        </div>
+
+        {totalMatches === 0 && (
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "var(--admin-muted)",
+              padding: "22px 4px",
+              textAlign: "center",
+            }}
+          >
+            No question types match “{query}”.
+          </div>
+        )}
+
+        {sections.map((section, sectionIndex) => (
+            <div key={section.key} style={{ marginBottom: sectionIndex === sections.length - 1 ? 0 : 18 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--admin-muted-2)",
+                  marginBottom: 8,
+                }}
+              >
+                {section.label}
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {section.items.map((item) => (
+                  <AddQuestionTypeCard key={item.type} item={item} onSelect={onSelectType} />
+                ))}
+              </div>
+            </div>
+          ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -4244,8 +4667,7 @@ function QuestionCard({
   removeQuestion,
   moveQuestion,
   duplicateQuestion,
-  insertQuestionAt,
-  onOpenLibraryInsert,
+  onOpenAddQuestion,
   onSaveToLibrary,
   draggingId,
   dragOverId,
@@ -4351,13 +4773,11 @@ function QuestionCard({
       >
         <InsertAtBorderButton
           position="top"
-          onInsert={(nextType) => insertQuestionAt(index, nextType, "above")}
-          onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "above") : undefined}
+          onOpenPicker={() => onOpenAddQuestion(index, "above")}
         />
         <InsertAtBorderButton
           position="bottom"
-          onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
-          onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "below") : undefined}
+          onOpenPicker={() => onOpenAddQuestion(index, "below")}
         />
 
         <DragHandle
@@ -4426,13 +4846,11 @@ function QuestionCard({
     >
       <InsertAtBorderButton
         position="top"
-        onInsert={(nextType) => insertQuestionAt(index, nextType, "above")}
-        onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "above") : undefined}
+        onOpenPicker={() => onOpenAddQuestion(index, "above")}
       />
       <InsertAtBorderButton
         position="bottom"
-        onInsert={(nextType) => insertQuestionAt(index, nextType, "below")}
-        onInsertFromLibrary={onOpenLibraryInsert ? () => onOpenLibraryInsert(index, "below") : undefined}
+        onOpenPicker={() => onOpenAddQuestion(index, "below")}
       />
 
       {isCollapsed ? (
@@ -6073,6 +6491,44 @@ export function SurveyEditor({
     setLibraryInsertTarget(null);
   }
 
+  // Same null / "append" / {index, position} contract as libraryInsertTarget
+  // just above — the two pickers (type gallery, library) share one target
+  // shape so "From library…" inside the type gallery can hand off to
+  // openLibraryInsertAt/openLibraryAppend without re-deriving anything.
+  const [addQuestionTarget, setAddQuestionTarget] = useState(null);
+
+  function openAddQuestionAt(index, position) {
+    setAddQuestionTarget({ index, position });
+  }
+
+  function openAddQuestionAppend() {
+    setAddQuestionTarget("append");
+  }
+
+  function closeAddQuestionModal() {
+    setAddQuestionTarget(null);
+  }
+
+  function handleSelectQuestionType(type) {
+    const target = addQuestionTarget;
+    if (target && target !== "append") {
+      insertQuestionAt(target.index, type, target.position);
+    } else {
+      addQuestion(type);
+    }
+    setAddQuestionTarget(null);
+  }
+
+  function handleBrowseLibraryFromAddQuestion() {
+    const target = addQuestionTarget;
+    setAddQuestionTarget(null);
+    if (target && target !== "append") {
+      openLibraryInsertAt(target.index, target.position);
+    } else {
+      openLibraryAppend();
+    }
+  }
+
   function insertLibraryQuestions(libraryQuestions) {
     const target = libraryInsertTarget;
     onSurveyChange((prev) => {
@@ -6581,8 +7037,7 @@ export function SurveyEditor({
               removeQuestion={removeQuestion}
               moveQuestion={moveQuestion}
               duplicateQuestion={duplicateQuestion}
-              insertQuestionAt={insertQuestionAt}
-              onOpenLibraryInsert={openLibraryInsertAt}
+              onOpenAddQuestion={openAddQuestionAt}
               onSaveToLibrary={saveQuestionToLibrary}
               draggingId={draggingQuestionId}
               dragOverId={dragOverQuestionId}
@@ -6606,10 +7061,7 @@ export function SurveyEditor({
             message="Add your first question to get started."
             action={
               <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                <InsertAtBorderButton
-                  inline
-                  onInsert={(nextType) => addQuestion(nextType)}
-                />
+                <InsertAtBorderButton inline onOpenPicker={openAddQuestionAppend} />
                 <Button variant="secondary" onClick={openLibraryAppend}>
                   From library…
                 </Button>
@@ -6618,6 +7070,14 @@ export function SurveyEditor({
           />
         )}
       </Card>
+
+      {addQuestionTarget !== null && (
+        <AddQuestionTypeModal
+          onSelectType={handleSelectQuestionType}
+          onBrowseLibrary={handleBrowseLibraryFromAddQuestion}
+          onClose={closeAddQuestionModal}
+        />
+      )}
 
       {libraryInsertTarget !== null && (
         <QuestionLibraryPickerModal onInsert={insertLibraryQuestions} onClose={closeLibraryModal} />
