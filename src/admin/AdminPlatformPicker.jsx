@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getProjectId } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, ThemeToggle } from "./ui";
+import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, ThemeToggle, LogoutButton } from "./ui";
 
 const PLATFORMS = [
   { app: "fb", label: "Facebook", icon: IconFacebook, blurb: "News-feed style posts, comments, reactions." },
@@ -17,7 +17,7 @@ const PLATFORMS = [
  * before React mounts) — picking the platform already loaded just changes
  * route client-side, picking a different one does a full navigation.
  */
-export function AdminPlatformPicker({ currentApp }) {
+export function AdminPlatformPicker({ currentApp, onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
   const projectId = getProjectId();
@@ -53,6 +53,7 @@ export function AdminPlatformPicker({ currentApp }) {
               <Button size="sm" variant="ghost" onClick={() => navigate("/admin")}>
                 ← All projects
               </Button>
+              <LogoutButton onLogout={onLogout} />
             </>
           }
         />

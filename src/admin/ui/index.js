@@ -37,3 +37,4 @@ export { ConfirmProvider, useConfirm } from "./ConfirmDialog";
 export { PromptProvider, usePrompt } from "./PromptDialog";
 export { useAdminTheme } from "./useAdminTheme";
 export { ThemeToggle } from "./ThemeToggle";
+export { LogoutButton } from "./LogoutButton";

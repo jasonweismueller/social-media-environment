@@ -16,7 +16,7 @@ import { ToastProvider, ConfirmProvider, PromptProvider, ErrorBoundary } from ".
  * mounted, so every admin surface (including AdminUsersPage, which lives
  * outside AdminShell) can call useToast()/useConfirm()/usePrompt().
  */
-export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps }) {
+export function AdminEntry({ adminAuthed, onAuth, currentApp, onLogout, ...dashboardProps }) {
   if (!adminAuthed) return <AdminLogin onAuth={onAuth} />;
 
   return (
@@ -28,7 +28,7 @@ export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps 
               index
               element={
                 <ErrorBoundary label="The project list crashed">
-                  <AdminProjectPicker />
+                  <AdminProjectPicker onLogout={onLogout} />
                 </ErrorBoundary>
               }
             />
@@ -36,7 +36,7 @@ export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps 
               path="users"
               element={
                 <ErrorBoundary label="The users page crashed">
-                  <AdminUsersPage />
+                  <AdminUsersPage onLogout={onLogout} />
                 </ErrorBoundary>
               }
             />
@@ -44,7 +44,7 @@ export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps 
               path="platform"
               element={
                 <ErrorBoundary label="The platform picker crashed">
-                  <AdminPlatformPicker currentApp={currentApp} />
+                  <AdminPlatformPicker currentApp={currentApp} onLogout={onLogout} />
                 </ErrorBoundary>
               }
             />
@@ -52,7 +52,7 @@ export function AdminEntry({ adminAuthed, onAuth, currentApp, ...dashboardProps 
               path="dashboard/*"
               element={
                 <ErrorBoundary label="The admin dashboard crashed">
-                  <AdminDashboard {...dashboardProps} />
+                  <AdminDashboard {...dashboardProps} onLogout={onLogout} />
                 </ErrorBoundary>
               }
             />

@@ -11,9 +11,23 @@ import {
   hasAdminRole,
   getAdminEmail,
   getAdminUsername,
+  touchAdminSession,
 } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, EmptyState, IconFolder, ThemeToggle } from "./ui";
+import {
+  Card,
+  PageHeader,
+  Button,
+  Badge,
+  useToast,
+  useConfirm,
+  usePrompt,
+  EmptyState,
+  IconFolder,
+  IconWarning,
+  ThemeToggle,
+  LogoutButton,
+} from "./ui";
 
 /**
  * Landing page after login: pick a project (or create/delete one), then
@@ -21,7 +35,7 @@ import { Card, PageHeader, Button, Badge, useToast, useConfirm, usePrompt, Empty
  * whether a project is already persisted — the user wants this as a
  * deliberate "home base", not something that gets auto-skipped.
  */
-export function AdminProjectPicker() {
+export function AdminProjectPicker({ onLogout }) {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -30,6 +44,17 @@ export function AdminProjectPicker() {
   const [defaultProjectId, setDefaultProjectId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  // Distinguishes "this account genuinely has zero projects" from "the
+  // fetch came back empty because the session is actually dead" — see the
+  // load() comment below. Without this, a stale-but-locally-not-yet-expired
+  // session (e.g. a Supabase auth session that survived in localStorage
+  // past its real validity — this page is the first thing a returning
+  // admin hits, so it's the one place this silently-empty-list failure
+  // mode is actually visible) rendered as a fully-authed-looking "No
+  // projects yet, + New project" screen with no way to tell it apart from
+  // a real empty account, and no logout button anywhere on this page to
+  // recover from it short of manually clearing site data.
+  const [sessionExpired, setSessionExpired] = useState(false);
   const currentProjectId = getProjectId();
 
   const load = useCallback(async () => {
@@ -39,8 +64,23 @@ export function AdminProjectPicker() {
         listProjectsFromBackend(),
         getDefaultProjectFromBackend(),
       ]);
-      setProjects(Array.isArray(list) ? list : []);
+      const safeList = Array.isArray(list) ? list : [];
+      setProjects(safeList);
       setDefaultProjectId(def || null);
+
+      if (safeList.length === 0) {
+        // listProjectsFromBackend swallows every failure (network, RLS,
+        // an expired/invalid auth session) into a plain empty array, so an
+        // empty result alone doesn't tell us whether this account really
+        // has zero projects. touchAdminSession() re-checks the real
+        // Supabase session (not just the locally-cached token/expiry this
+        // app tracks on its own) and fails clearly when that session is
+        // actually dead.
+        const res = await touchAdminSession();
+        setSessionExpired(!res.ok);
+      } else {
+        setSessionExpired(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -134,11 +174,27 @@ export function AdminProjectPicker() {
                   + New project
                 </Button>
               )}
+              <LogoutButton onLogout={onLogout} />
             </>
           }
         />
 
-        {!loading && projects.length === 0 && (
+        {!loading && sessionExpired && (
+          <Card>
+            <EmptyState
+              icon={IconWarning}
+              title="Your session has expired"
+              message="We couldn't load your projects because your sign-in is no longer valid. Log out and sign back in to continue."
+              action={
+                <Button size="sm" variant="primary" onClick={onLogout}>
+                  Log out
+                </Button>
+              }
+            />
+          </Card>
+        )}
+
+        {!loading && !sessionExpired && projects.length === 0 && (
           <Card>
             <EmptyState
               icon={IconFolder}

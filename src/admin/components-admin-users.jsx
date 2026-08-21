@@ -31,7 +31,7 @@ import {
 } from "../utils";
 import { isSupabaseBackend } from "../utils/utils-supabase-client";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser, ThemeToggle } from "./ui";
+import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser, ThemeToggle, LogoutButton } from "./ui";
 
 const ROLE_OPTIONS = [
   { value: "viewer", label: "Viewer", hint: "Read-only access" },
@@ -592,7 +592,7 @@ function ResetPasswordModal({ user, onClose, onDone }) {
   );
 }
 
-export function AdminUsersPage() {
+export function AdminUsersPage({ onLogout }) {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -735,6 +735,7 @@ export function AdminUsersPage() {
               <Button size="sm" variant="primary" onClick={() => setShowAddModal(true)}>
                 + Add user
               </Button>
+              <LogoutButton onLogout={onLogout} />
             </>
           }
         />
