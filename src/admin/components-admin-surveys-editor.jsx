@@ -7,7 +7,7 @@ import {
   ATTENTION_CHECK_ELIGIBLE_TYPES,
   saveQuestionLibraryItemToBackend,
 } from "../utils";
-import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm, useToast, usePrompt, IconBookmark } from "./ui";
+import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm, useToast, usePrompt, IconBookmark, Popover } from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
 import { QuestionLibraryPickerModal } from "./components-admin-question-library";
 
@@ -275,6 +275,19 @@ function makeWholeCardDragStart(onDragStart, id) {
   };
 }
 
+// Narrower than isDragBlockedTarget above — used to decide whether a
+// keyboard shortcut (Cmd/Ctrl+Z, Delete) should fire the survey-level
+// action or be left alone so the browser's own native behavior applies
+// (text-undo while editing a field, literal character deletion while
+// typing). Deliberately excludes buttons/selects, unlike the drag guard —
+// a focused button has no text to preserve, so survey-level shortcuts
+// should still fire from there.
+const TEXT_EDITING_TARGET_SELECTOR = 'input, textarea, [contenteditable="true"]';
+
+function isTextEditingTarget(target) {
+  return !!(target && typeof target.closest === "function" && target.closest(TEXT_EDITING_TARGET_SELECTOR));
+}
+
 function uniqueStringList(values = []) {
   return Array.from(
     new Set(
@@ -494,6 +507,43 @@ export function makeCopiedQuestionId(existingIds = [], sourceId = "") {
   }
 
   return `${cleanSourceId}_COPY_${counter}`;
+}
+
+// Extracted from what used to be duplicateQuestion's own inline body so
+// bulk-duplicate (selecting several questions and copying them all at
+// once) can reuse the exact same per-question copy semantics instead of
+// re-deriving them — same "N places to update" duplication risk this
+// codebase already has a name for, avoided by having exactly one
+// implementation of "what does a duplicated question look like."
+export function cloneQuestionForDuplicate(sourceQuestion, existingIds) {
+  const nextId = makeCopiedQuestionId(existingIds, sourceQuestion?.id);
+
+  let copiedQuestion = {
+    ...sourceQuestion,
+    _editorId: makeEditorId(),
+    id: nextId,
+    meta: sourceQuestion?.meta ? { ...sourceQuestion.meta } : {},
+    visible_if: sourceQuestion?.visible_if
+      ? JSON.parse(JSON.stringify(sourceQuestion.visible_if))
+      : null,
+    visible_in_feeds: normalizeVisibleInFeeds(sourceQuestion?.visible_in_feeds),
+    feed_overrides: normalizeFeedOverridesMap(sourceQuestion?.feed_overrides),
+    post_id: String(sourceQuestion?.post_id ?? ""),
+    post_label: String(sourceQuestion?.post_label ?? ""),
+    post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
+    apply_feed_randomization: sourceQuestion?.apply_feed_randomization !== false,
+    reminder_interactive: !!sourceQuestion?.reminder_interactive,
+    recall_enabled: !!sourceQuestion?.recall_enabled,
+    recall_distractor_texts: normalizeRecallDistractorTextsForEditor(
+      sourceQuestion?.recall_distractor_texts
+    ),
+  };
+
+  if (shouldAutoRewriteRowValues(copiedQuestion)) {
+    copiedQuestion = rewriteQuestionRowValues(copiedQuestion, nextId);
+  }
+
+  return { copiedQuestion, nextId };
 }
 
 export function reorderArray(list = [], fromIndex, toIndex) {
@@ -1293,6 +1343,40 @@ function usePageDragReorder(onSurveyChange, blocks, pageIdToBlockIndex) {
 // and SurveyEditor's own "Pages and questions" list so the two can't
 // visually drift apart; each wraps this in its own container styling
 // (StudyOutlineModal's is more compact than the main editor's).
+// Shared multi-select checkbox — used by both QuestionCard's expanded
+// header and CollapsedQuestionRow, so a question is selectable regardless
+// of which view it's currently showing.
+//
+// Driven by `onClick`, not `onChange`, on purpose: a checkbox's native
+// `change` event is a plain Event with no modifier-key info at all —
+// `event.shiftKey` on it is always `undefined`, in every browser, even for
+// a real shift-click — only the `click` MouseEvent that precedes it
+// actually carries `shiftKey`. Reading it from onChange (an earlier version
+// of this component did) would have made shift-range-select silently never
+// work for a real user, not just in a synthetic test. `onChange` is kept
+// as a no-op purely to satisfy React's "controlled checkbox needs an
+// onChange" requirement — all the real logic lives in onClick.
+function SelectCheckbox({ checked, onToggle, size = 15 }) {
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={() => {}}
+      onClick={onToggle}
+      title="Select this question (shift-click to select a range)"
+      aria-label="Select this question"
+      style={{
+        width: size,
+        height: size,
+        margin: 0,
+        flex: "0 0 auto",
+        accentColor: "var(--admin-accent)",
+        cursor: "pointer",
+      }}
+    />
+  );
+}
+
 function PageCardHeader({
   pageNumber,
   pageTitle,
@@ -1503,6 +1587,125 @@ export function computeBrokenVisibleIfQuestionIds(questions) {
   });
 
   return broken;
+}
+
+// One place surfacing every real, checkable problem in a survey — most of
+// these were previously only discoverable one at a time (a red border here,
+// a badge there, or not at all until a real participant hit them). Reuses
+// computeDuplicateQuestionIds/computeBrokenVisibleIfQuestionIds rather than
+// re-deriving those two checks. Each issue carries `editorId` (for
+// jump-to-fix, when it's about one specific question) or `pageId` (for a
+// whole-page problem, which has no single question to jump to).
+export function computeSurveyHealthIssues(survey, currentQuestions, experimentGroups) {
+  const issues = [];
+  const questions = Array.isArray(currentQuestions) ? currentQuestions : [];
+  const duplicateIds = computeDuplicateQuestionIds(questions);
+  const brokenConditionIds = computeBrokenVisibleIfQuestionIds(questions);
+  const groupIds = new Set((Array.isArray(experimentGroups) ? experimentGroups : []).map((g) => g?.id));
+
+  questions.forEach((q) => {
+    if (!q || q.type === EDITOR_PAGE_BREAK_TYPE) return;
+    const editorId = q._editorId;
+    const id = String(q?.id || "").trim();
+    const label = id || "(no ID)";
+
+    if (!id) {
+      issues.push({
+        severity: "warning",
+        editorId,
+        title: `Missing question ID`,
+        description: "This question has no ID set, so it won't be identifiable in CSV exports or in any condition/visibility rule that needs to reference it.",
+      });
+    } else if (duplicateIds.has(id)) {
+      issues.push({
+        severity: "error",
+        editorId,
+        title: `Duplicate ID "${id}"`,
+        description: "Another question in this survey uses the same ID — CSV columns, visibility rules, and conditions that key off it will collide unpredictably.",
+      });
+    }
+
+    if (id && brokenConditionIds.has(id)) {
+      issues.push({
+        severity: "error",
+        editorId,
+        title: `Broken display condition on "${label}"`,
+        description: "Its conditional-display rule references a question that no longer exists, comes after it in the survey, or changed to a type conditions can't be based on.",
+      });
+    }
+
+    if (
+      !isEditorDisplayOnlyType(q) &&
+      q.type !== POST_REMINDER_TYPE &&
+      !stripHtmlForEmptyCheck(q.text || "").trim()
+    ) {
+      issues.push({
+        severity: "warning",
+        editorId,
+        title: `Empty question text on "${label}"`,
+        description: "This question has no text yet — participants would see a blank prompt.",
+      });
+    }
+
+    if (questionHasAttentionCheck(q)) {
+      const missingOwnAnswer = q.is_attention_check && !String(q.attention_check_value || "").trim();
+      const missingRowAnswer =
+        Array.isArray(q.rows) &&
+        q.rows.some((r) => r?.is_attention_check && !String(r?.attention_check_value || "").trim());
+      if (missingOwnAnswer || missingRowAnswer) {
+        issues.push({
+          severity: "warning",
+          editorId,
+          title: `Attention check has no expected answer on "${label}"`,
+          description: "It's pinned in place (never shuffled) but has no chosen correct answer yet, so it can never actually be scored as passed or failed.",
+        });
+      }
+    }
+
+    if (q.type === POST_REMINDER_TYPE && q.recall_enabled) {
+      const texts = normalizeRecallDistractorTextsForEditor(q.recall_distractor_texts);
+      if (!texts[0]?.trim() || !texts[1]?.trim()) {
+        issues.push({
+          severity: "warning",
+          editorId,
+          title: `Recall test missing decoy text on "${label}"`,
+          description: "Both decoy versions need their own text before this behaves as a real recall test — until then it silently falls back to a plain, non-interactive reminder.",
+        });
+      }
+    }
+
+    const visibleGroups = Array.isArray(q.visible_to_group_ids) ? q.visible_to_group_ids : [];
+    if (visibleGroups.length && visibleGroups.some((gid) => !groupIds.has(gid))) {
+      issues.push({
+        severity: "warning",
+        editorId,
+        title: `Visible to a deleted experiment group on "${label}"`,
+        description: "This question is scoped to at least one experiment group that no longer exists — it may end up hidden from every participant.",
+      });
+    }
+  });
+
+  const pageNumbers = computePageNumbersForQuestions(questions);
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  const questionCountByPage = new Map();
+  questions.forEach((item, i) => {
+    if (item?.type === EDITOR_PAGE_BREAK_TYPE) return;
+    const pn = pageNumbers[i];
+    questionCountByPage.set(pn, (questionCountByPage.get(pn) || 0) + 1);
+  });
+  pages.forEach((p, i) => {
+    const pn = i + 1;
+    if (!questionCountByPage.get(pn)) {
+      issues.push({
+        severity: "warning",
+        pageId: String(p?.id || `page_${pn}`),
+        title: `Page ${pn} has no questions`,
+        description: "Participants would land on a blank page here.",
+      });
+    }
+  });
+
+  return issues;
 }
 
 function makePageBlock(index = 0) {
@@ -1906,6 +2109,44 @@ function GridIcon({ size = 16 }) {
       <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
       <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
       <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    </svg>
+  );
+}
+
+function UndoIcon({ size = 16 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7 8H4V5" />
+      <path d="M4.5 15A8 8 0 1 0 6 6.5L4 8" />
+    </svg>
+  );
+}
+
+function RedoIcon({ size = 16 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M17 8h3V5" />
+      <path d="M19.5 15A8 8 0 1 1 18 6.5L20 8" />
     </svg>
   );
 }
@@ -4308,6 +4549,8 @@ function CollapsedQuestionRow({
   onDragEnd,
   onToggleCollapsed,
   onPreviewQuestion,
+  isSelected = false,
+  onToggleSelected,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(q);
   const isPostReminder = type === POST_REMINDER_TYPE;
@@ -4334,6 +4577,8 @@ function CollapsedQuestionRow({
         padding: "4px 2px",
       }}
     >
+      {onToggleSelected && <SelectCheckbox checked={isSelected} onToggle={onToggleSelected} size={14} />}
+
       <IconOnlyButton
         onClick={onToggleCollapsed}
         title="Expand question"
@@ -5134,6 +5379,8 @@ function QuestionCard({
   onToggleCollapsed,
   onPreviewQuestion,
   onChangeTypeViaGallery,
+  isSelected = false,
+  onToggleSelected,
 }) {
   const confirm = useConfirm();
   const type = q?.type;
@@ -5348,6 +5595,8 @@ function QuestionCard({
           onDragEnd={onDragEnd}
           onToggleCollapsed={onToggleCollapsed}
           onPreviewQuestion={onPreviewQuestion}
+          isSelected={isSelected}
+          onToggleSelected={onToggleSelected}
         />
       ) : (
       <>
@@ -5363,6 +5612,14 @@ function QuestionCard({
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-end", gap: 10 }}>
+            {onToggleSelected && (
+              <TopField label="">
+                <div style={{ display: "flex", alignItems: "center", height: INPUT_HEIGHT }}>
+                  <SelectCheckbox checked={isSelected} onToggle={onToggleSelected} />
+                </div>
+              </TopField>
+            )}
+
             <TopField label="">
               <IconOnlyButton
                 onClick={onToggleCollapsed}
@@ -6823,17 +7080,296 @@ function StudyOutlineModal({
   );
 }
 
+// Toolbar badge + popover for computeSurveyHealthIssues — green "No issues"
+// when the survey is clean, amber/red with a count otherwise. Each issue
+// gets a "Jump to question" link when it's about one specific question
+// (editorId set); page-level issues (a page with zero questions) have no
+// single question to jump to, so they're shown without one.
+function SurveyHealthBadge({ issues, onJumpToQuestion }) {
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const total = issues.length;
+
+  const tone =
+    errorCount > 0
+      ? { bg: "var(--admin-danger-soft)", fg: "var(--admin-danger-ink)", border: "var(--admin-danger-border)" }
+      : total > 0
+        ? { bg: "var(--admin-warning-soft)", fg: "var(--admin-warning-ink)", border: "var(--admin-warning-border)" }
+        : { bg: "var(--admin-success-soft)", fg: "var(--admin-success-ink)", border: "var(--admin-success-border)" };
+
+  return (
+    <Popover
+      trigger={
+        <button
+          type="button"
+          title="Survey health — duplicate IDs, broken conditions, unanswered attention checks, and more, all in one place"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            height: 36,
+            padding: "0 12px",
+            borderRadius: "var(--admin-radius-sm)",
+            border: `1px solid ${tone.border}`,
+            background: tone.bg,
+            color: tone.fg,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          <span aria-hidden="true">{total === 0 ? "✓" : "⚠"}</span>
+          {total === 0 ? "No issues" : `${total} issue${total === 1 ? "" : "s"}`}
+        </button>
+      }
+    >
+      <div style={{ width: 340, maxHeight: 400, overflowY: "auto" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: "var(--admin-text)" }}>
+          Survey health
+        </div>
+        {total === 0 ? (
+          <div style={{ fontSize: 12.5, color: "var(--admin-muted)", lineHeight: 1.4 }}>
+            No issues found — question IDs, display conditions, attention checks, recall setups, and page
+            content all check out.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {issues.map((issue, i) => {
+              const danger = issue.severity === "error";
+              return (
+                <div
+                  key={i}
+                  style={{
+                    padding: 10,
+                    borderRadius: 8,
+                    border: `1px solid ${danger ? "var(--admin-danger-border)" : "var(--admin-warning-border)"}`,
+                    background: danger ? "var(--admin-danger-soft)" : "var(--admin-warning-soft)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: danger ? "var(--admin-danger-ink)" : "var(--admin-warning-ink)",
+                    }}
+                  >
+                    {issue.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--admin-muted)", marginTop: 3, lineHeight: 1.4 }}>
+                    {issue.description}
+                  </div>
+                  {issue.editorId && onJumpToQuestion && (
+                    <button
+                      type="button"
+                      onClick={() => onJumpToQuestion(issue.editorId)}
+                      style={{
+                        marginTop: 6,
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: "var(--admin-accent-ink)",
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Jump to question
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Popover>
+  );
+}
+
 /* =========================
    Main editor component
    ========================= */
 
 export function SurveyEditor({
   survey,
-  onSurveyChange,
+  onSurveyChange: onSurveyChangeProp,
   linkedFeeds = [],
   linkedFeedPostsMap = {},
   feedSequenceIds = [],
 }) {
+  // Undo/redo history for this editing session — a plain stack of previous
+  // `survey` snapshots, not persisted anywhere. Every other function in this
+  // file that mutates the survey already goes through the single
+  // `onSurveyChange` choke point (including every child component —
+  // PageBlocksEditor, ExperimentGroupsEditor, StudyOutlineModal all receive
+  // it as a prop straight from here), so wrapping it once here is enough to
+  // capture every mutation without touching each call site individually.
+  //
+  // Deliberately time-coalesced rather than one entry per keystroke: rapid
+  // successive changes within COALESCE_WINDOW_MS collapse into the same undo
+  // step (so typing a sentence into the rich-text editor is one Cmd+Z, not
+  // one per character), while a pause longer than that starts a fresh step.
+  // This is a pragmatic trade-off, not a perfect one — two genuinely
+  // distinct actions fired faster than the window (rare in practice) will
+  // also coalesce; a fully correct version would need every call site to
+  // explicitly tag itself as atomic, which is a lot of surface area for a
+  // fairly small correctness gain.
+  const [history, setHistory] = useState({ past: [], future: [] });
+  const lastChangeAtRef = useRef(0);
+  const COALESCE_WINDOW_MS = 600;
+  const HISTORY_LIMIT = 50;
+
+  const onSurveyChange = useCallback(
+    (updater) => {
+      const now = Date.now();
+      // Captured before the ref is mutated below — same real bug as the one
+      // fixed in toggleQuestionSelected's lastSelectedIndexRef: reading
+      // `lastChangeAtRef.current` from *inside* the setHistory updater risks
+      // seeing the value this exact call is about to overwrite it with
+      // (if React doesn't run the updater perfectly synchronously with this
+      // function), making `now - lastChangeAtRef.current` collapse to ~0 —
+      // always "just changed" — so `shouldCoalesce` would end up true for
+      // every change after the first, and `history.past` would silently
+      // stop growing after its first entry. Confirmed live: two real,
+      // well-separated bulk edits (a duplicate, then — after a whole
+      // confirm-dialog round trip — a delete) both coalesced into one; a
+      // single Undo click reverted straight past both instead of just the
+      // most recent one.
+      const previousChangeAt = lastChangeAtRef.current;
+      setHistory((h) => {
+        const shouldCoalesce = h.past.length > 0 && now - previousChangeAt < COALESCE_WINDOW_MS;
+        return {
+          past: shouldCoalesce ? h.past : [...h.past, survey].slice(-HISTORY_LIMIT),
+          future: [],
+        };
+      });
+      lastChangeAtRef.current = now;
+      // `updater` is passed straight through, unresolved — onSurveyChangeProp
+      // (AdminSurveysPanel's setSurvey((prev) => ...)) is itself a functional
+      // updater, and every call site in this file already writes its own
+      // updater in terms of `prev`. Pre-resolving `updater(survey)` here
+      // against this render's closed-over `survey` would silently break that
+      // if this ever fired more than once before a re-render (it doesn't
+      // today, but nothing should depend on that staying true).
+      onSurveyChangeProp(updater);
+    },
+    [survey, onSurveyChangeProp]
+  );
+
+  function undo() {
+    if (!history.past.length) return;
+    const previous = history.past[history.past.length - 1];
+    setHistory({
+      past: history.past.slice(0, -1),
+      future: [survey, ...history.future].slice(0, HISTORY_LIMIT),
+    });
+    lastChangeAtRef.current = 0;
+    onSurveyChangeProp(() => previous);
+  }
+
+  function redo() {
+    if (!history.future.length) return;
+    const [next, ...rest] = history.future;
+    setHistory({
+      past: [...history.past, survey].slice(-HISTORY_LIMIT),
+      future: rest,
+    });
+    lastChangeAtRef.current = 0;
+    onSurveyChangeProp(() => next);
+  }
+
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
+
+  // Multi-select — shift-click range-selects between the last-clicked
+  // question and the current one, in flat currentQuestions order. Page
+  // breaks are never selectable (they're structural, not bulk-actionable
+  // content), so range-select skips over them.
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState(() => new Set());
+  const lastSelectedIndexRef = useRef(null);
+
+  function toggleQuestionSelected(editorId, index, event) {
+    const shiftKey = !!event?.shiftKey;
+    // Captured into a plain local *before* the ref is mutated below, then
+    // closed over by the updater — not read as `lastSelectedIndexRef.current`
+    // from inside the updater itself. A real bug lived here: the updater
+    // passed to setSelectedQuestionIds doesn't necessarily run in the same
+    // synchronous tick as this call (React is free to defer it), so reading
+    // the ref from inside the updater could see it *after* the
+    // `lastSelectedIndexRef.current = index` line below had already
+    // overwritten it to this same click's index — collapsing every range
+    // to a single point ([index, index]) instead of [previousIndex, index].
+    // Confirmed live: shift-clicking a 3rd question after a plain click on
+    // the 1st selected the 1st and 3rd but silently skipped the 2nd.
+    const previousIndex = lastSelectedIndexRef.current;
+    setSelectedQuestionIds((current) => {
+      const next = new Set(current);
+      if (shiftKey && previousIndex != null) {
+        const [from, to] = [previousIndex, index].sort((a, b) => a - b);
+        for (let i = from; i <= to; i++) {
+          const q = currentQuestions[i];
+          if (q && q.type !== EDITOR_PAGE_BREAK_TYPE && q._editorId) next.add(q._editorId);
+        }
+      } else if (next.has(editorId)) {
+        next.delete(editorId);
+      } else {
+        next.add(editorId);
+      }
+      return next;
+    });
+    lastSelectedIndexRef.current = index;
+  }
+
+  function clearSelection() {
+    setSelectedQuestionIds(new Set());
+    lastSelectedIndexRef.current = null;
+  }
+
+  // Cmd/Ctrl+Z / Cmd-Shift+Z (or Ctrl+Y) for undo/redo, Delete/Backspace to
+  // bulk-delete the current selection, Escape to clear it. Every branch
+  // bails out while focus is inside a text field (isTextEditingTarget) so
+  // the browser's own native text-undo/character-delete keeps working
+  // there instead of being hijacked — and while any modal is open (a
+  // survey preview, the add-question gallery, a confirm dialog, ...),
+  // since Escape in particular should close that dialog, not reach through
+  // to clear a selection sitting behind it, and Delete/Backspace typed
+  // into a modal's own fields shouldn't bulk-delete the questions list.
+  useEffect(() => {
+    function onKeyDown(e) {
+      const modKey = e.metaKey || e.ctrlKey;
+      const dialogOpen = !!document.querySelector('[role="dialog"]');
+
+      if (modKey && e.key.toLowerCase() === "z" && !dialogOpen) {
+        if (isTextEditingTarget(e.target)) return;
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (modKey && e.key.toLowerCase() === "y" && !dialogOpen) {
+        if (isTextEditingTarget(e.target)) return;
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedQuestionIds.size > 0 &&
+        !dialogOpen &&
+        !isTextEditingTarget(e.target)
+      ) {
+        e.preventDefault();
+        bulkDeleteSelected();
+        return;
+      }
+      if (e.key === "Escape" && selectedQuestionIds.size > 0 && !dialogOpen) {
+        clearSelection();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
+
   const [draggingQuestionId, setDraggingQuestionId] = useState(null);
   const [dragOverQuestionId, setDragOverQuestionId] = useState(null);
   // "above" | "below" | null — which half of dragOverQuestionId's own row
@@ -6869,6 +7405,7 @@ export function SurveyEditor({
 
   const libraryToast = useToast();
   const libraryPrompt = usePrompt();
+  const bulkConfirm = useConfirm();
   // null = closed. "append" = insert at the very end (the empty-survey
   // "+ Add question" / "From library" path). {index, position} = insert
   // relative to a specific existing question, mirroring insertQuestionAt's
@@ -7020,6 +7557,12 @@ export function SurveyEditor({
     if (q) saveQuestionsToLibrary([q]);
   }
 
+  function bulkSaveSelectedToLibrary() {
+    const selected = currentQuestions.filter((q) => q?._editorId && selectedQuestionIds.has(q._editorId));
+    if (!selected.length) return;
+    saveQuestionsToLibrary(selected);
+  }
+
   // Question cards start collapsed by default (per direct user feedback) —
   // same set of ids collapseAllQuestions() below would produce, just as the
   // initial state instead of a user action.
@@ -7037,6 +7580,11 @@ export function SurveyEditor({
   const experimentGroups = useMemo(
     () => normalizeSurveyExperimentGroups(survey),
     [survey]
+  );
+
+  const healthIssues = useMemo(
+    () => computeSurveyHealthIssues(survey, currentQuestions, experimentGroups),
+    [survey, currentQuestions, experimentGroups]
   );
 
   function toggleQuestionCollapsed(editorId) {
@@ -7221,42 +7769,43 @@ export function SurveyEditor({
         .map((q) => q?.id)
         .filter(Boolean);
 
-      const nextId = makeCopiedQuestionId(existingIds, sourceQuestion.id);
-
-      let copiedQuestion = {
-        ...sourceQuestion,
-        _editorId: makeEditorId(),
-        id: nextId,
-        meta: sourceQuestion?.meta ? { ...sourceQuestion.meta } : {},
-        visible_if: sourceQuestion?.visible_if
-          ? JSON.parse(JSON.stringify(sourceQuestion.visible_if))
-          : null,
-        visible_in_feeds: normalizeVisibleInFeeds(
-          sourceQuestion?.visible_in_feeds
-        ),
-        feed_overrides: normalizeFeedOverridesMap(
-          sourceQuestion?.feed_overrides
-        ),
-        post_id: String(sourceQuestion?.post_id ?? ""),
-        post_label: String(sourceQuestion?.post_label ?? ""),
-        post_feed_id: String(sourceQuestion?.post_feed_id ?? ""),
-        apply_feed_randomization: sourceQuestion?.apply_feed_randomization !== false,
-        reminder_interactive: !!sourceQuestion?.reminder_interactive,
-        recall_enabled: !!sourceQuestion?.recall_enabled,
-        recall_distractor_texts: normalizeRecallDistractorTextsForEditor(
-          sourceQuestion?.recall_distractor_texts
-        ),
-      };
-
-      if (shouldAutoRewriteRowValues(copiedQuestion)) {
-        copiedQuestion = rewriteQuestionRowValues(copiedQuestion, nextId);
-      }
-
+      let { copiedQuestion } = cloneQuestionForDuplicate(sourceQuestion, existingIds);
       copiedQuestion = normalizeQuestionForEditor(copiedQuestion, index + 1);
 
       currentQuestionsCopy.splice(index + 1, 0, copiedQuestion);
       return setQuestionList(prev, currentQuestionsCopy);
     });
+  }
+
+  // Duplicates every currently-selected question in one atomic survey
+  // update (one undo step, not one per question) — each copy is inserted
+  // directly after its own source, same placement duplicateQuestion above
+  // already uses for a single question. Ids are tracked as they're
+  // generated within this loop so two selected questions can never collide
+  // on the same "_COPY" suffix within one batch.
+  function bulkDuplicateSelected() {
+    const idsToClone = new Set(selectedQuestionIds);
+    if (!idsToClone.size) return;
+    const count = idsToClone.size;
+    onSurveyChange((prev) => {
+      const current = getQuestionList(prev);
+      const usedIds = current
+        .filter((q) => q?.type !== EDITOR_PAGE_BREAK_TYPE)
+        .map((q) => q?.id)
+        .filter(Boolean);
+      const next = [];
+      current.forEach((q) => {
+        next.push(q);
+        if (q?._editorId && idsToClone.has(q._editorId)) {
+          const { copiedQuestion, nextId } = cloneQuestionForDuplicate(q, usedIds);
+          usedIds.push(nextId);
+          next.push(normalizeQuestionForEditor(copiedQuestion, next.length));
+        }
+      });
+      return setQuestionList(prev, next);
+    });
+    clearSelection();
+    libraryToast.success(`Duplicated ${count} question${count === 1 ? "" : "s"}.`);
   }
 
   function updateQuestion(index, patch) {
@@ -7292,6 +7841,38 @@ export function SurveyEditor({
 
       return setQuestionList(prev, cleaned);
     });
+  }
+
+  // Same visible_if cleanup as removeQuestion above, generalized to a whole
+  // set of removed ids at once rather than a single one — one atomic
+  // survey update (one undo step) instead of N separate removeQuestion
+  // calls, which would also have been N separate confirms/undo steps.
+  async function bulkDeleteSelected() {
+    const idsToDelete = new Set(selectedQuestionIds);
+    if (!idsToDelete.size) return;
+    const count = idsToDelete.size;
+    const ok = await bulkConfirm({
+      title: count === 1 ? "Delete this question?" : `Delete ${count} questions?`,
+      danger: true,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+
+    onSurveyChange((prev) => {
+      const current = getQuestionList(prev);
+      const removedIds = new Set(
+        current.filter((q) => q?._editorId && idsToDelete.has(q._editorId)).map((q) => String(q?.id || "").trim())
+      );
+      const remaining = current.filter((q) => !(q?._editorId && idsToDelete.has(q._editorId)));
+      const cleaned = remaining.map((question) =>
+        question?.visible_if?.question_id && removedIds.has(question.visible_if.question_id)
+          ? { ...question, visible_if: null }
+          : question
+      );
+      return setQuestionList(prev, cleaned);
+    });
+    clearSelection();
+    libraryToast.success(`Deleted ${count} question${count === 1 ? "" : "s"}.`);
   }
 
   function moveQuestion(fromIndex, toIndex) {
@@ -7390,16 +7971,48 @@ export function SurveyEditor({
           background: "var(--admin-surface-sunken)",
         }}
       >
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 750, color: "var(--admin-text)" }}>
-            Study structure
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 750, color: "var(--admin-text)" }}>
+              Study structure
+            </div>
+            <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 2 }}>
+              {overviewQuestionCount} {overviewQuestionCount === 1 ? "question" : "questions"} · {overviewPageCount} {overviewPageCount === 1 ? "page" : "pages"} · {overviewBlockCount} {overviewBlockCount === 1 ? "block" : "blocks"}
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: "var(--admin-muted)", marginTop: 2 }}>
-            {overviewQuestionCount} {overviewQuestionCount === 1 ? "question" : "questions"} · {overviewPageCount} {overviewPageCount === 1 ? "page" : "pages"} · {overviewBlockCount} {overviewBlockCount === 1 ? "block" : "blocks"}
-          </div>
+
+          <SurveyHealthBadge issues={healthIssues} onJumpToQuestion={jumpToQuestion} />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              paddingRight: 8,
+              marginRight: 4,
+              borderRight: "1px solid var(--admin-border)",
+            }}
+          >
+            <IconOnlyButton
+              onClick={undo}
+              disabled={!canUndo}
+              title="Undo (Cmd/Ctrl+Z)"
+              style={{ width: 36, height: 36, borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+            >
+              <UndoIcon size={16} />
+            </IconOnlyButton>
+            <IconOnlyButton
+              onClick={redo}
+              disabled={!canRedo}
+              title="Redo (Cmd/Ctrl+Shift+Z)"
+              style={{ width: 36, height: 36, borderColor: "var(--admin-border)", background: "var(--admin-surface)" }}
+            >
+              <RedoIcon size={16} />
+            </IconOnlyButton>
+          </div>
+
           <Button
             variant="secondary"
             onClick={collapseAllQuestions}
@@ -7452,6 +8065,43 @@ export function SurveyEditor({
           </Button>
         </div>
       </div>
+
+      {selectedQuestionIds.size > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            padding: "10px 14px",
+            marginBottom: 14,
+            border: "1px solid var(--admin-accent-border)",
+            borderRadius: 12,
+            background: "var(--admin-accent-soft)",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--admin-accent-ink)" }}>
+            {selectedQuestionIds.size} selected
+          </span>
+          <span style={{ fontSize: 11.5, color: "var(--admin-accent-ink)", opacity: 0.8 }}>
+            Shift-click a checkbox to select a range · Delete key to remove · Escape to clear
+          </span>
+          <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+            <Button variant="secondary" size="sm" onClick={bulkDuplicateSelected}>
+              Duplicate
+            </Button>
+            <Button variant="secondary" size="sm" onClick={bulkSaveSelectedToLibrary}>
+              Save to library
+            </Button>
+            <Button variant="danger" size="sm" onClick={bulkDeleteSelected}>
+              Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
 
       {previewOpen && (
         <SurveyPreviewModal
@@ -7608,6 +8258,8 @@ export function SurveyEditor({
                             onToggleCollapsed={() => toggleQuestionCollapsed(q._editorId)}
                             onPreviewQuestion={openPreview}
                             onChangeTypeViaGallery={openChangeQuestionType}
+                            isSelected={selectedQuestionIds.has(q._editorId)}
+                            onToggleSelected={(e) => toggleQuestionSelected(q._editorId, i, e)}
                           />
                         </div>
                       ))}
