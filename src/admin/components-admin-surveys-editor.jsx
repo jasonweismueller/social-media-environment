@@ -2073,7 +2073,18 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
   );
 }
 
-function InsertAtBorderButton({ position = "top", onInsert }) {
+// `inline` renders this as a normal, always-visible, in-flow "+ Add
+// question" button instead of the default border-straddling one. The
+// default mode is `position: absolute; top/bottom: -11px`, meant to sit
+// centered on the border between two existing question cards (each of
+// which provides its own `position: relative` wrapper) — with no such
+// wrapper (the empty-questions-list case, where this is the *only* way to
+// add a question at all) that absolute positioning resolves against
+// whatever positioned ancestor happens to be further up the tree instead,
+// landing the button somewhere far from where anyone would look for it, at
+// a permanent 0.4 opacity meant for a hover-reveal border control, not a
+// primary call to action. `inline` skips all of that.
+function InsertAtBorderButton({ position = "top", onInsert, inline = false }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [selectedType, setSelectedType] = useState(SURVEY_QUESTION_TYPES.TEXT);
@@ -2099,46 +2110,67 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
   }, []);
 
   const isTop = position === "top";
-  const isActive = hovered || open;
+  const isActive = inline || hovered || open;
 
   return (
     <div
       ref={wrapRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        position: "absolute",
-        left: "50%",
-        transform: "translateX(-50%)",
-        top: isTop ? -11 : "auto",
-        bottom: !isTop ? -11 : "auto",
-        zIndex: 6,
-        pointerEvents: "auto",
-      }}
+      style={
+        inline
+          ? { position: "relative", display: "inline-block" }
+          : {
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              top: isTop ? -11 : "auto",
+              bottom: !isTop ? -11 : "auto",
+              zIndex: 6,
+              pointerEvents: "auto",
+            }
+      }
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={isTop ? "Insert above" : "Insert below"}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 999,
-          border: "1px solid var(--admin-border)",
-          background: "var(--admin-surface)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          padding: 0,
-          boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
-          opacity: isActive ? 1 : 0.4,
-          transition:
-            "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
-          transform: isActive ? "scale(1)" : "scale(0.96)",
-        }}
+        title={inline ? "Add question" : isTop ? "Insert above" : "Insert below"}
+        style={
+          inline
+            ? {
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid var(--admin-accent-border, var(--admin-border))",
+                background: "var(--admin-accent-soft)",
+                color: "var(--admin-accent-ink)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }
+            : {
+                width: 22,
+                height: 22,
+                borderRadius: 999,
+                border: "1px solid var(--admin-border)",
+                background: "var(--admin-surface)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+                boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
+                opacity: isActive ? 1 : 0.4,
+                transition:
+                  "opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
+                transform: isActive ? "scale(1)" : "scale(0.96)",
+              }
+        }
       >
-        <PlusIcon size={10} />
+        <PlusIcon size={inline ? 12 : 10} />
+        {inline && "Add question"}
       </button>
 
       {open && (
@@ -2147,14 +2179,15 @@ function InsertAtBorderButton({ position = "top", onInsert }) {
             position: "absolute",
             left: "50%",
             transform: "translateX(-50%)",
-            top: isTop ? 28 : "auto",
-            bottom: !isTop ? 28 : "auto",
+            top: inline || isTop ? "calc(100% + 6px)" : "auto",
+            bottom: !inline && !isTop ? 28 : "auto",
             minWidth: 220,
             padding: 10,
             borderRadius: 10,
             border: "1px solid var(--admin-border)",
             background: "var(--admin-surface)",
             boxShadow: "var(--admin-shadow-md)",
+            zIndex: 10,
           }}
         >
           <div style={{ fontSize: 12, marginBottom: 6 }}>Add question</div>
@@ -6282,9 +6315,10 @@ export function SurveyEditor({
         {currentQuestions.length === 0 && (
           <EmptyState
             title="No questions yet"
+            message="Add your first question to get started."
             action={
               <InsertAtBorderButton
-                position="bottom"
+                inline
                 onInsert={(nextType) => addQuestion(nextType)}
               />
             }
