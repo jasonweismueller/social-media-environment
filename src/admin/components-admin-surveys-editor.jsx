@@ -2175,20 +2175,45 @@ function InsertAtBorderButton({ position = "top", onInsert, inline = false }) {
 
       {open && (
         <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            transform: "translateX(-50%)",
-            top: inline || isTop ? "calc(100% + 6px)" : "auto",
-            bottom: !inline && !isTop ? 28 : "auto",
-            minWidth: 220,
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid var(--admin-border)",
-            background: "var(--admin-surface)",
-            boxShadow: "var(--admin-shadow-md)",
-            zIndex: 10,
-          }}
+          style={
+            inline
+              ? {
+                  // Deliberately NOT position:absolute here — the empty-
+                  // questions-list Card this renders inside has
+                  // overflow:hidden (see Card.jsx), and this button sits
+                  // near the bottom of that card's content, so an
+                  // absolutely-positioned panel opening "below" it would
+                  // get silently clipped by the card's own boundary
+                  // (reported directly: the panel visibly extended past
+                  // the card but its Add button was unreachable). Normal
+                  // flow just pushes the card taller instead, which is
+                  // safe here since this button is never surrounded by
+                  // other content competing for the space below it.
+                  marginTop: 10,
+                  display: "inline-block",
+                  textAlign: "left",
+                  minWidth: 220,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid var(--admin-border)",
+                  background: "var(--admin-surface)",
+                  boxShadow: "var(--admin-shadow-md)",
+                }
+              : {
+                  position: "absolute",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  top: isTop ? "calc(100% + 6px)" : "auto",
+                  bottom: !isTop ? 28 : "auto",
+                  minWidth: 220,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid var(--admin-border)",
+                  background: "var(--admin-surface)",
+                  boxShadow: "var(--admin-shadow-md)",
+                  zIndex: 10,
+                }
+          }
         >
           <div style={{ fontSize: 12, marginBottom: 6 }}>Add question</div>
 
