@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getProjectId } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, ThemeToggle, LogoutButton } from "./ui";
+import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, IconChevronRight, ThemeToggle, LogoutButton } from "./ui";
 
 const PLATFORMS = [
   { app: "fb", label: "Facebook", icon: IconFacebook, blurb: "News-feed style posts, comments, reactions." },
@@ -58,46 +58,70 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
           }
         />
 
-        <div style={{ display: "grid", gap: 12 }}>
-          {PLATFORMS.map((p) => (
-            <Card key={p.app} bodyStyle={{ padding: 16 }} interactive onClick={() => pick(p.app)}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 44,
-                      height: 44,
-                      borderRadius: "var(--admin-radius-md)",
-                      background: "var(--admin-accent-soft)",
-                      color: "var(--admin-accent-ink)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <p.icon size={24} />
-                  </span>
-                  <div>
-                    <div style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
-                      {p.label}
-                      {p.app === currentApp && (
-                        <span style={{ fontSize: "var(--admin-text-2xs)", fontWeight: 600, color: "var(--admin-muted)", marginLeft: 8 }}>
-                          (currently loaded)
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: "var(--admin-text-xs)", color: "var(--admin-muted)", marginTop: 2 }}>{p.blurb}</div>
+        {/* One shared surface with a divided row per platform, matching
+            AdminProjectPicker's list — no separate elevated Card per item,
+            and no "Open →" button, since the whole row is already the click
+            target (same "the choose button is unnecessary, you can just
+            click it" call the project list already made). */}
+        <Card bodyStyle={{ padding: 0 }}>
+          {PLATFORMS.map((p, index) => (
+            <div
+              key={p.app}
+              role="button"
+              tabIndex={0}
+              onClick={() => pick(p.app)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  pick(p.app);
+                }
+              }}
+              className="admin-row-hover"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: "14px 18px",
+                cursor: "pointer",
+                borderBottom: index < PLATFORMS.length - 1 ? "1px solid var(--admin-border-subtle)" : "none",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 38,
+                    height: 38,
+                    borderRadius: "var(--admin-radius-md)",
+                    background: "var(--admin-accent-soft)",
+                    color: "var(--admin-accent-ink)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <p.icon size={20} />
+                </span>
+                <div>
+                  <div style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
+                    {p.label}
+                    {p.app === currentApp && (
+                      <span style={{ fontSize: "var(--admin-text-2xs)", fontWeight: 600, color: "var(--admin-muted)", marginLeft: 8 }}>
+                        (currently loaded)
+                      </span>
+                    )}
                   </div>
+                  <div style={{ fontSize: "var(--admin-text-xs)", color: "var(--admin-muted)", marginTop: 2 }}>{p.blurb}</div>
                 </div>
-                <Button variant="primary" onClick={(e) => { e.stopPropagation(); pick(p.app); }}>
-                  Open →
-                </Button>
               </div>
-            </Card>
+              <span aria-hidden="true" style={{ color: "var(--admin-muted-2)", display: "flex", flexShrink: 0 }}>
+                <IconChevronRight size={16} />
+              </span>
+            </div>
           ))}
-        </div>
+        </Card>
       </div>
     </div>
   );

@@ -7506,3 +7506,31 @@ the non-default and default rows, the trash icon rendering with its danger borde
 chevron — matching the design exactly. Not verified: an actual click-through by a real logged-in
 admin, or the real project-loading network path in this specific sandbox (a pre-existing environment
 limitation, not something introduced or masked by this change).
+
+**Follow-up, same day: `AdminPlatformPicker.jsx` converted to the identical pattern.** Direct
+request — the platform list (Facebook/Instagram/Amazon, always exactly 3 fixed options) had the
+same "Open →" redundancy and the same one-elevated-Card-per-item shape the project list just moved
+away from. Converted identically: one `Card` with a divided row per platform, no button (the row's
+`onClick`/`onKeyDown` already does what "Open →" did), a trailing `IconChevronRight`. No secondary
+per-row actions exist here (no delete/default equivalent for a fixed 3-item list), so the row is
+simpler than the project list's — just the icon/label/blurb on the left and the chevron on the
+right, no `stopPropagation` wrapper needed since there's nothing else clickable inside a row.
+
+**Verified live**, same standing no-admin-login limitation as everywhere else in this file — this
+mount hit a real, worth-remembering gotcha along the way: a first attempt bare-imported
+`react-router-dom` via `/node_modules/.vite/deps/react-router-dom.js?t=<timestamp>` for a
+`MemoryRouter` wrapper, which produced a *different* module instance than the one
+`AdminPlatformPicker.jsx` itself resolves internally for `useNavigate()` — Vite's dependency
+pre-bundling cache-busts by a stable content hash (`?v=6d36cd15`), not a fresh timestamp per import,
+so a timestamped bare import silently creates a second, contextually-disconnected copy of the
+library. This produced a real, reproduced console error (`useNavigate() may be used only in the
+context of a <Router> component`) and an empty render — not a bug in the component, a bug in the
+verification harness. Same root cause and same fix this file already documents once before for a
+different pair of modules (`AdminTreeSlotsContext`, under "merged tree-sidebar navigation" earlier
+in this file): fetched `AdminPlatformPicker.jsx`'s own transformed source, regexed out the exact
+`react-router-dom` URL it actually imports (`?v=6d36cd15`, not a timestamp), and re-imported both the
+component and `MemoryRouter` through that exact URL — the mount then rendered all 3 rows correctly,
+confirmed via screenshot (one shared card, correct icons/blurbs, "(currently loaded)" tag on
+Facebook, chevrons on every row, zero further console errors). Separately confirmed `getProjectId()`
+was never the problem — the very first failed attempt already read the seeded `current_project_id`
+localStorage key correctly; the empty render was purely the router-context mismatch.
