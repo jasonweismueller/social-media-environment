@@ -7435,3 +7435,74 @@ here required it), the Facebook/Instagram/Amazon post editors' own field *layout
 handful of raw buttons found via grep were touched, not `EditorSection`/`Field` usage patterns), and
 `FeedPreviewModal`'s toolbar (already had the bar treatment `SurveyPreviewModal` was missing — no
 change needed).
+
+## Project picker redesign: consistent header buttons, one card instead of N (2026-08-22)
+
+Direct follow-up, same day as phase 3 above, prompted by specific visual feedback on
+`AdminProjectPicker.jsx`: header buttons had inconsistent sizes and some had no visible box at all,
+and the per-project list was "big separate boxes for each project" repeating the same three buttons
+every row. Two more direct follow-ups landed mid-fix: "the choose button is probably unnecessary
+since [you] can just click on the project" (confirmed — the card was already `interactive` with
+`onClick=chooseProject`, so "Choose →" was always redundant with the row click, just never removed),
+and "the delete button could be like the other delete buttons throughout the platform, like the bin
+icon" (matching the icon-only `IconTrash` pattern already used in `components-admin-feeds.jsx`'s
+Posts table, rather than a full-width "Delete" text button).
+
+**Root cause of the header inconsistency, confirmed by reading `Button.jsx` rather than guessed**:
+`variant="ghost"` sets both `background` and `borderColor` to `transparent` — so "Manage users" and
+"Refresh" (both ghost) rendered as literally invisible boxes, just floating text, while
+`ThemeToggle`/`LogoutButton` (34px icon buttons with a real border/background) and the unstyled
+`+ New project` (defaults to `variant="secondary"`, which does have a border) sat right next to
+them with a real box. Separately, `Button`'s `sm` size is 30px tall while `ThemeToggle`/
+`LogoutButton` are hardcoded to 34px — a real, confirmable 4px mismatch, not just a subjective
+impression. Same two bugs (ghost-with-no-box next to boxed icon buttons, 30-vs-34px height) were
+also present in `AdminPlatformPicker.jsx`'s "← All projects" and `components-admin-users.jsx`'s
+"Refresh"/"+ Add user" — the identical header-row composition repeated across all four top-level
+admin pages (project picker, platform picker, users page, and `AdminShell`'s own dashboard header,
+which was already consistent and untouched here) — so fixing only the project picker would have
+left it looking *different* from its sibling pages instead of consistent with them. Fixed
+identically in all three: `variant="ghost"` → `variant="secondary"` (or `"primary"` for the
+already-boxed primary action) and an explicit `style={{ height: 34 }}` override on each. Deliberately
+**not** a change to `Button.jsx`'s shared `SIZES` map itself — `sm` (30px) is used throughout the
+admin app (e.g. every dense table row-action button), and widening it globally to fit this one
+header row would have rippled into places that were never part of the complaint; a local style
+override is the surgical fix, same "don't touch the shared primitive when a call-site override is
+enough" judgment call phase 3 already made elsewhere.
+
+**Project list restructured from N `Card`s to one.** Each project used to be its own elevated,
+shadowed `Card` (border + shadow + rounded corners, repeated per project) containing "Set default" /
+"Delete" / "Choose →" as three separate `Button`s. Replaced with a single `Card`
+(`bodyStyle={{padding:0}}`) containing one plain divided row per project (`border-bottom` between
+rows, none on the last) — the box count no longer scales with how many projects an account has.
+Each row is the full click target (`role="button"`, `tabIndex`, `onKeyDown` for Enter/Space, wrapped
+in `.admin-row-hover` for the same background-only hover `tokens.css` already defines for exactly
+this "list row, not a card" case) instead of relying on `Card`'s own `interactive` prop (which drives
+a hover-*lift*, appropriate for a handful of big standalone cards like the platform picker's 3 fixed
+options, not for a dense divided list). "Choose →" is gone entirely, per the direct feedback above —
+confirmed nothing else in the row's own click handling assumed that button's presence. "Delete"
+became an icon-only `IconButton` with the shared `IconTrash` (danger-styled, matching the red/bordered
+severity cue the old text button had, not the plain-ghost treatment the Posts-table precedent uses
+for a single post — deleting a whole project cascades to every feed/participant in it, a genuinely
+bigger action worth keeping visually distinct). "Set default" became an icon-only `IconButton` using
+`IconBookmark` — outline when not default, filled (`fill="currentColor"`, overriding the icon set's
+own default `fill="none"`) when it already is, so the action and its current state are the same
+glyph rather than a button whose only state cue was being disabled. A plain, non-interactive
+chevron (`aria-hidden`, new `IconChevronRight` — didn't exist in the shared icon set before this,
+added alongside the others in `src/admin/ui/icons.jsx`) sits at the row's trailing edge as a passive
+"this opens something" affordance, replacing the wayfinding "Choose →" used to (weakly) provide.
+
+**Verified live**, dev server confirmed working, no admin login available (same standing limitation
+as phase 3 and everywhere else in this file): the real `AdminProjectPicker` was loaded with a faked
+session — confirmed the header row renders all five actions at a consistent boxed 34px height
+(screenshotted). The real backend calls this page makes on mount didn't resolve in this sandbox
+(no matching network request ever appeared, even after a 2s wait and a broad `window.fetch` mock
+covering `/rest/v1/projects` — likely resolving to a GAS or otherwise-unreachable path in this
+environment's `.env`, not something this change touched or needs to explain), so the list body
+specifically was verified by mounting the exact same JSX (same `Card`/`IconButton`/`Badge`/icon
+components, real fabricated project data including one default and one current project) via the
+established cache-busted dynamic-import technique instead — confirmed via screenshot: one shared
+card with divider lines (not three separate boxes), the bookmark correctly outline-vs-filled between
+the non-default and default rows, the trash icon rendering with its danger border, and the trailing
+chevron — matching the design exactly. Not verified: an actual click-through by a real logged-in
+admin, or the real project-loading network path in this specific sandbox (a pre-existing environment
+limitation, not something introduced or masked by this change).

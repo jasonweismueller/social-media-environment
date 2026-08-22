@@ -195,3 +195,11 @@ export function IconBookmark(props) {
     </Base>
   );
 }
+
+export function IconChevronRight(props) {
+  return (
+    <Base {...props}>
+      <polyline points="9 6 15 12 9 18" />
+    </Base>
+  );
+}

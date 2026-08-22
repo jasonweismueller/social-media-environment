@@ -737,10 +737,10 @@ export function AdminUsersPage({ onLogout }) {
           actions={
             <>
               <ThemeToggle />
-              <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
+              <Button size="sm" variant="secondary" style={{ height: 34 }} onClick={load} disabled={loading}>
                 {loading ? "Loading…" : "Refresh"}
               </Button>
-              <Button size="sm" variant="primary" onClick={() => setShowAddModal(true)}>
+              <Button size="sm" variant="primary" style={{ height: 34 }} onClick={() => setShowAddModal(true)}>
                 + Add user
               </Button>
               <LogoutButton onLogout={onLogout} />

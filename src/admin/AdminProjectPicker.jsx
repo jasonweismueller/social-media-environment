@@ -18,6 +18,7 @@ import {
   Card,
   PageHeader,
   Button,
+  IconButton,
   Badge,
   useToast,
   useConfirm,
@@ -25,9 +26,22 @@ import {
   EmptyState,
   IconFolder,
   IconWarning,
+  IconBookmark,
+  IconTrash,
+  IconChevronRight,
   ThemeToggle,
   LogoutButton,
 } from "./ui";
+
+// Matches ThemeToggle/LogoutButton's own 34px default — Button's "sm" size
+// (30px) and "md" size (36px) don't land on that exactly, and changing
+// Button.jsx's shared SIZES map to fit this one header row would ripple
+// into every other admin page that uses "sm"/"md". A local height override
+// is the surgical fix; mirrored onto every header action here (and onto the
+// identical header row in AdminPlatformPicker.jsx/AdminUsersPage.jsx) so
+// every top-level admin page's header buttons line up at one consistent
+// height instead of some being 30px text and others 34px icon boxes.
+const HEADER_BTN_STYLE = { height: 34 };
 
 function ProjectIconBadge() {
   return (
@@ -37,15 +51,15 @@ function ProjectIconBadge() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        width: 40,
-        height: 40,
+        width: 38,
+        height: 38,
         flexShrink: 0,
         borderRadius: "var(--admin-radius-md)",
         background: "var(--admin-accent-soft)",
         color: "var(--admin-accent-ink)",
       }}
     >
-      <IconFolder size={20} />
+      <IconFolder size={19} />
     </span>
   );
 }
@@ -183,15 +197,15 @@ export function AdminProjectPicker({ onLogout }) {
             <>
               <ThemeToggle />
               {hasAdminRole("owner") && (
-                <Button size="sm" variant="ghost" onClick={() => navigate("/admin/users")}>
+                <Button size="sm" variant="secondary" style={HEADER_BTN_STYLE} onClick={() => navigate("/admin/users")}>
                   Manage users
                 </Button>
               )}
-              <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
+              <Button size="sm" variant="secondary" style={HEADER_BTN_STYLE} onClick={load} disabled={loading}>
                 {loading ? "Loading…" : "Refresh"}
               </Button>
               {hasAdminRole("editor") && (
-                <Button size="sm" onClick={createProject} busy={busyId === "__create__"}>
+                <Button size="sm" variant="primary" style={HEADER_BTN_STYLE} onClick={createProject} busy={busyId === "__create__"}>
                   + New project
                 </Button>
               )}
@@ -230,26 +244,44 @@ export function AdminProjectPicker({ onLogout }) {
           </Card>
         )}
 
-        <div style={{ display: "grid", gap: 12 }}>
-          {projects.map((p) => {
-            const isDefault = p.project_id === defaultProjectId;
-            const isCurrent = p.project_id === currentProjectId;
-            const busy = busyId === p.project_id;
+        {projects.length > 0 && (
+          // One shared surface for the whole list instead of a separate
+          // elevated Card per project — each project is a plain divided row
+          // inside it. Directly answers the "big separate boxes for each
+          // project, repeating the same buttons every time" complaint: the
+          // box count no longer scales with project count, and every row's
+          // primary action is just clicking the row (the "Choose →" button
+          // this used to have was redundant with that and has been
+          // dropped), leaving only the two genuinely secondary actions
+          // (default / delete) as compact icon buttons.
+          <Card bodyStyle={{ padding: 0 }}>
+            {projects.map((p, index) => {
+              const isDefault = p.project_id === defaultProjectId;
+              const isCurrent = p.project_id === currentProjectId;
+              const busy = busyId === p.project_id;
 
-            return (
-              <Card
-                key={p.project_id}
-                bodyStyle={{ padding: 16 }}
-                interactive
-                onClick={() => chooseProject(p.project_id, p.name)}
-              >
+              return (
                 <div
+                  key={p.project_id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => chooseProject(p.project_id, p.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      chooseProject(p.project_id, p.name);
+                    }
+                  }}
+                  className="admin-row-hover"
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     gap: 16,
                     flexWrap: "wrap",
+                    padding: "14px 18px",
+                    cursor: "pointer",
+                    borderBottom: index < projects.length - 1 ? "1px solid var(--admin-border-subtle)" : "none",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
@@ -269,44 +301,45 @@ export function AdminProjectPicker({ onLogout }) {
                   </div>
 
                   <div
-                    style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                    // Cards are now clickable as a whole (onClick above =
-                    // chooseProject) — without this, clicking any button
-                    // inside would bubble up and *also* fire that, e.g.
-                    // "Delete" would delete AND navigate in the same click.
+                    style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}
+                    // The row itself is the primary click target (onClick
+                    // above) — without this, clicking a button inside would
+                    // bubble up and *also* fire that, e.g. Delete would
+                    // delete AND navigate in the same click.
                     onClick={(e) => e.stopPropagation()}
                   >
                     {hasAdminRole("editor") && (
-                      <Button
+                      <IconButton
                         size="sm"
-                        variant="ghost"
                         disabled={isDefault || busy}
                         onClick={() => makeDefault(p.project_id)}
-                        title="Make this the default project"
+                        title={isDefault ? "Already the default project" : "Make this the default project"}
+                        style={isDefault ? { color: "var(--admin-accent-ink)" } : undefined}
                       >
-                        Set default
-                      </Button>
+                        <IconBookmark size={15} fill={isDefault ? "currentColor" : "none"} />
+                      </IconButton>
                     )}
                     {hasAdminRole("owner") && (
-                      <Button
+                      <IconButton
                         size="sm"
-                        variant="danger"
+                        danger
                         disabled={busy}
                         busy={busy}
                         onClick={() => removeProject(p)}
+                        title="Delete project"
                       >
-                        Delete
-                      </Button>
+                        <IconTrash size={15} />
+                      </IconButton>
                     )}
-                    <Button size="sm" variant="primary" onClick={() => chooseProject(p.project_id, p.name)}>
-                      Choose →
-                    </Button>
+                    <span aria-hidden="true" style={{ color: "var(--admin-muted-2)", display: "flex", marginLeft: 4 }}>
+                      <IconChevronRight size={16} />
+                    </span>
                   </div>
                 </div>
-              </Card>
-            );
-          })}
-        </div>
+              );
+            })}
+          </Card>
+        )}
       </div>
     </div>
   );

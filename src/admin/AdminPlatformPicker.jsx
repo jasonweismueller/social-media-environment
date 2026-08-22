@@ -50,7 +50,7 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
           actions={
             <>
               <ThemeToggle />
-              <Button size="sm" variant="ghost" onClick={() => navigate("/admin")}>
+              <Button size="sm" variant="secondary" style={{ height: 34 }} onClick={() => navigate("/admin")}>
                 ← All projects
               </Button>
               <LogoutButton onLogout={onLogout} />
