@@ -7534,3 +7534,126 @@ confirmed via screenshot (one shared card, correct icons/blurbs, "(currently loa
 Facebook, chevrons on every row, zero further console errors). Separately confirmed `getProjectId()`
 was never the problem — the very first failed attempt already read the seeded `current_project_id`
 localStorage key correctly; the empty render was purely the router-context mismatch.
+
+## Instagram gets its own "Realistic surroundings" (2026-08-22)
+
+Direct request, following a real Facebook desktop screenshot comparison (same trigger this file's
+earlier "Realistic surroundings" entries for Facebook already used): "Instagram doesn't have
+realistic Instagram left and right grid" — flagged in the same message as deciding webcam eye
+tracking (discussed but not built, see the two prior human turns — no CLAUDE.md/plan-file trace of
+it either, since it never got past the discussion stage) isn't worth pursuing right now, since the
+side rails aren't interactive anyway.
+
+**Investigated before writing any code** (a research agent mapped Facebook's existing
+`realistic_surroundings`/`realistic_surroundings_avatars` implementation against Instagram's current
+state end-to-end before any design decisions were made): Instagram already had its own local
+`PageWithRails` (`App-instagram.jsx`) and `RouteAwareTopbar`/`TopRailPlaceholder`
+(`ui-core-instagram.jsx`) — but both were **ghost-skeleton-only**, with no `flags` threaded in at
+all and no real-content branch — this was a real gap to build, not a bug to fix. The
+`realistic_surroundings`/`realistic_surroundings_avatars` flags already correctly reached
+Instagram's `flags` object (each `App-*.jsx`'s own `normalizeFlags()` — the exact footgun that
+silently broke this once before for the original three realism flags, see the 2026-08-06 postmortem
+above — was already fixed identically in all three files); nothing downstream just read them yet.
+Instagram's own name pools (`IG_FEMALE_NAMES`/`IG_MALE_NAMES`) and the seeded-random primitives
+(`pickDeterministic`/`pickUniqueDeterministic`/`getAvatarPool`) were already there, fully
+platform-agnostic, and reused as-is — no Instagram-flavored variant needed for those specifically.
+
+**Deliberately not a re-skin of Facebook's rails — real Instagram's desktop layout is
+structurally different, so the build followed the reference screenshots, not Facebook's shape**:
+- **Left rail**: real Instagram has no "shortcuts"/groups sub-list under its nav the way Facebook
+  does — just one flat, fixed nav list (Home/Reels/Messages/Search/Notifications/Create/Profile/
+  More/Also from Meta). New `LEFT_RAIL_NAV_ITEMS`/`LEFT_RAIL_ICONS` (`ui-posts-instagram.jsx`) are
+  simple monochrome stroke icons (matching real Instagram's understated nav), not Facebook's
+  colored-circle-badge treatment — a new local `RailNavIconGlyph` was written for Instagram rather
+  than reusing Facebook's (different visual language, not shareable). A red "1" unread-count badge
+  on Messages (matching the reference screenshot) was built and then removed the same session, per
+  direct instruction — Facebook's own `TopRailReal` had an identical badge removed for the same
+  reason at some point before this session (confirmed: `.trp-real-badge` still exists as dead CSS in
+  `styles-facebook.css`, but nothing in `ui-core-facebook.jsx`'s JSX renders one anymore) — a
+  notification-style badge is flagged as a real confound risk, not just clutter, so this repo's
+  precedent is to leave rail/nav chrome free of anything that looks like live state. Removed
+  `LEFT_RAIL_NAV_BADGES` and `.rail-real-badge` entirely from Instagram (not just hidden) rather than
+  leaving Facebook-style dead code behind.
+- **Right rail**: no profile-switcher block at the very top (the reference screenshot's
+  "jason.we / Jason / Switch" is Jason's own real personal Instagram identity, captured incidentally
+  in his reference screenshot — not something to bake into the app, and this environment has no
+  concept of a logged-in participant identity to show there anyway) — went straight to "Suggested
+  for you", the actually-valuable part. New `buildRailContacts` (`ui-posts-instagram.jsx`), a direct
+  counterpart to Facebook's function of the same name (same seeded-by-run-identity mechanism, same
+  `femalePool`/`malePool`-empty-means-no-photos contract for the `realistic_surroundings_avatars`
+  sub-toggle), swapped to Instagram's own name pool and a canned per-suggestion secondary line
+  (`"Suggested for you"`/`"New to Instagram"`/`"Followed by people you follow"`/`"Popular in your
+  area"`, deterministically picked) instead of Facebook's online-dot presence indicator, plus a
+  decorative (inert, same as everything else in `.rail`) "Follow" label per row.
+- **Top bar**: real desktop Instagram has no search bar/nav-tab row across the top at all (unlike
+  Facebook) — everything lives in the left rail instead, and the only thing actually present up top
+  is the small glyph logo. New `TopRailReal` (`ui-core-instagram.jsx`) reflects that directly rather
+  than inventing content that isn't on the real site: renders the small Instagram camera-glyph icon
+  in `.trp-left`, leaves `.trp-center`/`.trp-right` empty. `RouteAwareTopbar` gained the same
+  `{ flags }` prop + real-vs-placeholder branch Facebook's already has.
+
+**Wiring**: `PageWithRails` (`App-instagram.jsx`) gained the same `{ children, flags, runSeed, app,
+projectId, feedId }` signature Facebook's already has, plus the real-vs-ghost branch — its one call
+site (previously invoked with zero props) now threads all five through, and `<RouteAwareTopbar />`
+now passes `flags` too. No `showRails` prop was needed here (unlike Facebook's, which needs one to
+stop `Feed`'s own internal rail duplicate from double-rendering when nested) — confirmed via the
+research pass that `IGFeed` (`ui-posts-instagram.jsx`) renders no rail markup of its own at all, so
+there's no analogous double-render risk to guard against.
+
+**Flags reused, not duplicated**: both flags are already per-feed, and a feed always belongs to
+exactly one platform, so reusing the identical `realistic_surroundings`/`realistic_surroundings_avatars`
+names across Facebook and Instagram is safe (same precedent as `realistic_pacing`/`allow_dark_mode`,
+which already work this way) — no new flag, no new admin-UI wiring needed beyond fixing the
+`FLAG_KINDS` label (`components-admin-dashboard.jsx`), which said "Realistic surroundings (Facebook
+rails)" and would've become actively misleading; changed to "Realistic surroundings (nav &
+suggestions rails)". Confirmed `components-admin-feeds.jsx`'s per-platform toggle filter only ever
+excluded Amazon from this pair, never Instagram — so Instagram's admin dashboard was already showing
+both toggles (as silent no-ops) before this session; they just start working now, with zero
+additional admin-UI change needed.
+
+**A real pre-existing gap found and fixed while in this area, not introduced by this work**:
+`styles-instagram.css`'s `.top-rail-placeholder` had **no dark-mode override at all** — unlike
+Facebook's identical bar, which got one when this exact class of bug was fixed there (see "Dark
+mode, round 5" above) — meaning Instagram's top bar (even the pre-existing ghost version) has been
+hardcoded white regardless of theme since dark mode shipped. Since `TopRailReal` reuses this exact
+class, shipping it without the fix would have put a dark-appropriate logo on a stubbornly-white bar.
+Fixed alongside (`.dark-mode .top-rail-placeholder{ background:var(--ig-card); border-bottom-color:
+var(--ig-line); }`), and the new logo itself uses `stroke="currentColor"`/`fill="currentColor"` (not
+a hardcoded color) so `.trp-real-logo{ color:var(--ig-text) }` themes it automatically. Also added
+`.page .container.feed{ position:relative; z-index:1 }` / `.rail{ z-index:0 }` proactively — the
+exact same real popover-behind-rail bug Facebook hit and fixed is preventable here for free, same
+cause (two `position:sticky` siblings with ambiguous auto z-index), same fix, applied before it can
+recur rather than waiting for the identical report a second time.
+
+**New CSS, all theming automatically via existing `--ig-*` custom properties (not hardcoded hex +
+a separate `.dark-mode` override block, unlike Facebook's version of this same CSS, which does need
+the extra override block precisely because it hardcoded `#fff` instead of using a token)**:
+`.rail--content`, `.rail-real-title`, `.rail-real-list`, `.rail-real-item`, `.rail-real-badge`,
+`.rail-real-item-text`/`-name`/`-secondary`, `.rail-real-follow`, `.rail-contact-avatar-wrap`/
+`-avatar`/`-avatar--blank`, `.trp-real-logo` — added to `styles-instagram.css`.
+
+**Verified live**, dev server confirmed working, no admin login available (same standing limitation
+as everywhere else in this file): real end-to-end verification through a live feed URL wasn't
+possible (no reachable backend project/feed in this sandbox, same limitation noted throughout this
+file) — instead verified the two real risk areas directly. `RouteAwareTopbar` (exported) was
+mounted for real with `flags={{realistic_surroundings:true}}` inside a `MemoryRouter` — confirmed
+live at desktop width (1280px; the sandbox's default ~400px width made `useIsMobile(700)` correctly
+return `null`, a regression-confirming, not broken, result) that the real Instagram glyph renders in
+`.trp-left` with `.trp-center`/`.trp-right` genuinely empty, screenshotted. `PageWithRails` itself
+isn't exported (matching Facebook's own, also-unexported original), so its real-content JSX was
+reproduced in a harness using the actual exported `LEFT_RAIL_NAV_ITEMS`/`LEFT_RAIL_ICONS`/
+`buildRailContacts` (not reimplemented) with fabricated avatar-pool URLs — confirmed 9 real nav
+rows and 5 suggestion rows with distinct deterministic names/secondary lines, in **both** light and
+dark mode (screenshotted both — dark mode correctly resolved to pure black `--ig-card`/`#f5f5f5`
+`--ig-text`, matching real Instagram's own dark mode, with the red accent color correctly unchanged
+between themes). Re-verified after the badge removal (same session, per direct instruction — see
+below): re-mounted the same harness and confirmed zero `.rail-real-badge` elements render and the
+Messages row reads as plain text, screenshotted. Zero console errors throughout. All four touched
+files (`App-instagram.jsx`, `ui-posts-instagram.jsx`, `ui-core-instagram.jsx`,
+`components-admin-dashboard.jsx`) parse clean and `styles-instagram.css`'s
+braces balance. **Not verified**: an actual click-through by a real logged-in admin toggling this on
+for a real feed, or a real participant page — same standing limitation as every "Realistic
+surroundings" entry in this file. Amazon still has no rail/surrounding-chrome concept at all
+(`Feed` is a single centered column there) — unchanged, still flagged as a bigger, separate
+follow-up if ever wanted, per the original 2026-08-06 entry's own "other realism ideas discussed but
+not built" note.

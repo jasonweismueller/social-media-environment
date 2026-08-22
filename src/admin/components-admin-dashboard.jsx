@@ -597,7 +597,7 @@ export function AdminDashboard({
     // a study can't opt out of. Same safe-by-default posture as `engagement`
     // above (new jsonb key, false for every feed that's never set it).
     pacing: { backendField: "realistic_pacing", savingKey: "savingPace", readKeys: ["realistic_pacing"], label: "Realistic post-loading pacing" },
-    surroundings: { backendField: "realistic_surroundings", savingKey: "savingSurr", readKeys: ["realistic_surroundings"], label: "Realistic surroundings (Facebook rails)" },
+    surroundings: { backendField: "realistic_surroundings", savingKey: "savingSurr", readKeys: ["realistic_surroundings"], label: "Realistic surroundings (nav & suggestions rails)" },
     // A separate opt-in sub-toggle of `surroundings` above, not bundled into
     // it — per direct instruction, whether the decorative rail contacts get
     // a real avatar photo is its own on/off switch. Same Facebook-only

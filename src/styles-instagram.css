@@ -281,6 +281,12 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   width: 100% !important;
   padding: 0 !important;
   margin: 0 auto !important;
+  /* Explicit stacking order vs. .rail below — both are position:sticky
+     siblings with otherwise-ambiguous auto z-index, which caused a real
+     reported bug on Facebook's identical layout (a popover rendering behind
+     the rail). Fixed proactively here, same cause/same fix, before it can
+     recur. */
+  position: relative; z-index: 1;
 }
 
 .page .feed > .card:first-child{margin-top:var(--feed-gap)}
@@ -290,9 +296,44 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   height: calc(100vh - var(--rail-gap));
   overflow: hidden; pointer-events: none; user-select: none;
   filter: grayscale(1) blur(1px); opacity:.55; width:100%;
+  z-index: 0;
 }
 /* first child in rail */
 .rail > *:first-child{ margin-top:0 !important; }
+
+/* ===== Realistic surroundings — real (still fully inert) rail content =====
+   Counterpart to styles-facebook.css's identically-named block. Real
+   content can exceed viewport height where the ghost skeleton above never
+   does, so overflow switches from hidden to visible + natural height here —
+   see styles-facebook.css's own comment on `.rail--content` for the full
+   explanation (also covers why `min-width:0` matters if Feed ever grows its
+   own rail markup later; IGFeed currently renders no rails of its own at
+   all, so there's no nested-duplicate risk to guard against today). */
+.rail--content{
+  filter:none; opacity:1; height:auto; min-height:calc(100vh - var(--rail-gap));
+  overflow:visible; min-width:0;
+}
+.rail-real-title{
+  font-size:13px; font-weight:600; color:var(--ig-muted); margin:0 4px 8px; padding-top:4px;
+}
+.rail-real-list{
+  background:var(--ig-card); border:1px solid var(--ig-line); border-radius:1rem;
+  box-shadow:var(--ig-shadow); padding:.5rem; display:flex; flex-direction:column; gap:2px;
+}
+.rail-real-item{
+  display:flex; align-items:center; gap:.85rem; padding:.7rem .7rem; border-radius:.6rem;
+  font-size:15px; font-weight:500; color:var(--ig-text);
+}
+.rail-real-item--suggestion{ align-items:center; }
+.rail-real-item-text{ display:flex; flex-direction:column; gap:1px; min-width:0; flex:1; }
+.rail-real-item-name{ font-size:14px; font-weight:600; color:var(--ig-text); }
+.rail-real-item-secondary{ font-size:12px; color:var(--ig-muted); }
+.rail-real-follow{ font-size:13px; font-weight:600; color:var(--ig-accent); flex:0 0 auto; }
+.rail-contact-avatar-wrap{ position:relative; display:inline-flex; flex:0 0 auto; }
+.rail-contact-avatar{
+  width:38px; height:38px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb;
+}
+.rail-contact-avatar--blank{ background:#e5e7eb; }
 
 /* Skeleton UI */
 .ghost-card{background:#fff;border:1px solid var(--ig-line);border-radius:1rem;box-shadow:var(--ig-shadow);margin-bottom:12px}
@@ -506,6 +547,21 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .trp-tab{ width:40px; height:28px; border-radius:6px; background:#f3f4f6; }
 .trp-btn{ width:32px; height:32px; border-radius:999px; background:#e5e7eb; }
 .trp-avatar{ width:32px; height:32px; border-radius:999px; background:#d1d5db; }
+/* Real (still fully inert) top-bar logo, shown instead of .trp-logo's ghost
+   circle when Realistic surroundings is on — real desktop Instagram has no
+   search bar/nav-tab row up top (that nav lives in the left rail instead),
+   so only .trp-left ever has content in the real-content version; .trp-
+   center/.trp-right are still rendered (TopRailReal, ui-core-instagram.jsx)
+   but stay empty, matching the real site rather than inventing content. */
+.trp-real-logo{ display:flex; align-items:center; color:var(--ig-text); }
+
+/* Was previously entirely unstyled for dark mode (the ghost placeholder
+   above has stayed hardcoded #fff regardless of theme since dark mode
+   shipped) — fixed here rather than left as-is, since TopRailReal reuses
+   this exact bar and a dark page with a stubborn white top strip would
+   look broken. Same fix already applied to styles-facebook.css's identical
+   .top-rail-placeholder. */
+.dark-mode .top-rail-placeholder{ background:var(--ig-card); border-bottom-color:var(--ig-line); }
 
 /* FEED vs ADMIN top bars */
 body.admin-mode .top-rail-placeholder { display: none !important; }

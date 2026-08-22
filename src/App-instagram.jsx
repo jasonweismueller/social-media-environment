@@ -53,6 +53,11 @@ import {
 
 import { Feed as IGFeed } from "./ui-posts";
 import {
+  buildRailContacts,
+  LEFT_RAIL_NAV_ITEMS,
+  LEFT_RAIL_ICONS,
+} from "./ui-posts/ui-posts-instagram";
+import {
   ParticipantOverlay,
   ThankYouOverlay,
   RouteAwareTopbar,
@@ -422,7 +427,7 @@ function RailStack({ children }) {
   );
 }
 
-function PageWithRails({ children }) {
+function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
   const [rightCount, setRightCount] = useState(12);
 
   useEffect(() => {
@@ -454,6 +459,54 @@ function PageWithRails({ children }) {
     return () => window.removeEventListener("resize", compute);
   }, []);
 
+  // Same "this component, not Feed's own internal rails" reasoning as
+  // App-facebook.jsx's PageWithRails — IGFeed (ui-posts-instagram.jsx)
+  // doesn't render any rail markup at all (confirmed: no showRails prop or
+  // double-render risk to guard against here, unlike Facebook's), so this
+  // is the only place "Realistic surroundings" can have any visible effect
+  // for Instagram.
+  const realisticOn = !!flags?.realistic_surroundings;
+  const [suggestions, setSuggestions] = useState([]);
+
+  // Real nav rows are much shorter than the ghost RailBox/RailList blocks
+  // rightCount above was tuned for — same reasoning as Facebook's own
+  // real/ghost count split, just simpler here since Instagram's real left
+  // rail is a single fixed-length nav list (no "shortcuts"-style secondary
+  // section to also size), so only the right rail's suggestion count needs
+  // computing.
+  const [realRightCount, setRealRightCount] = useState(5);
+  useEffect(() => {
+    const compute = () => {
+      const railH = (window.innerHeight || 900) - 30;
+      const REAL_ROW_H = 58;
+      const HEADER_H = 60;
+      const n = Math.max(3, Math.min(Math.floor((railH - HEADER_H) / REAL_ROW_H), 12));
+      setRealRightCount(n);
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+
+  useEffect(() => {
+    if (!realisticOn) return undefined;
+    let cancelled = false;
+    (async () => {
+      // Same opt-in avatar sub-toggle as Facebook's rails — off, suggestions
+      // fall back to a blank-circle placeholder instead of a real photo, and
+      // the pool fetch is skipped entirely.
+      const showAvatars = !!flags?.realistic_surroundings_avatars;
+      const [femalePool, malePool] = showAvatars
+        ? await Promise.all([getAvatarPool("female"), getAvatarPool("male")])
+        : [[], []];
+      if (cancelled) return;
+      setSuggestions(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: realRightCount }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [realisticOn, realRightCount, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
+
   return (
     <div
       className="page"
@@ -463,31 +516,68 @@ function PageWithRails({ children }) {
         columnGap: "var(--gap)",
       }}
     >
-      <aside className="rail rail-left" aria-hidden="true">
-        <RailStack>
-          <RailBanner tall />
-          <RailBox largeAvatar />
-          <RailList rows={5} />
-          <RailBox />
-          <RailBanner />
-        </RailStack>
-      </aside>
+      {realisticOn ? (
+        <aside className="rail rail-left rail--content" aria-hidden="true">
+          <div className="rail-real-list">
+            {LEFT_RAIL_NAV_ITEMS.map((label) => (
+              <div key={label} className="rail-real-item">
+                {LEFT_RAIL_ICONS[label]}
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-left" aria-hidden="true">
+          <RailStack>
+            <RailBanner tall />
+            <RailBox largeAvatar />
+            <RailList rows={5} />
+            <RailBox />
+            <RailBanner />
+          </RailStack>
+        </aside>
+      )}
 
       <div className="container feed">{children}</div>
 
-      <aside className="rail rail-right" aria-hidden="true">
-        <RailStack>
-          <RailBanner tall />
-          {Array.from({ length: rightCount }).map((_, i) =>
-            i % 3 === 1 ? (
-              <RailList key={i} rows={4} />
-            ) : (
-              <RailBox key={i} largeAvatar={i % 5 === 0} />
-            )
-          )}
-          <RailBanner />
-        </RailStack>
-      </aside>
+      {realisticOn ? (
+        <aside className="rail rail-right rail--content" aria-hidden="true">
+          <div className="rail-real-title">Suggested for you</div>
+          <div className="rail-real-list">
+            {suggestions.map((s) => (
+              <div key={s.id} className="rail-real-item rail-real-item--suggestion">
+                <span className="rail-contact-avatar-wrap">
+                  {s.avatarUrl ? (
+                    <img src={s.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+                  ) : (
+                    <span className="rail-contact-avatar rail-contact-avatar--blank" />
+                  )}
+                </span>
+                <span className="rail-real-item-text">
+                  <span className="rail-real-item-name">{s.name}</span>
+                  <span className="rail-real-item-secondary">{s.secondary}</span>
+                </span>
+                <span className="rail-real-follow">Follow</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-right" aria-hidden="true">
+          <RailStack>
+            <RailBanner tall />
+            {Array.from({ length: rightCount }).map((_, i) =>
+              i % 3 === 1 ? (
+                <RailList key={i} rows={4} />
+              ) : (
+                <RailBox key={i} largeAvatar={i % 5 === 0} />
+              )
+            )}
+            <RailBanner />
+          </RailStack>
+        </aside>
+      )}
     </div>
   );
 }
@@ -2809,7 +2899,7 @@ export default function App() {
   return (
     <Router>
       <div className={`app-shell ${shouldBlurShell ? "blurred" : ""}`}>
-        <RouteAwareTopbar />
+        <RouteAwareTopbar flags={flags} />
 
         {stageAllowsDark && (
           <ParticipantThemeToggle isDark={participantIsDark} onToggle={toggleParticipantTheme} />
@@ -2886,7 +2976,7 @@ export default function App() {
                   )}
                 </div>
               ) : requiresFeedStage ? (
-                <PageWithRails>
+                <PageWithRails flags={flags} runSeed={runSeed} app={APP} projectId={projectId} feedId={activeFeedId}>
                   <div
                     style={{
                       position: "relative",

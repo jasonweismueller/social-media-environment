@@ -525,6 +525,43 @@ function TopRailPlaceholder() {
   );
 }
 
+function TrpIcon({ size = 22, children, ...rest }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...rest}>
+      {children}
+    </svg>
+  );
+}
+
+// Real-looking, still fully inert (aria-hidden, no click handlers) top bar
+// shown instead of TopRailPlaceholder when a feed opts into "Realistic
+// surroundings" — counterpart to ui-core-facebook.jsx's TopRailReal, but
+// deliberately much sparser: real desktop Instagram has no search bar or
+// nav-tab row across the top the way Facebook does (all of that nav lives
+// in the left rail instead, see ui-posts-instagram.jsx's LEFT_RAIL_NAV_ITEMS)
+// — the only thing actually present at the top of a real Instagram page is
+// the small glyph logo, so trp-center/trp-right are left empty rather than
+// inventing content that isn't there on the real site.
+function TopRailReal() {
+  return (
+    <div className="top-rail-placeholder" aria-hidden="true">
+      <div className="trp-inner">
+        <div className="trp-left">
+          <span className="trp-real-logo">
+            <TrpIcon size={22} stroke="currentColor">
+              <rect x="3" y="3" width="18" height="18" rx="5.5" />
+              <circle cx="12" cy="12" r="4.3" />
+              <circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none" />
+            </TrpIcon>
+          </span>
+        </div>
+        <div className="trp-center" />
+        <div className="trp-right" />
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------- Side rails (left + right) ----------------------- */
 function LeftRailPlaceholder() {
   return (
@@ -601,7 +638,7 @@ function RightRailPlaceholder() {
 }
 
 /* ------------------------- Route-aware top chrome toggle ------------------- */
-export function RouteAwareTopbar() {
+export function RouteAwareTopbar({ flags } = {}) {
   const location = useLocation();
   const isMobile = useIsMobile(700);
 
@@ -620,7 +657,7 @@ export function RouteAwareTopbar() {
   }, [onAdmin]);
 
   if (onAdmin || onSurvey || isMobile) return null;
-  return <TopRailPlaceholder />;
+  return flags?.realistic_surroundings ? <TopRailReal /> : <TopRailPlaceholder />;
 }
 
 /* ------------------------- Page scaffold (rails + center) ------------------ */

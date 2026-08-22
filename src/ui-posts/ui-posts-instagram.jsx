@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -11,6 +11,121 @@ import { BioHoverCard } from "./ui-posts-bio-instagram";
 import { MobileBioSheet } from "./ui-posts-bio-mobile-instagram";
 
 console.log("randomizeBioStats imported:", randomizeBioStats);
+
+/* ================== Realistic surroundings — rail chrome ==================
+   Instagram counterpart to ui-posts-facebook.jsx's identically-named block —
+   see that file's own comments for the full confound-safety rationale
+   (seeded purely by run/participant identity, never by post/condition
+   content). Real desktop Instagram's left nav is a plain, understated
+   stroke-icon list (no colored circle badges the way Facebook's nav has),
+   so IconGlyph here is deliberately monochrome rather than a port of
+   Facebook's RailNavIconGlyph. There's no "shortcuts"-style secondary list
+   under Instagram's nav (unlike Facebook's own groups list), so this only
+   exports one flat nav item list, not a shortcuts pool. */
+function RailNavIconGlyph({ children }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flex: "0 0 auto" }}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export const LEFT_RAIL_NAV_ITEMS = [
+  "Home", "Reels", "Messages", "Search", "Notifications", "Create", "Profile", "More", "Also from Meta",
+];
+
+export const LEFT_RAIL_ICONS = {
+  Home: (
+    <RailNavIconGlyph>
+      <path d="M4 11.5 12 4l8 7.5" /><path d="M6 10v9.5a1 1 0 0 0 1 1h4v-6h2v6h4a1 1 0 0 0 1-1V10" />
+    </RailNavIconGlyph>
+  ),
+  Reels: (
+    <RailNavIconGlyph>
+      <rect x="3" y="4.5" width="18" height="15" rx="3.5" />
+      <path d="M8 4.5 11 9M15 4.5l3 4.5" />
+      <path d="M10.3 12.2v3.1l2.7-1.55Z" fill="currentColor" stroke="none" />
+    </RailNavIconGlyph>
+  ),
+  Messages: (
+    <RailNavIconGlyph>
+      <path d="M3.5 12 20.5 4l-4 16-6-5-3.5 3v-4.5L3.5 12Z" />
+    </RailNavIconGlyph>
+  ),
+  Search: (
+    <RailNavIconGlyph>
+      <circle cx="11" cy="11" r="7" /><path d="M20.5 20.5 16 16" />
+    </RailNavIconGlyph>
+  ),
+  Notifications: (
+    <RailNavIconGlyph>
+      <path d="M12 21.2c-4.8-3.3-9-6.9-9-11.4a5.4 5.4 0 0 1 9-4 5.4 5.4 0 0 1 9 4c0 4.5-4.2 8.1-9 11.4Z" />
+    </RailNavIconGlyph>
+  ),
+  Create: (
+    <RailNavIconGlyph>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="4.5" /><path d="M12 8v8M8 12h8" />
+    </RailNavIconGlyph>
+  ),
+  Profile: (
+    <RailNavIconGlyph>
+      <circle cx="12" cy="8.3" r="3.8" /><path d="M4.3 20.2a7.7 7.7 0 0 1 15.4 0" />
+    </RailNavIconGlyph>
+  ),
+  More: (
+    <RailNavIconGlyph>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </RailNavIconGlyph>
+  ),
+  "Also from Meta": (
+    <RailNavIconGlyph>
+      <path d="M7 15.5c1.6 0 2.4-3.2 3.6-3.2s2 3.2 3.6 3.2 2.6-3.2 3.6-3.2M7 15.5c-1.7 0-3-1.9-3-4.3S5.3 7 7 7s3 1.9 3 4.2M17.8 15.5c1.7 0 3-1.9 3-4.3S19.5 7 17.8 7s-3 1.9-3 4.2" />
+    </RailNavIconGlyph>
+  ),
+};
+
+// Decorative "Suggested for you" rail generator, direct counterpart to
+// ui-posts-facebook.jsx's buildRailContacts — same seeded-by-run mechanism,
+// same femalePool/malePool-empty-means-no-photos contract (the
+// realistic_surroundings_avatars sub-toggle), just Instagram's own name
+// pool and a canned per-suggestion secondary line instead of an online dot
+// (Instagram's "who's suggested" list has no presence indicator).
+const SUGGESTION_SECONDARY_TEMPLATES = [
+  "Suggested for you",
+  "New to Instagram",
+  "Followed by people you follow",
+  "Popular in your area",
+];
+
+export function buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count = 5 }) {
+  const seedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
+  let femaleIdx = 0;
+  let maleIdx = 0;
+  return Array.from({ length: count }, (_, i) => {
+    const isFemale = pickDeterministic(["female", "male"], [...seedBase, "rail-suggest-gender", i]) === "female";
+    const genderIdx = isFemale ? femaleIdx++ : maleIdx++;
+    const namePool = isFemale ? IG_FEMALE_NAMES : IG_MALE_NAMES;
+    const genderAvatarPool = isFemale ? (femalePool || []) : (malePool || []);
+    return {
+      id: `rail-suggest-${i}`,
+      name:
+        pickUniqueDeterministic(namePool, genderIdx, [...seedBase, "rail-suggest-name", isFemale ? "f" : "m"]) ||
+        `user_${i + 1}`,
+      avatarUrl: pickUniqueDeterministic(genderAvatarPool, genderIdx, [...seedBase, "rail-suggest-avatar", isFemale ? "f" : "m"]),
+      secondary: pickDeterministic(SUGGESTION_SECONDARY_TEMPLATES, [...seedBase, "rail-suggest-secondary", i]),
+    };
+  });
+}
 
 /* ---------------- Small utils ---------------- */
 function useIsMobile(breakpointPx = 640) {
