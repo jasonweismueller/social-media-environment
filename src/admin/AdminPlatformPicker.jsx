@@ -34,10 +34,22 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
       navigate("/admin/dashboard");
       return;
     }
+    // Real cross-bundle switch: platform is chosen by which JS bundle
+    // index.html loads (before React even mounts), so this has to be a
+    // real navigation, not a client-side route change. `url.hash` used to
+    // be how the post-reload route was communicated back in the HashRouter
+    // era — since the 2026-08-14 migration to BrowserRouter, hash is no
+    // longer read for routing at all, so setting it here was a silent
+    // no-op: the reload picked up the new `?app=` correctly, but the
+    // *pathname* was still whatever it was before (`/admin/platform`),
+    // so the freshly-loaded bundle's router matched the platform picker
+    // again instead of the dashboard — the exact "click Instagram, land
+    // back on the platform list, click it again" bug this was reported as.
     const url = new URL(window.location.href);
     url.searchParams.set("app", app);
     url.searchParams.set("project", projectId);
-    url.hash = "#/admin/dashboard";
+    url.pathname = "/admin/dashboard";
+    url.hash = "";
     window.location.href = url.toString();
   };
 

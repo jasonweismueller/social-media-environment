@@ -19,7 +19,6 @@ import {
   touchAdminSession,
   buildFeedShareUrl,
   listProjectsFromBackend,
-  getDefaultProjectFromBackend,
   setProjectId as persistProjectId,
   getProjectId,
   APP,
@@ -512,7 +511,6 @@ export function AdminDashboard({
   const [projectName, setProjectName] = useState("");
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectsError, setProjectsError] = useState("");
-  const [defaultProjectId, setDefaultProjectId] = useState(null);
   const projectsAbortRef = useRef(null);
 
   // global wipe policy
@@ -799,16 +797,12 @@ export function AdminDashboard({
     setProjectsLoading(true);
 
     try {
-      const [list, backendDefault] = await Promise.all([
-        listProjectsFromBackend({ signal: ctrl.signal }).catch(() => []),
-        getDefaultProjectFromBackend({ signal: ctrl.signal }).catch(() => "global"),
-      ]);
+      const list = await listProjectsFromBackend({ signal: ctrl.signal }).catch(() => []);
 
       if (ctrl.signal.aborted) return;
 
       const projList = Array.isArray(list) ? list : [];
       setProjects(projList);
-      setDefaultProjectId(backendDefault || null);
 
       let fromUrl = "";
       try {
@@ -816,11 +810,16 @@ export function AdminDashboard({
         fromUrl = sp.get("project") || sp.get("project_id") || "";
       } catch {}
 
+      // "Default project" was removed (see AdminProjectPicker.jsx) — this
+      // is now the same "the picker already set this before we ever got
+      // here, this fallback chain is a safety net for a stale direct
+      // deep-link" shape the feed-level default removal already
+      // established: prefer whatever's already known (URL, in-memory
+      // state, persisted localStorage), then just the first real project.
       const desired =
         fromUrl ||
         projectId ||
         getProjectId?.() ||
-        backendDefault ||
         projList[0]?.project_id ||
         "global";
 
@@ -1545,11 +1544,6 @@ export function AdminDashboard({
                 }}
               >
                 {projectName || projectId || "—"}
-                {projectId === defaultProjectId && (
-                  <Badge tone="accent" style={{ marginLeft: 6 }}>
-                    default
-                  </Badge>
-                )}
               </div>
             </div>
           }

@@ -4,8 +4,6 @@ import {
   listProjectsFromBackend,
   createProjectOnBackend,
   deleteProjectOnBackend,
-  setDefaultProjectOnBackend,
-  getDefaultProjectFromBackend,
   setProjectId as persistProjectId,
   getProjectId,
   hasAdminRole,
@@ -26,7 +24,6 @@ import {
   EmptyState,
   IconFolder,
   IconWarning,
-  IconBookmark,
   IconTrash,
   IconChevronRight,
   ThemeToggle,
@@ -76,7 +73,6 @@ export function AdminProjectPicker({ onLogout }) {
   const confirm = useConfirm();
   const prompt = usePrompt();
   const [projects, setProjects] = useState([]);
-  const [defaultProjectId, setDefaultProjectId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   // Distinguishes "this account genuinely has zero projects" from "the
@@ -95,13 +91,9 @@ export function AdminProjectPicker({ onLogout }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, def] = await Promise.all([
-        listProjectsFromBackend(),
-        getDefaultProjectFromBackend(),
-      ]);
+      const list = await listProjectsFromBackend();
       const safeList = Array.isArray(list) ? list : [];
       setProjects(safeList);
-      setDefaultProjectId(def || null);
 
       if (safeList.length === 0) {
         // listProjectsFromBackend swallows every failure (network, RLS,
@@ -152,16 +144,6 @@ export function AdminProjectPicker({ onLogout }) {
     }
   };
 
-  const makeDefault = async (projectId) => {
-    setBusyId(projectId);
-    try {
-      const ok = await setDefaultProjectOnBackend(projectId);
-      if (ok) setDefaultProjectId(projectId);
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const removeProject = async (project) => {
     if (
       !(await confirm({
@@ -181,7 +163,6 @@ export function AdminProjectPicker({ onLogout }) {
         return;
       }
       setProjects((prev) => prev.filter((p) => p.project_id !== project.project_id));
-      if (defaultProjectId === project.project_id) setDefaultProjectId(null);
     } finally {
       setBusyId(null);
     }
@@ -252,11 +233,15 @@ export function AdminProjectPicker({ onLogout }) {
           // box count no longer scales with project count, and every row's
           // primary action is just clicking the row (the "Choose →" button
           // this used to have was redundant with that and has been
-          // dropped), leaving only the two genuinely secondary actions
-          // (default / delete) as compact icon buttons.
+          // dropped), leaving Delete as the one secondary action, a compact
+          // icon button. No "default project" concept anymore either — it
+          // was never anything more than a badge + a bookmark toggle, and
+          // now that picking a project is always its own required step
+          // before reaching a dashboard (not a fallback the dashboard ever
+          // needs), it stopped doing anything real, same reasoning that
+          // already applied to removing "default feed."
           <Card bodyStyle={{ padding: 0 }}>
             {projects.map((p, index) => {
-              const isDefault = p.project_id === defaultProjectId;
               const isCurrent = p.project_id === currentProjectId;
               const busy = busyId === p.project_id;
 
@@ -291,7 +276,6 @@ export function AdminProjectPicker({ onLogout }) {
                         <span style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
                           {p.name || p.project_id}
                         </span>
-                        {isDefault && <Badge tone="accent">default</Badge>}
                         {isCurrent && <Badge>current</Badge>}
                       </div>
                       <div style={{ fontSize: "var(--admin-text-xs)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: "var(--admin-muted)", marginTop: 2 }}>
@@ -308,17 +292,6 @@ export function AdminProjectPicker({ onLogout }) {
                     // delete AND navigate in the same click.
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {hasAdminRole("editor") && (
-                      <IconButton
-                        size="sm"
-                        disabled={isDefault || busy}
-                        onClick={() => makeDefault(p.project_id)}
-                        title={isDefault ? "Already the default project" : "Make this the default project"}
-                        style={isDefault ? { color: "var(--admin-accent-ink)" } : undefined}
-                      >
-                        <IconBookmark size={15} fill={isDefault ? "currentColor" : "none"} />
-                      </IconButton>
-                    )}
                     {hasAdminRole("owner") && (
                       <IconButton
                         size="sm"

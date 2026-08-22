@@ -4450,17 +4450,6 @@ export async function listProjectsFromBackend({ signal } = {}) {
   }
 }
 
-/** Default project handling (client side, stored locally) */
-const DEFAULT_PROJECT_KEY = "DEFAULT_PROJECT_ID";
-
-export async function getDefaultProjectFromBackend() {
-  return localStorage.getItem(DEFAULT_PROJECT_KEY) || "global";
-}
-
-export async function setDefaultProjectOnBackend(projectId) {
-  localStorage.setItem(DEFAULT_PROJECT_KEY, projectId || "global");
-  return true;
-}
 
 export async function createProjectOnBackend({ projectId, name, notes } = {}) {
   if (!hasAdminSession()) return false;

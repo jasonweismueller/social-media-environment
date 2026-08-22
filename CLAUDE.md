@@ -7757,3 +7757,105 @@ confirmed via `window.innerWidth`/`document.documentElement.clientWidth` both co
 parse clean and `styles-instagram.css`'s braces balance. **Not verified**: an actual click-through by
 a real logged-in admin/participant, or the avatar toggle against the real CDN outside this sandbox —
 same standing limitations as every entry in this file.
+
+## Real bug found and fixed: switching platform sent you back to the platform picker instead of the dashboard, plus a legacy Instagram-only admin gradient theme removed, plus "default project" removed (2026-08-22)
+
+Direct bug report: picked a project, clicked Instagram on the platform picker, Facebook loaded
+instead; clicked Instagram again and landed back on the platform picker (not the dashboard); the
+platform picker itself rendered with two different heading styles across the two times it was seen
+(one plain, one with an Instagram-branded gradient). Plus two follow-up questions/requests in the
+same message: whether the whole "skip the reload if already on this platform" mechanism is even
+needed, and a request to drop "default project" from the project list now that project/platform
+picking is its own dedicated flow, separate from the rest of the dashboard.
+
+**Root cause 1, confirmed and fixed: `AdminPlatformPicker.jsx`'s `pick()` was still writing a
+HashRouter-era URL under BrowserRouter.** Cross-bundle platform switches (picking a platform
+different from whichever is currently loaded) have to be a real page navigation — platform is
+chosen by which JS bundle `index.html` loads, before React even mounts, so there's no client-side
+way to swap bundles. `pick()` built that navigation URL by setting `url.hash = "#/admin/dashboard"`
+— the correct mechanism back when this app used `HashRouter` (routes lived in the hash), but since
+the 2026-08-14 migration to `BrowserRouter` (documented earlier in this file), hash is never read
+for routing at all. Setting it was a silent no-op: the reload correctly picked up the new `?app=`
+query param and loaded the right bundle, but `url.pathname` was never touched, so it was still
+whatever it had been before (`/admin/platform`) — meaning the freshly-loaded bundle's own router
+matched the platform picker again, not the dashboard. This is exactly "clicked Instagram, landed
+back on the platform list, had to click again": the *second* click then took the `app === currentApp`
+fast path (a real client-side `navigate()`, which works correctly), finally reaching the dashboard —
+but by then the *first* click's bundle-swap had already silently failed to arrive anywhere except
+back where it started. This also explains "Facebook was loaded" in the first place: `index.html`'s
+bootstrap script defaults to `"facebook"` whenever `?app=` is absent from the URL (line 65,
+`const app = (params.get("app") || "facebook").toLowerCase();`), which is exactly the case for the
+very first, plain `/admin` visit before any platform has ever been explicitly chosen. **Fixed**: set
+`url.pathname = "/admin/dashboard"` (and clear `url.hash`) instead of setting `url.hash`. Verified
+via the pure URL-construction logic directly (no live reload possible in this sandbox): confirms the
+final URL is `.../admin/dashboard?project=...&app=...`, which correctly matches `AdminEntry.jsx`'s
+`<Route path="dashboard/*">` once the right bundle loads and `BrowserRouter` mounts against it.
+
+**Direct answer to "do we need this whole loaded thing even?"**: the bug lived entirely in the
+cross-bundle branch (the `else` case) — the `if (app === currentApp) { navigate("/admin/dashboard");
+return; }` fast path is unrelated to it, was already working correctly, and is genuinely good UX
+(skips an unnecessary full-page reload when the admin picks the platform that's already loaded).
+Recommended keeping it rather than collapsing both branches into one unconditional reload, and did
+— the fix only touches the branch that was actually broken.
+
+**Root cause 2, confirmed and fixed: `styles-instagram.css` had an entire legacy Instagram-only
+admin re-theme that directly explains the "one heading normal, one gradient" observation.** Two
+stacked sections — literally titled "THEME IMPROVEMENTS (Option A: subtle gradient admin
+background)" and "Enhanced Instagram Admin Theme (Colorful Header)" in their own comments, both
+`body.admin-mode`-scoped (i.e. applying to *every* admin page, not participant-facing UI) — predate
+the shared `src/admin/ui/tokens.css` design system this file's own "UI/UX modernization" phases 1–3
+were built around, and directly conflict with it: **`body.admin-mode .admin-shell h1, body.admin-
+mode .admin-shell h2 { background: linear-gradient(...); -webkit-background-clip: text; -webkit-
+text-fill-color: transparent; ... }`** hits `PageHeader`'s `<h1>` — the exact title element every
+admin page uses, including `AdminPlatformPicker`'s "Choose a platform" — with an Instagram-brand
+gradient text-clip effect, but **only when the Instagram bundle happens to be the one loaded**,
+since `styles-instagram.css` is a global, side-effect stylesheet import scoped to the whole document
+whenever that bundle is active. Confirmed Facebook's and Amazon's stylesheets have no equivalent —
+only `.admin-shell`/`.admin-fab-wrap`/`.admin-login-wrap` *structural* rules, no brand theming. This
+means the exact same admin page visually differs depending purely on which of the three bundles
+happens to be loaded at the time — precisely what was reported, and a real inconsistency this
+session's own admin-design-system work (phases 1–3) had been working to eliminate everywhere else.
+
+**Removed both sections entirely** (~185 lines total across the two, `styles-instagram.css`), while
+preserving the legitimate `.admin-banner`/`.admin-expired-backdrop`/`.admin-expired-dialog` rules
+that happened to sit physically between them (session-expiry toast + expired-session modal — a
+real, necessary fix from an earlier session, confirmed by that code's own comment: "Previously
+missing entirely from this stylesheet... so the session-expiring banner and expired-session modal
+rendered unstyled under ?app=ig"). Also removed a third, now-dead leftover rule
+(`body.admin-mode .card, ... { backdrop-filter: none !important; }`, "Hard-disable blur compositing
+in admin mode to avoid flicker behind modals") — a defensive patch for a side effect of the removed
+theme's own `backdrop-filter` rule on `.card`, with nothing left to override once that source rule
+is gone. Kept the two remaining `body.admin-mode` selectors that were never part of the theme —
+`.top-rail-placeholder`/`.nav`/`.ig-topbar` visibility toggles — since those hide *participant-
+facing* chrome while in admin mode, an unrelated and still-needed concern. **Verified live**: mounted
+the real `AdminPlatformPicker` with `body.admin-mode` set (matching real admin routing) and confirmed
+via `getComputedStyle` on the actual rendered `<h1>` — `backgroundImage: "none"`,
+`webkitTextFillColor: "rgb(17, 24, 39)"` (a real solid color, not `transparent`) — the gradient
+effect is gone; brace balance and parse-check clean.
+
+**Third item, per direct request: "default project" removed entirely**, same reasoning and the same
+shape as the earlier "'Default feed' concept removed entirely" entry (2026-08-04) — now that picking
+a project is always its own required step before ever reaching a dashboard (the Projects → Platform
+→ Dashboard flow), the fallback almost never actually fires in practice. Turned out to be even lower
+-stakes than the feed case: `getDefaultProjectFromBackend`/`setDefaultProjectOnBackend`
+(`utils-backend.js`) were never real backend calls at all despite the name — just a plain
+`localStorage` read/write (`DEFAULT_PROJECT_ID`), never synced anywhere. Removed both functions
+entirely, plus every call site: `AdminProjectPicker.jsx` (the `defaultProjectId` state, the "default"
+`Badge`, the bookmark `IconButton`/`makeDefault` toggle — the row action cluster is now just the
+single Delete icon button + chevron), and `components-admin-dashboard.jsx` (the `defaultProjectId`
+state, the "default" badge next to the sidebar's project-name readout, and `backendDefault` dropped
+from `loadProjects`'s `desired`-project fallback chain — which now reads `fromUrl || projectId ||
+getProjectId?.() || projList[0]?.project_id || "global"`, i.e. exactly the same chain minus the one
+term that's been effectively dead weight since project selection stopped being optional). Confirmed
+via repo-wide grep: zero remaining references to any of `getDefaultProjectFromBackend`,
+`setDefaultProjectOnBackend`, `defaultProjectId`, or `DEFAULT_PROJECT` anywhere in `src/`. **Verified
+live**: mounted the real `AdminProjectPicker` (wrapped in the real `Toast`/`Confirm`/`PromptProvider`s,
+fabricated 2-project list via a mocked backend response) — confirmed zero bookmark icons, zero
+"default" text anywhere in the rendered output, screenshotted (clean rows: name + trailing chevron
+only, Delete icon gated to owner role as before).
+
+**Not verified, all three fixes**: an actual click-through by a real logged-in admin doing the real
+project → platform → dashboard flow end to end (would conclusively prove the router fix beyond the
+pure-URL-logic check already done) — same standing no-login limitation as everywhere else in this
+file. Worth prioritizing on `staging.studyfeed.org` given this was a real, reported, and now
+understood navigation bug, not just a polish item.
