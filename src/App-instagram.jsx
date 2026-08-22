@@ -468,25 +468,15 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
   const realisticOn = !!flags?.realistic_surroundings;
   const [suggestions, setSuggestions] = useState([]);
 
-  // Real nav rows are much shorter than the ghost RailBox/RailList blocks
-  // rightCount above was tuned for — same reasoning as Facebook's own
-  // real/ghost count split, just simpler here since Instagram's real left
-  // rail is a single fixed-length nav list (no "shortcuts"-style secondary
-  // section to also size), so only the right rail's suggestion count needs
-  // computing.
-  const [realRightCount, setRealRightCount] = useState(5);
-  useEffect(() => {
-    const compute = () => {
-      const railH = (window.innerHeight || 900) - 30;
-      const REAL_ROW_H = 58;
-      const HEADER_H = 60;
-      const n = Math.max(3, Math.min(Math.floor((railH - HEADER_H) / REAL_ROW_H), 12));
-      setRealRightCount(n);
-    };
-    compute();
-    window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
-  }, []);
+  // Real Instagram's "Suggested for you" is a short, fixed-length list
+  // capped by a "See all" link, not a height-filling list the way
+  // Facebook's own contacts rail is (that one has no equivalent "See all"
+  // escape hatch, so it makes sense for it to fill available space instead)
+  // — matches the real reference screenshot exactly (5 suggestions), and
+  // per direct feedback the earlier height-driven version showed
+  // noticeably more than that on a normal-height screen.
+  const SUGGESTIONS_COUNT = 5;
+  const [messagesPillAvatar, setMessagesPillAvatar] = useState(null);
 
   useEffect(() => {
     if (!realisticOn) return undefined;
@@ -500,14 +490,23 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
         ? await Promise.all([getAvatarPool("female"), getAvatarPool("male")])
         : [[], []];
       if (cancelled) return;
-      setSuggestions(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: realRightCount }));
+      setSuggestions(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: SUGGESTIONS_COUNT }));
+      // One more, distinctly-seeded pick ("messages-pill", not "rail-
+      // suggest") for the floating Messages pill's avatar below, so it
+      // never happens to mirror whichever contact the suggestions list
+      // itself picked.
+      const pillPick = buildRailContacts({
+        femalePool, malePool, runSeed: `${runSeed || "run"}-messages-pill`, app, projectId, feedId, count: 1,
+      })[0];
+      setMessagesPillAvatar(pillPick?.avatarUrl || null);
     })();
     return () => {
       cancelled = true;
     };
-  }, [realisticOn, realRightCount, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
+  }, [realisticOn, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
 
   return (
+    <>
     <div
       className="page"
       style={{
@@ -518,7 +517,7 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
     >
       {realisticOn ? (
         <aside className="rail rail-left rail--content" aria-hidden="true">
-          <div className="rail-real-list">
+          <div className="rail-real-list rail-real-list--nav">
             {LEFT_RAIL_NAV_ITEMS.map((label) => (
               <div key={label} className="rail-real-item">
                 {LEFT_RAIL_ICONS[label]}
@@ -543,7 +542,10 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
 
       {realisticOn ? (
         <aside className="rail rail-right rail--content" aria-hidden="true">
-          <div className="rail-real-title">Suggested for you</div>
+          <div className="rail-real-title rail-real-title--row">
+            <span>Suggested for you</span>
+            <span className="rail-real-see-all">See all</span>
+          </div>
           <div className="rail-real-list">
             {suggestions.map((s) => (
               <div key={s.id} className="rail-real-item rail-real-item--suggestion">
@@ -579,6 +581,30 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
         </aside>
       )}
     </div>
+
+    {/* Real Instagram's floating Direct-Messages pill (bottom-left,
+        per direct reference/placement request) — position:fixed relative
+        to the viewport, not the rail, so it's rendered as a sibling of
+        .page rather than nested inside a rail (a rail's own ghost-mode
+        `filter` would otherwise create a containing block that breaks
+        fixed positioning; real mode resets that, but staying outside
+        avoids depending on it). Deliberately no unread-count badge — see
+        the "no red 1 notification" instruction elsewhere in this session,
+        same reasoning already applied to the left-rail Messages row. */}
+    {realisticOn && (
+      <div className="floating-messages-pill" aria-hidden="true">
+        {LEFT_RAIL_ICONS.Messages}
+        <span>Messages</span>
+        <span className="rail-contact-avatar-wrap">
+          {messagesPillAvatar ? (
+            <img src={messagesPillAvatar} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+          ) : (
+            <span className="rail-contact-avatar rail-contact-avatar--blank" />
+          )}
+        </span>
+      </div>
+    )}
+    </>
   );
 }
 

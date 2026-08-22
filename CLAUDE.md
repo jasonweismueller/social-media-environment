@@ -7657,3 +7657,57 @@ surroundings" entry in this file. Amazon still has no rail/surrounding-chrome co
 (`Feed` is a single centered column there) — unchanged, still flagged as a bigger, separate
 follow-up if ever wanted, per the original 2026-08-06 entry's own "other realism ideas discussed but
 not built" note.
+
+## Instagram realistic surroundings, round 2: spacing, fewer suggestions, floating Messages pill (2026-08-22)
+
+Three more direct-feedback fixes the same day, against a screenshot of a real Instagram
+floating "Messages" pill widget (bottom-right on real Instagram; placed bottom-left here per
+explicit instruction):
+
+- **Left nav spacing**: per-row padding/font bumped (`.rail-real-item` → `.7rem .7rem`/15px/500
+  became `.95rem 1rem`/16px/600 specifically under a new `.rail-real-list--nav` modifier, applied
+  only to the left nav's own `<div className="rail-real-list">` — the "Suggested for you" list keeps
+  the tighter original spacing, since its own reference screenshot showed compact rows, unlike the
+  nav's noticeably more spacious ones). List-level gap also bumped 2px→6px.
+- **Fewer suggestions**: the height-driven `realRightCount` computation (could reach up to 12 on a
+  tall viewport) was replaced entirely with a fixed `SUGGESTIONS_COUNT = 5`, matching the real
+  reference screenshot exactly — real Instagram's "Suggested for you" is a genuinely short, capped
+  list with a "See all" escape hatch, not a height-filling list the way Facebook's own contacts rail
+  is (which has no such escape hatch, so filling available space is the correct behavior *there*).
+  A decorative "See all" link was added next to the "Suggested for you" header (new
+  `.rail-real-title--row`/`.rail-real-see-all` CSS) for the same reason — without it, a hard-capped
+  5-item list with obvious room below would read as broken, not intentional.
+- **New floating "Messages" pill** (`.floating-messages-pill`, bottom-left, `position:fixed`
+  relative to the viewport): icon (reused directly from `LEFT_RAIL_ICONS.Messages` — same glyph,
+  no separate icon needed) + "Messages" text + a seeded avatar circle, rendered as a sibling of
+  `.page` (not nested inside a rail) specifically so `position:fixed` resolves against the real
+  viewport unambiguously rather than depending on `.rail`'s own `filter` property staying `none` in
+  real-content mode (a `filter` on an ancestor creates a new containing block for `position:fixed`
+  descendants — true today since `.rail--content` resets it, but not worth the implicit dependency).
+  The avatar is a second, distinctly-seeded `buildRailContacts` call (`"-messages-pill"` seed suffix,
+  `count: 1`) — deliberately not reusing the suggestions list's own first pick, so the pill's contact
+  never happens to visually match whichever name/avatar the suggestions list shows.
+- **Deliberately no unread-count badge on the pill**, despite the reference screenshot showing one —
+  the user's own immediately-prior instruction was to remove exactly this kind of badge from the left
+  nav for being a possible confound, and this is the same category of element; flagged this directly
+  rather than silently including or silently omitting it without comment, so it's easy to override
+  if a badge is actually wanted here specifically.
+
+**Verified live**, dev server confirmed working, no admin login available (same standing limitation
+as everywhere else in this file). One real verification-technique gotcha hit and resolved: a first
+pass navigated to the bare domain (`http://localhost:5173`, no `?app=` param) for the harness mount
+— per this repo's own "Public-site access gate" feature, the bootstrap script never imports any app
+bundle for a bare-domain visit, so `styles-instagram.css` was never actually loaded and every
+computed style read back as a browser default (e.g. `padding: 0px`) despite the harness JSX being
+correct — a false negative from the test setup, not a real bug (confirmed via `document.styleSheets`
+directly: zero rules matching `.rail-real-list--nav` were loaded at all). Fixed by navigating to
+`?app=ig&feed_id=verify&project=verify` instead (matching this session's own earlier, correct
+verification approach) before remounting — confirmed via `document.styleSheets` that the new CSS was
+actually present this time, then re-verified and screenshotted successfully: 9 nav rows at the new
+padding/weight/size (`15.2px`/`600`/`16px`, confirmed via `getComputedStyle`, not just class
+presence), exactly 5 suggestion rows with the "See all" link, the floating pill rendering with no
+badge element in the DOM, all in **both** light and dark mode (dark mode screenshot confirmed pure
+black backgrounds/white text throughout, including the pill). Zero console errors beyond expected
+image-load failures from the harness's fabricated, unreachable avatar URLs. `App-instagram.jsx`
+parses clean and `styles-instagram.css`'s braces balance. **Not verified**: an actual click-through
+by a real logged-in admin/participant — same standing limitation as every entry in this file.

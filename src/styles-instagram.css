@@ -316,6 +316,8 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 .rail-real-title{
   font-size:13px; font-weight:600; color:var(--ig-muted); margin:0 4px 8px; padding-top:4px;
 }
+.rail-real-title--row{ display:flex; align-items:center; justify-content:space-between; }
+.rail-real-see-all{ font-size:12px; font-weight:600; color:var(--ig-text); }
 .rail-real-list{
   background:var(--ig-card); border:1px solid var(--ig-line); border-radius:1rem;
   box-shadow:var(--ig-shadow); padding:.5rem; display:flex; flex-direction:column; gap:2px;
@@ -324,6 +326,13 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   display:flex; align-items:center; gap:.85rem; padding:.7rem .7rem; border-radius:.6rem;
   font-size:15px; font-weight:500; color:var(--ig-text);
 }
+/* Per direct feedback, the reference screenshot's nav rows are noticeably
+   more spaced out than a compact list — this modifier only touches the
+   left nav (`.rail-real-list--nav`), not the suggestions list below, which
+   stays at the tighter default spacing that already matches its own
+   reference screenshot. */
+.rail-real-list--nav{ gap:6px; padding:.65rem; }
+.rail-real-list--nav .rail-real-item{ padding:.95rem 1rem; font-size:16px; font-weight:600; }
 .rail-real-item--suggestion{ align-items:center; }
 .rail-real-item-text{ display:flex; flex-direction:column; gap:1px; min-width:0; flex:1; }
 .rail-real-item-name{ font-size:14px; font-weight:600; color:var(--ig-text); }
@@ -334,6 +343,20 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   width:38px; height:38px; border-radius:999px; object-fit:cover; display:block; background:#e5e7eb;
 }
 .rail-contact-avatar--blank{ background:#e5e7eb; }
+
+/* Real Instagram's floating Direct-Messages pill — fixed to the viewport
+   (not the rail), purely decorative like everything else in this feature
+   (pointer-events:none, aria-hidden). Bottom-left per direct placement
+   request. Deliberately no unread-count badge (see the "no red 1
+   notification" instruction this session). */
+.floating-messages-pill{
+  position:fixed; left:24px; bottom:24px; z-index:50; pointer-events:none;
+  display:flex; align-items:center; gap:10px;
+  background:var(--ig-card); border-radius:999px; box-shadow:var(--ig-shadow);
+  padding:10px 16px 10px 14px; font-size:16px; font-weight:700; color:var(--ig-text);
+}
+.floating-messages-pill svg{ flex:0 0 auto; }
+.floating-messages-pill .rail-contact-avatar{ width:34px; height:34px; }
 
 /* Skeleton UI */
 .ghost-card{background:#fff;border:1px solid var(--ig-line);border-radius:1rem;box-shadow:var(--ig-shadow);margin-bottom:12px}
