@@ -76,6 +76,8 @@ function userRowStyle(isActive) {
     background: isActive ? "var(--admin-accent-soft)" : "var(--admin-surface)",
     border: isActive ? "1px solid var(--admin-accent-border)" : "1px solid var(--admin-border-subtle)",
     boxShadow: isActive ? "none" : "var(--admin-shadow-sm)",
+    transition:
+      "background var(--admin-duration-fast) var(--admin-ease), border-color var(--admin-duration-fast) var(--admin-ease), box-shadow var(--admin-duration-fast) var(--admin-ease)",
   };
 }
 
@@ -94,6 +96,7 @@ function ChoiceChip({ active, onClick, children, tone = "accent", disabled }) {
   return (
     <button
       type="button"
+      className="admin-btn"
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -139,6 +142,7 @@ function SegmentedControl({ options, value, onChange, disabled, title }) {
             key={opt.value}
             type="button"
             role="radio"
+            className="admin-btn"
             aria-checked={active}
             title={opt.hint}
             disabled={disabled}
@@ -198,11 +202,13 @@ function UsernameEditor({ user, onSaved }) {
     return (
       <button
         type="button"
+        className="admin-btn"
         onClick={() => setEditing(true)}
         style={{
           border: "none",
           background: "transparent",
-          padding: 0,
+          padding: "2px 4px",
+          borderRadius: 6,
           cursor: "pointer",
           color: "var(--admin-accent-ink)",
           fontSize: 11,
@@ -708,6 +714,7 @@ export function AdminUsersPage({ onLogout }) {
         <div style={{ marginBottom: 4 }}>
           <button
             type="button"
+            className="admin-btn"
             onClick={() => navigate("/admin")}
             style={{
               border: "none",
@@ -716,7 +723,8 @@ export function AdminUsersPage({ onLogout }) {
               fontSize: 12,
               fontWeight: 700,
               cursor: "pointer",
-              padding: 0,
+              padding: "2px 4px",
+              borderRadius: 6,
             }}
           >
             ← All projects
@@ -774,6 +782,7 @@ export function AdminUsersPage({ onLogout }) {
                   <button
                     key={u.email}
                     type="button"
+                    className={isActive ? undefined : "admin-row-hover"}
                     onClick={() => setSelectedEmail(u.email)}
                     style={userRowStyle(isActive)}
                   >

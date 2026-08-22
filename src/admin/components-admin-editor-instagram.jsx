@@ -101,6 +101,7 @@ export function AdminPostEditor({
           {isNew && (
             <button
               type="button"
+              className="admin-btn"
               onClick={() => setEditing((ed) => ({ ...makeRandomPost(), id: ed.id }))}
               style={{
                 display: "inline-flex",

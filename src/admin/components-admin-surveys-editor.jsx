@@ -2409,6 +2409,7 @@ function SecondaryPillButton({
   return (
     <button
       type="button"
+      className="admin-btn"
       title={title}
       onClick={onClick}
       disabled={disabled}
@@ -2468,6 +2469,7 @@ function RequiredToggleButton({ active, onClick, disabled = false }) {
   return (
     <button
       type="button"
+      className="admin-btn"
       onClick={onClick}
       disabled={disabled}
       title={active ? "Required" : "Optional"}
@@ -2615,6 +2617,7 @@ function RichToolbarButton({ title, onMouseDown, active = false, children }) {
   return (
     <button
       type="button"
+      className="admin-btn"
       title={title}
       aria-label={title}
       onMouseDown={onMouseDown}
@@ -2895,6 +2898,7 @@ function InsertAtBorderButton({ position = "top", onOpenPicker, inline = false }
     >
       <button
         type="button"
+        className="admin-btn"
         onClick={onOpenPicker}
         title={inline ? "Add question" : isTop ? "Insert above" : "Insert below"}
         style={
@@ -3128,6 +3132,7 @@ function AddQuestionCategoryChip({ label, count, active, onClick }) {
   return (
     <button
       type="button"
+      className="admin-btn"
       onClick={onClick}
       style={{
         padding: "5px 12px",
@@ -3157,6 +3162,7 @@ function AddQuestionTypeCard({ item, onSelect, isCurrent = false }) {
   return (
     <button
       type="button"
+      className="admin-btn"
       onClick={() => onSelect(item.type)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -3458,6 +3464,7 @@ function RowAttentionCheckControl({ isAttentionCheck, attentionCheckValue, colum
     <div style={{ display: "flex", alignItems: "center", gap: 8, gridColumn: "1 / -1", paddingLeft: 2 }}>
       <button
         type="button"
+        className="admin-btn"
         onClick={() => onToggle(!isAttentionCheck)}
         title="Mark this row as an attention check — it's excluded from the composite's mean/reliability and never gets shuffled or moved by page randomization."
         style={{
@@ -3601,6 +3608,7 @@ function ItemTableEditor({
 
       <button
         type="button"
+        className="admin-btn"
         onClick={addItem}
         style={{
           marginTop: 10,
@@ -3706,6 +3714,7 @@ function BipolarRowTableEditor({ items, onChange, questionId, columns = null }) 
 
       <button
         type="button"
+        className="admin-btn"
         onClick={addItem}
         style={{
           marginTop: 10,
@@ -3785,6 +3794,7 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
+            className="admin-btn"
             onClick={selectAll}
             style={{
               padding: "6px 10px",
@@ -3801,6 +3811,7 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
 
           <button
             type="button"
+            className="admin-btn"
             onClick={clearSelection}
             style={{
               padding: "6px 10px",
@@ -3887,6 +3898,7 @@ function QuestionGroupVisibilityEditor({ experimentGroups, value, onChange }) {
 
         <button
           type="button"
+          className="admin-btn"
           onClick={clearSelection}
           style={{
             padding: "6px 10px",
@@ -4113,6 +4125,7 @@ function ConditionalDisplayEditor({ eligibleSourceQuestions, value, onChange }) 
       {rule && (
         <button
           type="button"
+          className="admin-btn"
           onClick={() => onChange(null)}
           style={{
             marginTop: 4,
@@ -4463,6 +4476,7 @@ function QuestionActions({
 
         <button
           type="button"
+          className="admin-btn"
           onClick={() => moveQuestion(index, index - 1)}
           disabled={index === 0}
           style={smallActionButtonStyle(index === 0)}
@@ -4472,6 +4486,7 @@ function QuestionActions({
 
         <button
           type="button"
+          className="admin-btn"
           onClick={() => moveQuestion(index, index + 1)}
           disabled={index === totalQuestions - 1}
           style={smallActionButtonStyle(index === totalQuestions - 1)}
@@ -4684,6 +4699,7 @@ function CollapsedQuestionRow({
       {!isDisplayOnly && updateQuestion ? (
         <button
           type="button"
+          className="admin-btn"
           onClick={() => updateQuestion(index, { required: !q.required })}
           title={q.required ? "Required — click to make optional" : "Optional — click to make required"}
           aria-label={q.required ? "Make optional" : "Make required"}
@@ -4735,6 +4751,7 @@ function CollapsedQuestionRow({
 
       <button
         type="button"
+        className="admin-btn"
         onClick={onToggleCollapsed}
         style={{
           flex: 1,
@@ -4764,6 +4781,7 @@ function CollapsedQuestionRow({
       <div style={{ display: "flex", gap: 4, flex: "0 0 auto" }}>
         <button
           type="button"
+          className="admin-btn"
           onClick={() => moveQuestion(index, index - 1)}
           disabled={index === 0}
           style={compactArrowStyle(index === 0)}
@@ -4773,6 +4791,7 @@ function CollapsedQuestionRow({
         </button>
         <button
           type="button"
+          className="admin-btn"
           onClick={() => moveQuestion(index, index + 1)}
           disabled={index === totalQuestions - 1}
           style={compactArrowStyle(index === totalQuestions - 1)}
@@ -5529,6 +5548,7 @@ function QuestionCard({
         <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "0 0 auto" }}>
           <button
             type="button"
+            className="admin-btn"
             onClick={() => moveQuestion(index, index - 1)}
             disabled={index === 0}
             style={smallActionButtonStyle(index === 0)}
@@ -5538,6 +5558,7 @@ function QuestionCard({
 
           <button
             type="button"
+            className="admin-btn"
             onClick={() => moveQuestion(index, index + 1)}
             disabled={index === totalQuestions - 1}
             style={smallActionButtonStyle(index === totalQuestions - 1)}
@@ -5987,6 +6008,7 @@ function OutlineRow({
     <div style={{ display: "flex", gap: 2, flex: "0 0 auto" }}>
       <button
         type="button"
+        className="admin-btn"
         onClick={onMoveUp}
         disabled={flatIndex === 0}
         style={compactArrowStyle(flatIndex === 0)}
@@ -5996,6 +6018,7 @@ function OutlineRow({
       </button>
       <button
         type="button"
+        className="admin-btn"
         onClick={onMoveDown}
         disabled={flatIndex === totalCount - 1}
         style={compactArrowStyle(flatIndex === totalCount - 1)}
@@ -6187,6 +6210,7 @@ function OutlineRow({
 
       <button
         type="button"
+        className="admin-btn"
         onClick={onJump}
         style={{
           flex: 1,
@@ -6370,6 +6394,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
         </div>
         <button
           type="button"
+          className="admin-btn"
           onClick={addGroup}
           style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid var(--admin-accent)", background: "var(--admin-surface)", color: "var(--admin-accent-ink)", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
         >
@@ -6416,6 +6441,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                   <div style={{ borderTop: "1px solid var(--admin-border-subtle)", padding: "6px 8px", background: "var(--admin-surface-alt)" }}>
                     <button
                       type="button"
+                      className="admin-btn"
                       onClick={() => toggleExpanded(group.id)}
                       style={{
                         display: "flex",
@@ -6477,6 +6503,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                                   <button
                                     type="button"
+                                    className="admin-btn"
                                     onClick={() => moveGroupFeed(groupIndex, fid, -1)}
                                     disabled={orderIndex <= 0}
                                     style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid var(--admin-border)", background: "var(--admin-surface)", fontSize: 11 }}
@@ -6485,6 +6512,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                                   </button>
                                   <button
                                     type="button"
+                                    className="admin-btn"
                                     onClick={() => moveGroupFeed(groupIndex, fid, 1)}
                                     disabled={orderIndex < 0 || orderIndex >= feedSeq.length - 1}
                                     style={{ padding: "2px 6px", borderRadius: 6, border: "1px solid var(--admin-border)", background: "var(--admin-surface)", fontSize: 11 }}
@@ -6649,7 +6677,7 @@ function PageBlocksEditor({ survey, onSurveyChange }) {
               : ""}
           </div>
         </div>
-        <button type="button" onClick={addBlock} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid var(--admin-accent)", background: "var(--admin-surface)", color: "var(--admin-accent-ink)", fontWeight: 700, cursor: "pointer" }}>
+        <button type="button" className="admin-btn" onClick={addBlock} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid var(--admin-accent)", background: "var(--admin-surface)", color: "var(--admin-accent-ink)", fontWeight: 700, cursor: "pointer" }}>
           + Add block
         </button>
       </div>
@@ -7101,6 +7129,7 @@ function SurveyHealthBadge({ issues, onJumpToQuestion }) {
       trigger={
         <button
           type="button"
+          className="admin-btn"
           title="Survey health — duplicate IDs, broken conditions, unanswered attention checks, and more, all in one place"
           style={{
             display: "flex",
@@ -7160,6 +7189,7 @@ function SurveyHealthBadge({ issues, onJumpToQuestion }) {
                   {issue.editorId && onJumpToQuestion && (
                     <button
                       type="button"
+                      className="admin-btn"
                       onClick={() => onJumpToQuestion(issue.editorId)}
                       style={{
                         marginTop: 6,

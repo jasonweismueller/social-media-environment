@@ -190,6 +190,7 @@ function Thumb({ src, active, onClick, onRemove, idx }) {
     <div style={{ position: "relative" }}>
       <button
         type="button"
+        className="admin-btn"
         onClick={onClick}
         style={{
           width: 72,
@@ -212,6 +213,7 @@ function Thumb({ src, active, onClick, onRemove, idx }) {
 
       <button
         type="button"
+        className="admin-btn"
         onClick={onRemove}
         title="Remove"
         style={{

@@ -240,6 +240,10 @@ export function SurveyPreviewModal({
           gap: 16,
           flexWrap: "wrap",
           marginBottom: 14,
+          padding: "10px 14px",
+          borderRadius: "var(--admin-radius-md)",
+          background: "var(--admin-surface-alt)",
+          border: "1px solid var(--admin-border-subtle)",
         }}
       >
         {/* Preview context — what's being previewed (which group, and a way

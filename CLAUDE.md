@@ -7337,3 +7337,101 @@ own field layouts) — these are large, fragile files where phase 1 and 2 both d
 line; the individual admin Users page beyond what it already inherits from shared primitives; and
 the Feed/Survey preview modals' own chrome (they already use the shared `Modal`, but haven't had a
 dedicated layout pass).
+
+## UI/UX modernization, phase 3: post/survey editor internals, Users page, preview-modal chrome (2026-08-22)
+
+Direct follow-up — user asked for "phase 3" specifically, picking up exactly where phase 2's own
+"still not touched" list left off (immediately above). Scoped the same way as phases 1–2: additive
+button-hover/consistency wins layered onto the existing primitive system, no data-model or logic
+changes, and — per phase 2's own explicit caution — the 8,300+-line
+`components-admin-surveys-editor.jsx` was touched *mechanically only* (adding a `className`, never
+restructuring JSX), respecting this file's own standing fragility warnings (the "N places to
+update" footguns, the Fast-Refresh-can't-hot-patch gotcha documented earlier in this file).
+
+**Root cause found before editing anything**: `.admin-btn` (the shared hover/press/focus-ring
+class from phase 1's `tokens.css`) had never actually reached three of the areas phase 2 flagged —
+confirmed via grep, not assumed. `src/admin/ui/IconButton.jsx` already delegates to `Button`
+(which has had `.admin-btn` since phase 1), so every `IconButton`/`IconOnlyButton` consumer across
+the whole admin app was already covered automatically — but every **hand-rolled** `<button>` in
+these three areas (not routed through `IconButton`/`Button`) had zero hover feedback, exactly the
+gap phase 1's own tokens.css comment describes ("every color they use is set inline... these
+classes deliberately work via filter/transform/box-shadow overlays... so they layer correctly on
+top of *any* inline background").
+
+**Post editors** (`components-admin-editor-{facebook,instagram,amazon}.jsx`,
+`components-admin-media-instagram.jsx`): found via grep — exactly 5 raw `<button>` elements across
+all three editors + the Instagram media fieldset, all pre-existing and un-networked to the shared
+button system. The three "🎲 Fill with random content" buttons (byte-identical across all three
+editor files, the same near-duplicate-file shape this repo's CLAUDE.md documents everywhere else)
+and the Instagram carousel's two `Thumb`/remove-image buttons all gained `className="admin-btn"`,
+nothing else changed. `components-admin-editor-ui.jsx` (the shared `EditorSection`/`Field`/
+`PreviewPane` primitives every post editor already builds on) was left alone — its own collapse
+toggle already picked up `.admin-btn` in phase 2.
+
+**`components-admin-surveys-editor.jsx`**: 31 raw `<button>` tags found via a script that parsed
+every `<button ...>` opening tag and confirmed **zero** already had a `className` — safe to add
+`className="admin-btn"` uniformly with no risk of clobbering or duplicating an existing class.
+Applied via a small Python pass (insert `className="admin-btn"` on its own line, matching this
+file's own indentation, immediately after every standalone `type="button"` line; the one button
+written on a single line — `PageBlocksEditor`'s "+ Add block" — was fixed by hand afterward since
+the script only matched the multi-line pattern) rather than 31 individual manual edits, specifically
+to eliminate the risk of a typo mismatching a stale `old_string` somewhere in a file this large and
+this fragile. Covers every shared local button primitive this file defines
+(`SecondaryPillButton`, `RequiredToggleButton`, `RichToolbarButton`, `smallActionButtonStyle`/
+`compactArrowStyle`-styled move-up/down arrows used identically in `QuestionActions`,
+`CollapsedQuestionRow`, and `PageBlocksEditor`) plus every genuine one-off button (avatar-picker
+trigger, add-question category chips/type cards, attention-check toggle, select-all/clear-selection,
+add-item, remove-condition, experiment-group add/delete/reorder, the survey-health popover trigger
+and its jump-to-question rows). `AddQuestionTypeCard` already had its own hand-rolled JS-state-driven
+hover-lift (predating phase 1) — `.admin-btn` layers on top harmlessly there (contributes the
+`:focus-visible` ring this card didn't have before; its own inline `transform` always wins over the
+class's `:active` scale-down, a minor redundancy not worth a special case). Confirmed via a second
+pass of the same parser script, post-edit: all 31 tags now carry `className`, zero misses.
+
+**`components-admin-users.jsx`**: the standalone Users & access page (mounted outside `AdminShell`,
+so it never inherited phase 1's `AdminShell.jsx` nav-row fix) had the identical "list row with no
+hover, no transition" gap phase 2 already found and fixed twice (Feeds, Surveys) — `userRowStyle`
+gained the same `transition` line, and the row `<button>` gained `className={isActive ? undefined :
+"admin-row-hover"}`, byte-for-byte matching `feedListButtonStyle`'s established pattern. Also fixed:
+`ChoiceChip` (the "All projects"/"Selected projects only" switch and per-project platform chips),
+`SegmentedControl`'s role/viewer/editor/owner pills, `UsernameEditor`'s collapsed "Set a
+username"/"Edit username" link, and the "← All projects" back link — all raw buttons with zero
+hover/press feedback before this, now all `.admin-btn`.
+
+**Preview-modal chrome** (`components-admin-survey-preview.jsx`): `FeedPreviewModal` already had a
+proper elevated toolbar bar (sticky, `--admin-surface-alt` background, bottom border) around its
+reshuffle button — `SurveyPreviewModal`'s equivalent control row (group selector, reshuffle, Force
+response, Preview-as-mobile) was a bare flex row with no visual grouping at all. Gave it the same
+treatment (`padding`, `border-radius: var(--admin-radius-md)`, `--admin-surface-alt` background,
+`--admin-border-subtle` border) so the two preview modals read as one consistent system instead of
+one having a "toolbar" and the other just floating controls. `Modal.jsx` itself (shared by both)
+was checked and confirmed to already carry every phase 1 win (fade/scale entrance animation, real
+shadow tiers, `.admin-btn` on its close button) — no change needed there.
+
+**Verified live**, dev server confirmed working in this environment, no admin login available (same
+standing limitation as phases 1–2, same fake-session/mocked-fetch/cache-busted-dynamic-import
+techniques already established): all 7 touched files parse clean (`@babel/parser`). Live-mounted
+the real `AdminUsersPage` (fake session, real Edge Function calls correctly 401'ing against the
+fake token — expected, not a bug) and confirmed all 5 rendered buttons, including the previously-bare
+"← All projects" link, carry `.admin-btn`. Live-mounted the real `SurveyPreviewModal` with a
+fabricated survey/experiment-groups and confirmed via `getComputedStyle` the new toolbar bar
+renders with a real background/border/radius (screenshotted too — reads as a genuine control bar
+now, not floating text). Live-mounted the real `SurveyEditor` (wrapped in the real
+`ToastProvider`/`ConfirmProvider`/`PromptProvider`, a fabricated 2-question/1-block/2-group survey)
+and confirmed **all 31 rendered buttons** — not just the 31 source occurrences — carry `.admin-btn`,
+including real question-card controls (Optional/Required toggle, Move up/down, collapse, "Save this
+page's questions to the library", insert-above/below, the survey-health popover trigger) sampled
+directly via their `title`/`aria-label` text; zero console errors beyond the two expected 401s from
+the fake session. **Not verified**: an actual click-through by a real logged-in admin, or any real
+mouse hover (this sandbox's synthetic `hover` events don't reliably trigger real CSS `:hover`
+matching, a caveat this file already documents finding more than once) — class presence and
+computed non-hover styles were confirmed directly instead, the same substitute-verification
+approach phases 1–2 both used for the identical reason.
+
+**Deliberately not touched, staying out of scope for this phase too**: no restructuring of
+`components-admin-surveys-editor.jsx`'s actual layout/hierarchy (only `className` additions —
+touching JSX structure in this file is exactly the risk phase 2 named for skipping it, and nothing
+here required it), the Facebook/Instagram/Amazon post editors' own field *layouts* (only the
+handful of raw buttons found via grep were touched, not `EditorSection`/`Field` usage patterns), and
+`FeedPreviewModal`'s toolbar (already had the bar treatment `SurveyPreviewModal` was missing — no
+change needed).
