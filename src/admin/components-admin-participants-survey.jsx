@@ -44,7 +44,7 @@ import {
   getSurveyAttentionCheckItems,
   countAttentionChecksPassed,
 } from "../utils";
-import { PageHeader, Card, Table, Th, Td, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Tr, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -307,7 +307,7 @@ function MiniHistogram({ nums, binCount = 8, height = 56 }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height }}>
         {bins.map((b, i) => (
           <div
             key={i}
@@ -316,12 +316,13 @@ function MiniHistogram({ nums, binCount = 8, height = 56 }) {
               flex: 1,
               height: Math.max(2, (b.count / max) * (height - 4)),
               background: "var(--admin-accent)",
-              borderRadius: 2,
+              borderRadius: "3px 3px 0 0",
+              transition: "height var(--admin-duration-slow) var(--admin-ease)",
             }}
           />
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--admin-muted)", marginTop: 2 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--admin-text-2xs)", color: "var(--admin-muted)", marginTop: 4 }}>
         <span>{bins[0].x0.toFixed(1)}</span>
         <span>{bins[bins.length - 1].x1.toFixed(1)}</span>
       </div>
@@ -336,22 +337,37 @@ function CategoryBarList({ options, maxWidth = 180 }) {
   return (
     <div>
       {options.map((o) => (
-        <div key={o.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <div key={o.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
           <div
-            style={{ width: 110, fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}
+            style={{ width: 110, fontSize: "var(--admin-text-xs)", color: "var(--admin-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 0 }}
             title={o.label}
           >
             {o.label}
           </div>
           <div
+            title={`${o.count} (${Math.round(o.pct * 100)}%)`}
             style={{
-              width: Math.max(2, (o.pct / max) * maxWidth),
-              height: 9,
-              background: "var(--admin-accent)",
-              borderRadius: 2,
+              position: "relative",
+              width: maxWidth,
+              height: 10,
+              borderRadius: 4,
+              background: "var(--admin-surface-alt)",
+              overflow: "hidden",
+              flexShrink: 0,
             }}
-          />
-          <div style={{ fontSize: 10.5, color: "var(--admin-muted)", whiteSpace: "nowrap" }}>
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: `${Math.max(2, (o.pct / max) * 100)}%`,
+                background: "var(--admin-accent)",
+                borderRadius: "0 4px 4px 0",
+                transition: "width var(--admin-duration-slow) var(--admin-ease)",
+              }}
+            />
+          </div>
+          <div style={{ fontSize: "var(--admin-text-2xs)", color: "var(--admin-muted)", whiteSpace: "nowrap" }}>
             {o.count} ({Math.round(o.pct * 100)}%)
           </div>
         </div>
@@ -524,12 +540,12 @@ function CompositeMeasureBlock({ dataset, composite, summary, actions }) {
             {composite.items.map((it) => {
               const s = summarizeItem(it, dataset.rows);
               return (
-                <tr key={`${it.questionId}::${it.itemKey}`}>
+                <Tr key={`${it.questionId}::${it.itemKey}`}>
                   <Td>{it.itemLabel}</Td>
                   <Td>{s.nAnswered}</Td>
                   <Td>{fmtNum(s.mean)}</Td>
                   <Td>{fmtNum(s.sd)}</Td>
-                </tr>
+                </Tr>
               );
             })}
           </tbody>
@@ -972,7 +988,7 @@ function GroupComparisonSection({ comparison }) {
             </thead>
             <tbody>
               {visibleNumeric.map((c) => (
-                <tr key={c.key}>
+                <Tr key={c.key}>
                   <Td>{c.label}</Td>
                   {c.perGroup.map((g, i) => (
                     <Td key={i}>{g.n ? `${fmtNum(g.mean)} ± ${fmtNum(g.sd)} (n=${g.n})` : "—"}</Td>
@@ -992,7 +1008,7 @@ function GroupComparisonSection({ comparison }) {
                       </span>
                     )}
                   </Td>
-                </tr>
+                </Tr>
               ))}
             </tbody>
           </Table>
@@ -1174,7 +1190,7 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
             </thead>
             <tbody>
               {visible.map((r) => (
-                <tr key={r.session_id || r.participant_id}>
+                <Tr key={r.session_id || r.participant_id}>
                   <Td>{r.participant_id || "—"}</Td>
                   <Td style={{ fontFamily: "monospace", fontSize: 11.5 }}>{r.session_id || "—"}</Td>
                   <Td>{r.submitted_at_iso || "—"}</Td>
@@ -1184,7 +1200,7 @@ function ResponsesSection({ dataset, survey, pageSize, onShowMore }) {
                       <FlagBadge key={f.key} label={f.label} detail={f.detail} />
                     ))}
                   </Td>
-                </tr>
+                </Tr>
               ))}
             </tbody>
           </Table>

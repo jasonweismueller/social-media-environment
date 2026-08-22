@@ -47,7 +47,7 @@ import {
 } from "./components-admin-surveys-editor";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
 
-import { Card as AdminUiCard, Tabs, Button, Toggle, useToast, useConfirm, usePrompt, EmptyState, IconClipboard, IconEye } from "./ui";
+import { Card as AdminUiCard, Tabs, Button, Toggle, PageHeader, useToast, useConfirm, usePrompt, EmptyState, IconClipboard, IconEye } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -774,7 +774,8 @@ function surveyListButtonStyle(isActive) {
     background: isActive ? "var(--admin-accent-soft)" : "var(--admin-surface)",
     border: isActive ? "1px solid var(--admin-accent-border)" : "1px solid var(--admin-border-subtle)",
     boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
-    transition: "all 0.15s ease",
+    transition:
+      "background var(--admin-duration-fast) var(--admin-ease), border-color var(--admin-duration-fast) var(--admin-ease), box-shadow var(--admin-duration-fast) var(--admin-ease)",
   };
 }
 
@@ -831,6 +832,7 @@ function SurveyListContent({
               onClick={() => !isRenaming && onSelectSurvey(s.survey_id)}
               onDoubleClick={() => isActive && startRename(s)}
               title={isActive && !isRenaming ? "Double-click to rename" : undefined}
+              className={isActive ? undefined : "admin-row-hover"}
               style={surveyListButtonStyle(isActive)}
             >
               {isRenaming ? (
@@ -2428,51 +2430,33 @@ export function AdminSurveysPanel({
 
         {survey && (
           <>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 18,
-              }}
-            >
-              <h3 style={{ margin: 0 }}>{survey.name || survey.survey_id || "New survey"}</h3>
+            <PageHeader
+              title={survey.name || survey.survey_id || "New survey"}
+              subtitle={`${linkedFeedCount} linked feed${linkedFeedCount === 1 ? "" : "s"} · ${pageCount} page${pageCount === 1 ? "" : "s"}`}
+              actions={
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setGlobalPreviewOpen(true)}
+                    title="See exactly what a participant would see: the information/consent/instructions pages, then the questions"
+                  >
+                    <IconEye size={14} />
+                    Preview
+                  </Button>
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>
-                  {linkedFeedCount} linked feed
-                  {linkedFeedCount === 1 ? "" : "s"} · {pageCount} page
-                  {pageCount === 1 ? "" : "s"}
-                </div>
-
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setGlobalPreviewOpen(true)}
-                  title="See exactly what a participant would see: the information/consent/instructions pages, then the questions"
-                >
-                  <IconEye size={14} />
-                  Preview
-                </Button>
-
-                <input
-                  ref={importFileRef}
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={handleImportSurveyFile}
-                  style={{ display: "none" }}
-                />
-                {/* Delete survey now lives below the survey list in the
-                    sidebar, next to Save survey — mirrors Delete feed. */}
-              </div>
-            </div>
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={handleImportSurveyFile}
+                    style={{ display: "none" }}
+                  />
+                  {/* Delete survey now lives below the survey list in the
+                      sidebar, next to Save survey — mirrors Delete feed. */}
+                </>
+              }
+            />
 
             {globalPreviewOpen && (
               <SurveyPreviewModal

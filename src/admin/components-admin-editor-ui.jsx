@@ -32,6 +32,7 @@ export function EditorSection({ title, subtitle, badge, defaultOpen = false, chi
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        className="admin-btn"
         style={{
           width: "100%",
           display: "flex",
@@ -41,6 +42,7 @@ export function EditorSection({ title, subtitle, badge, defaultOpen = false, chi
           padding: "12px 14px",
           background: "transparent",
           border: "none",
+          borderRadius: open ? "14px 14px 0 0" : 14,
           borderBottom: open ? "1px solid var(--line)" : "1px solid transparent",
           cursor: "pointer",
           textAlign: "left",

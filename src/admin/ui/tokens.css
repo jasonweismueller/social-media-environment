@@ -49,6 +49,19 @@
   --admin-info-soft: #eff6ff;
   --admin-info-border: #bfdbfe;
 
+  /* Dedicated categorical chart-series hues — deliberately separate from
+     the semantic info/success/warning tokens above. Those are tuned for
+     badges/borders/soft-fill text, not for a multi-series chart mark; reusing
+     them there is the exact "status color doing double duty as series
+     identity" anti-pattern a chart-color review flags. This triad is
+     validated (scripts/validate_palette.js from the dataviz skill) for both
+     modes: light passes clean, dark passes clean once redefined below —
+     the light-token values here are NOT reused as-is in dark mode, only the
+     hue family is (see the dark block further down). */
+  --admin-chart-1: #2a78d6;
+  --admin-chart-2: #1baf7a;
+  --admin-chart-3: #eda100;
+
   /* Layered (ambient + key-light) shadows rather than a single flat blur —
      reads as real depth instead of a faint outline. Existing --admin-
      shadow-sm/-md call sites (the vast majority of the app) get this
@@ -270,6 +283,13 @@ html[data-admin-theme="dark"] .admin-shell {
   --admin-info-ink: #bfdbfe;
   --admin-info-soft: #16233d;
   --admin-info-border: #1d4ed8;
+
+  /* Same validated triad as the light block, re-stepped for the dark
+     surface (not the same hex values — see validate_palette.js output:
+     the light steps fail the dark lightness band outright). */
+  --admin-chart-1: #3987e5;
+  --admin-chart-2: #199e70;
+  --admin-chart-3: #c98500;
 
   --admin-border: #3a4150;
   --admin-border-subtle: #262b35;

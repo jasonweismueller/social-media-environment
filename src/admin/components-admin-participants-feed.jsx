@@ -21,7 +21,7 @@ import {
   isRelevantPostMetricForExport,
   parsePostMetricKey,
 } from "../utils";
-import { PageHeader, Card, Table, Th, Td, Modal, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Tr, Modal, Button, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 
 function RoleGate({ min = "viewer", children, elseRender = null }) {
   return hasAdminRole(min) ? children : elseRender ?? null;
@@ -55,32 +55,38 @@ const isIGApp = () => String(APP || "").toLowerCase() === "ig";
 const isAmazonApp = () => String(APP || "").toLowerCase() === "amz";
 
 /* ------------------------- small inline charts ------------------------- */
+// Dedicated categorical chart tokens (validate_palette.js-checked in both
+// modes, see tokens.css) — deliberately not the semantic info/success/
+// warning tokens, which are tuned for badges/borders, not chart-series
+// identity. CVD separation for this triad sits in the 6-8 "floor" band,
+// which the dataviz skill only allows given a secondary encoding — the
+// direct % labels next to every bar below are that encoding, so color is
+// never the only way to tell a series apart.
 const ENGAGEMENT_SERIES = [
-  { key: "reactedPct", label: "Reacted", color: "var(--admin-info)" },
-  { key: "commentedPct", label: "Commented", color: "var(--admin-success)" },
-  { key: "sharedPct", label: "Shared", color: "var(--admin-warning)" },
+  { key: "reactedPct", label: "Reacted", color: "var(--admin-chart-1)" },
+  { key: "commentedPct", label: "Commented", color: "var(--admin-chart-2)" },
+  { key: "sharedPct", label: "Shared", color: "var(--admin-chart-3)" },
 ];
 
 function EngagementBarChart({ data }) {
   if (!data?.length) return null;
-  const barMaxWidth = 220;
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 12, fontSize: 11, marginBottom: 8, color: "var(--admin-muted)" }}>
+      <div style={{ display: "flex", gap: 14, fontSize: "var(--admin-text-xs)", marginBottom: 10, color: "var(--admin-muted)" }}>
         {ENGAGEMENT_SERIES.map((s) => (
-          <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 8, height: 8, background: s.color, borderRadius: 2, display: "inline-block" }} />
+          <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 8, height: 8, background: s.color, borderRadius: 2, display: "inline-block", flexShrink: 0 }} />
             {s.label}
           </span>
         ))}
       </div>
       {data.map((d) => (
-        <div key={d.id} style={{ marginBottom: 8 }}>
+        <div key={d.id} style={{ marginBottom: 10 }}>
           <div
             style={{
-              fontSize: 11,
-              marginBottom: 3,
+              fontSize: "var(--admin-text-xs)",
+              marginBottom: 4,
               color: "var(--admin-muted)",
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -90,21 +96,46 @@ function EngagementBarChart({ data }) {
           >
             {d.name}
           </div>
-          {ENGAGEMENT_SERIES.map((s) => (
-            <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-              <div
-                style={{
-                  width: Math.max(2, (d[s.key] || 0) * barMaxWidth),
-                  height: 6,
-                  background: s.color,
-                  borderRadius: 2,
-                }}
-              />
-              <span style={{ fontSize: 10, color: "var(--admin-muted)" }}>
-                {Math.round((d[s.key] || 0) * 100)}%
-              </span>
-            </div>
-          ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {ENGAGEMENT_SERIES.map((s) => {
+              const pct = Math.round(clampPct((d[s.key] || 0) * 100));
+              return (
+                <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* A recessive full-width track behind the fill — without
+                      it, a 0% bar simply doesn't exist, giving no sense of
+                      scale relative to what 100% would look like. */}
+                  <div
+                    title={`${s.label}: ${pct}%`}
+                    style={{
+                      position: "relative",
+                      flex: 1,
+                      maxWidth: 220,
+                      height: 8,
+                      borderRadius: 4,
+                      background: "var(--admin-surface-alt)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: `${pct}%`,
+                        background: s.color,
+                        // 4px rounded at the data end only, square at the
+                        // baseline (left edge) it grows from.
+                        borderRadius: "0 4px 4px 0",
+                        transition: "width var(--admin-duration-slow) var(--admin-ease)",
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontSize: "var(--admin-text-2xs)", color: "var(--admin-muted)", width: 32, textAlign: "right", flexShrink: 0 }}>
+                    {pct}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ))}
     </div>
@@ -117,16 +148,23 @@ function SubmissionsTimeChart({ data }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 56, overflowX: "auto", padding: "4px 2px" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 60, overflowX: "auto", padding: "4px 2px" }}>
         {data.map((d) => (
           <div
             key={d.day}
             title={`${d.day}: ${d.count} submission${d.count === 1 ? "" : "s"}`}
-            style={{ width: 10, height: Math.max(2, (d.count / max) * 50), background: "var(--admin-accent)", borderRadius: 2, flexShrink: 0 }}
+            style={{
+              width: 12,
+              height: Math.max(3, (d.count / max) * 52),
+              background: "var(--admin-chart-1)",
+              borderRadius: "3px 3px 0 0",
+              flexShrink: 0,
+              transition: "height var(--admin-duration-slow) var(--admin-ease)",
+            }}
           />
         ))}
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--admin-muted)", marginTop: 2 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--admin-text-2xs)", color: "var(--admin-muted)", marginTop: 4 }}>
         <span>{data[0].day}</span>
         {data.length > 1 && <span>{data[data.length - 1].day}</span>}
       </div>
@@ -953,16 +991,29 @@ export function StatCard({ title, value, sub, compact = false }) {
   return (
     <div
       style={{
-        padding: compact ? "10px 12px" : "12px 14px",
+        padding: compact ? "10px 12px" : "14px 16px",
         borderRadius: "var(--admin-radius-md, 10px)",
         border: "1px solid var(--admin-border-subtle)",
         background: "var(--admin-surface)",
+        boxShadow: "var(--admin-shadow-xs)",
       }}
     >
-      <div style={{ fontSize: compact ? 11 : 12, color: "var(--admin-muted)" }}>{title}</div>
-      <div style={{ fontSize: compact ? 17 : 19, fontWeight: 700, color: "var(--admin-text)" }}>{value}</div>
+      <div style={{ fontSize: compact ? "var(--admin-text-2xs)" : "var(--admin-text-xs)", color: "var(--admin-muted)", fontWeight: 600 }}>
+        {title}
+      </div>
+      <div
+        style={{
+          fontSize: compact ? "var(--admin-text-lg)" : "var(--admin-text-2xl)",
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          color: "var(--admin-text)",
+          marginTop: 2,
+        }}
+      >
+        {value}
+      </div>
       {sub ? (
-        <div style={{ fontSize: compact ? 11 : 12, color: "var(--admin-muted)", marginTop: 4 }}>
+        <div style={{ fontSize: compact ? "var(--admin-text-2xs)" : "var(--admin-text-xs)", color: "var(--admin-muted)", marginTop: 4 }}>
           {sub}
         </div>
       ) : null}
@@ -1019,7 +1070,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                   : 0;
 
               return (
-                <tr key={p.post_id}>
+                <Tr key={p.post_id}>
                   <Td style={{ fontFamily: "monospace" }}>{p.post_id}</Td>
                   <Td>{p.name || "—"}</Td>
                   <Td style={{ textAlign: "center" }}>{p.reacted ? "✓" : "—"}</Td>
@@ -1030,7 +1081,7 @@ export function ParticipantDetailModal({ open, onClose, submission }) {
                   <Td style={{ textAlign: "center" }}>{p.shared ? "✓" : "—"}</Td>
                   <Td style={{ textAlign: "center" }}>{p.reported ? "✓" : "—"}</Td>
                   <Td style={{ textAlign: "right" }}>{sShort(dwellSeconds)}</Td>
-                </tr>
+                </Tr>
               );
             })}
           </tbody>
@@ -1832,7 +1883,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
             </thead>
             <tbody>
               {perPostList.map((p) => (
-                <tr key={p.id}>
+                <Tr key={p.id}>
                   <Td style={{ fontFamily: "monospace" }}>{p.id}</Td>
                   <Td>{p.name || "—"}</Td>
                   {AMZ ? (
@@ -1853,7 +1904,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
                     </>
                   )}
                   <Td style={{ textAlign: "right" }}>{sShort(p.avgDwellS)}</Td>
-                </tr>
+                </Tr>
               ))}
             </tbody>
           </Table>
@@ -1884,7 +1935,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
               </thead>
               <tbody>
                 {visible.map((r) => (
-                  <tr key={r.session_id}>
+                  <Tr key={r.session_id}>
                     <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {r.participant_id || "—"}
                     </Td>
@@ -1976,7 +2027,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
                         Details
                       </Button>
                     </Td>
-                  </tr>
+                  </Tr>
                 ))}
               </tbody>
             </Table>

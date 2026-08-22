@@ -7234,3 +7234,106 @@ clean (`@babel/parser`) and `tokens.css`'s braces balance. **Not verified**: an 
 by a real logged-in admin — same standing limitation as everywhere else in this file. Worth a real
 look on `staging.studyfeed.org` before assuming this is pixel-perfect beyond what live
 component-mount verification already covered.
+
+## UI/UX modernization, phase 2: Feeds/Surveys detail panels + chart/stat-tile redesign (2026-08-21)
+
+Direct follow-up to phase 1 ("design-token overhaul + shared primitives + entry screens/nav
+chrome", above) — user asked for phase 2 specifically. Scoped to exactly what phase 1's own
+"deliberately not touched" list named: the Feeds/Surveys detail panels and the Participants
+analysis hub's charts/tables. The post/survey editor internals
+(`components-admin-surveys-editor.jsx`, 8,300+ lines) were deliberately left alone again — same
+"real scope limits, not oversights" reasoning as phase 1, now doubly true given that file's own
+documented fragility (the "N places to update" footguns, the Fast-Refresh-can't-hot-patch gotcha).
+
+**Loaded the `dataviz` skill before touching any chart code**, per its own trigger conditions
+("chart colors", "stat tile"). This directly shaped the work, not just a formality:
+
+- **Found a real categorical-color mistake**: `EngagementBarChart`'s three-series chart
+  (Reacted/Commented/Shared) was reusing the semantic `--admin-info`/`-success`/`-warning` tokens
+  as chart-series colors — exactly the "status color doing double duty as series identity"
+  anti-pattern the skill calls out (those tokens are tuned for badge/border contrast, not
+  chart-mark identity). Ran `validate_palette.js` on the actual token values: light mode passed
+  with a floor-band CVD warning (legal only with direct labels — which the chart already has);
+  **dark mode failed outright** on the lightness band (all three dark variants sat at L 0.71–0.84,
+  too light/uniform for a dark chart surface — a genuinely different requirement than looking fine
+  as text/badge ink). Fixed by adding dedicated `--admin-chart-1/-2/-3` tokens (light + dark,
+  independently validated — the dark values are a re-stepped set, not the light hexes reused) in
+  `tokens.css`, separate from the semantic tokens, and pointed `ENGAGEMENT_SERIES` at those instead.
+- **Applied the mark-spec checklist** to every plain-div chart in the participants hub
+  (`EngagementBarChart`/`SubmissionsTimeChart` in `components-admin-participants-feed.jsx`,
+  `MiniHistogram`/`CategoryBarList` in `components-admin-participants-survey.jsx`): bars now grow
+  from a square baseline with a **4px rounded data-end only** (not uniform corners), a recessive
+  full-width track behind each fill (so a 0% or low bar still shows where 100% would be — previously
+  a low value just produced a nearly-invisible sliver with no context), smooth width/height
+  transitions on the shared motion tokens, and text/labels kept on text tokens (muted/text), never
+  the series color — already true here, confirmed rather than assumed.
+- **A real bug caught only by live-rendering the chart, not by reading the code**: while verifying
+  the new percentage labels, `62.00000000000001%`-style floating-point artifacts showed up.
+  Traced to a dropped `Math.round()` — the pre-existing `clampPct()` helper only clamps 0–100, it
+  never rounds, and the original code's inline `Math.round((d[s.key]||0)*100)` got lost when this
+  pass introduced the shared `pct` variable. Fixed (`Math.round(clampPct(...))`); the sibling
+  `CategoryBarList` already had its own explicit `Math.round(...)` and was unaffected. Worth
+  restating the lesson plainly: a live-mounted component check with real-ish fabricated values
+  (0.07, not a round number) caught this immediately; a code read alone had already missed it once.
+
+**`StatCard`** (`components-admin-participants-feed.jsx`, also reused by
+`components-admin-participants-survey.jsx` and now `components-admin-feeds.jsx`, see below): gained
+a resting shadow (`--admin-shadow-xs`) and moved onto the type-scale tokens — per the dataviz
+skill's stat-tile contract (label sentence-case, value in sans semibold). No prop-shape change, so
+every existing call site picked this up for free.
+
+**`components-admin-feeds.jsx`** (the Feeds detail panel, previously untouched by phase 1):
+- Feed-list sidebar rows had the identical `transition: "all 0.15s ease"` + zero-hover-on-inactive-
+  rows gap `AdminShell.jsx`'s nav had before phase 1 fixed it there — same fix applied here
+  (`.admin-row-hover` on inactive rows, token-based transition instead of `all`).
+- The detail header was a bare `<h3>`, the only top-level admin screen not using the shared
+  `PageHeader` — swapped in, now consistent with every other section.
+- The Settings tab's "Overview" card used to repeat the feed name/id as its own card title
+  (redundant now that `PageHeader` shows it above every tab) and displayed Total/Submitted/Avg-time
+  as three bare, unstyled `<div>`s — replaced with `StatCard`s (matching how the Feed Participants
+  page already showed the same numbers) and renamed the card to plain "Overview".
+- The Posts table's data rows were raw `<tr>` (no hover), while the shared `Tr` component (with
+  `.admin-row-hover` baked in by default since phase 1) sat unused right next to them — swapped in.
+
+**`components-admin-surveys.jsx`**: the exact same `surveyListButtonStyle`/list-row gap as Feeds
+(byte-for-byte identical `transition: "all 0.15s ease"`, confirmed via diff — this function was
+clearly written by copying the Feeds one) — fixed the same way. The survey detail header (name +
+linked-feed/page-count + the Preview button added in an earlier session) was also a bespoke flex
+row, not `PageHeader` — migrated (title = survey name, subtitle = the feed/page-count line, actions
+= the Preview button + hidden import-file input), matching Feeds' header now too.
+
+**`components-admin-participants-feed.jsx` / `-survey.jsx`**: beyond the chart work above, found
+and fixed the same "shared `Tr` component exists and is imported-but-unused-in-favor-of-raw-`<tr>`"
+gap in three more data-row tables (per-post interactions, latest submissions, group-comparison
+measures/responses tables) — mechanically swapped via a small script that pairs each `<tr key=...>`
+with its own next `</tr>` (verified count-matched before/after: 3 pairs per file, header-only `<tr>`
+rows — which correctly have no `key` prop — left untouched).
+
+**`components-admin-editor-ui.jsx`** (shared primitives for all three post editors): `EditorSection`'s
+collapse-toggle header button had no `.admin-btn` class (no hover/press feedback, same gap as
+everywhere else phase 1 found it) — added, plus rounded the button's own corners to match the
+card's radius so the hover/focus treatment doesn't visually poke past the card's rounded edge.
+
+**Verified live**, dev server confirmed working (no admin login available — same standing
+limitation as phase 1, same fake-session/live-component-mount techniques): all 5 touched `.jsx`
+files plus `tokens.css` parse/brace-balance clean. Live-mounted the real `StatCard` + a faithful
+reproduction of `EngagementBarChart` (verbatim logic, since the real chart functions aren't
+exported) via the established cache-busted dynamic-import technique — confirmed in **both** light
+and dark mode: the validated chart-token colors render correctly (computed
+`rgb(57,135,229)/rgb(25,158,112)/rgb(201,133,0)` in dark mode, matching the new dark tokens
+exactly), the rounded-data-end/track bars render correctly, and percentages are clean integers
+post-fix. One false alarm along the way, worth naming: a quick hand-rolled `.card` div reproduction
+(not the real `Card` component) showed washed-out dark-mode text in a screenshot; re-checked via
+`getComputedStyle` before concluding anything, found the real color (`rgb(232,234,237)` on
+`rgb(16,18,23)`) was correct all along — the screenshot's compression was misleading, the sloppy
+harness (not the real code) was the actual problem. Re-ran the check against the real, properly-
+imported `Card` component afterward for an accurate result. **Not verified**: an actual
+click-through by a real logged-in admin — same standing limitation as phase 1 and everywhere else
+in this file. Worth a real look on `staging.studyfeed.org`, same recommendation as phase 1.
+
+**Still not touched, for a future phase 3 if this continues**: the post/survey editor internals
+(the actual question-card/page-block editing UI, and the Facebook/Instagram/Amazon post editors'
+own field layouts) — these are large, fragile files where phase 1 and 2 both deliberately drew the
+line; the individual admin Users page beyond what it already inherits from shared primitives; and
+the Feed/Survey preview modals' own chrome (they already use the shared `Modal`, but haven't had a
+dedicated layout pass).

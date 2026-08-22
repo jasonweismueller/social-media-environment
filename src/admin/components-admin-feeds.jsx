@@ -1,8 +1,8 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar, hasAdminRole, APP } from "../utils";
-import { Card, Table, Th, Td, Toggle, Button, IconButton, Tabs, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus, IconEye } from "./ui";
-import { FeedParticipantsPage } from "./components-admin-participants-feed";
+import { Card, Table, Th, Td, Tr, Toggle, Button, IconButton, Tabs, PageHeader, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus, IconEye } from "./ui";
+import { FeedParticipantsPage, StatCard } from "./components-admin-participants-feed";
 import { FeedPreviewModal } from "./components-admin-feed-preview";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -18,7 +18,8 @@ function feedListButtonStyle(isActive) {
     background: isActive ? "var(--admin-accent-soft)" : "var(--admin-surface)",
     border: isActive ? "1px solid var(--admin-accent-border)" : "1px solid var(--admin-border-subtle)",
     boxShadow: isActive ? "var(--admin-shadow-sm)" : "none",
-    transition: "all 0.15s ease",
+    transition:
+      "background var(--admin-duration-fast) var(--admin-ease), border-color var(--admin-duration-fast) var(--admin-ease), box-shadow var(--admin-duration-fast) var(--admin-ease)",
   };
 }
 
@@ -138,6 +139,7 @@ function FeedListContent({
               onClick={() => !isRenaming && onSelectFeed(f.feed_id)}
               onDoubleClick={() => isActive && startRename(f)}
               title={isActive && canRename && !isRenaming ? "Double-click to rename" : undefined}
+              className={isActive ? undefined : "admin-row-hover"}
               style={feedListButtonStyle(isActive)}
             >
               {isRenaming ? (
@@ -407,9 +409,7 @@ export function AdminFeedsPanel({
 
         {selectedFeedId && (
           <>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <h3 style={{ margin: 0 }}>{selectedFeedName || selectedFeedId}</h3>
-            </div>
+            <PageHeader title={selectedFeedName || selectedFeedId} subtitle={`ID: ${selectedFeedId}`} />
 
             <Tabs
               ariaLabel="Feed detail sections"
@@ -494,7 +494,7 @@ export function AdminFeedsPanel({
                           const postLabel = (p.postName || p.name || postNames[p.id] || "").trim();
                           const authorLabel = p.author || "";
                           return (
-                            <tr key={p.id}>
+                            <Tr key={p.id}>
                               <Td>
                                 <div className="avatar">
                                   <img
@@ -548,7 +548,7 @@ export function AdminFeedsPanel({
                                   </IconButton>
                                 </div>
                               </Td>
-                            </tr>
+                            </Tr>
                           );
                         })}
                       </tbody>
@@ -573,8 +573,7 @@ export function AdminFeedsPanel({
             {activeFeedTab === "settings" && (
               <div style={{ display: "grid", gap: 16 }}>
                 <Card
-                  title={selectedFeedName || selectedFeedId}
-                  subtitle={`ID: ${selectedFeedId}`}
+                  title="Overview"
                   actions={
                     <RoleGate min="editor">
                       <Button size="sm" variant="secondary" onClick={onCopyFeed} title="Duplicate this feed's posts into a new feed">
@@ -583,23 +582,16 @@ export function AdminFeedsPanel({
                     </RoleGate>
                   }
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap", fontSize: 13 }}>
-                    <div>
-                      <div style={{ color: "var(--admin-muted)", fontSize: 11 }}>Total participants</div>
-                      <div style={{ fontWeight: 700, fontSize: 17 }}>{stats ? stats.total : "—"}</div>
-                    </div>
-                    <div>
-                      <div style={{ color: "var(--admin-muted)", fontSize: 11 }}>Submitted</div>
-                      <div style={{ fontWeight: 700, fontSize: 17 }}>{stats ? stats.submitted : "—"}</div>
-                    </div>
-                    <div>
-                      <div style={{ color: "var(--admin-muted)", fontSize: 11 }}>Avg time (m:ss)</div>
-                      <div style={{ fontWeight: 700, fontSize: 17 }}>
-                        {stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
-                      </div>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "stretch", gap: 12, flexWrap: "wrap" }}>
+                    <StatCard compact title="Total participants" value={stats ? stats.total : "—"} />
+                    <StatCard compact title="Submitted" value={stats ? stats.submitted : "—"} />
+                    <StatCard
+                      compact
+                      title="Avg time (m:ss)"
+                      value={stats && stats.avg_ms_enter_to_submit != null ? msToMinSec(stats.avg_ms_enter_to_submit) : "—"}
+                    />
                     {!stats && (
-                      <Button size="sm" variant="secondary" onClick={() => onLoadStats(selectedFeedId)}>
+                      <Button size="sm" variant="secondary" onClick={() => onLoadStats(selectedFeedId)} style={{ alignSelf: "center" }}>
                         Load stats
                       </Button>
                     )}
