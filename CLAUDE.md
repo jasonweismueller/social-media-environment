@@ -7711,3 +7711,49 @@ black backgrounds/white text throughout, including the pill). Zero console error
 image-load failures from the harness's fabricated, unreachable avatar URLs. `App-instagram.jsx`
 parses clean and `styles-instagram.css`'s braces balance. **Not verified**: an actual click-through
 by a real logged-in admin/participant — same standing limitation as every entry in this file.
+
+## Instagram realistic surroundings, round 3: pill moved right, avatar-toggle audited (2026-08-22)
+
+Two more direct-feedback items the same day: the floating Messages pill should sit bottom-**right**
+(correcting round 2's bottom-left, which was itself per an earlier explicit instruction — real
+Instagram's own placement, and now confirmed the actually-wanted one) rather than bottom-left, and
+the "Suggested for you" avatars plus the pill's own avatar should show real photos whenever
+`realistic_surroundings_avatars` is on.
+
+**Pill position**: one-line fix — `.floating-messages-pill`'s `left:24px` → `right:24px`
+(`styles-instagram.css`), comments updated to match.
+
+**Avatar-toggle audit — investigated as a possible bug, concluded the code was already correct.**
+Re-read `PageWithRails`'s avatar-loading effect end to end (`showAvatars = !!flags?.
+realistic_surroundings_avatars`, gates whether `getAvatarPool` is even called, feeds into both
+`buildRailContacts` calls — suggestions and the pill's own separately-seeded pick), confirmed
+`normalizeFlags()` doesn't drop `realistic_surroundings_avatars` anywhere in the chain (grepped for
+it directly in `App-instagram.jsx`), and confirmed `pickUniqueDeterministic`/`pickDeterministic`
+(`utils-core.js`) correctly return `null` only for a genuinely empty pool, never silently for a
+populated one. No bug found in the code itself. Rather than only asserting this, verified it
+directly: mounted the real `buildRailContacts` + the exact avatar-toggle branching logic from
+`PageWithRails` in a harness, once with a **real, network-independent data-URI image** (a 1×1 PNG,
+chosen specifically so the test can't be fooled by a broken-but-present `<img src>` the way the
+unreachable-domain URLs used in earlier rounds' verification could) fed as the pool, once with an
+empty pool — confirmed 6/6 real `<img>` elements with `naturalWidth: 1` (proof the image genuinely
+decoded, not just that the attribute was set) when avatars are on, and 6/6 blank-circle fallbacks
+with zero `<img>` elements when off, across both the suggestions list and the pill.
+
+**The one real caveat, not a code bug**: `getAvatarPool` fetches real avatar photos from a
+CloudFront-fronted S3 manifest, and this sandbox's `localhost` origin is not on that CDN's allowed-
+origins list (see "Avatar/topic-image assets" and the 2026-08-08 CORS root-cause entries earlier in
+this file) — so a real click-through *in this specific sandbox* would likely still show blank
+circles regardless of the toggle, purely because the CORS-blocked fetch throws and is caught into an
+empty array (`getAvatarPool`'s own `try{...}catch{return []}`). This is a pre-existing, already-
+documented environment limitation unrelated to anything built this session — real participants on
+`staging.studyfeed.org`/`studyfeed.org` are unaffected, only this local sandbox is.
+
+**Verified live**: pill position confirmed via `getBoundingClientRect()` rather than a screenshot —
+`right: 1256` in a `1280`px-wide viewport, i.e. exactly `24px` from the true right edge, matching
+`right:24px` precisely; a screenshot taken immediately after didn't visually reflect the resized
+viewport (a tooling artifact of this sandbox's screenshot capture, not a real rendering problem —
+confirmed via `window.innerWidth`/`document.documentElement.clientWidth` both correctly reading
+`1280` at the time), so the direct-geometry check was trusted over the visual one. All touched files
+parse clean and `styles-instagram.css`'s braces balance. **Not verified**: an actual click-through by
+a real logged-in admin/participant, or the avatar toggle against the real CDN outside this sandbox —
+same standing limitations as every entry in this file.

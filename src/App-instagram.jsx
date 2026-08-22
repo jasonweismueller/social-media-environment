@@ -582,15 +582,16 @@ function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
       )}
     </div>
 
-    {/* Real Instagram's floating Direct-Messages pill (bottom-left,
-        per direct reference/placement request) — position:fixed relative
-        to the viewport, not the rail, so it's rendered as a sibling of
-        .page rather than nested inside a rail (a rail's own ghost-mode
-        `filter` would otherwise create a containing block that breaks
-        fixed positioning; real mode resets that, but staying outside
-        avoids depending on it). Deliberately no unread-count badge — see
-        the "no red 1 notification" instruction elsewhere in this session,
-        same reasoning already applied to the left-rail Messages row. */}
+    {/* Real Instagram's floating Direct-Messages pill (bottom-right,
+        matching the real reference screenshot's actual placement) —
+        position:fixed relative to the viewport, not the rail, so it's
+        rendered as a sibling of .page rather than nested inside a rail (a
+        rail's own ghost-mode `filter` would otherwise create a containing
+        block that breaks fixed positioning; real mode resets that, but
+        staying outside avoids depending on it). Deliberately no
+        unread-count badge — see the "no red 1 notification" instruction
+        elsewhere in this session, same reasoning already applied to the
+        left-rail Messages row. */}
     {realisticOn && (
       <div className="floating-messages-pill" aria-hidden="true">
         {LEFT_RAIL_ICONS.Messages}

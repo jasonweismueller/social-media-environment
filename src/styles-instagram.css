@@ -346,11 +346,11 @@ actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 
 /* Real Instagram's floating Direct-Messages pill — fixed to the viewport
    (not the rail), purely decorative like everything else in this feature
-   (pointer-events:none, aria-hidden). Bottom-left per direct placement
-   request. Deliberately no unread-count badge (see the "no red 1
-   notification" instruction this session). */
+   (pointer-events:none, aria-hidden). Bottom-right, matching the real
+   reference screenshot's actual placement. Deliberately no unread-count
+   badge (see the "no red 1 notification" instruction this session). */
 .floating-messages-pill{
-  position:fixed; left:24px; bottom:24px; z-index:50; pointer-events:none;
+  position:fixed; right:24px; bottom:24px; z-index:50; pointer-events:none;
   display:flex; align-items:center; gap:10px;
   background:var(--ig-card); border-radius:999px; box-shadow:var(--ig-shadow);
   padding:10px 16px 10px 14px; font-size:16px; font-weight:700; color:var(--ig-text);
