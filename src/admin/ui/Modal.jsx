@@ -120,7 +120,20 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
         alignItems: fullScreen ? "stretch" : "center",
         justifyContent: fullScreen ? "stretch" : "center",
         padding: fullScreen ? 0 : 20,
-        zIndex: 2000,
+        // Deliberately far above every other z-index this app uses,
+        // including the older, unrelated `../ui-core` Modal (the
+        // participant-facing dialog reused for the admin post editor,
+        // z-index 11000/11001) — that older system predates this shared
+        // design system and was never reconciled with it. `useConfirm()`
+        // renders through this component, and a confirm dialog invoked
+        // from *inside* an already-open `../ui-core` Modal (e.g. "Discard
+        // changes?" when closing the post editor) previously rendered
+        // underneath that editor's own backdrop at the old zIndex:2000 —
+        // completely invisible and unclickable, so both the editor's "X"
+        // and Escape (which also resolves to the same hidden confirm
+        // dialog once it's mounted) appeared to do nothing. See
+        // `closeEditing` in components-admin-dashboard.jsx.
+        zIndex: 20000,
         animation: `admin-fade-in var(--admin-duration-base) var(--admin-ease) both`,
       }}
     >

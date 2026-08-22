@@ -134,7 +134,12 @@ export function ToastProvider({ children }) {
         position: "fixed",
         top: 16,
         right: 16,
-        zIndex: 3000,
+        // Kept above Modal.jsx's own zIndex (now 20000, raised for the
+        // same reason documented there) so a toast fired from inside an
+        // open modal — e.g. a save-failed error — still surfaces instead
+        // of rendering hidden behind it. Same relative gap (+1000) as
+        // before that change.
+        zIndex: 21000,
         display: "flex",
         flexDirection: "column",
         gap: 8,

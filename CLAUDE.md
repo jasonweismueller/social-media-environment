@@ -7859,3 +7859,84 @@ project → platform → dashboard flow end to end (would conclusively prove the
 pure-URL-logic check already done) — same standing no-login limitation as everywhere else in this
 file. Worth prioritizing on `staging.studyfeed.org` given this was a real, reported, and now
 understood navigation bug, not just a polish item.
+
+## Real bug found and fixed: post editor's "X"/Escape did nothing once the post had unsaved changes (2026-08-22)
+
+Direct report: mid-edit on a post, the admin session-expiry banner appeared, and after that neither
+the post editor's "X" button nor Escape would close it. Investigated via a research agent mapping
+every modal/z-index/keydown-handler involved before touching anything, since the symptom (two
+independent-seeming failures — click and Escape both dead) pointed at something structural rather
+than a simple missing handler.
+
+**Root cause: a z-index inversion between two unrelated modal systems, not the session-expiry
+banner itself** — though the banner's own overlay compounds the same bug class. This app has two
+modal implementations that evolved independently and were never reconciled: the post editor's own
+dialog (`components-admin-dashboard.jsx`) imports `Modal` from `../ui-core` — the same generic
+dialog Facebook/Instagram/Amazon's real comment/share sheets use, `.modal-backdrop`/`.modal` in the
+platform stylesheets, **z-index 11000/11001** — while `useConfirm()`/`usePrompt()`/plain `Modal` from
+the admin design system (`src/admin/ui/Modal.jsx`) was hardcoded at **z-index 2000**. `closeEditing`
+(the function behind both the "X" and Escape, since `../ui-core`'s `Modal` wires both to the same
+`onClose` prop) checks whether the post is dirty and, if so, `await confirm({...})` before actually
+closing — that confirm dialog renders through the *admin* `Modal` at z-index 2000, **underneath** the
+post editor's own still-mounted backdrop at 11000/11001. The confirmation the user needs to answer
+to close the editor was there the whole time — completely invisible and unclickable, hidden behind
+the editor it was trying to close. Clicking "X" looked like nothing happened because nothing visible
+did. Escape was worse than inert: since the (invisible) confirm dialog was genuinely mounted, its own
+`document`-level Escape listener (`Modal.jsx`'s standard behavior) caught the next Escape press and
+resolved the confirm promise as **Cancel** — silently answering "keep editing" to a question the user
+never saw, so `closeEditing` correctly took its early-return branch and never closed anything. Every
+further X/Escape press just repeated the same invisible cycle.
+
+**Why the session-expiry banner is what surfaced it, without being the root cause**: this z-index
+inversion reproduces any time the post is dirty when the editor is closed, independent of session
+state. But `sessExpired`'s own overlay (`.admin-expired-backdrop`, full-viewport, z-index 9999, no
+Escape/dismiss path of its own by design — the user is meant to be forced to re-auth) sits in the
+same stacking window between the hidden confirm dialog (2000) and the editor (11000/11001), and
+would independently block clicks to anything at or below z 9998 regardless of the confirm-dialog
+bug. Two compounding stacking problems, not one — fixing the confirm-dialog inversion is the fix
+that actually restores the reported "X does nothing" symptom, since the expired-session overlay was
+never actually the thing intercepting the click in this specific report (confirmed via the research
+agent's z-index trace: post editor is always the top layer of the three, so the expired overlay was
+never physically in front of the editor's own "X" button — the invisible-confirm-dialog was the
+real, sole cause of *that* specific symptom).
+
+**Fix**: raised `src/admin/ui/Modal.jsx`'s hardcoded `zIndex: 2000` to `20000` — comfortably above
+every z-index value used anywhere in the admin context (`../ui-core` Modal's 11000/11001, the
+session-expired overlay's 9999, the session-expiring banner's 9500) — so `ConfirmDialog`/
+`PromptDialog`/plain `Modal` reliably render on top of *any* other admin surface that might already
+be open, which is the whole point of a confirmation dialog. Deliberately not a per-instance/dynamic
+z-index stack — every real use of `useConfirm()`/`usePrompt()` in this app is invoked as a "confirm
+this action within whatever's already open" pattern, so one fixed value above everything else is
+sufficient and far simpler than a stacking-context scheme. **`Toast.jsx`'s `zIndex: 3000` bumped to
+`21000` in the same pass**, preserving its existing (and correct) "toast always visible over a modal"
+relationship — a save-failed error toast fired from inside an open dialog needs to stay visible, not
+get buried under the now-much-higher `Modal`. `Popover.jsx`'s `zIndex: 1000` was left unchanged — a
+popover losing to a modal that opens on top of it is already the correct/expected relationship at
+either the old or new gap.
+
+**The far larger `zIndex: 100000`/`50000`/`30000`-class values found while auditing this (in
+`src/ui-posts/*.jsx` — bio-hover cards, comment/share sheets, intervention blocks) were deliberately
+left untouched** — those are participant-facing feed UI, never mounted in the same route tree as the
+admin dashboard (admin and participant delivery are mutually exclusive `/admin/*` vs. `/` routes in
+the same `Routes` tree), so they can't collide with `Modal`/`Toast` regardless of value and don't
+need to factor into this fix's headroom calculation.
+
+**Verified live**, dev server confirmed working, no admin login available (same standing limitation
+as everywhere else in this file): reproduced the exact reported stacking scenario directly — mounted
+a fake "post editor" using the real `../ui-core` Modal's own CSS classes and z-index
+(`.modal-backdrop`/`.modal`, 11000/11001) wrapping a real `useConfirm()` call, matching
+`closeEditing`'s actual shape. Clicked its "X": confirmed via `document.elementFromPoint()` at the
+real confirm dialog's own on-screen center that the topmost element hit is now the confirm dialog
+itself (`hitElementIsInsideDialog: true`, showing the actual "This post has unsaved changes..." text)
+— before this fix, that same coordinate would have resolved to the fake editor's own backdrop
+instead, exactly reproducing "clicking looks like it does nothing." Clicked the real "Discard"
+button inside the now-reachable dialog and confirmed the editor genuinely closed
+(`editorClosed: true`, dialog unmounted) — the full click path works end-to-end, not just the
+z-index in isolation. Screenshotted the visible, on-top confirm dialog too. Both files parse clean.
+**Not verified**: the Escape-key path specifically (the click path was verified directly, and the
+Escape bug shares the identical root cause per the research agent's trace — both `onClose` triggers
+in `../ui-core`'s `Modal` call the same `closeEditing`, so the same z-index fix resolves both by
+construction — but Escape wasn't independently exercised through a live keydown event), and an
+actual click-through by a real logged-in admin — same standing limitation as every entry in this
+file. Worth a real click-through on staging: open a post, make an edit, wait for (or fake) the
+session-expiry banner, then confirm "X" now shows a real, clickable "Discard changes?" prompt.
