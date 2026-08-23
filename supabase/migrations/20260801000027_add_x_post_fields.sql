@@ -1,0 +1,22 @@
+-- Real bug found via a full read/write round-trip test (not just an
+-- in-memory component render): `posts` was designed entirely around
+-- Facebook/Instagram/Amazon's field set (see 20260801000004_posts.sql's own
+-- comment — "Field list taken directly from makeRandomPost() / the editor
+-- components... Facebook has the largest field set"), written before X
+-- existed. X's admin editor (components-admin-editor-x.jsx) reads/writes
+-- `handle`/`verified`/`like_count`/`reply_count`/`repost_count`/`view_count`
+-- on the frontend post object, but `mapPostRowToRaw`/`mapRawPostToRow`
+-- (utils-backend-supabase.js) are a fixed allowlist that never knew these
+-- field names — meaning every one of them was silently dropped the moment
+-- an admin clicked "Save"/"Publish" on a real X post, and would have been
+-- dropped again on read even if they'd somehow made it into the row.
+--
+-- `handle`/`verified` get their own columns (a text and a boolean, neither
+-- fits the existing generic `metrics` jsonb column semantically). The four
+-- engagement counts deliberately do NOT get four more columns — they're
+-- folded into the existing `metrics` jsonb column instead (as
+-- `metrics.likes`/`.replies`/`.reposts`/`.views`), the same column
+-- Facebook's own `metrics.comments`/`.shares` already lives in — no
+-- collision risk since a given post row belongs to exactly one app's feed.
+alter table public.posts add column handle text;
+alter table public.posts add column verified boolean not null default false;

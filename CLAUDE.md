@@ -8156,3 +8156,83 @@ staging buffer at all, unlike how every other multi-file feature in this file's 
 Worth deliberately routing this through `main` → staging first before it reaches `production`,
 given it's a first draft of an entirely new participant-facing surface, not an iteration on an
 already-battle-tested one.
+
+## Two real bugs found the same day, via a genuine backend round-trip test (2026-08-23)
+
+Direct report: "none of the feed toggles work in the X environment." Investigated by finally doing
+what the previous entry's own verification section admitted it hadn't done — a real read/write
+round trip through the actual Supabase mapping layer, not a component mount with hand-built
+in-memory objects (which is all the previous entry's "verified live" section actually covered).
+Two distinct real bugs surfaced this way, neither of which a pure component-render test could ever
+have caught.
+
+**Bug 1 — X posts' `handle`/`verified`/engagement counts were silently dropped on every save and
+load.** `posts` (`20260801000004_posts.sql`) was designed entirely around Facebook/Instagram/
+Amazon's field set — its own header comment says so explicitly ("Field list taken directly from
+makeRandomPost()... Facebook has the largest field set"), written before X existed.
+`mapPostRowToRaw`/`mapRawPostToRow` (`utils-backend-supabase.js`) are a fixed allowlist mapping
+specific DB columns to specific JS field names — neither one had ever heard of `handle`/`verified`/
+`like_count`/`reply_count`/`repost_count`/`view_count`, the six fields X's own admin editor
+(`components-admin-editor-x.jsx`) reads and writes on the post object. Confirmed live: mounted the
+real `App-x.jsx` end-to-end (not just `Feed`/`PostCard` in isolation) with `window.fetch` patched
+to serve a fabricated `posts` row shaped exactly like a real Supabase row, and watched the display
+name render correctly (`author` was already in the old allowlist) while handle/verified/text/counts
+all came back blank — the exact "looks fine in an isolated component test, silently broken through
+the real data path" gap this file's own postmortems (the `posts.id` collision incident, the
+`normalizeFlags` incident) already warn about, repeating itself for a fourth platform.
+
+Fixed with a new migration, **`20260801000027_add_x_post_fields.sql`** — `handle text` and
+`verified boolean not null default false` as two new dedicated columns (purely additive, applied to
+both Supabase projects, confirmed via `information_schema.columns` on each before relinking back to
+production). The four engagement counts deliberately did **not** get four more dedicated columns —
+folded into the *existing* generic `metrics` jsonb column instead (`metrics.likes`/`.replies`/
+`.reposts`/`.views`, alongside Facebook's own `metrics.comments`/`.shares` in that same column, no
+collision risk since one post row belongs to exactly one app's feed) — no schema change needed for
+those four at all. `mapPostRowToRaw`/`mapRawPostToRow` both updated to read/write all six fields;
+the write side merges into `metrics` (spreads the existing object forward, only overwrites the keys
+actually present in `raw`) rather than replacing it outright, so a future field someone else adds to
+`metrics` can't get silently clobbered by this addition.
+
+**Bug 2 — every single feed-flag toggle failed on a feed that had never been published, for every
+app, not just X.** `supabaseSetFeedFlags` (the one function every one of `toggleFlag`'s ~12 toggles
+routes through — time/avatar/image/name/bio/engagement/pacing/surroundings/dark/etc., literally
+all of them) did a plain `.update({flags: merged}).eq("id", composedFeedId).select("flags").single()`
+— PostgREST's `.single()` modifier requires *exactly* one matching row, and throws when zero rows
+match. "+ New feed" in the admin UI is pure client-state until the first publish (`savePostsToBackend`
+is what actually inserts the `feeds` row) — so a brand-new, never-yet-published feed genuinely has
+no row in `feeds` yet, and every flag toggle attempt against it fails outright, visually reverting
+(the toggle's own busy-state `finally` block resets it back to unset once the thrown error is
+caught). **This is not an X-specific bug at all** — the identical failure would hit a brand-new
+Facebook/Instagram/Amazon feed too — it surfaced now purely because every X feed anyone has tried is,
+by definition, brand new, and the natural first thing to try on a new platform is toggling its
+settings before necessarily publishing posts to it first.
+
+Confirmed directly against the live database (not assumed from reading the client-library docs):
+ran the equivalent raw SQL (`update feeds set flags=... where id='<nonexistent>' returning flags`)
+against a genuinely nonexistent feed id under a disposable `zzclaudetest_proj` test project —
+returned zero rows, exactly the condition that makes `.single()` throw. Fixed by switching to
+`upsert(..., {onConflict: "id"})`, providing every column a first-time insert needs
+(`id`/`feed_id`/`project_id`/`app`/`name`/`flags` — `feed_id` is a real, separate, not-null column
+from the composed `id`, confirmed against the live `information_schema.columns` after an earlier
+version of this exact fix omitted it and hit a not-null violation on the insert branch specifically;
+an update-only path on an *existing* row never needed it, since it's already set there, which is
+exactly why this was easy to miss). `name` falls back to the bare `feedId` only when genuinely
+creating a new row — an existing feed's real name (read via the same initial `select` this function
+already did) is always preserved, never overwritten by a later flag toggle.
+
+**Verified against the live production database, read-only where possible, cleaned up where not**:
+reproduced the exact `.update().single()` failure mode via raw SQL against a disposable project/
+feed-id combination; then verified the *fixed* upsert shape two ways — first-time creation (zero
+existing rows → correct single-row upsert with the fallback name and the toggled flag set), and a
+simulated second toggle against the now-existing row (flags merge correctly, cumulative with the
+first toggle, and the real name — deliberately changed via direct SQL first, standing in for
+whatever the admin later renamed the feed to — survives untouched). Deleted the disposable project/
+feed afterward, confirmed zero rows left. This fix is pure application code (`utils-backend-
+supabase.js`), not a schema change — nothing further needed applying to either Supabase project
+beyond the `posts` migration in Bug 1 above.
+
+**Not verified**: an actual click-through by a real logged-in admin toggling a flag on a real,
+never-published X feed through the live `/admin/*` UI — same standing no-login limitation as
+everywhere else in this file. The database-level reproduction above is a direct, mechanical proof of
+the exact failure PostgREST would produce, not a substitute for watching the real click succeed, but
+it's about as close as this sandbox can get without real admin credentials.

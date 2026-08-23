@@ -199,6 +199,19 @@ function mapPostRowToRaw(row) {
     newsHeadline: row.news_headline ?? "",
     newsDescription: row.news_description ?? "",
     newsUrl: row.news_url ?? "",
+
+    // X-only fields (20260801000027_add_x_post_fields.sql). `handle`/
+    // `verified` are real dedicated columns; the four engagement counts
+    // deliberately reuse the existing generic `metrics` jsonb column
+    // (alongside Facebook's own `metrics.comments`/`.shares`) rather than
+    // getting four more dedicated columns — no collision risk, since a
+    // given post row belongs to exactly one app's feed.
+    handle: row.handle ?? "",
+    verified: !!row.verified,
+    like_count: Number.isFinite(row.metrics?.likes) ? row.metrics.likes : null,
+    reply_count: Number.isFinite(row.metrics?.replies) ? row.metrics.replies : null,
+    repost_count: Number.isFinite(row.metrics?.reposts) ? row.metrics.reposts : null,
+    view_count: Number.isFinite(row.metrics?.views) ? row.metrics.views : null,
   };
 }
 
@@ -509,7 +522,6 @@ function mapRawPostToRow(raw, composedFeedId, sortOrder) {
     show_reactions: raw.showReactions !== false,
     selected_reactions: Array.isArray(raw.selectedReactions) ? raw.selectedReactions : [],
     reactions: raw.reactions && typeof raw.reactions === "object" ? raw.reactions : {},
-    metrics: raw.metrics && typeof raw.metrics === "object" ? raw.metrics : {},
 
     ad_type: raw.adType || "none",
     ad_domain: raw.adDomain ?? null,
@@ -522,6 +534,20 @@ function mapRawPostToRow(raw, composedFeedId, sortOrder) {
     news_headline: raw.newsHeadline ?? null,
     news_description: raw.newsDescription ?? null,
     news_url: raw.newsUrl ?? null,
+
+    // X-only fields — see the matching comment in mapPostRowToRaw above.
+    // Merged into `metrics` (not a plain overwrite) so a post round-
+    // tripping through this function twice, or a future field added to
+    // `metrics` by some other app, can't silently clobber the other.
+    handle: raw.handle ?? null,
+    verified: !!raw.verified,
+    metrics: {
+      ...(raw.metrics && typeof raw.metrics === "object" ? raw.metrics : {}),
+      ...(Number.isFinite(raw.like_count) ? { likes: raw.like_count } : {}),
+      ...(Number.isFinite(raw.reply_count) ? { replies: raw.reply_count } : {}),
+      ...(Number.isFinite(raw.repost_count) ? { reposts: raw.repost_count } : {}),
+      ...(Number.isFinite(raw.view_count) ? { views: raw.view_count } : {}),
+    },
   };
 }
 
@@ -717,7 +743,7 @@ export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {
 
   const { data: existing, error: readErr } = await supabase
     .from("feeds")
-    .select("flags")
+    .select("flags, name")
     .eq("id", composedFeedId)
     .maybeSingle();
   if (readErr) throw new Error(readErr.message);
@@ -735,10 +761,40 @@ export async function supabaseSetFeedFlags({ projectId, app, feedId, patch }) {
     merged.csv_name = String(patch.csv_name || "").trim();
   }
 
+  // Real bug found live: "+ New feed" is pure client-state until the first
+  // publish (savePostsToBackend is what actually inserts the `feeds` row —
+  // see supabasePublishPosts below), so a brand-new, never-published feed
+  // has no row here yet. The previous plain `.update()...select().single()`
+  // silently required exactly one matching row — on a feed that doesn't
+  // exist yet, PostgREST's `.single()` throws (no rows returned), and every
+  // flag toggle attempt on that feed fails and visually reverts, looking
+  // exactly like "the toggle won't switch on" with no obvious cause. Using
+  // `upsert` instead lets a flag be set even before the feed's first
+  // publish — `project_id`/`app` (both required, not-null columns) are
+  // already known at this call site; `name` falls back to the bare feedId
+  // only when truly creating a new row (an existing feed's real name is
+  // preserved via the initial `select` above, never overwritten by this
+  // path).
   const { data, error } = await supabase
     .from("feeds")
-    .update({ flags: merged })
-    .eq("id", composedFeedId)
+    .upsert(
+      {
+        id: composedFeedId,
+        // `feed_id` (the bare id) is a separate, real, not-null column from
+        // `id` (the composed `<project>::<app>::<feed>` key) — confirmed
+        // against the live schema, not assumed, after an earlier version of
+        // this fix omitted it and failed with a not-null violation on the
+        // insert branch specifically (an existing row's UPDATE branch never
+        // needed it, since it's already set — this only ever surfaces the
+        // first time a feed is created via this path).
+        feed_id: String(feedId || ""),
+        project_id: projectId,
+        app,
+        name: existing?.name || String(feedId || composedFeedId),
+        flags: merged,
+      },
+      { onConflict: "id" }
+    )
     .select("flags")
     .single();
   if (error) throw new Error(error.message);
