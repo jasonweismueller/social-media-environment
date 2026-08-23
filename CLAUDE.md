@@ -8236,3 +8236,62 @@ never-published X feed through the live `/admin/*` UI — same standing no-login
 everywhere else in this file. The database-level reproduction above is a direct, mechanical proof of
 the exact failure PostgREST would produce, not a substitute for watching the real click succeed, but
 it's about as close as this sandbox can get without real admin credentials.
+
+## The actual root cause: `getApp()` had no fallback once the URL lost its `?app=` param — a real, pre-existing bug, not new to X (2026-08-23, later same day)
+
+The two fixes above genuinely were real bugs, but neither explained what the user reported next:
+"FB feeds are now also on my X platform and if i preview them they show as X, but i still can't
+toggle any of the feed toggles." That symptom — the *displayed feed list* being Facebook's real
+feeds while the *rendered UI chrome* is unmistakably X — pointed at something deeper: two different
+parts of the app disagreeing about which platform is currently active.
+
+**Root cause, confirmed by reproducing the exact mechanism, not guessed**: `getApp()`
+(`utils-backend.js`) resolves the current platform fresh on every call — first from the live
+`?app=` URL query param, then from `window.APP`, then a hardcoded final fallback of `"fb"`. Unlike
+`getProjectId()` (`utils-core.js`), which persists to `localStorage` and falls back to it, `getApp()`
+has **no persistence at all** — if a given moment's URL genuinely has no `?app=` in it, and
+`window.APP` was never set, it silently reports `"fb"`, correct or not.
+
+`AdminPlatformPicker.jsx`'s `pick(app)` has a branch specifically for "you clicked the platform
+that's already loaded" (`if (app === currentApp) { navigate("/admin/dashboard"); return; }`) — a
+bare, absolute-path client-side `navigate()` call, which replaces the *entire* URL, search string
+included, with just `/admin/dashboard`. The moment that fires, `?app=x` (and `?project=...`) are
+gone from the address bar for the rest of the session. `getProjectId()` survives this because of its
+`localStorage` fallback; `getApp()` does not.
+
+The reason this had never surfaced for Facebook, Instagram, or Amazon: `main-instagram.jsx` and
+`main-amazon.jsx` both already set `window.APP = "ig"` / `"amz"` at bundle load — a real fallback
+that survives exactly this kind of URL loss. **`main-facebook.jsx` never did this, and neither did
+the new `main-x.jsx`** (cloned from it). For Facebook specifically, this was invisible for a
+different reason: `"fb"` is *also* `getApp()`'s hardcoded final fallback, so losing all real signal
+and silently defaulting to `"fb"` happened to look identical to correctly being on Facebook — the
+bug and the fallback answer were the same value, by coincidence, for that one app. X was the first
+non-default platform lacking this safety net, which is exactly why it's the one where the effect
+became visible: everywhere that calls `getApp()` live (`listFeedsFromBackend`, every
+`setFeedFlagsOnBackend` call inside `toggleFlag`, etc.) started silently reading/writing **Facebook's**
+feeds under a project, the instant the URL lost `?app=x` — while the dashboard's own visual chrome
+(`AdminPostEditor`, `APP_LABEL`, etc.) stayed correctly "X," since those are gated by a *different*,
+module-load-time-frozen `app` constant in `components-admin-dashboard.jsx` that was captured
+correctly at the very first full-page navigation and never re-read afterward. Two different parts
+of the same page silently disagreeing about "which platform is this" is exactly what produced "the
+feed list shows my Facebook feeds, but the preview still renders as X."
+
+**Fix**: added `window.APP = "fb"` to `main-facebook.jsx` and `window.APP = "x"` to `main-x.jsx`,
+matching the pattern Instagram/Amazon already had. This gives `getApp()` a real, URL-independent
+fallback for all four platforms uniformly, closing the gap regardless of what any future client-side
+route change does to the query string.
+
+**Verified directly**, not assumed: loaded the real page fresh under `?app=x`, confirmed
+`window.APP` was genuinely set to `"x"` by the real bootstrap script (not a manual test mount), then
+reproduced the *exact* buggy transition — `history.pushState` to `/admin/dashboard` with no query
+string at all, precisely mirroring `AdminPlatformPicker`'s own `navigate()` call — and confirmed
+`getApp()` still correctly returned `"x"` afterward (before this fix, this exact sequence would have
+returned `"fb"`). Repeated the same test under `?app=fb` as a regression check — `window.APP`
+correctly `"fb"`, `getApp()` stays `"fb"` through the same URL-loss sequence, no change in behavior
+for the one platform that already "looked" correct by coincidence.
+
+**Not verified**: an actual click-through by a real logged-in admin reproducing the original
+report (open the X dashboard, navigate somewhere that drops `?app=`, confirm the feed list and
+toggles now correctly stay scoped to X) — same standing no-login limitation as everywhere in this
+file. The URL-loss mechanism itself was reproduced directly and precisely, which is the load-bearing
+part; the remaining gap is only "does a real admin session confirm the same fix end to end."
