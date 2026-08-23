@@ -90,6 +90,9 @@
       amazon: () => import("./src/main-amazon.jsx"),
       amz: () => import("./src/main-amazon.jsx"),
       reviews: () => import("./src/main-amazon.jsx"),
+
+      x: () => import("./src/main-x.jsx"),
+      twitter: () => import("./src/main-x.jsx"),
     };
 
     (entryMap[app] || entryMap.facebook)();

@@ -519,7 +519,7 @@ export function AdminFeedsPanel({
                                 {authorLabel ? (
                                   <FitText title={authorLabel}>
                                     {authorLabel}
-                                    {p.badge ? " ✔" : ""}
+                                    {(p.badge || p.verified) ? " ✔" : ""}
                                   </FitText>
                                 ) : (
                                   <span className="subtle">—</span>
@@ -629,9 +629,21 @@ export function AdminFeedsPanel({
                           comments/shares) and "surroundings" (Facebook-only
                           rails) don't apply there and stay excluded. Dark
                           mode works identically on every app, so it's not
-                          excluded either. */}
+                          excluded either.
+                          X has no bio-hover card either (no such feature was
+                          built for it) and its "realistic engagement" fallback
+                          bundles reply/repost/like counts under one toggle
+                          rather than splitting comments out into their own
+                          switch the way Facebook/Instagram do (no fabricated
+                          ghost-reply-row content was built for X's simpler
+                          reply modal) — so `bio`/`engagementComments` are
+                          excluded there too, everything else works. */}
                       {Object.entries(flagKinds)
-                        .filter(([kind]) => APP !== "amz" || kind === "time" || kind === "name" || kind === "pacing" || kind === "dark")
+                        .filter(([kind]) => {
+                          if (APP === "amz") return kind === "time" || kind === "name" || kind === "pacing" || kind === "dark";
+                          if (APP === "x") return kind !== "bio" && kind !== "engagementComments";
+                          return true;
+                        })
                         .map(([kind, { label, savingKey }]) => (
                         <Toggle
                           key={kind}

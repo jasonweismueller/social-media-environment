@@ -7940,3 +7940,219 @@ construction — but Escape wasn't independently exercised through a live keydow
 actual click-through by a real logged-in admin — same standing limitation as every entry in this
 file. Worth a real click-through on staging: open a post, make an edit, wait for (or fake) the
 session-expiry banner, then confirm "X" now shows a real, clickable "Discard changes?" prompt.
+
+## Fourth platform added: X (Twitter) (2026-08-23)
+
+Direct request, with scope confirmed via `AskUserQuestion` before writing any code: "full parity
+with Facebook/Instagram" for the feature set (randomization, dark mode, realistic-surroundings
+rails, CSV export columns), app key `x` (not `twitter`, though both are accepted aliases
+everywhere `?app=` is parsed, matching Amazon's existing `amz`/`amazon`/`reviews` alias
+precedent). This is a genuinely new platform, not a per-post-type variant — every one of this
+file's documented "near-duplicate-`App-*.jsx`" footguns applies to it too; this section is written
+in enough detail to be the reference for keeping X in sync with FB/IG/AMZ going forward, the same
+way this file already serves that role for the other three.
+
+**Scope, stated plainly up front**: "full parity" was interpreted as *the same underlying
+features*, not a literal line-for-line clone of every visual/interaction detail Facebook has
+accumulated over dozens of sessions (multi-emoji reaction picker + animated glyphs, bio-hover
+cards, community-note/label interventions, ad+news-link-preview variants, image carousels, mobile
+bottom sheets). X's actual engagement model is simpler than Facebook's to begin with (reply/
+repost/like/view/bookmark, not seven reaction types), so most of that complexity doesn't have a
+real X equivalent to build in the first place. What *is* built: a fully working, real feed and
+post card matching X's actual visual/interaction model, admin post editor + live preview, avatar/
+name/time randomization, dark mode, realistic-engagement-counts + realistic-pacing +
+realistic-surroundings-rails (X's own left-nav/Trending/Who-to-follow, not a Facebook reskin),
+repost/bookmark/reply(with a real reply modal)/share, and full CSV/interaction-tracking wiring.
+Deliberately **not** built this pass (flagged explicitly, not silently dropped): a "recall"
+post-reminder variant, community-note-style interventions, ad domain/headline/CTA fields beyond a
+plain "Promoted" label, image carousels (one image *or* one video per post, no multi-image
+gallery), fabricated ghost-reply-row content for the realistic-engagement toggle (X gets one
+combined `realistic_engagement` flag covering reply/repost/like fallback counts, not FB/IG's
+separate `realistic_engagement_comments` sub-toggle — excluded from X's admin toggle list rather
+than shown as a dead switch), and any dedicated `utils-survey-simulate.js` tuning (X posts fall
+through that file's generic default branch, same as a plain post would, rather than getting
+X-specific simulated-reply/repost/like generation).
+
+**Backend**: `feeds.app` was the *only* hard schema constraint restricting app values to `('fb',
+'ig', 'amz')` (`20260801000003_projects_and_feeds.sql`) — `posts`/`surveys` don't store their own
+`app` column, they derive scoping from the feed_id they belong to
+(`<project>::<app>::<feed>`), so this was the only migration needed. New
+`20260801000026_add_x_app_value.sql` (`alter table feeds drop constraint feeds_app_check; ...add
+constraint ... check (app in ('fb','ig','amz','x'))`) — purely additive, mirrors the exact
+precedent in `20260801000014_fix_ad_type_check.sql`. Applied directly via `supabase db query
+--linked -f` to **both** live Supabase projects, production (`yrzqnlhbawzuzlrrocfd`) and staging
+(`hgctbgunlsesygzglbdv`), confirmed via `pg_get_constraintdef` on each before relinking back to
+production (this repo's default). No GAS/Code.gs change made or needed — GAS isn't live in
+production for anything post-migration, same posture as every Supabase-only feature since the
+cutover.
+
+**Bootstrap wiring** (the mechanism every other file below depends on): `index.html`'s inline
+bootstrap script gained `x`/`twitter` → `import("./src/main-x.jsx")` in its `entryMap`.
+`getApp()` (`utils/utils-backend.js`) and `getAppParam()` (`utils/utils-core.js`) — the two
+separate alias-normalizing functions this codebase already has for exactly this purpose — both
+gained `"x"`/`"twitter"` → `"x"` recognition, inserted before the final `fb` fallback so an
+existing bare/unspecified `?app=` still defaults to `fb` unchanged. `ui-core/index.js` and
+`ui-posts/index.js` (the two per-app dispatch barrels every `App-*.jsx` imports through) each
+gained `import * as X from "./ui-core-x"` / `"./ui-posts-x"` and an `app === "x"` branch in their
+dispatch ternary.
+
+**New files, one per existing per-app file this repo already duplicates**:
+- `src/main-x.jsx` / `src/App-x.jsx` — `App-x.jsx` is a literal clone of `App-facebook.jsx` (the
+  most feature-complete of the three per this file's own framing), since ~99% of it — survey
+  delivery, experiment groups (including feed-sequence routing), dark mode toggle, the 404-for-
+  bad-feed_id page, the already-completed guard, `AdminEntry` mounting — is 100% generic and
+  needed zero changes. The **only** genuinely X-specific piece is `PageWithRails` (X has no
+  "shortcuts"/groups concept the way Facebook's left rail does, so its ghost/real-content
+  structure is simpler: one flat nav list on the left, Trending + Who-to-follow on the right,
+  reusing the identical `buildRailContacts` seeded-suggestion mechanism FB/IG already established)
+  — plus the trivial per-file identity constants (`currentApp="x"`, the vestigial `?style=` MODE
+  toggle, a couple of stray in-comment file-path references). `getReminderApp()` (`ui-survey.jsx`
+  **and** its independent `ui-survey-mobile.jsx` copy — the exact near-duplicate-file footgun this
+  section opened by warning about) previously only ever recognized `"ig"`, falling through to
+  `"fb"` for anything else, including `"amz"` (a **pre-existing** gap, noted but not touched) —
+  fixed to also recognize `"x"`/`"twitter"`, since without this, X's own post-reminder survey
+  questions would have silently resolved reminder posts through the wrong app's feed scope.
+- `src/ui-core/ui-core-x.jsx` — the small shared primitives (icons, `PostText` clamp/expand,
+  `Modal`, `NamesPeek`, `neutralAvatarDataUrl`, overlays). Deliberately does **not** carry over
+  `ui-core-facebook.jsx`'s own local `SurveyQuestion`/`SurveyScreen`/`SurveyScreenMobile`/
+  `SurveyPrefaceFlow`/`PageScaffold` — confirmed by reading `ui-core/index.js`'s own destructured
+  re-export list that none of those five are ever actually re-exported from that file (the real,
+  participant-facing versions come from `ui-survey.jsx`/`ui-survey-mobile.jsx` via `export *`,
+  a separate mechanism) — they're 100% dead code in every existing app's copy, so there was
+  nothing to clone. `IconLike` (a heart) is X's actual primary Like glyph here, unlike Facebook
+  where the heart is only the "Love" reaction and a thumb icon is primary. `RouteAwareTopbar`/
+  `TopRailPlaceholder` are deliberately near-empty (return `null` for the visible bar) — real X
+  has no page-wide top bar the way Facebook does; the logo/nav/search all live in the rails
+  themselves (`PageWithRails`, above). Still keeps the `admin-mode` body-class side effect and the
+  admin "back to feed" FAB link, which are genuinely needed regardless of rail content.
+- `src/ui-posts/ui-posts-x.jsx` — `PostCard` + `Feed`, plus the exports `App-x.jsx`'s
+  `PageWithRails` imports directly (`buildRailContacts`, `LEFT_RAIL_NAV_ITEMS`, `LEFT_RAIL_ICONS`,
+  `TRENDING_TOPICS`) — same "both realistic-surroundings renderers must share one generator so
+  they can't drift apart" reasoning this file already documents for Facebook. `PostCard` supports:
+  avatar/name/time randomization via the same externally-computed `assignedAuthor`/
+  `assignedAvatarUrl` props `Feed` builds centrally (Facebook's model, not Instagram's
+  self-contained one — simpler to reuse given `Feed` already centralizes the assignment maps);
+  `alwaysExpandText`/`disabled`/`suppressDisplayedSnapshot`/`revealIndex` — the exact same prop
+  contract every other `PostCard` honors for post-reminder-question and pacing compatibility, so
+  those features "just work" without any reminder-specific code in this file; a "displayed post
+  snapshot" write on mount, mirroring Facebook/Instagram/Amazon's identical mechanism, so a
+  post-reminder question later shows the exact randomized version a participant actually saw.
+  Reply/Repost/Like/Bookmark/Share all route through the *existing*, already-generic
+  `applyPostInteractionEvent`/`makeEmptyPostInteractionAggregate` reducer in `utils-core.js`
+  (`react_pick`/`react_clear` with `type:"like"`, `repost`/`unrepost`, `save`/`unsave`,
+  `comment_submit`, `share`) — **zero changes were needed there**, since Instagram's own earlier
+  Repost feature had already generalized that reducer far enough for X to reuse directly. Reply
+  opens a real `Modal`-based composer (original post shown, submitted replies appended below,
+  `comment_submit` fired with the real text) — deliberately simpler than Facebook's comment modal
+  (no friend-list/threaded-reply machinery), since X's own reply UI doesn't need that either.
+  Share opens a small "Copy link" / "Repost" menu rather than Facebook's full share-to-friend
+  modal. View count is **display-only** (not a participant action) — sourced from an admin-
+  authored `view_count` field or, when `realistic_engagement` is on, derived deterministically
+  from the same `fallbackEngagementStats` numbers already used for reply/repost/like (no new
+  hash/PRNG needed).
+- `src/styles-x.css` — cloned from `styles-facebook.css` (inheriting all the generic, already-
+  debugged scaffolding this file documents fixing over many sessions: the survey engine's CSS,
+  modal/ghost-skeleton/admin-mode/dark-mode-token-bridge machinery, the click-interception and
+  double-ellipsis fixes) with two real, deliberate changes: the root `:root`/`.dark-mode` token
+  *values* rebranded to X's actual palette (light: white/near-black `#0f1419`/blue `#1d9bf0`; dark:
+  literally pure black `#000`, not a dark grey the way Facebook/Instagram's dark modes are — this
+  matches X's real default "Lights out" theme, and posts are separated by a line only, no boxed-
+  card look), plus a new `.x-*` section for the post card/action-row/reply-modal markup, which is
+  structurally different enough from Facebook's boxed `.card` look (a flat, divider-separated list,
+  no per-post box/shadow) that it needed its own classes rather than reusing `.card`/`.action`.
+  **Known, accepted gap**: a handful of Facebook-only rules cloned along with the file (reaction-
+  flyout, bio-hover, intervention-block, ad/news-link-preview CSS) are now dead weight in this
+  file, since X's markup never uses those classes — left in rather than risking removing something
+  still-generic by mistake under time pressure; a real (if low-priority) cleanup candidate for a
+  future pass, not something silently swept under the rug.
+- `src/admin/components-admin-editor-x.jsx` / `components-admin-media-x.jsx` — the admin post
+  editor + its media fieldset. `components-admin-media-x.jsx` is a **byte-for-byte copy** of
+  `components-admin-media-facebook.jsx` — confirmed via grep that file has zero "Facebook"-specific
+  text or logic in it at all (image-mode/video-mode/upload/poster fields, all fully generic), so
+  there was nothing to adapt. The editor itself mirrors the FB/IG/AMZ editors' shape (a "🎲 Fill
+  with random content" button for new posts, `EditorSection`/`Field`/`Group`/`RadioGroup`/
+  `Toggle`/`PreviewPane` shared primitives, a live `PreviewPane` rendering the real `PostCard`)
+  but with a leaner field set matching X's simpler model: Basics (post name for CSV, display name,
+  handle, verified toggle, time, author type, post text), Profile Photo (identical avatar-mode
+  picker to FB), Post Media (the reused fieldset), Post type (Regular / Promoted — no ad-domain/
+  headline/CTA sub-fields), Engagement counts (reply/repost/like/view, four plain number fields).
+
+**Wiring into the existing three-app machinery**: `AdminPlatformPicker.jsx` gained a 4th
+`PLATFORMS` entry (`{app:"x", label:"X", icon: IconX, blurb:...}`) — a new `IconX` glyph added to
+the shared `src/admin/ui/icons.jsx`/`ui/index.js` icon set (a literal geometric "X" mark, not a
+redrawing of any bird logo). `components-admin-dashboard.jsx`'s per-app dispatch constants
+(`AdminPostEditor`, `genNeutralAvatarDataUrl`, `APP_LABEL`, `DASHBOARD_TITLE`) gained an `isX`
+branch — computed as `app === "x" || app === "twitter"`, mirroring this exact file's own existing
+`amz`/`amazon` alias-handling precedent, since this file computes its own local `app` constant
+directly from the raw `?app=` param rather than reusing the shared alias-normalizing `getApp()`.
+`components-admin-feeds.jsx`'s Feeds → Settings → Behavior toggle list (previously only had an
+Amazon-specific whitelist-when-amz filter) gained a parallel X-specific exclusion (`bio`,
+`engagementComments` — the two flags with no real X implementation, see the "deliberately not
+built" list above) so the admin never sees a toggle that would silently do nothing.
+`buildParticipantRow`/`isRelevantPostMetricForExport` (`utils-core.js`/`utils-backend.js`) had a
+hard `APP === "ig"` gate on the `_saved`/`_reposted` CSV columns (Save/Repost being IG-only
+concepts before this) — widened to `APP === "ig" || APP === "x"` in both places, since Bookmark/
+Repost are equally real, first-class actions on X. `POST_METRIC_SUFFIXES_FOR_LABELS` already
+included both suffixes app-agnostically, so no change was needed there.
+`REMINDER_INTERACTION_FIELDS` (the curated CSV columns for an *interactive* post_reminder
+question) already includes `reposted` unconditionally, so X's interactive reminders pick that up
+for free with no change. Two small, genuinely cosmetic gaps found and fixed while auditing this:
+the PDF-export template and the Feeds table's author-name cell both checked `post.badge` for a
+verified checkmark (Facebook/Instagram/Amazon's field name) with no `post.verified` fallback (X's
+own field name) — widened both to `(post.badge || post.verified)`.
+
+**Verified live**, throughout, via the dev server (confirmed working in this environment) and the
+cache-busted dynamic-import component-mount technique this file already documents using
+repeatedly — not just read for plausibility:
+- The real `Feed`/`PostCard` (via `ui-posts/index.js`, exactly the path a real participant page
+  uses) mounted with fabricated posts: verified badge, name+handle+time, text clamp/"Show more"/
+  "Show less", image attachment, and the full action row (reply/repost/like/views/bookmark/share)
+  all render correctly with the right counts. Clicked through every interactive action for real:
+  Like toggles the heart red and increments the count; Repost turns the icon green and increments;
+  the Reply modal opens, shows the real original post, accepts and submits a reply (confirmed the
+  real `comment_submit` action fired with the correct `{post_id, text, length}` payload and the
+  reply-count badge updated), and closes cleanly; the Share menu opens with "Copy link"/"(Undo)
+  repost" (label correctly reflecting current repost state) and "Copy link" fires the real `share`
+  action; Bookmark toggles active/blue. Toggled `body.classList.add("dark-mode")` on the same live
+  mount and confirmed pure-black background, correctly-recolored share menu, and all prior toggle
+  states (liked/reposted/bookmarked) survived the theme switch unchanged.
+- `realistic_surroundings`/`realistic_pacing` together: confirmed via direct DOM query (not just a
+  screenshot) that both rails render as `rail--content` (not the ghost skeleton), the left rail
+  shows exactly the 11 `LEFT_RAIL_NAV_ITEMS` entries, the right rail shows exactly the 4
+  `TRENDING_TOPICS` entries plus seeded Who-to-follow suggestions, and both rendered posts carry
+  the `post-reveal-in` pacing class.
+- The admin `AdminPostEditor` (X), mounted with the real `ToastProvider` and a fabricated post:
+  every Basics/Profile-Photo/Media/Post-type/Engagement-counts field renders and the live
+  `PreviewPane` (labeled "X") shows the real `PostCard` reflecting live edits, including a real
+  avatar photo resolved through `randomAvatarByKind`.
+- `AdminPlatformPicker`, mounted with a real `MemoryRouter`: all 4 platforms render in order,
+  X's row shows the correct icon/label/blurb, and `currentApp="x"` correctly shows "(currently
+  loaded)" only on X's own row.
+- **Regression check**: reloaded `?app=fb`, `?app=ig`, `?app=amz`, and `/admin?app=x` (the admin
+  login page) fresh — all four load with zero console errors, confirming none of the shared-file
+  changes (the two dispatch barrels, `utils-core.js`, `utils-backend.js`,
+  `components-admin-dashboard.jsx`, `components-admin-feeds.jsx`, `ui-survey.jsx`/
+  `-mobile.jsx`, `AdminPlatformPicker.jsx`, the shared icon set) broke any of the three pre-existing
+  apps.
+
+**Not verified**: an actual click-through by a real logged-in admin (standing limitation
+throughout this file — credential entry is off-limits) — the admin editor/platform-picker checks
+above used direct component mounts with a fabricated `ToastProvider`/`MemoryRouter` context, not a
+real authenticated session driving the actual routed `/admin/*` UI. No real backend round-trip was
+exercised either (creating a real X feed/post via the admin UI and loading it back through a real
+participant link) — every check above was against fabricated in-memory data. Worth doing both on
+staging before fully trusting this beyond what the live-mounted-component verification already
+covers, same recommendation this file already makes for every other multi-file feature.
+
+**Deployment status, stated plainly since it matters here more than usual**: this session's
+working tree was sitting on the **`production` branch** (not `main`) when this work was done —
+per this file's own "Deployment" section, `production` is what GitHub Actions deploys straight to
+`studyfeed.org`, with no Netlify-staging soak step in between the way `main` gets. Nothing was
+committed or pushed by Claude (this repo's standing pattern — commits/pushes happen via the user's
+own GitHub Desktop app, not from Claude's sandbox), but if that app's auto-commit fires on this
+working tree before the user has had a chance to review, this fourth-platform work — including a
+schema change already live on both Supabase projects — would go straight to production with no
+staging buffer at all, unlike how every other multi-file feature in this file's history landed.
+Worth deliberately routing this through `main` → staging first before it reaches `production`,
+given it's a first draft of an entirely new participant-facing surface, not an iteration on an
+already-battle-tested one.

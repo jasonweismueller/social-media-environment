@@ -174,9 +174,11 @@ export function getAppParam() {
 
     if (fromUrl === "amz" || fromUrl === "amazon" || fromUrl === "reviews" || fromUrl === "amazon_reviews") return "amz";
     if (fromUrl === "ig" || fromUrl === "instagram") return "ig";
+    if (fromUrl === "x" || fromUrl === "twitter") return "x";
     if (fromUrl === "fb" || fromUrl === "facebook") return "fb";
     if (fromWin === "amz" || fromWin === "amazon" || fromWin === "reviews" || fromWin === "amazon_reviews") return "amz";
     if (fromWin === "ig" || fromWin === "instagram") return "ig";
+    if (fromWin === "x" || fromWin === "twitter") return "x";
     if (fromWin === "fb" || fromWin === "facebook") return "fb";
 
     return "";
@@ -1238,8 +1240,12 @@ export function buildParticipantRow({
       ? agg.comment_texts.join(" | ")
       : "";
 
-    row[`${id}_saved`] = typeof APP !== "undefined" && APP === "ig" ? (agg.saved ? 1 : 0) : 0;
-    row[`${id}_reposted`] = typeof APP !== "undefined" && APP === "ig" ? (agg.reposted ? 1 : 0) : 0;
+    // Save/Repost are real, first-class actions on Instagram (Save/Repost)
+    // and X (Bookmark/Repost) — gated off Facebook/Amazon, which have
+    // neither concept in their action row.
+    const savedRepostedApp = typeof APP !== "undefined" && (APP === "ig" || APP === "x");
+    row[`${id}_saved`] = savedRepostedApp ? (agg.saved ? 1 : 0) : 0;
+    row[`${id}_reposted`] = savedRepostedApp ? (agg.reposted ? 1 : 0) : 0;
 
     row[`${id}_shared`] = agg.shared || hasTarget ? 1 : 0;
     row[`${id}_share_target`] = hasTarget ? shareTargetClean : "";

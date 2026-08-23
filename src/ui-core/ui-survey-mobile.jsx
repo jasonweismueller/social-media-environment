@@ -268,13 +268,14 @@ function getReminderPostFeedId(question = {}, fallbackFeedId = "") {
 
 function getReminderApp() {
   if (typeof window === "undefined") return "fb";
-  return String(
+  const raw = String(
     window.APP ||
       new URLSearchParams(window.location.search).get("app") ||
       "fb"
-  ).toLowerCase() === "ig"
-    ? "ig"
-    : "fb";
+  ).toLowerCase();
+  if (raw === "ig" || raw === "instagram") return "ig";
+  if (raw === "x" || raw === "twitter") return "x";
+  return "fb";
 }
 
 function PlainOrHtmlBlock({ value, className, style }) {

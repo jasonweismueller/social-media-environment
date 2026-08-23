@@ -2,12 +2,13 @@ import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getProjectId } from "../utils";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, IconChevronRight, ThemeToggle, LogoutButton } from "./ui";
+import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, IconX, IconChevronRight, ThemeToggle, LogoutButton } from "./ui";
 
 const PLATFORMS = [
   { app: "fb", label: "Facebook", icon: IconFacebook, blurb: "News-feed style posts, comments, reactions." },
   { app: "ig", label: "Instagram", icon: IconInstagram, blurb: "Photo grid feed, likes, comments." },
   { app: "amz", label: "Amazon Reviews", icon: IconCart, blurb: "Product review list." },
+  { app: "x", label: "X", icon: IconX, blurb: "Reply/repost/like feed, short-form posts." },
 ];
 
 /**

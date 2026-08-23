@@ -3,6 +3,7 @@
 import * as FB from "./ui-core-facebook";
 import * as IG from "./ui-core-instagram";
 import * as AMZ from "./ui-core-amazon";
+import * as X from "./ui-core-x";
 
 import { getApp } from "../utils/utils-backend";
 
@@ -17,12 +18,18 @@ const UI =
     ? IG
     : app === "amz"
       ? AMZ
-      : FB;
+      : app === "x"
+        ? X
+        : FB;
 
 export const {
   IconLike,
   IconThumb,
   IconComment,
+  IconReply,
+  IconRepost,
+  IconBookmark,
+  IconViews,
   IconShare,
   IconDots,
   IconLogo,

@@ -141,6 +141,14 @@ export function IconInstagram(props) {
   );
 }
 
+export function IconX(props) {
+  return (
+    <Base {...props}>
+      <path d="M5 4.5h4l3.3 4.4L16 4.5h3l-5.1 6 5.4 8h-4l-3.6-4.8-4.2 4.8H4.5l5.6-6.4Z" fill="currentColor" stroke="none" />
+    </Base>
+  );
+}
+
 export function IconEye(props) {
   return (
     <Base {...props}>

@@ -82,6 +82,7 @@ export const getApp = () => {
 
   if (["amazon", "amz", "reviews", "amazon_reviews"].includes(fromUrl) || ["amazon", "amz", "reviews", "amazon_reviews"].includes(fromWin)) return "amz";
   if (["instagram", "ig"].includes(fromUrl) || ["instagram", "ig"].includes(fromWin)) return "ig";
+  if (["x", "twitter"].includes(fromUrl) || ["x", "twitter"].includes(fromWin)) return "x";
   if (["facebook", "fb"].includes(fromUrl) || ["facebook", "fb"].includes(fromWin)) return "fb";
   return "fb";
 };
@@ -1582,6 +1583,9 @@ export function isRelevantPostMetricForExport(post, suffix) {
 
   const isAmz = APP === "amz";
   const isIg = APP === "ig";
+  // Save/Repost are real on X too (Bookmark/Repost) — treated the same as
+  // Instagram everywhere below rather than adding a third parallel branch.
+  const isX = APP === "x";
 
   // Amazon reviews use review-specific helpful/report/read-more fields —
   // reaction/comment/share/cta/bio/mention/note columns don't exist in the
@@ -1608,10 +1612,11 @@ export function isRelevantPostMetricForExport(post, suffix) {
   // them.
   if (AMZ_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
 
-  // FB-only vs IG-only.
-  if (isIg && FB_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
-  if (!isIg && IG_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
-  if (suffix === "_saved" || suffix === "_reposted") return isIg;
+  // FB-only vs IG/X-only. X has no community-notes concept either, so it's
+  // treated the same as IG for that gate.
+  if ((isIg || isX) && FB_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if (!isIg && !isX && IG_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if (suffix === "_saved" || suffix === "_reposted") return isIg || isX;
 
   // Feature-based filters: only show a metric's columns for a post that
   // could actually produce that interaction — a plain post never had a

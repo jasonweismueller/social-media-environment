@@ -39,7 +39,7 @@ import { randomAvatarByKind } from "../avatar-utils";
 import { AdminShell } from "./AdminShell";
 import { Badge, RoleGate, useToast, useConfirm, usePrompt, ErrorBoundary, Button } from "./ui";
 
-// Dynamically choose correct editor (FB or IG)
+// Dynamically choose correct editor (FB, IG, AMZ, or X)
 import { genNeutralAvatarDataUrl as genNeutralAvatarDataUrlFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorFB } from "./components-admin-editor-facebook";
 import { AdminPostEditor as AdminPostEditorIG } from "./components-admin-editor-instagram";
@@ -47,6 +47,10 @@ import {
   genNeutralAvatarDataUrl as genNeutralAvatarDataUrlAMZ,
   AdminPostEditor as AdminPostEditorAMZ,
 } from "./components-admin-editor-amazon";
+import {
+  genNeutralAvatarDataUrl as genNeutralAvatarDataUrlX,
+  AdminPostEditor as AdminPostEditorX,
+} from "./components-admin-editor-x";
 
 // Pick based on current app (set in main-*.jsx or ?app=...)
 const app = (
@@ -54,8 +58,9 @@ const app = (
   new URLSearchParams(window.location.search).get("app") ||
   "fb"
 ).toLowerCase();
-const AdminPostEditor = app === "ig" ? AdminPostEditorIG : app === "amz" ? AdminPostEditorAMZ : AdminPostEditorFB;
-const genNeutralAvatarDataUrl = app === "amz" ? genNeutralAvatarDataUrlAMZ : genNeutralAvatarDataUrlFB;
+const isX = app === "x" || app === "twitter";
+const AdminPostEditor = app === "ig" ? AdminPostEditorIG : app === "amz" ? AdminPostEditorAMZ : isX ? AdminPostEditorX : AdminPostEditorFB;
+const genNeutralAvatarDataUrl = app === "amz" ? genNeutralAvatarDataUrlAMZ : isX ? genNeutralAvatarDataUrlX : genNeutralAvatarDataUrlFB;
 const CONTENT_UNIT_LABEL = app === "amz" || app === "amazon" ? "Review" : "Post";
 const CONTENT_UNIT_LABEL_PLURAL = app === "amz" || app === "amazon" ? "Reviews" : "Posts";
 const APP_LABEL =
@@ -63,7 +68,9 @@ const APP_LABEL =
     ? "Instagram"
     : app === "amz" || app === "amazon"
       ? "Amazon"
-      : "Facebook";
+      : isX
+        ? "X"
+        : "Facebook";
 const DASHBOARD_TITLE = `${APP_LABEL} Admin Dashboard`;
 const EXPORT_TITLE = app === "amz" || app === "amazon" ? "Amazon reviews export" : `${APP_LABEL} feed export`;
 
@@ -215,7 +222,7 @@ function buildRenderedFeedExportHtml({
           <header class="post-head">
             ${avatar}
             <div class="post-meta">
-              <div class="author">${escapeHtml(post.author || "Author")}${post.badge ? " ✓" : ""}</div>
+              <div class="author">${escapeHtml(post.author || "Author")}${(post.badge || post.verified) ? " ✓" : ""}</div>
               <div class="time">${escapeHtml(post.time || "")}${post.topic ? ` · ${escapeHtml(post.topic)}` : ""}</div>
             </div>
           </header>

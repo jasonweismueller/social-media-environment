@@ -27,6 +27,7 @@ export {
   IconFacebook,
   IconInstagram,
   IconCart,
+  IconX,
   IconShuffle,
   IconEye,
   IconSun,

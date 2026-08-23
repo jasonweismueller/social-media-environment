@@ -3,6 +3,7 @@
 import * as FB from "./ui-posts-facebook";
 import * as IG from "./ui-posts-instagram";
 import * as AMZ from "./ui-posts-amazon";
+import * as X from "./ui-posts-x";
 
 import { getApp } from "../utils/utils-backend";
 
@@ -13,7 +14,9 @@ const COMPONENTS =
     ? IG
     : app === "amz"
       ? AMZ
-      : FB;
+      : app === "x"
+        ? X
+        : FB;
 
 export const { Feed, PostCard } = COMPONENTS;
 
