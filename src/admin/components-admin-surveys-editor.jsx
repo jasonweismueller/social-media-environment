@@ -222,6 +222,61 @@ export function makeNumericValue(index) {
   return String(index + 1);
 }
 
+// Quick-fill presets for the most common Likert/scale-point label sets —
+// per direct user feedback that retyping "Strongly disagree" ... "Strongly
+// agree" (and similar) by hand for every matrix/choice question is tedious.
+// Each preset's `points` become {value, label} items with sequential
+// numeric values (1..N, matching what adding rows one at a time already
+// produces via makeNumericValue) — deliberately numeric so these still
+// classify as a numeric/composite-eligible scale in the analysis engine
+// (see utils-survey-analysis.js's choicesAreNumeric), not a categorical one.
+export const SCALE_PRESETS = [
+  {
+    id: "agree_5",
+    label: "Agreement (5-point)",
+    points: ["Strongly disagree", "Disagree", "Neither agree nor disagree", "Agree", "Strongly agree"],
+  },
+  {
+    id: "agree_7",
+    label: "Agreement (7-point)",
+    points: [
+      "Strongly disagree",
+      "Disagree",
+      "Somewhat disagree",
+      "Neither agree nor disagree",
+      "Somewhat agree",
+      "Agree",
+      "Strongly agree",
+    ],
+  },
+  {
+    id: "frequency_5",
+    label: "Frequency (5-point)",
+    points: ["Never", "Rarely", "Sometimes", "Often", "Always"],
+  },
+  {
+    id: "satisfaction_5",
+    label: "Satisfaction (5-point)",
+    points: ["Very dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very satisfied"],
+  },
+  {
+    id: "likelihood_5",
+    label: "Likelihood (5-point)",
+    points: ["Very unlikely", "Unlikely", "Neutral", "Likely", "Very likely"],
+  },
+  {
+    id: "quality_5",
+    label: "Quality (5-point)",
+    points: ["Very poor", "Poor", "Fair", "Good", "Excellent"],
+  },
+];
+
+export function scalePresetToItems(presetId) {
+  const preset = SCALE_PRESETS.find((p) => p.id === presetId);
+  if (!preset) return null;
+  return preset.points.map((label, i) => ({ value: makeNumericValue(i), label }));
+}
+
 export function sanitizeQuestionId(value, fallback = "") {
   const cleaned = String(value ?? "")
     .trim()
@@ -260,6 +315,28 @@ const DRAG_BLOCKED_TARGET_SELECTOR =
 
 function isDragBlockedTarget(target) {
   return !!(target && typeof target.closest === "function" && target.closest(DRAG_BLOCKED_TARGET_SELECTOR));
+}
+
+// Defends against a real, browser-engine-specific gap the dragstart-time
+// preventDefault() below can't cover on its own: Chromium correctly
+// prioritizes contentEditable text selection over an ancestor's
+// `draggable=true` when a click-drag gesture starts inside the rich-text
+// editor, but WebKit/Safari (the default browser on macOS, which this admin
+// tool is very often used from) doesn't reliably do the same — it can
+// decide "this is a drag of the ancestor" at mousedown+move time, before
+// `dragstart` ever fires, discarding the in-progress selection. Canceling
+// `dragstart` via preventDefault at that point only stops the *card* from
+// visibly moving; it can't recover a selection the browser already threw
+// away. Toggling the DOM node's own `draggable` attribute at `mousedown`
+// time — before the browser's drag-vs-select decision runs at all — closes
+// that gap: the ancestor is only ever left eligible to be dragged for a
+// gesture that didn't start on a blocked target (rich-text editor, input,
+// button, etc.) in the first place. Attach alongside the existing
+// `draggable`/`onDragStart` pair on every whole-card/whole-row drag
+// source; `e.currentTarget` is the element this listener is bound to, so
+// it's safe to reuse verbatim at each call site.
+function guardCardDraggableOnMouseDown(e) {
+  e.currentTarget.draggable = !isDragBlockedTarget(e.target);
 }
 
 // Wraps a row/card's existing onDragStart(e, id) callback so the whole
@@ -1396,6 +1473,7 @@ function PageCardHeader({
   return (
     <div
       draggable
+      onMouseDown={guardCardDraggableOnMouseDown}
       onDragStart={(e) => {
         // Same interactive-descendant guard as makeWholeCardDragStart —
         // can't reuse that helper directly here since this row's onDragStart
@@ -3512,7 +3590,9 @@ function ItemTableEditor({
   addLabel = "Add row",
   valuePlaceholder = "Value",
   labelPlaceholder = "Label",
+  allowScalePresets = false,
 }) {
+  const confirm = useConfirm();
   const safeItems = Array.isArray(items) ? items : [];
 
   function updateItem(index, patch) {
@@ -3538,6 +3618,25 @@ function ItemTableEditor({
     onChange(safeItems.filter((_, i) => i !== index));
   }
 
+  async function applyScalePreset(presetId) {
+    if (!presetId) return;
+    const preset = SCALE_PRESETS.find((p) => p.id === presetId);
+    const nextItems = scalePresetToItems(presetId);
+    if (!nextItems) return;
+
+    const hasExistingContent = safeItems.some((item) => String(item?.label || item?.value || "").trim());
+    if (hasExistingContent) {
+      const ok = await confirm({
+        title: "Replace with preset?",
+        message: `This replaces the ${safeItems.length} existing ${safeItems.length === 1 ? "row" : "rows"} below with "${preset.label}" — ${preset.points.length} points, "${preset.points[0]}" to "${preset.points[preset.points.length - 1]}".`,
+        confirmLabel: "Replace",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    onChange(nextItems);
+  }
+
   const singularTitle =
     String(title || "item")
       .replace(/ \/ .*/g, "")
@@ -3553,7 +3652,46 @@ function ItemTableEditor({
         background: "var(--admin-surface-alt)",
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{title}</div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
+
+        {allowScalePresets && (
+          <select
+            value=""
+            onChange={(e) => {
+              const presetId = e.target.value;
+              e.target.value = "";
+              applyScalePreset(presetId);
+            }}
+            title="Fill this list from a common scale preset"
+            style={{
+              fontSize: 11.5,
+              height: 26,
+              padding: "0 6px",
+              borderRadius: 6,
+              border: "1px solid var(--admin-border)",
+              background: "var(--admin-surface)",
+              color: "var(--admin-muted)",
+              maxWidth: 170,
+            }}
+          >
+            <option value="">Use a preset scale…</option>
+            {SCALE_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
 
       {safeItems.length === 0 && (
         <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 8 }}>
@@ -4996,6 +5134,7 @@ function ChoiceEditorBlock({
         onChange={onChange}
         prefix="opt"
         addLabel="Add option"
+        allowScalePresets
       />
 
       {showAttentionCheck && (
@@ -5058,6 +5197,7 @@ function MatrixEditorBlock({ rows, columns, questionId, allowAttentionCheck = fa
         addLabel="Add column"
         valuePlaceholder="Value"
         labelPlaceholder="Label"
+        allowScalePresets
       />
     </div>
   );
@@ -5491,6 +5631,7 @@ function QuestionCard({
     return (
       <div
         draggable
+        onMouseDown={guardCardDraggableOnMouseDown}
         onDragStart={makeWholeCardDragStart(onDragStart, q._editorId)}
         onDragEnd={onDragEnd}
         onDragOver={(e) => onDragOver(e, q._editorId)}
@@ -5580,6 +5721,7 @@ function QuestionCard({
   return (
     <div
       draggable
+      onMouseDown={guardCardDraggableOnMouseDown}
       onDragStart={makeWholeCardDragStart(onDragStart, q._editorId)}
       onDragEnd={onDragEnd}
       onDragOver={(e) => onDragOver(e, q._editorId)}
@@ -6033,6 +6175,7 @@ function OutlineRow({
     return (
       <div
         draggable
+        onMouseDown={guardCardDraggableOnMouseDown}
         onDragStart={makeWholeCardDragStart(onDragStart, item._editorId)}
         onDragEnd={onDragEnd}
         onDragOver={(e) => onDragOver(e, item._editorId)}
@@ -6090,6 +6233,7 @@ function OutlineRow({
   return (
     <div
       draggable
+      onMouseDown={guardCardDraggableOnMouseDown}
       onDragStart={makeWholeCardDragStart(onDragStart, item._editorId)}
       onDragEnd={onDragEnd}
       onDragOver={(e) => onDragOver(e, item._editorId)}

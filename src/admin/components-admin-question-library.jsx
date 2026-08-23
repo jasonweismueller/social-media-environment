@@ -179,6 +179,7 @@ export function QuestionLibraryPickerModal({ onInsert, onClose }) {
                 display: "flex",
                 flexDirection: "column",
                 gap: 6,
+                minWidth: 0,
               }}
             >
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
