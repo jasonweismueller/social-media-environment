@@ -34,6 +34,13 @@ export {
   IconMoon,
   IconBookmark,
   IconChevronRight,
+  IconAlignLeft,
+  IconAlignCenter,
+  IconAlignRight,
+  IconIndentIncrease,
+  IconIndentDecrease,
+  IconTextColor,
+  IconHighlighter,
 } from "./icons";
 export { ToastProvider, useToast } from "./Toast";
 export { ConfirmProvider, useConfirm } from "./ConfirmDialog";

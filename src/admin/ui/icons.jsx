@@ -211,3 +211,68 @@ export function IconChevronRight(props) {
     </Base>
   );
 }
+
+export function IconAlignLeft(props) {
+  return (
+    <Base {...props}>
+      <path d="M4 6h16M4 12h10M4 18h13" />
+    </Base>
+  );
+}
+
+export function IconAlignCenter(props) {
+  return (
+    <Base {...props}>
+      <path d="M4 6h16M7 12h10M5.5 18h13" />
+    </Base>
+  );
+}
+
+export function IconAlignRight(props) {
+  return (
+    <Base {...props}>
+      <path d="M4 6h16M10 12h10M7 18h13" />
+    </Base>
+  );
+}
+
+export function IconIndentIncrease(props) {
+  return (
+    <Base {...props}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M4 9l3 3-3 3" />
+    </Base>
+  );
+}
+
+export function IconIndentDecrease(props) {
+  return (
+    <Base {...props}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="M7 9l-3 3 3 3" />
+    </Base>
+  );
+}
+
+// Both icons accept an optional `barColor` — the swatch bar under the glyph
+// tracks the last-applied color (falls back to `currentColor` so the icon
+// still reads correctly before any color has been picked).
+export function IconTextColor({ barColor, ...props }) {
+  return (
+    <Base {...props}>
+      <path d="M7 16 11 5h2l4 11" />
+      <path d="M8.3 12.5h7.4" />
+      <rect x="4" y="19" width="16" height="2.4" rx="1" fill={barColor || "currentColor"} stroke="none" />
+    </Base>
+  );
+}
+
+export function IconHighlighter({ barColor, ...props }) {
+  return (
+    <Base {...props}>
+      <path d="M7 14.5 13 8.5a1.6 1.6 0 0 1 2.3 2.3L9.3 16.8H7Z" />
+      <path d="M13 8.5 15.5 6l2.5 2.5-2.5 2.5" />
+      <rect x="4" y="19" width="16" height="2.4" rx="1" fill={barColor || "currentColor"} stroke="none" />
+    </Base>
+  );
+}

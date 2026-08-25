@@ -47,7 +47,27 @@ import {
 } from "./components-admin-surveys-editor";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
 
-import { Card as AdminUiCard, Tabs, Button, Toggle, PageHeader, useToast, useConfirm, usePrompt, EmptyState, IconClipboard, IconEye } from "./ui";
+import {
+  Card as AdminUiCard,
+  Tabs,
+  Button,
+  Toggle,
+  PageHeader,
+  Popover,
+  useToast,
+  useConfirm,
+  usePrompt,
+  EmptyState,
+  IconClipboard,
+  IconEye,
+  IconAlignLeft,
+  IconAlignCenter,
+  IconAlignRight,
+  IconIndentIncrease,
+  IconIndentDecrease,
+  IconTextColor,
+  IconHighlighter,
+} from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
@@ -987,6 +1007,165 @@ function TextAreaInput({
 }
 
 
+// Reset entries use "" so their onChange handlers can treat an empty string
+// as "clear the inline override", not as a real font-size/line-height value.
+const RICH_TEXT_FONT_SIZE_OPTIONS = [
+  { key: "small", label: "Small text", legacySize: "2", em: "0.85em" },
+  { key: "normal", label: "Normal text", legacySize: "3", em: "" },
+  { key: "large", label: "Large text", legacySize: "5", em: "1.3em" },
+  { key: "xlarge", label: "X-Large text", legacySize: "6", em: "1.6em" },
+];
+
+const RICH_TEXT_LINE_SPACING_OPTIONS = [
+  { key: "compact", label: "Compact spacing", value: "1.25" },
+  { key: "normal", label: "Normal spacing", value: "" },
+  { key: "relaxed", label: "Relaxed spacing", value: "1.9" },
+];
+
+const RICH_TEXT_COLORS = [
+  "#111827",
+  "#4b5563",
+  "#dc2626",
+  "#ea580c",
+  "#ca8a04",
+  "#16a34a",
+  "#0891b2",
+  "#2563eb",
+  "#7c3aed",
+  "#db2777",
+];
+
+const RICH_TEXT_HIGHLIGHT_COLORS = [
+  "#fef9c3",
+  "#fee2e2",
+  "#ffedd5",
+  "#dcfce7",
+  "#e0f2fe",
+  "#ede9fe",
+  "#fce7f3",
+  "#e5e7eb",
+];
+
+// Finds the block-level element(s) (p/h3/h4/li/blockquote/div) the current
+// selection touches, inside `editorEl` — used for block-scoped formatting
+// (line spacing) that document.execCommand has no equivalent for. Handles a
+// selection spanning multiple blocks by walking the editor's own DOM between
+// the start and end block, not just the two endpoints.
+function getRichTextSelectionBlocks(editorEl) {
+  if (!editorEl || typeof window === "undefined") return [];
+  const sel = window.getSelection?.();
+  if (!sel || sel.rangeCount === 0) return [];
+  const range = sel.getRangeAt(0);
+  if (!editorEl.contains(range.commonAncestorContainer)) return [];
+
+  const BLOCK_TAGS = new Set(["P", "H3", "H4", "LI", "BLOCKQUOTE", "DIV"]);
+  const findBlock = (node) => {
+    let n = node && node.nodeType === 3 ? node.parentElement : node;
+    while (n && n !== editorEl) {
+      if (BLOCK_TAGS.has(n.tagName)) return n;
+      n = n.parentElement;
+    }
+    return null;
+  };
+
+  const startBlock = findBlock(range.startContainer);
+  const endBlock = findBlock(range.endContainer);
+  const blocks = [];
+  if (startBlock) blocks.push(startBlock);
+  if (endBlock && endBlock !== startBlock) blocks.push(endBlock);
+
+  if (startBlock && endBlock && startBlock !== endBlock) {
+    const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_ELEMENT);
+    let inRange = false;
+    let node = walker.nextNode();
+    while (node) {
+      if (node === startBlock) inRange = true;
+      if (inRange && BLOCK_TAGS.has(node.tagName) && !blocks.includes(node)) {
+        blocks.push(node);
+      }
+      if (node === endBlock) break;
+      node = walker.nextNode();
+    }
+  }
+  return blocks;
+}
+
+function RichTextColorGrid({ colors, onPick, onReset, resetLabel }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 176 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+        {colors.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className="admin-btn"
+            title={c}
+            aria-label={c}
+            onClick={() => onPick(c)}
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 7,
+              border: "1px solid var(--admin-border-subtle)",
+              background: c,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          />
+        ))}
+        <label
+          title="Custom color"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 7,
+            border: "1px dashed var(--admin-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            fontSize: 14,
+            lineHeight: 1,
+            color: "var(--admin-muted)",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          +
+          <input
+            type="color"
+            onChange={(e) => onPick(e.target.value)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              opacity: 0,
+              cursor: "pointer",
+            }}
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        className="admin-btn"
+        onClick={onReset}
+        style={{
+          border: "1px solid var(--admin-border)",
+          background: "var(--admin-surface)",
+          borderRadius: 8,
+          padding: "6px 8px",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {resetLabel}
+      </button>
+    </div>
+  );
+}
+
 function RichTextInput({
   value,
   onChange,
@@ -999,6 +1178,11 @@ function RichTextInput({
   const lastHtmlRef = useRef(String(value ?? ""));
   const [showHtml, setShowHtml] = useState(false);
   const [lastHtml, setLastHtml] = useState(String(value ?? ""));
+  const [activeFormats, setActiveFormats] = useState({});
+  const [textColorOpen, setTextColorOpen] = useState(false);
+  const [highlightOpen, setHighlightOpen] = useState(false);
+  const [lastTextColor, setLastTextColor] = useState("currentColor");
+  const [lastHighlightColor, setLastHighlightColor] = useState("currentColor");
 
   // Important: do not render the editable content through React on every keystroke.
   // Re-applying innerHTML while the user types resets the caret to the beginning.
@@ -1038,6 +1222,22 @@ function RichTextInput({
     editorRef.current?.focus?.();
   }, []);
 
+  const updateActiveFormats = useCallback(() => {
+    if (typeof document === "undefined") return;
+    try {
+      setActiveFormats({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+        insertUnorderedList: document.queryCommandState("insertUnorderedList"),
+        insertOrderedList: document.queryCommandState("insertOrderedList"),
+        justifyLeft: document.queryCommandState("justifyLeft"),
+        justifyCenter: document.queryCommandState("justifyCenter"),
+        justifyRight: document.queryCommandState("justifyRight"),
+      });
+    } catch (_) {}
+  }, []);
+
   const runCommand = useCallback(
     (command, arg = null) => {
       if (typeof document === "undefined") return;
@@ -1046,19 +1246,104 @@ function RichTextInput({
         document.execCommand(command, false, arg);
       } catch (_) {}
       readEditorHtml();
+      updateActiveFormats();
+    },
+    [focusEditor, readEditorHtml, updateActiveFormats]
+  );
+
+  // Uses the classic execCommand("fontSize") 1-7 scale purely as a selection-
+  // scoped marker, then immediately rewrites every <font size> it produced
+  // into a <span style="font-size:...em">, so the saved HTML never contains
+  // legacy <font> tags. "Normal" unwraps instead of wrapping, clearing any
+  // earlier size override on the selected text.
+  const applyFontSize = useCallback(
+    (sizeKey) => {
+      const opt =
+        RICH_TEXT_FONT_SIZE_OPTIONS.find((o) => o.key === sizeKey) ||
+        RICH_TEXT_FONT_SIZE_OPTIONS[1];
+      focusEditor();
+      try {
+        document.execCommand("fontSize", false, opt.legacySize);
+      } catch (_) {}
+      const el = editorRef.current;
+      if (el) {
+        el.querySelectorAll("font[size]").forEach((fontEl) => {
+          if (opt.em) {
+            const span = document.createElement("span");
+            span.style.fontSize = opt.em;
+            while (fontEl.firstChild) span.appendChild(fontEl.firstChild);
+            fontEl.replaceWith(span);
+          } else {
+            const frag = document.createDocumentFragment();
+            while (fontEl.firstChild) frag.appendChild(fontEl.firstChild);
+            fontEl.replaceWith(frag);
+          }
+        });
+      }
+      readEditorHtml();
     },
     [focusEditor, readEditorHtml]
   );
 
-  const buttonStyle = {
-    border: "1px solid var(--admin-border)",
-    background: "var(--admin-surface)",
+  const applyForeColor = useCallback(
+    (color) => {
+      focusEditor();
+      try {
+        document.execCommand("foreColor", false, color);
+      } catch (_) {}
+      readEditorHtml();
+    },
+    [focusEditor, readEditorHtml]
+  );
+
+  // hiliteColor is the correct CSS-highlight command, but older Safari only
+  // understands backColor — feature-detect rather than sniffing UA strings.
+  const applyHighlight = useCallback(
+    (color) => {
+      focusEditor();
+      const supportsHilite =
+        typeof document.queryCommandSupported === "function" &&
+        document.queryCommandSupported("hiliteColor");
+      try {
+        document.execCommand(supportsHilite ? "hiliteColor" : "backColor", false, color);
+      } catch (_) {
+        try {
+          document.execCommand("backColor", false, color);
+        } catch (_) {}
+      }
+      readEditorHtml();
+    },
+    [focusEditor, readEditorHtml]
+  );
+
+  const applyLineSpacing = useCallback(
+    (value) => {
+      focusEditor();
+      const el = editorRef.current;
+      if (!el) return;
+      const blocks = getRichTextSelectionBlocks(el);
+      if (!blocks.length) return;
+      blocks.forEach((b) => {
+        b.style.lineHeight = value || "";
+      });
+      readEditorHtml();
+    },
+    [focusEditor, readEditorHtml]
+  );
+
+  const buttonStyle = (active) => ({
+    border: `1px solid ${active ? "var(--admin-accent)" : "var(--admin-border)"}`,
+    background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+    color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
     borderRadius: 8,
     padding: "6px 9px",
     cursor: "pointer",
     fontSize: 12,
     fontWeight: 600,
-  };
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  });
 
   const selectStyle = {
     border: "1px solid var(--admin-border)",
@@ -1066,6 +1351,13 @@ function RichTextInput({
     borderRadius: 8,
     padding: "6px 8px",
     fontSize: 12,
+  };
+
+  const dividerStyle = {
+    width: 1,
+    alignSelf: "stretch",
+    background: "var(--admin-border-subtle)",
+    margin: "2px 2px",
   };
 
   if (showHtml) {
@@ -1082,7 +1374,8 @@ function RichTextInput({
         >
           <button
             type="button"
-            style={buttonStyle}
+            className="admin-btn"
+            style={buttonStyle(false)}
             onClick={() => setShowHtml(false)}
           >
             Rich text editor
@@ -1135,32 +1428,50 @@ function RichTextInput({
           <option value="H3">Heading</option>
           <option value="H4">Subheading</option>
         </select>
-        <button type="button" style={buttonStyle} onClick={() => runCommand("bold")}>
+        <button
+          type="button"
+          className="admin-btn"
+          style={buttonStyle(activeFormats.bold)}
+          onClick={() => runCommand("bold")}
+        >
           Bold
         </button>
-        <button type="button" style={buttonStyle} onClick={() => runCommand("italic")}>
+        <button
+          type="button"
+          className="admin-btn"
+          style={buttonStyle(activeFormats.italic)}
+          onClick={() => runCommand("italic")}
+        >
           Italic
         </button>
-        <button type="button" style={buttonStyle} onClick={() => runCommand("underline")}>
+        <button
+          type="button"
+          className="admin-btn"
+          style={buttonStyle(activeFormats.underline)}
+          onClick={() => runCommand("underline")}
+        >
           Underline
         </button>
         <button
           type="button"
-          style={buttonStyle}
+          className="admin-btn"
+          style={buttonStyle(activeFormats.insertUnorderedList)}
           onClick={() => runCommand("insertUnorderedList")}
         >
           Bullets
         </button>
         <button
           type="button"
-          style={buttonStyle}
+          className="admin-btn"
+          style={buttonStyle(activeFormats.insertOrderedList)}
           onClick={() => runCommand("insertOrderedList")}
         >
           Numbers
         </button>
         <button
           type="button"
-          style={buttonStyle}
+          className="admin-btn"
+          style={buttonStyle(false)}
           onClick={async () => {
             const url = await prompt({ title: "Link URL" });
             if (url) runCommand("createLink", url);
@@ -1170,18 +1481,188 @@ function RichTextInput({
         </button>
         <button
           type="button"
-          style={buttonStyle}
+          className="admin-btn"
+          style={buttonStyle(false)}
           onClick={() => runCommand("removeFormat")}
         >
           Clear format
         </button>
         <button
           type="button"
-          style={{ ...buttonStyle, marginLeft: "auto" }}
+          className="admin-btn"
+          style={{ ...buttonStyle(false), marginLeft: "auto" }}
           onClick={() => setShowHtml(true)}
         >
           HTML view
         </button>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          alignItems: "center",
+          padding: 8,
+          borderBottom: "1px solid var(--admin-border-subtle)",
+          background: "var(--admin-surface-alt)",
+        }}
+      >
+        <button
+          type="button"
+          className="admin-btn"
+          title="Align left"
+          aria-pressed={!!activeFormats.justifyLeft}
+          style={buttonStyle(activeFormats.justifyLeft)}
+          onClick={() => runCommand("justifyLeft")}
+        >
+          <IconAlignLeft size={14} />
+        </button>
+        <button
+          type="button"
+          className="admin-btn"
+          title="Align center"
+          aria-pressed={!!activeFormats.justifyCenter}
+          style={buttonStyle(activeFormats.justifyCenter)}
+          onClick={() => runCommand("justifyCenter")}
+        >
+          <IconAlignCenter size={14} />
+        </button>
+        <button
+          type="button"
+          className="admin-btn"
+          title="Align right"
+          aria-pressed={!!activeFormats.justifyRight}
+          style={buttonStyle(activeFormats.justifyRight)}
+          onClick={() => runCommand("justifyRight")}
+        >
+          <IconAlignRight size={14} />
+        </button>
+
+        <div aria-hidden style={dividerStyle} />
+
+        <button
+          type="button"
+          className="admin-btn"
+          title="Decrease indent"
+          style={buttonStyle(false)}
+          onClick={() => runCommand("outdent")}
+        >
+          <IconIndentDecrease size={14} />
+        </button>
+        <button
+          type="button"
+          className="admin-btn"
+          title="Increase indent"
+          style={buttonStyle(false)}
+          onClick={() => runCommand("indent")}
+        >
+          <IconIndentIncrease size={14} />
+        </button>
+
+        <div aria-hidden style={dividerStyle} />
+
+        <select
+          aria-label="Line spacing"
+          defaultValue=""
+          onChange={(e) => {
+            applyLineSpacing(e.target.value);
+            e.target.value = "";
+          }}
+          style={selectStyle}
+        >
+          <option value="" disabled>
+            Line spacing
+          </option>
+          {RICH_TEXT_LINE_SPACING_OPTIONS.map((o) => (
+            <option key={o.key} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          aria-label="Font size"
+          defaultValue=""
+          onChange={(e) => {
+            applyFontSize(e.target.value);
+            e.target.value = "";
+          }}
+          style={selectStyle}
+        >
+          <option value="" disabled>
+            Font size
+          </option>
+          {RICH_TEXT_FONT_SIZE_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        <div aria-hidden style={dividerStyle} />
+
+        <Popover
+          align="start"
+          open={textColorOpen}
+          onOpenChange={setTextColorOpen}
+          trigger={
+            <button
+              type="button"
+              className="admin-btn"
+              title="Text color"
+              style={buttonStyle(false)}
+            >
+              <IconTextColor size={14} barColor={lastTextColor} />
+            </button>
+          }
+        >
+          <RichTextColorGrid
+            colors={RICH_TEXT_COLORS}
+            onPick={(c) => {
+              applyForeColor(c);
+              setLastTextColor(c);
+              setTextColorOpen(false);
+            }}
+            onReset={() => {
+              applyForeColor("inherit");
+              setLastTextColor("currentColor");
+              setTextColorOpen(false);
+            }}
+            resetLabel="Default color"
+          />
+        </Popover>
+
+        <Popover
+          align="start"
+          open={highlightOpen}
+          onOpenChange={setHighlightOpen}
+          trigger={
+            <button
+              type="button"
+              className="admin-btn"
+              title="Highlight color"
+              style={buttonStyle(false)}
+            >
+              <IconHighlighter size={14} barColor={lastHighlightColor} />
+            </button>
+          }
+        >
+          <RichTextColorGrid
+            colors={RICH_TEXT_HIGHLIGHT_COLORS}
+            onPick={(c) => {
+              applyHighlight(c);
+              setLastHighlightColor(c);
+              setHighlightOpen(false);
+            }}
+            onReset={() => {
+              applyHighlight("transparent");
+              setLastHighlightColor("currentColor");
+              setHighlightOpen(false);
+            }}
+            resetLabel="No highlight"
+          />
+        </Popover>
       </div>
 
       <div style={{ position: "relative" }}>
@@ -1207,11 +1688,14 @@ function RichTextInput({
           onInput={readEditorHtml}
           onFocus={() => {
             isFocusedRef.current = true;
+            updateActiveFormats();
           }}
           onBlur={() => {
             isFocusedRef.current = false;
             readEditorHtml();
           }}
+          onKeyUp={updateActiveFormats}
+          onMouseUp={updateActiveFormats}
           onPaste={(e) => {
             // Keep pasted formatted text/images from Word/Qualtrics manageable by letting the browser
             // paste HTML, then immediately save the generated HTML into the existing field.
@@ -3067,10 +3551,10 @@ export function AdminSurveysPanel({
               {completionMode === COMPLETION_MODE_MESSAGE && (
                 <>
                   <FieldBlock
-                    label="Thank you message HTML"
-                    hint="Shown after the participant submits the survey."
+                    label="Thank you message"
+                    hint="Use the rich text editor to design this message. It is still saved as HTML for the backend and frontend."
                   >
-                    <TextAreaInput
+                    <RichTextInput
                       value={survey.thank_you_message_html}
                       onChange={(v) =>
                         setSurvey({
@@ -3079,7 +3563,7 @@ export function AdminSurveysPanel({
                         })
                       }
                       placeholder="Enter the thank you message shown after submission..."
-                      rows={6}
+                      minHeight={160}
                     />
                   </FieldBlock>
 

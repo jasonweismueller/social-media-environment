@@ -7,7 +7,24 @@ import {
   ATTENTION_CHECK_ELIGIBLE_TYPES,
   saveQuestionLibraryItemToBackend,
 } from "../utils";
-import { Button, IconButton, Card, Toggle, Modal, EmptyState, useConfirm, useToast, usePrompt, IconBookmark, Popover } from "./ui";
+import {
+  Button,
+  IconButton,
+  Card,
+  Toggle,
+  Modal,
+  EmptyState,
+  useConfirm,
+  useToast,
+  usePrompt,
+  IconBookmark,
+  Popover,
+  IconAlignLeft,
+  IconAlignCenter,
+  IconAlignRight,
+  IconTextColor,
+  IconHighlighter,
+} from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
 import { QuestionLibraryPickerModal } from "./components-admin-question-library";
 
@@ -2285,6 +2302,25 @@ function BoldIcon({ size = 14 }) {
   );
 }
 
+function UnderlineIcon({ size = 14 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 4v7a6 6 0 0 0 12 0V4" />
+      <line x1="5" y1="20" x2="19" y2="20" />
+    </svg>
+  );
+}
+
 function ItalicIcon({ size = 14 }) {
   return (
     <svg
@@ -2718,15 +2754,137 @@ function RichToolbarButton({ title, onMouseDown, active = false, children }) {
   );
 }
 
+const QUESTION_TEXT_COLORS = [
+  "#111827",
+  "#4b5563",
+  "#dc2626",
+  "#ea580c",
+  "#ca8a04",
+  "#16a34a",
+  "#2563eb",
+  "#7c3aed",
+];
+
+const QUESTION_HIGHLIGHT_COLORS = [
+  "#fef9c3",
+  "#fee2e2",
+  "#ffedd5",
+  "#dcfce7",
+  "#e0f2fe",
+  "#ede9fe",
+  "#fce7f3",
+  "#e5e7eb",
+];
+
+function QuestionColorSwatchGrid({ colors, onPick, onReset, resetLabel }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 160 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+        {colors.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className="admin-btn"
+            title={c}
+            aria-label={c}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onPick(c)}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 7,
+              border: "1px solid var(--admin-border-subtle)",
+              background: c,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          />
+        ))}
+        <label
+          title="Custom color"
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            border: "1px dashed var(--admin-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            fontSize: 14,
+            lineHeight: 1,
+            color: "var(--admin-muted)",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          +
+          <input
+            type="color"
+            onMouseDown={(e) => e.preventDefault()}
+            onChange={(e) => onPick(e.target.value)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              opacity: 0,
+              cursor: "pointer",
+            }}
+          />
+        </label>
+      </div>
+      <button
+        type="button"
+        className="admin-btn"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onReset}
+        style={{
+          border: "1px solid var(--admin-border)",
+          background: "var(--admin-surface)",
+          borderRadius: 8,
+          padding: "6px 8px",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {resetLabel}
+      </button>
+    </div>
+  );
+}
+
+// hiliteColor is the correct CSS-highlight command, but older Safari only
+// understands backColor — feature-detect rather than sniffing UA strings.
+function questionHiliteCommandName() {
+  try {
+    return typeof document.queryCommandSupported === "function" &&
+      document.queryCommandSupported("hiliteColor")
+      ? "hiliteColor"
+      : "backColor";
+  } catch {
+    return "backColor";
+  }
+}
+
 function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
   const editorRef = useRef(null);
   const [focused, setFocused] = useState(false);
   const [formats, setFormats] = useState({
     bold: false,
     italic: false,
+    underline: false,
     insertUnorderedList: false,
     insertOrderedList: false,
+    justifyLeft: false,
+    justifyCenter: false,
+    justifyRight: false,
   });
+  const [textColorOpen, setTextColorOpen] = useState(false);
+  const [highlightOpen, setHighlightOpen] = useState(false);
+  const [lastTextColor, setLastTextColor] = useState("currentColor");
+  const [lastHighlightColor, setLastHighlightColor] = useState("currentColor");
 
   const normalizedValue = normalizeRichTextHtml(value);
 
@@ -2744,15 +2902,23 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
       setFormats({
         bold: !!document.queryCommandState("bold"),
         italic: !!document.queryCommandState("italic"),
+        underline: !!document.queryCommandState("underline"),
         insertUnorderedList: !!document.queryCommandState("insertUnorderedList"),
         insertOrderedList: !!document.queryCommandState("insertOrderedList"),
+        justifyLeft: !!document.queryCommandState("justifyLeft"),
+        justifyCenter: !!document.queryCommandState("justifyCenter"),
+        justifyRight: !!document.queryCommandState("justifyRight"),
       });
     } catch {
       setFormats({
         bold: false,
         italic: false,
+        underline: false,
         insertUnorderedList: false,
         insertOrderedList: false,
+        justifyLeft: false,
+        justifyCenter: false,
+        justifyRight: false,
       });
     }
   }
@@ -2857,6 +3023,17 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
         </RichToolbarButton>
 
         <RichToolbarButton
+          title="Underline"
+          active={formats.underline}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("underline");
+          }}
+        >
+          <UnderlineIcon size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
           title="Bullet list"
           active={formats.insertUnorderedList}
           onMouseDown={(e) => {
@@ -2887,6 +3064,101 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
         >
           <span style={{ fontSize: 11, fontWeight: 700 }}>P</span>
         </RichToolbarButton>
+
+        <div
+          aria-hidden
+          style={{ width: 1, alignSelf: "stretch", background: "var(--admin-border-subtle)" }}
+        />
+
+        <RichToolbarButton
+          title="Align left"
+          active={formats.justifyLeft}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("justifyLeft");
+          }}
+        >
+          <IconAlignLeft size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
+          title="Align center"
+          active={formats.justifyCenter}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("justifyCenter");
+          }}
+        >
+          <IconAlignCenter size={14} />
+        </RichToolbarButton>
+
+        <RichToolbarButton
+          title="Align right"
+          active={formats.justifyRight}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            runCommand("justifyRight");
+          }}
+        >
+          <IconAlignRight size={14} />
+        </RichToolbarButton>
+
+        <div
+          aria-hidden
+          style={{ width: 1, alignSelf: "stretch", background: "var(--admin-border-subtle)" }}
+        />
+
+        <Popover
+          align="start"
+          open={textColorOpen}
+          onOpenChange={setTextColorOpen}
+          trigger={
+            <RichToolbarButton title="Text color" onMouseDown={(e) => e.preventDefault()}>
+              <IconTextColor size={14} barColor={lastTextColor} />
+            </RichToolbarButton>
+          }
+        >
+          <QuestionColorSwatchGrid
+            colors={QUESTION_TEXT_COLORS}
+            onPick={(c) => {
+              runCommand("foreColor", c);
+              setLastTextColor(c);
+              setTextColorOpen(false);
+            }}
+            onReset={() => {
+              runCommand("foreColor", "inherit");
+              setLastTextColor("currentColor");
+              setTextColorOpen(false);
+            }}
+            resetLabel="Default color"
+          />
+        </Popover>
+
+        <Popover
+          align="start"
+          open={highlightOpen}
+          onOpenChange={setHighlightOpen}
+          trigger={
+            <RichToolbarButton title="Highlight color" onMouseDown={(e) => e.preventDefault()}>
+              <IconHighlighter size={14} barColor={lastHighlightColor} />
+            </RichToolbarButton>
+          }
+        >
+          <QuestionColorSwatchGrid
+            colors={QUESTION_HIGHLIGHT_COLORS}
+            onPick={(c) => {
+              runCommand(questionHiliteCommandName(), c);
+              setLastHighlightColor(c);
+              setHighlightOpen(false);
+            }}
+            onReset={() => {
+              runCommand(questionHiliteCommandName(), "transparent");
+              setLastHighlightColor("currentColor");
+              setHighlightOpen(false);
+            }}
+            resetLabel="No highlight"
+          />
+        </Popover>
       </div>
 
       <div style={{ position: "relative" }}>
