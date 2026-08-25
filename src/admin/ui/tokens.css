@@ -383,8 +383,20 @@ html[data-admin-theme="dark"] .admin-shell .subtle {
 /* Several `.admin-shell` pages (e.g. AdminProjectPicker) don't force
    `min-height: 100vh` on their own wrapper, so on a short page the real
    <body> background shows below the fold — flip that too, so there's no
-   leftover white strip under a short dark-mode page. */
-html[data-admin-theme="dark"] body {
+   leftover white strip under a short dark-mode page. `:has(.admin-shell)`
+   (already used elsewhere in this codebase, e.g. styles-amazon.css's own
+   `body:has(.admin-shell)` rules) scopes this defensively: `useAdminTheme.js`
+   now gates *setting* `data-admin-theme` on actually being under `/admin`,
+   but this used to be the one rule in this whole dark-mode block not scoped
+   to `.admin-shell` at all — bare `html[data-admin-theme="dark"] body`
+   would paint the real participant-facing <body> dark too if the attribute
+   were ever set while on a feed/survey page, producing exactly the "some
+   elements dark, some not" symptom that bug turned out to cause (the body
+   background went dark while every actual feed/post CSS, driven by the
+   separate participant `.dark-mode` class, stayed untouched). Keeping this
+   `:has()` scope even with the JS-level fix above is deliberate
+   defense-in-depth, not redundant. */
+html[data-admin-theme="dark"] body:has(.admin-shell) {
   background: #101217;
 }
 

@@ -26,14 +26,26 @@ function readStoredTheme() {
   return "light";
 }
 
-// Applied once, at module-evaluation time (not inside a React effect) —
-// this module is only ever imported once real admin UI is about to render
-// (from AdminEntry.jsx's route tree, itself only reached behind the
-// dynamic app-bundle import in index.html), so this runs before the first
-// `.admin-shell` paints. Setting the attribute inside a `useEffect` instead
-// would run one tick after that first paint, producing a visible flash of
-// the wrong theme on every load.
-if (typeof document !== "undefined") {
+// Applied once, at module-evaluation time (not inside a React effect) — so
+// this runs before the first `.admin-shell` paints, avoiding a flash of the
+// wrong theme. But this module's import is NOT actually gated behind the
+// admin route the way its own doc comment used to claim: `AdminEntry` is
+// imported eagerly (a plain top-level `import`, not `React.lazy`) from every
+// `App-*.jsx`, so this side effect runs on every page load of the app
+// bundle — including a plain participant feed URL. Gate on the real URL
+// pathname (mirrors `isAdminRoute` in index.html/App-*.jsx) so a participant
+// page never gets `data-admin-theme` set at all, regardless of whatever an
+// admin last chose in a different tab on the same browser/localStorage —
+// this was a real bug: an admin who'd turned dark mode on for the dashboard
+// would then see a stray dark `<body>` background on an otherwise fully
+// light participant feed (see the `body:has(.admin-shell)` scoping fix on
+// the one non-`.admin-shell`-scoped rule below for the defense-in-depth
+// half of this same fix).
+if (
+  typeof document !== "undefined" &&
+  typeof window !== "undefined" &&
+  window.location.pathname.startsWith("/admin")
+) {
   document.documentElement.setAttribute("data-admin-theme", readStoredTheme());
 }
 

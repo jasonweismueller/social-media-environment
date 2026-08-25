@@ -196,19 +196,27 @@ a:hover{text-decoration:underline}
 /* ============= Info / Note bars ============= */
 .info-bar,.note-bar{padding:.5rem 1rem;border-top:1px solid var(--line);font-size:.95rem}
 .info-head,.note-head{display:flex;align-items:center;gap:.4rem}
-.info-icon{color:#6b7280}
+.info-icon{color:var(--muted,#6b7280)}
 .note-icon{color:#2563eb}
 .info-title,.note-title{font-weight:700}
-.info-sub{margin-top:.25rem;line-height:1.5;color:#6b7280}
+.info-sub{margin-top:.25rem;line-height:1.5;color:var(--muted,#6b7280)}
 .note-sub{margin-top:.25rem;line-height:1.5}
-.info-row,.note-row{margin-top:.35rem;display:flex;align-items:center;gap:.5rem;color:#6b7280}
+.info-row,.note-row{margin-top:.35rem;display:flex;align-items:center;gap:.5rem;color:var(--muted,#6b7280)}
 .info-clean{background:transparent}
 
-/* — Ensure divider above reactions when an intervention is present — */
+/* — Ensure divider above reactions when an intervention is present —
+   `components-ui-interventions.jsx`'s NoteIntervention used to set an
+   identical hardcoded background/border-top directly as an inline style on
+   the same element (this rule's own former comment said so: "matches your
+   JSX") — neither was theme-aware, so the whole Community-Note-style
+   intervention stayed light-background-only under dark mode. Fixed here via
+   CSS variables (now the only place this background/border is set — the
+   inline duplicate was removed) rather than adding a separate .dark-mode
+   override block. */
 .info-bar + .bar-stats,
 .note-bar{
-  background:#f3f4f6;
-  border-top:1px solid rgba(17,24,39,.08); /* matches your JSX */
+  background:var(--card,#f3f4f6);
+  border-top:1px solid var(--line,rgba(17,24,39,.08));
 }
 
 /* ============= Reactions summary ============= */

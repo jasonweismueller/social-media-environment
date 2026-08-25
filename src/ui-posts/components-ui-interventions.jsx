@@ -81,7 +81,7 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
           maxWidth: "92vw",
           maxHeight: "90vh",
           overflow: "auto",
-          background: "#fff",
+          background: "var(--card, #fff)",
           borderRadius: 16,
           boxShadow: "0 20px 60px rgba(0,0,0,.25)",
         }}
@@ -90,7 +90,7 @@ function NoteModal({ open, onClose, children, title = "Note" }) {
         <div
           style={{
             padding: "12px 14px",
-            borderBottom: "1px solid rgba(17,24,39,.10)",
+            borderBottom: "1px solid var(--line, rgba(17,24,39,.10))",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -186,7 +186,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   return (
     <div
       style={{
-        border: "1px solid rgba(17,24,39,.12)",
+        border: "1px solid var(--line, rgba(17,24,39,.12))",
         borderRadius: 16,
         overflow: "hidden",
       }}
@@ -201,7 +201,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
               height: 32,
               borderRadius: 999,
               overflow: "hidden",
-              background: "#e5e7eb",
+              background: "var(--line, #e5e7eb)",
               flexShrink: 0,
             }}
           >
@@ -236,7 +236,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
                   ✓
                 </span>
               ) : null}
-              {timeLabel ? <div style={{ color: "#6b7280", fontSize: 12 }}>· {timeLabel}</div> : null}
+              {timeLabel ? <div style={{ color: "var(--muted, #6b7280)", fontSize: 12 }}>· {timeLabel}</div> : null}
             </div>
           </div>
         </div>
@@ -250,7 +250,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
                 height: 86,
                 borderRadius: 14,
                 overflow: "hidden",
-                background: "#e5e7eb",
+                background: "var(--line, #e5e7eb)",
                 flexShrink: 0,
               }}
             >
@@ -269,13 +269,13 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
             </div>
           ) : null}
 
-          <div style={{ fontSize: 14, lineHeight: 1.35, color: "#111827", whiteSpace: "pre-wrap" }}>
+          <div style={{ fontSize: 14, lineHeight: 1.35, color: "var(--text, #111827)", whiteSpace: "pre-wrap" }}>
             {post.text || ""}
           </div>
         </div>
       </div>
 
-      <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
+      <div style={{ height: 1, background: "var(--line, rgba(17,24,39,.10))" }} />
 
       {/* Note meta rows (like the screenshot) */}
       <div style={{ padding: "14px 14px 6px 14px", display: "grid", gap: 6 }}>
@@ -296,13 +296,13 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
             ✓
           </span>
           <span style={{ fontWeight: 800 }}>{ratedHelpfulLabel}</span>
-          <span style={{ color: "#6b7280" }}>·</span>
+          <span style={{ color: "var(--muted, #6b7280)" }}>·</span>
           <button
             type="button"
             style={{
               border: 0,
               background: "transparent",
-              color: "#6b7280",
+              color: "var(--muted, #6b7280)",
               textDecoration: "underline",
               cursor: "pointer",
               fontSize: 13,
@@ -317,12 +317,12 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
           </button>
         </div>
 
-                <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", color: "var(--muted, #6b7280)", fontSize: 13 }}>
           <span style={{ width: 18, textAlign: "center" }}>👁</span>
           <span>{shownOnLabel}</span>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#6b7280", fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "var(--muted, #6b7280)", fontSize: 13 }}>
           <span style={{ width: 18, textAlign: "center" }}>💬</span>
           <span>{badgeSummary}</span>
         </div>
@@ -336,7 +336,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
     marginRight: 14,
     marginBottom: 14,
     fontSize: 14,
-    color: "#111827",
+    color: "var(--text, #111827)",
     lineHeight: 1.45,
   }}
 >
@@ -352,9 +352,9 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   />
 </div>
 
-<div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
+<div style={{ height: 1, background: "var(--line, rgba(17,24,39,.10))" }} />
 
-      <div style={{ height: 1, background: "rgba(17,24,39,.10)" }} />
+      <div style={{ height: 1, background: "var(--line, rgba(17,24,39,.10))" }} />
 
       {/* Rating row */}
       <div style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -391,14 +391,15 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
 
   return (
     <>
-      {/* ✅ Gray background note surface (X-like) */}
+      {/* Gray background note surface (X-like). Background/border-top come
+          from the .note-bar CSS class (styles-facebook.css), which is
+          theme-aware via var(--card)/var(--line) — no inline override here
+          so dark mode isn't silently defeated by it. */}
       <div
         className="note-bar"
         style={{
           marginTop: 0,
           padding: 12,
-          background: "#f3f4f6",
-          borderTop: "1px solid rgba(17,24,39,.08)",
         }}
       >
         {/* Clicking note surface opens modal, but links inside do not */}
@@ -433,7 +434,7 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
 
             <div style={{ display: "grid", gap: 2 }}>
               <div style={{ fontWeight: 800, lineHeight: 1.1 }}>Readers added context</div>
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.25 }}>
+              <div style={{ fontSize: 12, color: "var(--muted, #6b7280)", lineHeight: 1.25 }}>
                 {/* ✅ restore sizes + types (bold) */}
                 <RatedByLine post={post} participantSeed={participantSeed} />
               </div>
@@ -446,7 +447,7 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
     marginTop: 10,
     marginLeft: 24,   // align with text column after icon
     fontSize: 14,
-    color: "#111827",
+    color: "var(--text, #111827)",
     lineHeight: 1.4,
   }}
 >
@@ -468,7 +469,7 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
           aria-hidden="true"
           style={{
             height: 1,
-            background: "rgba(17,24,39,.10)",
+            background: "var(--line, rgba(17,24,39,.10))",
             marginTop: 12,
             marginBottom: 10,
           }}
@@ -476,7 +477,7 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
 
         {/* rating row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 14, color: "#374151" }}>Do you find this helpful?</div>
+          <div style={{ fontSize: 14, color: "var(--text, #374151)" }}>Do you find this helpful?</div>
           <button type="button" className="btn" onClick={() => openModal("rate_it_button")}>
             Rate it
           </button>

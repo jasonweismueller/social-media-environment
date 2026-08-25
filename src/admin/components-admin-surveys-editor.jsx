@@ -1485,6 +1485,18 @@ function PageCardHeader({
   onDrop,
   onDragEnd,
   onSaveToLibrary,
+  // Delay (in seconds) before the participant can advance off THIS page —
+  // null/undefined means there's nothing to show (the last page has no
+  // "next page" to delay into, and its own next_delay_seconds is always
+  // forced to 0 when the survey is rebuilt — see
+  // buildSurveyPagesFromFlatQuestions). Only rendered when both are set.
+  delaySeconds,
+  onChangeDelay,
+  // Present only for page 2+ — removes the page break that starts THIS
+  // page, merging its questions back into the previous page. This is the
+  // only surviving way to undo "start a new page here" now that page
+  // breaks no longer render as their own standalone card in the list.
+  onRemoveBreak,
   dense = false,
 }) {
   return (
@@ -1564,6 +1576,49 @@ function PageCardHeader({
         {questionCount} {questionCount === 1 ? "question" : "questions"}
         {isCrossBlockTarget ? " · can't move here" : isCollapsed ? " · collapsed" : ""}
       </span>
+      {delaySeconds != null && onChangeDelay && (
+        <label
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          title="Delay before participants can advance from this page"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            fontSize: dense ? 10.5 : 11.5,
+            color: "var(--admin-muted)",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <ClockIcon size={dense ? 11 : 12} />
+          <NumberInput
+            value={delaySeconds}
+            min={0}
+            step={1}
+            onChange={(v) => onChangeDelay(normalizePageDelaySeconds(v))}
+            style={{
+              width: dense ? 40 : 48,
+              height: dense ? 20 : 24,
+              padding: dense ? "1px 4px" : "2px 6px",
+              fontSize: dense ? 10.5 : 11.5,
+            }}
+          />
+          s
+        </label>
+      )}
+      {onRemoveBreak && (
+        <IconOnlyButton
+          onClick={onRemoveBreak}
+          title="Remove this page break (merges this page back into the previous one)"
+          aria-label={`Remove the page break that starts page ${pageNumber}`}
+          danger
+          size={dense ? 11 : 12}
+          style={{ width: dense ? 20 : 24, height: dense ? 20 : 24, flex: "0 0 auto" }}
+        >
+          <TrashIcon size={dense ? 11 : 12} />
+        </IconOnlyButton>
+      )}
       {onSaveToLibrary && questionCount > 0 && (
         <IconOnlyButton
           onClick={onSaveToLibrary}
@@ -2145,6 +2200,25 @@ export function remapLibraryQuestionsForInsert(libraryQuestions = [], existingId
 /* =========================
    Small icon/button helpers
    ========================= */
+
+function ClockIcon({ size = 16 }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
 
 function TrashIcon({ size = 16 }) {
   return (
@@ -5815,7 +5889,6 @@ function QuestionCard({
 }) {
   const confirm = useConfirm();
   const type = q?.type;
-  const isPageBreak = type === EDITOR_PAGE_BREAK_TYPE;
 
   // Which of the 4 advanced sub-editors are expanded — deliberately local
   // component state, not stored on the question data object (as it used to
@@ -5835,7 +5908,7 @@ function QuestionCard({
 
   async function removeQuestionWithConfirm(idx) {
     const ok = await confirm({
-      title: isPageBreak ? "Delete this page break?" : "Delete this question?",
+      title: "Delete this question?",
       danger: true,
       confirmLabel: "Delete",
     });
@@ -5882,13 +5955,12 @@ function QuestionCard({
   // at all, just opacity while it's the item actually being dragged.
   const shellStyle = {
     position: "relative",
-    border: `1px solid ${isPageBreak ? "var(--admin-muted-2)" : "var(--admin-border)"}`,
-    borderStyle: isPageBreak ? "dashed" : "solid",
+    border: "1px solid var(--admin-border)",
     borderRadius: 12,
     padding: 14,
     marginTop: 18,
     marginBottom: 26,
-    background: isDragging ? "var(--admin-surface-sunken)" : isPageBreak ? "var(--admin-surface-alt)" : "var(--admin-surface)",
+    background: isDragging ? "var(--admin-surface-sunken)" : "var(--admin-surface)",
     opacity: isDragging ? 0.65 : 1,
     // Deliberately not a permanent "grab" cursor here (only "grabbing" while
     // actually dragging) — `cursor` is an inherited CSS property, and none
@@ -5898,97 +5970,6 @@ function QuestionCard({
     // every field look non-editable at a glance.
     cursor: isDragging ? "grabbing" : undefined,
   };
-
-  if (isPageBreak) {
-    return (
-      <div
-        draggable
-        onMouseDown={guardCardDraggableOnMouseDown}
-        onDragStart={makeWholeCardDragStart(onDragStart, q._editorId)}
-        onDragEnd={onDragEnd}
-        onDragOver={(e) => onDragOver(e, q._editorId)}
-        onDrop={(e) => onDrop(e, q._editorId)}
-        style={{
-          ...shellStyle,
-          padding: "6px 12px",
-          marginTop: 10,
-          marginBottom: 14,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <DropIndicatorLine position={isDragOver ? dragOverPosition : null} />
-
-        <InsertAtBorderButton
-          position="top"
-          onOpenPicker={() => onOpenAddQuestion(index, "above")}
-        />
-        <InsertAtBorderButton
-          position="bottom"
-          onOpenPicker={() => onOpenAddQuestion(index, "below")}
-        />
-
-        <DragHandle
-          onDragStart={(e) => onDragStart(e, q._editorId)}
-          onDragEnd={onDragEnd}
-        />
-
-        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--admin-muted)", flex: "0 0 auto", whiteSpace: "nowrap" }}>
-          Page break
-        </span>
-
-        <span style={{ fontSize: 12, color: "var(--admin-muted-2)", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {pageNumber != null ? `Page ${pageNumber} starts below.` : "Questions after this appear on the next page."}
-        </span>
-
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--admin-muted)", flex: "0 0 auto" }}>
-          Delay
-          <NumberInput
-            value={q?.next_delay_seconds ?? 0}
-            min={0}
-            step={1}
-            onChange={(v) =>
-              updateQuestion(index, {
-                next_delay_seconds: normalizePageDelaySeconds(v),
-              })
-            }
-            style={{ width: 60, height: 30, padding: "4px 8px" }}
-          />
-          sec
-        </label>
-
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "0 0 auto" }}>
-          <button
-            type="button"
-            className="admin-btn"
-            onClick={() => moveQuestion(index, index - 1)}
-            disabled={index === 0}
-            style={smallActionButtonStyle(index === 0)}
-          >
-            ↑
-          </button>
-
-          <button
-            type="button"
-            className="admin-btn"
-            onClick={() => moveQuestion(index, index + 1)}
-            disabled={index === totalQuestions - 1}
-            style={smallActionButtonStyle(index === totalQuestions - 1)}
-          >
-            ↓
-          </button>
-
-          <IconOnlyButton
-            onClick={() => removeQuestionWithConfirm(index)}
-            title="Delete page break"
-            danger
-            style={{ width: INPUT_HEIGHT, height: INPUT_HEIGHT, flex: "0 0 auto" }}
-          />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -6414,7 +6395,6 @@ function OutlineRow({
   onDrop,
   onDragEnd,
 }) {
-  const isPageBreak = item.type === EDITOR_PAGE_BREAK_TYPE;
   const isDragging = draggingId === item._editorId;
   const isDragOver = dragOverId === item._editorId;
 
@@ -6442,60 +6422,6 @@ function OutlineRow({
       </button>
     </div>
   );
-
-  if (isPageBreak) {
-    return (
-      <div
-        draggable
-        onMouseDown={guardCardDraggableOnMouseDown}
-        onDragStart={makeWholeCardDragStart(onDragStart, item._editorId)}
-        onDragEnd={onDragEnd}
-        onDragOver={(e) => onDragOver(e, item._editorId)}
-        onDrop={(e) => onDrop(e, item._editorId)}
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          margin: "3px 0",
-          padding: "2px 5px",
-          borderRadius: 5,
-          borderTop: "1px dashed var(--admin-muted-2)",
-          opacity: isDragging ? 0.5 : 1,
-          cursor: isDragging ? "grabbing" : undefined,
-        }}
-      >
-        <DropIndicatorLine position={isDragOver ? dragOverPosition : null} dense />
-        <CompactDragHandle
-          onDragStart={(e) => onDragStart(e, item._editorId)}
-          onDragEnd={onDragEnd}
-        />
-        {arrowPair}
-        <span
-          style={{
-            fontSize: 9,
-            fontWeight: 700,
-            color: "var(--admin-muted)",
-            textTransform: "uppercase",
-            letterSpacing: 0.4,
-          }}
-        >
-          Page break · Page {pageNumber} starts below
-          {item.next_delay_seconds ? ` · ${item.next_delay_seconds}s delay` : ""}
-        </span>
-
-        <IconOnlyButton
-          onClick={onDelete}
-          title="Delete page break"
-          danger
-          size={11}
-          style={{ width: 20, height: 20, flex: "0 0 auto", marginLeft: "auto" }}
-        >
-          <TrashIcon size={11} />
-        </IconOnlyButton>
-      </div>
-    );
-  }
 
   const rawText = stripHtmlForEmptyCheck(item.text || "");
   const preview = rawText || "(no question text yet)";
@@ -6664,7 +6590,7 @@ function OutlineRow({
 
       <IconOnlyButton
         onClick={onInsertPageBreakAfter}
-        title="Insert a page break after this question"
+        title="Start a new page after this question"
         size={11}
         style={{ width: 20, height: 20, flex: "0 0 auto" }}
       >
@@ -7387,9 +7313,14 @@ function StudyOutlineModal({
             {currentQuestions.length === 0 ? (
               <EmptyState compact title="No questions yet." />
             ) : (
-              pageGroups.map((group) => {
-                const filteredItems = group.items.filter(({ item }) =>
-                  matchesQuestionFilter(item, outlineFilter)
+              pageGroups.map((group, groupIndex) => {
+                // Page breaks no longer render as their own row here either
+                // — same reasoning as SurveyEditor's own "Pages and
+                // questions" list, see leadingBreakFlatIndex/delayFlatIndex
+                // below.
+                const filteredItems = group.items.filter(
+                  ({ item }) =>
+                    item?.type !== EDITOR_PAGE_BREAK_TYPE && matchesQuestionFilter(item, outlineFilter)
                 );
                 if (outlineFilter.trim() && filteredItems.length === 0) return null;
 
@@ -7415,6 +7346,27 @@ function StudyOutlineModal({
                   ({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE
                 ).length;
                 const pageTitle = String(survey?.pages?.[group.pageNumber - 1]?.title || "").trim();
+
+                // See SurveyEditor's identical computation for the full
+                // explanation of why the break that STARTS this page and
+                // the break that carries THIS page's own delay are two
+                // different flat items.
+                const leadingItem = group.items[0]?.item;
+                const leadingBreakFlatIndex =
+                  groupIndex > 0 && leadingItem?.type === EDITOR_PAGE_BREAK_TYPE
+                    ? group.items[0].flatIndex
+                    : null;
+
+                const nextGroup = pageGroups[groupIndex + 1];
+                const nextLeadingItem = nextGroup?.items?.[0]?.item;
+                const delayFlatIndex =
+                  nextGroup && nextLeadingItem?.type === EDITOR_PAGE_BREAK_TYPE
+                    ? nextGroup.items[0].flatIndex
+                    : null;
+                const delaySeconds =
+                  delayFlatIndex != null
+                    ? (currentQuestions[delayFlatIndex]?.next_delay_seconds ?? 0)
+                    : null;
 
                 return (
                   <React.Fragment key={group.pageId}>
@@ -7456,7 +7408,31 @@ function StudyOutlineModal({
                           onDragEnd={handlePageDragEnd}
                           onSaveToLibrary={
                             onSaveGroupToLibrary
-                              ? () => onSaveGroupToLibrary(group.items.map(({ item }) => item))
+                              ? () =>
+                                  onSaveGroupToLibrary(
+                                    group.items
+                                      .filter(({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE)
+                                      .map(({ item }) => item)
+                                  )
+                              : undefined
+                          }
+                          delaySeconds={delaySeconds}
+                          onChangeDelay={
+                            delayFlatIndex != null
+                              ? (v) => updateQuestion(delayFlatIndex, { next_delay_seconds: v })
+                              : undefined
+                          }
+                          onRemoveBreak={
+                            leadingBreakFlatIndex != null
+                              ? async () => {
+                                  const ok = await confirm({
+                                    title: "Remove this page break?",
+                                    message: `Page ${group.pageNumber}'s questions will move back onto the previous page.`,
+                                    danger: true,
+                                    confirmLabel: "Remove",
+                                  });
+                                  if (ok) removeQuestion(leadingBreakFlatIndex);
+                                }
                               : undefined
                           }
                         />
@@ -7491,10 +7467,9 @@ function StudyOutlineModal({
                                   insertQuestionAt(flatIndex, EDITOR_PAGE_BREAK_TYPE, "below")
                                 }
                                 onDelete={async () => {
-                                  const isBreak = item.type === EDITOR_PAGE_BREAK_TYPE;
                                   if (
                                     await confirm({
-                                      title: isBreak ? "Delete this page break?" : "Delete this question?",
+                                      title: "Delete this question?",
                                       danger: true,
                                       confirmLabel: "Delete",
                                     })
@@ -8588,8 +8563,15 @@ export function SurveyEditor({
           />
         )}
 
-        {pageGroups.map((group) => {
-          const filteredItems = group.items.filter(({ item }) => matchesQuestionFilter(item, questionFilter));
+        {pageGroups.map((group, groupIndex) => {
+          // Page breaks no longer render as their own card — they're
+          // consumed as pure page-boundary signals (this group's own
+          // leading item, when it's a break, is what "started" this page;
+          // see leadingBreakFlatIndex/delayFlatIndex below) and never shown
+          // in the question list itself.
+          const filteredItems = group.items.filter(
+            ({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE && matchesQuestionFilter(item, questionFilter)
+          );
           if (questionFilter.trim() && filteredItems.length === 0) return null;
 
           const firstFlatIndex = group.items[0].flatIndex;
@@ -8613,6 +8595,32 @@ export function SurveyEditor({
             ({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE
           ).length;
           const pageTitle = String(survey?.pages?.[group.pageNumber - 1]?.title || "").trim();
+
+          // The break that STARTS this page (this group's own leading item,
+          // for every page but the first) — removing it merges this page's
+          // questions back into the previous page.
+          const leadingItem = group.items[0]?.item;
+          const leadingBreakFlatIndex =
+            groupIndex > 0 && leadingItem?.type === EDITOR_PAGE_BREAK_TYPE
+              ? group.items[0].flatIndex
+              : null;
+
+          // The break that ENDS this page (the NEXT page's own leading
+          // item) carries THIS page's own next_delay_seconds — see
+          // flattenSurveyPagesForEditor's comment on why the delay lives on
+          // the break that follows the page it belongs to, not the one that
+          // precedes it. No next group (last page) means no delay control:
+          // the last page's delay is always forced to 0 on save.
+          const nextGroup = pageGroups[groupIndex + 1];
+          const nextLeadingItem = nextGroup?.items?.[0]?.item;
+          const delayFlatIndex =
+            nextGroup && nextLeadingItem?.type === EDITOR_PAGE_BREAK_TYPE
+              ? nextGroup.items[0].flatIndex
+              : null;
+          const delaySeconds =
+            delayFlatIndex != null
+              ? (currentQuestions[delayFlatIndex]?.next_delay_seconds ?? 0)
+              : null;
 
           return (
             <React.Fragment key={group.pageId}>
@@ -8651,7 +8659,30 @@ export function SurveyEditor({
                     onDrop={(e) => handlePageDrop(e, group.pageId)}
                     onDragEnd={handlePageDragEnd}
                     onSaveToLibrary={() =>
-                      saveQuestionsToLibrary(group.items.map(({ item }) => item))
+                      saveQuestionsToLibrary(
+                        group.items
+                          .filter(({ item }) => item?.type !== EDITOR_PAGE_BREAK_TYPE)
+                          .map(({ item }) => item)
+                      )
+                    }
+                    delaySeconds={delaySeconds}
+                    onChangeDelay={
+                      delayFlatIndex != null
+                        ? (v) => updateQuestion(delayFlatIndex, { next_delay_seconds: v })
+                        : undefined
+                    }
+                    onRemoveBreak={
+                      leadingBreakFlatIndex != null
+                        ? async () => {
+                            const ok = await bulkConfirm({
+                              title: "Remove this page break?",
+                              message: `Page ${group.pageNumber}'s questions will move back onto the previous page.`,
+                              danger: true,
+                              confirmLabel: "Remove",
+                            });
+                            if (ok) removeQuestion(leadingBreakFlatIndex);
+                          }
+                        : undefined
                     }
                   />
 
