@@ -8295,3 +8295,113 @@ report (open the X dashboard, navigate somewhere that drops `?app=`, confirm the
 toggles now correctly stay scoped to X) — same standing no-login limitation as everywhere in this
 file. The URL-loss mechanism itself was reproduced directly and precisely, which is the load-bearing
 part; the remaining gap is only "does a real admin session confirm the same fix end to end."
+
+## Safari-only "..." post-menu click sometimes not registering, all four apps (2026-08-26)
+
+Direct report: on `studyfeed.org`, in Safari specifically, tapping the "…" post-menu button
+sometimes silently does nothing — inconsistent per-post ("for some posts it does work"), not
+reproducible in this sandbox's Chromium-based browser tooling. Investigated live against the real
+production feed (`?feed=feed_6&project=proj_6&app=fb`, a real UWA/USC-ethics-approved study —
+walked through consent/instructions read-only, no submission) plus the git history of every recent
+commit touching feed rendering, to rule out a known/regressed z-index or pointer-events bug before
+reaching for a browser-engine-specific explanation.
+
+**Ruled out first**: the already-documented `.top-rail-placeholder` `pointer-events:none` fix
+(2026-08-08, "the post '…' menu not opening near the top of the page") is still correctly in place
+and untouched by any recent commit; a direct `elementFromPoint()` sweep against every real "…"
+button on the live feed (all 10 loaded posts, correct scroll position via `document.body.scrollTop`
+— the actual scroll container here, confirmed via a scrollable-ancestor chain walk) found zero
+interception in Chromium. None of the six most recent, previously-undocumented commits
+(`5db4b36`…`601fae8`) touch feed rendering at all — all survey-editor/CLAUDE.md/X-platform-docs
+work, ruling out a recent regression as the direct cause.
+
+**Working hypothesis, evidence-based but not provably confirmed (no real Safari available in this
+sandbox)**: the real feed being tested has `realistic_pacing` on — confirmed live, every post
+`<article>` carries `post-reveal-in` (the staggered entrance-fade CSS animation, see "New: realism
+improvements" 2026-08-08 above). That animation's `transform`/`opacity` keyframes stay *declared*
+on the element indefinitely (`animation-fill-mode: backwards` only reverts the *computed* values
+once finished, per that entry's own reasoning — it never removes the `animation` property itself).
+This is exactly the shape of a well-documented WebKit bug class: an element that has ever run a
+`transform`-involving CSS animation can retain a stale compositor/hit-test layer in Safari
+specifically, causing touches on its descendants (here, the "…" button sitting in the post header)
+to intermittently miss — inconsistent by nature, matching "sometimes, for some posts" precisely.
+This is a second, distinct consequence of the same animation the `both`→`backwards` fill-mode fix
+already addressed once before (that fix solved a fixed-position-containing-block bug; this is a
+separate compositor/hit-testing risk from the same root cause, unique to Safari).
+
+**Fix, mirrored identically across all four apps** (the same near-duplicate-file shape this
+document already warns about for `post-reveal-in`/`revealIndex`) — `ui-posts-{facebook,instagram,
+amazon,x}.jsx`: each post's root element now tracks a `revealDone` state (`useState(revealIndex ==
+null)`), gains an `onAnimationEnd` handler (guarded with `e.target === e.currentTarget` so a bubbled
+event from an unrelated child animation — reaction wobble, ghost shimmer — can't trigger it early)
+that flips `revealDone` true, and the `post-reveal-in` class + its `animationDelay` inline style are
+now only applied while `revealIndex != null && !revealDone` — so once the animation genuinely
+finishes, the class (and the `animation` declaration with it) is fully removed from the element,
+letting the browser release whatever compositor layer it was holding. No visual change: the CSS
+animation's final keyframe (`opacity:1; transform:translateY(0)`) is identical to the plain,
+class-removed computed style, so the removal is a no-op paint-wise. Elements that never animate
+(revealIndex null, or `prefers-reduced-motion: reduce`, where `.post-reveal-in{animation:none}`
+already applies) are unaffected — `revealDone` just never becomes relevant for them.
+
+**Verified**: all four files parse clean (`@babel/parser`). Live-mounted the real `Feed`
+(`ui-posts-facebook.jsx`, via a cache-busted dynamic import of the actual module against the local
+dev server, not a reimplementation) with `flags:{realistic_pacing:true}` and two fabricated posts —
+confirmed the initial render carries `post-reveal-in` with the correct staggered `animation-delay`
+(0ms/70ms), and ~600ms later (animation + longest stagger has elapsed) confirmed via
+`getComputedStyle`/`elementFromPoint` that the class and inline style are both fully gone and the
+"…" button still resolves correctly to itself at that exact position — then clicked it for real and
+confirmed `aria-expanded` flips to `"true"`, proving the fix doesn't interfere with the actual menu
+toggle. **Not verified**: this in real Safari (no such engine available in this sandbox) — the
+fix is a well-reasoned, standard mitigation for the specific WebKit bug class the symptom matches,
+verified correct and non-regressing at the code level, but not proven to be the exact mechanism
+Safari hits. Worth confirming directly in Safari (Mac or iOS) once deployed, and worth knowing this
+working tree was on the `production` branch when this was written — unlike most sessions in this
+file, there is no `main`→staging soak before this reaches `studyfeed.org` unless it's deliberately
+routed through `main` first.
+
+## Correction to the entry above: `post-reveal-in` was NOT the cause — investigation continues (2026-08-26, later)
+
+Direct pushback from the user, correctly: "this issue is completely independent from the pacing,"
+and separately, "even with the pacing on, I don't see any pacing at all." Both points taken at face
+value rather than argued with — the `post-reveal-in`-as-root-cause entry directly above this one
+should be read as a **ruled-out hypothesis**, not a confirmed fix. The `revealDone` class-cleanup
+change itself was left in (harmless — it can't cause a visual regression, since the class is only
+ever removed once the animation's own final frame is already the element's plain computed style)
+but it should not be credited with fixing the reported "…" menu bug.
+
+**Re-investigated from scratch, independent of pacing, against the real live production feed**
+(`feed_6`/`proj_6`, real UWA/USC-ethics study — read-only, no submission) — this time at **both**
+mobile (375px) and genuine desktop (1280px) width, being careful to navigate fresh at each width
+rather than resize an already-loaded tab (a real testing-methodology trap hit along the way: this
+sandbox's viewport-resize tool doesn't reliably re-fire the `matchMedia` "change" listener
+`useIsMobile()` depends on, so resizing a live tab can leave stale mobile/desktop state — reloading
+fresh at the target width is required for this specific hook to actually reflect it).
+
+- **Zero click-interception found in either width**, via a precise `elementFromPoint()` sweep
+  against every real "…" button on the loaded feed, deliberately scrolling each one to sit exactly
+  inside the sticky top bar's 0–53px band (the exact scenario the original 2026-08-08 top-bar-
+  pointer-events fix targeted) — every single button still resolved correctly to itself. The
+  earlier fix (`.top-rail-placeholder{pointer-events:none}`) is confirmed present and doing its job,
+  at least in this Chromium-based tooling.
+- **A real, verified (not guessed) structural quirk found along the way, flagged as worth knowing
+  even though not yet tied to the bug**: `body{overflow-x:hidden}` (two places, `styles-facebook.css`
+  ~line 61 and ~1460) combined with `html,body,#root{height:100%}` causes `<body>`'s computed
+  `overflow-y` to resolve to `auto` (a real CSS Overflow spec rule: setting only one axis away from
+  `visible` computes the other axis to `auto`, confirmed empirically via `getComputedStyle` on the
+  live page, not just read from spec text) — meaning **`<body>` itself, not `<html>`/the normal
+  document viewport, is this page's actual scrolling element** (confirmed:
+  `document.scrollingElement`-equivalent behavior — `document.body.scrollTop` moves the page,
+  `window.scrollY` does not). This is an atypical page-scrolling setup; Safari (especially iOS) is
+  known to sometimes handle non-viewport scroll containers, and `position:sticky` children of them,
+  less predictably than the normal window-scrolling case. **Not confirmed as the cause of the "…"
+  bug** — flagging it as the most concrete lead left after ruling out the animation and the z-index/
+  pointer-events overlap, worth a deliberate look (or a real-Safari test) before touching it, since
+  changing how the page scrolls is a much bigger, riskier change than anything else tried so far and
+  other code in this app (scroll-tracking, dwell timers) may already assume this exact behavior.
+
+**Genuinely blocked without more specific reproduction info or actual Safari access** (this sandbox
+has no Safari, only a Chromium-based browser tool) — asked the user directly: does it reproduce on
+one *specific* post consistently (which one, so the two DOM trees can be diffed), which Safari
+(macOS vs iOS, and roughly which version), and whether it happens on a fresh page load or only after
+scrolling. Whoever picks this up next should treat the `post-reveal-in`/pacing angle as closed and
+start from the body-scroll-container observation or a fresh angle instead.

@@ -415,6 +415,12 @@ const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlag
 const likeButtonRef = useRef(null);
 const [videoMuted, setVideoMuted] = useState(!!post.videoAutoplayMuted);
 const userHasUnmutedRef = useRef(!post.videoAutoplayMuted);
+// See ui-posts-facebook.jsx's identical `revealDone` state for the
+// rationale — drops the `post-reveal-in` class (and its `animation`
+// declaration) once the entrance animation actually finishes, so Safari
+// can't hold onto a stale compositor/hit-test layer over this card's
+// header indefinitely.
+const [revealDone, setRevealDone] = useState(revealIndex == null);
 
 const [shareSheetOpen, setShareSheetOpen] = useState(false);
 
@@ -954,7 +960,7 @@ const displayBio = useMemo(() => {
     <article
       ref={refFromTracker}
       data-post-id={id}
-      className={revealIndex != null ? "insta-card post-reveal-in" : "insta-card"}
+      className={revealIndex != null && !revealDone ? "insta-card post-reveal-in" : "insta-card"}
       style={{
         // Was a hardcoded "#fff"/var(--line) (the latter never defined in
         // this stylesheet, only --ig-line) — an inline style has higher
@@ -965,7 +971,10 @@ const displayBio = useMemo(() => {
         border: "1px solid var(--ig-line)",
         borderRadius: 12,
         overflow: "visible",
-        ...(revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : null),
+        ...(revealIndex != null && !revealDone ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : null),
+      }}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) setRevealDone(true);
       }}
     >
       {/* Header */}

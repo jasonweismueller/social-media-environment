@@ -744,6 +744,23 @@ export function PostCard({
   // only; every other call site leaves this false, unchanged behavior.
   suppressDisplayedSnapshot = false,
 }) {
+  // Tracks whether the `post-reveal-in` entrance animation (see the CSS
+  // definition — staggered opacity/transform fade-in gated on
+  // `flags.realistic_pacing`) has actually finished, so the class (and its
+  // `animation` declaration) can be dropped from the article once it has.
+  // Safari has a well-known class of bug where an element that has ever had
+  // an `animation` involving `transform` applied can keep a stale
+  // compositor/hit-test layer indefinitely — clicks landing on descendants
+  // (here, specifically the "..." post-menu button in the header) can then
+  // silently miss their target, intermittently and only in that engine.
+  // `backwards` fill-mode (see the CSS comment) already fixed one real bug
+  // from this same animation; this closes a second, WebKit-specific one by
+  // letting the browser fully release the layer once there's nothing left
+  // for it to animate. Starts `true` (nothing to wait for) whenever the
+  // animation was never applied in the first place (revealIndex null, or
+  // prefers-reduced-motion, where the animation is `none` and this class
+  // staying attached forever is harmless either way).
+  const [revealDone, setRevealDone] = useState(revealIndex == null);
   const [reportAck, setReportAck] = useState(false);
   const [linkAck, setLinkAck] = useState(false);
   const [expandedState, setExpanded] = useState(false);
@@ -2572,8 +2589,14 @@ export function PostCard({
       ref={registerViewRef(post.id)}
       data-post-id={post.id}
       data-has-image={displayImage ? "1" : undefined}
-      className={revealIndex != null ? "card post-card post-reveal-in" : "card post-card"}
-      style={revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
+      className={revealIndex != null && !revealDone ? "card post-card post-reveal-in" : "card post-card"}
+      style={revealIndex != null && !revealDone ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
+      onAnimationEnd={(e) => {
+        // Ignore bubbled animationend events from unrelated child
+        // animations (reaction wobble, ghost shimmer, etc.) — only react to
+        // the article's own reveal animation finishing.
+        if (e.target === e.currentTarget) setRevealDone(true);
+      }}
     >
       {postContent}
 

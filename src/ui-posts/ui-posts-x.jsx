@@ -286,6 +286,13 @@ export function PostCard({
   const [expandedState, setExpanded] = useState(false);
   const expanded = alwaysExpandText || expandedState;
 
+  // See ui-posts-facebook.jsx's identical `revealDone` state for the
+  // rationale — drops the `post-reveal-in` class (and its `animation`
+  // declaration) once the entrance animation actually finishes, so Safari
+  // can't hold onto a stale compositor/hit-test layer over this card's
+  // header indefinitely.
+  const [revealDone, setRevealDone] = useState(revealIndex == null);
+
   const [liked, setLiked] = useState(!!post?._localLiked);
   const [reposted, setReposted] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
@@ -408,10 +415,13 @@ export function PostCard({
 
   return (
     <article
-      className={revealIndex != null ? "x-post post-reveal-in" : "x-post"}
+      className={revealIndex != null && !revealDone ? "x-post post-reveal-in" : "x-post"}
       data-post-id={id}
       ref={(el) => registerViewRef?.(id, el)}
-      style={revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
+      style={revealIndex != null && !revealDone ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) setRevealDone(true);
+      }}
     >
       {isAd && <div className="x-promoted">Promoted</div>}
 

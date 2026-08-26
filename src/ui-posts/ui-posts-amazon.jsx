@@ -164,6 +164,12 @@ function ReviewCard({
   const [helpful, setHelpful] = useState(false);
   const [reported, setReported] = useState(false);
   const enteredAt = useRef(Date.now());
+  // See ui-posts-facebook.jsx's identical `revealDone` state for the
+  // rationale — drops the `post-reveal-in` class (and its `animation`
+  // declaration) once the entrance animation actually finishes, so Safari
+  // can't hold onto a stale compositor/hit-test layer over this card's
+  // header indefinitely.
+  const [revealDone, setRevealDone] = useState(revealIndex == null);
 
   useEffect(() => {
     const snapshot = {
@@ -203,12 +209,15 @@ function ReviewCard({
 
   return (
     <article
-      className={revealIndex != null ? "amz-review post-reveal-in" : "amz-review"}
+      className={revealIndex != null && !revealDone ? "amz-review post-reveal-in" : "amz-review"}
       data-post-id={id}
       data-review-id={id}
       data-has-image="0"
       ref={(el) => registerViewRef?.(id, el)}
-      style={revealIndex != null ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
+      style={revealIndex != null && !revealDone ? { animationDelay: `${(revealIndex % 6) * 70}ms` } : undefined}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) setRevealDone(true);
+      }}
     >
       <header className="amz-review-head">
         <div className="amz-avatar" aria-hidden="true">
