@@ -1331,6 +1331,47 @@ function RichTextInput({
     [focusEditor, readEditorHtml]
   );
 
+  // Deliberately NOT execCommand("justifyLeft"/"justifyCenter"/"justifyRight")
+  // — confirmed live that it actively corrupts content pasted from
+  // Qualtrics/Word as a flex row of images (e.g. a 2-image side-by-side
+  // gallery, `<div style="display:flex">` wrapping two <img>s each with
+  // their own no-op inline text-align): with an image-only selection and no
+  // surrounding text for the browser to "wrap," Chrome's execCommand
+  // implementation inserts empty `<div style="text-align:center">` junk
+  // nodes next to the images instead of aligning anything, and the flex
+  // container's own text-align never changes anyway — flexbox doesn't honor
+  // text-align on its own items in the first place, which is the root cause
+  // "center works for text but not these images" report traced to: text-align
+  // set directly on an <img>, or on a flex parent, both do nothing by CSS
+  // spec, regardless of what wrote it. Fixed generally (not special-cased to
+  // images) by setting alignment directly on the resolved block(s) via style,
+  // picking text-align for a normal block and justify-content for a flex/
+  // inline-flex one — both confirmed live to actually move content, unlike
+  // execCommand's version.
+  const applyAlignment = useCallback(
+    (direction) => {
+      focusEditor();
+      const el = editorRef.current;
+      if (!el) return;
+      const blocks = getRichTextSelectionBlocks(el);
+      if (!blocks.length) return;
+      const justifyContentValue = { left: "flex-start", center: "center", right: "flex-end" }[
+        direction
+      ];
+      blocks.forEach((b) => {
+        const display = getComputedStyle(b).display;
+        if (display === "flex" || display === "inline-flex") {
+          b.style.justifyContent = justifyContentValue;
+        } else {
+          b.style.textAlign = direction;
+        }
+      });
+      readEditorHtml();
+      updateActiveFormats();
+    },
+    [focusEditor, readEditorHtml, updateActiveFormats]
+  );
+
   const buttonStyle = (active) => ({
     border: `1px solid ${active ? "var(--admin-accent)" : "var(--admin-border)"}`,
     background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
@@ -1514,7 +1555,7 @@ function RichTextInput({
           title="Align left"
           aria-pressed={!!activeFormats.justifyLeft}
           style={buttonStyle(activeFormats.justifyLeft)}
-          onClick={() => runCommand("justifyLeft")}
+          onClick={() => applyAlignment("left")}
         >
           <IconAlignLeft size={14} />
         </button>
@@ -1524,7 +1565,7 @@ function RichTextInput({
           title="Align center"
           aria-pressed={!!activeFormats.justifyCenter}
           style={buttonStyle(activeFormats.justifyCenter)}
-          onClick={() => runCommand("justifyCenter")}
+          onClick={() => applyAlignment("center")}
         >
           <IconAlignCenter size={14} />
         </button>
@@ -1534,7 +1575,7 @@ function RichTextInput({
           title="Align right"
           aria-pressed={!!activeFormats.justifyRight}
           style={buttonStyle(activeFormats.justifyRight)}
-          onClick={() => runCommand("justifyRight")}
+          onClick={() => applyAlignment("right")}
         >
           <IconAlignRight size={14} />
         </button>

@@ -2942,6 +2942,51 @@ function questionHiliteCommandName() {
   }
 }
 
+// Same helper as RichTextInput's own (components-admin-surveys.jsx) —
+// duplicated locally rather than imported to avoid a circular import between
+// the two files (that file already imports several things from this one).
+// Finds the block-level element(s) the current selection touches, inside
+// `editorEl` — used for alignment/line-spacing, which have no reliable
+// execCommand equivalent (see applyAlignment below for why).
+function getRichTextSelectionBlocks(editorEl) {
+  if (!editorEl || typeof window === "undefined") return [];
+  const sel = window.getSelection?.();
+  if (!sel || sel.rangeCount === 0) return [];
+  const range = sel.getRangeAt(0);
+  if (!editorEl.contains(range.commonAncestorContainer)) return [];
+
+  const BLOCK_TAGS = new Set(["P", "H3", "H4", "LI", "BLOCKQUOTE", "DIV"]);
+  const findBlock = (node) => {
+    let n = node && node.nodeType === 3 ? node.parentElement : node;
+    while (n && n !== editorEl) {
+      if (BLOCK_TAGS.has(n.tagName)) return n;
+      n = n.parentElement;
+    }
+    return null;
+  };
+
+  const startBlock = findBlock(range.startContainer);
+  const endBlock = findBlock(range.endContainer);
+  const blocks = [];
+  if (startBlock) blocks.push(startBlock);
+  if (endBlock && endBlock !== startBlock) blocks.push(endBlock);
+
+  if (startBlock && endBlock && startBlock !== endBlock) {
+    const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_ELEMENT);
+    let inRange = false;
+    let node = walker.nextNode();
+    while (node) {
+      if (node === startBlock) inRange = true;
+      if (inRange && BLOCK_TAGS.has(node.tagName) && !blocks.includes(node)) {
+        blocks.push(node);
+      }
+      if (node === endBlock) break;
+      node = walker.nextNode();
+    }
+  }
+  return blocks;
+}
+
 function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
   const editorRef = useRef(null);
   const [focused, setFocused] = useState(false);
@@ -3028,6 +3073,35 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
       } catch {}
     }
 
+    updateFormats();
+    emitChange();
+  }
+
+  // Not execCommand("justifyLeft"/"justifyCenter"/"justifyRight") — see the
+  // matching comment on RichTextInput's own applyAlignment
+  // (components-admin-surveys.jsx) for what confirmed-live bug that avoids:
+  // with an image-only selection (e.g. a Qualtrics/Word-pasted flex row of
+  // images), execCommand inserts empty junk <div>s instead of aligning
+  // anything, and a flex parent ignores text-align regardless of who sets
+  // it. Sets alignment directly on the resolved block(s) instead — text-align
+  // for a normal block, justify-content for a flex/inline-flex one.
+  function applyAlignment(direction) {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    const blocks = getRichTextSelectionBlocks(el);
+    if (!blocks.length) return;
+    const justifyContentValue = { left: "flex-start", center: "center", right: "flex-end" }[
+      direction
+    ];
+    blocks.forEach((b) => {
+      const display = getComputedStyle(b).display;
+      if (display === "flex" || display === "inline-flex") {
+        b.style.justifyContent = justifyContentValue;
+      } else {
+        b.style.textAlign = direction;
+      }
+    });
     updateFormats();
     emitChange();
   }
@@ -3149,7 +3223,7 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
           active={formats.justifyLeft}
           onMouseDown={(e) => {
             e.preventDefault();
-            runCommand("justifyLeft");
+            applyAlignment("left");
           }}
         >
           <IconAlignLeft size={14} />
@@ -3160,7 +3234,7 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
           active={formats.justifyCenter}
           onMouseDown={(e) => {
             e.preventDefault();
-            runCommand("justifyCenter");
+            applyAlignment("center");
           }}
         >
           <IconAlignCenter size={14} />
@@ -3171,7 +3245,7 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
           active={formats.justifyRight}
           onMouseDown={(e) => {
             e.preventDefault();
-            runCommand("justifyRight");
+            applyAlignment("right");
           }}
         >
           <IconAlignRight size={14} />
@@ -5522,8 +5596,19 @@ function ChoiceEditorBlock({
 }
 
 function MatrixEditorBlock({ rows, columns, questionId, allowAttentionCheck = false, onRowsChange, onColumnsChange }) {
+  // Was a rigid 1fr/1fr side-by-side grid — rows are usually a full
+  // sentence ("I feel confident using social media…") while columns are
+  // short scale labels ("Strongly agree", "1"…), so splitting the card in
+  // half squeezed the row text field down to roughly a third of the card's
+  // actual width once ItemTableEditor's own fixed 160px value column and
+  // delete button were subtracted, making sentence-length row text
+  // essentially unreadable without scrolling inside a tiny input. Stacked
+  // instead — each table now gets the card's full width, which fixes this
+  // regardless of viewport size or how long a given row's text is (an
+  // asymmetric ratio like 2fr/1fr would still hit the same wall on a
+  // narrower screen or an especially long row).
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+    <div style={{ display: "grid", gap: 16 }}>
       <ItemTableEditor
         title="Rows / items"
         items={rows}
