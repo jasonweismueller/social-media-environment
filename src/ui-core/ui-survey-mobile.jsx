@@ -21,6 +21,7 @@ import {
   buildRecallReminderOptions,
   trackElementDwellMs,
   getTextNumericRangeError,
+  findScreenerFailure,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -1382,6 +1383,11 @@ export function SurveyScreenMobile({
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [delayRemaining, setDelayRemaining] = useState(0);
+  // See ui-survey.jsx's SurveyScreen for the rationale — fully self-contained,
+  // same pattern as SurveyPrefaceFlow's consent-decline overlay, no backend
+  // write, no callback out to App-*.jsx.
+  const [screenedOutBy, setScreenedOutBy] = useState(null);
+  const [screenoutRedirecting, setScreenoutRedirecting] = useState(false);
   const projectId = propProjectId || getProjectId() || "";
   const initialJumpDoneRef = useRef(false);
 
@@ -1573,6 +1579,28 @@ export function SurveyScreenMobile({
     };
   }, [currentPage, responses, enforceRequired]);
 
+  // Runs only once the page's own required-answer validation already passed
+  // (both call sites below check that first) — returns true if a screener on
+  // this page failed, having already either redirected or set
+  // `screenedOutBy` to stop the caller from advancing/submitting.
+  const blockOnScreenerFailure = useCallback(
+    (questions) => {
+      if (!enforceRequired) return false;
+      const failed = findScreenerFailure(questions, responses);
+      if (!failed) return false;
+
+      if (survey?.screenout_mode === "redirect" && survey?.screenout_redirect_url) {
+        setScreenoutRedirecting(true);
+        window.location.assign(survey.screenout_redirect_url);
+        return true;
+      }
+
+      setScreenedOutBy(failed);
+      return true;
+    },
+    [enforceRequired, responses, survey?.screenout_mode, survey?.screenout_redirect_url]
+  );
+
   const goNext = useCallback(() => {
     if (isNextDelayed) {
       return;
@@ -1589,14 +1617,25 @@ export function SurveyScreenMobile({
       return;
     }
 
+    if (blockOnScreenerFailure(currentPage?.questions)) return;
+
     setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
   }, [
     isNextDelayed,
     onClearBanner,
     validateCurrentPage,
     onPageValidationFail,
+    blockOnScreenerFailure,
+    currentPage,
     visiblePages.length,
   ]);
+
+  // Submit only ever fires from the last page's own button — see the nav
+  // markup below and ui-survey.jsx's SurveyScreen for the full rationale.
+  const handleSubmitClick = useCallback(() => {
+    if (blockOnScreenerFailure(currentPage?.questions)) return;
+    onSubmit?.();
+  }, [blockOnScreenerFailure, currentPage, onSubmit]);
 
   const goBack = useCallback(() => {
     onClearBanner?.();
@@ -1609,6 +1648,37 @@ export function SurveyScreenMobile({
     },
     [onChange]
   );
+
+  if (screenoutRedirecting) {
+    return (
+      <div className="survey-shell">
+        <div className="survey-card">
+          <div className="survey-body survey-body-standalone" style={{ textAlign: "center", padding: "32px 0" }}>
+            Redirecting…
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screenedOutBy) {
+    return (
+      <div className="survey-shell">
+        <div className="survey-card">
+          <div className="survey-body survey-body-standalone">
+            <div
+              className="survey-preface-content-html"
+              dangerouslySetInnerHTML={{
+                __html:
+                  survey?.screenout_message_html ||
+                  "<p>Thank you for your interest in this study. Based on your answers, you are not eligible to participate at this time.</p>",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentPage) {
     return (
@@ -1785,7 +1855,7 @@ export function SurveyScreenMobile({
                   <button
                     type="button"
                     className="btn primary survey-submit-btn"
-                    onClick={onSubmit}
+                    onClick={handleSubmitClick}
                     disabled={submitting}
                   >
                     {submitting ? "Submitting..." : "Submit survey"}
@@ -1798,7 +1868,7 @@ export function SurveyScreenMobile({
               <button
                 type="button"
                 className="btn primary survey-submit-btn"
-                onClick={onSubmit}
+                onClick={handleSubmitClick}
                 disabled={submitting}
               >
                 {submitting ? "Submitting..." : "Submit survey"}

@@ -85,6 +85,9 @@ const DEFAULT_PRE_FEED_BUTTON_LABEL = "Go to feed";
 const DEFAULT_THANK_YOU_MESSAGE_HTML =
   "<p>Thank you for completing the study.</p><p>You may now close this window.</p>";
 
+const DEFAULT_SCREENOUT_MESSAGE_HTML =
+  "<p>Thank you for your interest in this study.</p><p>Based on your answers, you are not eligible to participate at this time.</p>";
+
 const COMPLETION_MODE_MESSAGE = "message";
 const COMPLETION_MODE_REDIRECT = "redirect";
 
@@ -697,6 +700,10 @@ function normalizeSurveyMetaFields(source = {}) {
     completion_code: String(source?.completion_code || ""),
     completion_mode: normalizeCompletionMode(source?.completion_mode),
     completion_redirect_url: String(source?.completion_redirect_url || ""),
+    screenout_message_html:
+      source?.screenout_message_html || DEFAULT_SCREENOUT_MESSAGE_HTML,
+    screenout_mode: normalizeCompletionMode(source?.screenout_mode),
+    screenout_redirect_url: String(source?.screenout_redirect_url || ""),
     delivery_mode: normalizeDeliveryMode(source?.delivery_mode),
   };
 }
@@ -2237,6 +2244,12 @@ export function AdminSurveysPanel({
       completion_redirect_url: String(
         normalized.completion_redirect_url || ""
       ),
+      screenout_message_html:
+        normalized.screenout_message_html || DEFAULT_SCREENOUT_MESSAGE_HTML,
+      screenout_mode: normalizeCompletionMode(normalized.screenout_mode),
+      screenout_redirect_url: String(
+        normalized.screenout_redirect_url || ""
+      ),
       pages: normalizeSurveyPagesWithDelay(normalized.pages || []),
       page_blocks: normalizeSurveyPageBlocks(
         normalized.page_blocks,
@@ -2863,6 +2876,9 @@ export function AdminSurveysPanel({
 
   const completionMode =
     normalizeCompletionMode(survey?.completion_mode) || COMPLETION_MODE_MESSAGE;
+
+  const screenoutMode =
+    normalizeCompletionMode(survey?.screenout_mode) || COMPLETION_MODE_MESSAGE;
 
   const deliveryMode =
     normalizeDeliveryMode(survey?.delivery_mode) ||
@@ -3660,6 +3676,70 @@ export function AdminSurveysPanel({
                     />
                   </FieldBlock>
                 </>
+              )}
+            </SectionCard>
+            )}
+
+            {activeEditorTab === "prefeed" && (
+            <SectionCard
+              title="Screening"
+              subtitle="What participants see if they fail a screener question (Questions tab → mark a single/dropdown question as a screener)."
+            >
+              <FieldBlock
+                label="Screen-out mode"
+                hint="Choose whether a disqualified participant sees a message or is redirected automatically."
+              >
+                <SelectInput
+                  value={screenoutMode}
+                  onChange={(v) =>
+                    setSurvey({
+                      ...survey,
+                      screenout_mode: normalizeCompletionMode(v),
+                    })
+                  }
+                >
+                  <option value={COMPLETION_MODE_MESSAGE}>
+                    Show screen-out message
+                  </option>
+                  <option value={COMPLETION_MODE_REDIRECT}>
+                    Redirect automatically
+                  </option>
+                </SelectInput>
+              </FieldBlock>
+
+              {screenoutMode === COMPLETION_MODE_MESSAGE ? (
+                <FieldBlock
+                  label="Screen-out message"
+                  hint="Use the rich text editor to design this message. It is still saved as HTML for the backend and frontend."
+                >
+                  <RichTextInput
+                    value={survey.screenout_message_html}
+                    onChange={(v) =>
+                      setSurvey({
+                        ...survey,
+                        screenout_message_html: v,
+                      })
+                    }
+                    placeholder="Enter the message shown to a disqualified participant..."
+                    minHeight={160}
+                  />
+                </FieldBlock>
+              ) : (
+                <FieldBlock
+                  label="Redirect URL"
+                  hint="Full URL a disqualified participant is sent to instead of seeing a message — e.g. a Prolific return-code link."
+                >
+                  <TextInput
+                    value={survey.screenout_redirect_url}
+                    onChange={(v) =>
+                      setSurvey({
+                        ...survey,
+                        screenout_redirect_url: v,
+                      })
+                    }
+                    placeholder="https://app.prolific.com/submissions/complete?cc=SCREENOUT1"
+                  />
+                </FieldBlock>
               )}
             </SectionCard>
             )}

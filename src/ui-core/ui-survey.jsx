@@ -21,6 +21,7 @@ import {
   buildRecallReminderOptions,
   trackElementDwellMs,
   getTextNumericRangeError,
+  findScreenerFailure,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -1713,6 +1714,13 @@ export function SurveyScreen({
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [delayRemaining, setDelayRemaining] = useState(0);
+  // Fully self-contained, same pattern as SurveyPrefaceFlow's consent-decline
+  // overlay above — no backend write, no callback out to App-*.jsx. Once set,
+  // this replaces the entire question UI with a terminal screen; there's no
+  // "go back and change your answer" the way consent-decline allows, since
+  // that would defeat the point of screening.
+  const [screenedOutBy, setScreenedOutBy] = useState(null);
+  const [screenoutRedirecting, setScreenoutRedirecting] = useState(false);
   const projectId = propProjectId || getProjectId() || "";
   const initialJumpDoneRef = useRef(false);
 
@@ -1932,6 +1940,28 @@ const isNextDelayed =
     };
   }, [currentPage, responses, enforceRequired]);
 
+  // Runs only once the page's own required-answer validation already passed
+  // (both call sites below check that first) — returns true if a screener on
+  // this page failed, having already either redirected or set
+  // `screenedOutBy` to stop the caller from advancing/submitting.
+  const blockOnScreenerFailure = useCallback(
+    (questions) => {
+      if (!enforceRequired) return false;
+      const failed = findScreenerFailure(questions, responses);
+      if (!failed) return false;
+
+      if (survey?.screenout_mode === "redirect" && survey?.screenout_redirect_url) {
+        setScreenoutRedirecting(true);
+        window.location.assign(survey.screenout_redirect_url);
+        return true;
+      }
+
+      setScreenedOutBy(failed);
+      return true;
+    },
+    [enforceRequired, responses, survey?.screenout_mode, survey?.screenout_redirect_url]
+  );
+
  const goNext = useCallback(() => {
   if (isNextDelayed) {
     return;
@@ -1948,14 +1978,29 @@ const isNextDelayed =
     return;
   }
 
+  if (blockOnScreenerFailure(currentPage?.questions)) return;
+
   setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
 }, [
   isNextDelayed,
   onClearBanner,
   validateCurrentPage,
   onPageValidationFail,
+  blockOnScreenerFailure,
+  currentPage,
   visiblePages.length,
 ]);
+
+  // Submit only ever fires from the last page's own button (see the nav
+  // markup below) — validateSurveyResponses (utils-survey.js, called by
+  // App-*.jsx's onSubmit) covers required-ness for the whole survey, but has
+  // no concept of screening, and per-page Next never runs for the very last
+  // page since there's no "next" from it. This is the one place left that
+  // needs its own screener check before handing off to the real onSubmit.
+  const handleSubmitClick = useCallback(() => {
+    if (blockOnScreenerFailure(currentPage?.questions)) return;
+    onSubmit?.();
+  }, [blockOnScreenerFailure, currentPage, onSubmit]);
 
   const goBack = useCallback(() => {
     onClearBanner?.();
@@ -1968,6 +2013,37 @@ const isNextDelayed =
     },
     [onChange]
   );
+
+  if (screenoutRedirecting) {
+    return (
+      <div className="survey-shell">
+        <div className="survey-card">
+          <div className="survey-body survey-body-standalone" style={{ textAlign: "center", padding: "32px 0" }}>
+            Redirecting…
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screenedOutBy) {
+    return (
+      <div className="survey-shell">
+        <div className="survey-card">
+          <div className="survey-body survey-body-standalone">
+            <div
+              className="survey-preface-content-html"
+              dangerouslySetInnerHTML={{
+                __html:
+                  survey?.screenout_message_html ||
+                  "<p>Thank you for your interest in this study. Based on your answers, you are not eligible to participate at this time.</p>",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentPage) {
     return (
@@ -2132,7 +2208,7 @@ const isNextDelayed =
                   <button
                     type="button"
                     className="btn primary survey-submit-btn"
-                    onClick={onSubmit}
+                    onClick={handleSubmitClick}
                     disabled={submitting}
                   >
                     {submitting ? "Submitting..." : "Submit survey"}
@@ -2145,7 +2221,7 @@ const isNextDelayed =
               <button
                 type="button"
                 className="btn primary survey-submit-btn"
-                onClick={onSubmit}
+                onClick={handleSubmitClick}
                 disabled={submitting}
               >
                 {submitting ? "Submitting..." : "Submit survey"}

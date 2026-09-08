@@ -64,6 +64,15 @@ export const ATTENTION_CHECK_ELIGIBLE_TYPES = [
   SURVEY_QUESTION_TYPES.DROPDOWN,
 ];
 
+// Screener questions have the identical "single, discrete, unambiguous
+// choice" constraint as attention checks (same reasoning, see above) — same
+// eligible-type set, kept as its own constant since the two features are
+// independent and may not always evolve together.
+export const SCREENER_ELIGIBLE_TYPES = [
+  SURVEY_QUESTION_TYPES.SINGLE,
+  SURVEY_QUESTION_TYPES.DROPDOWN,
+];
+
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -792,11 +801,17 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     description: overrides.description || "",
     required: isDisplayOnlyQuestion({ type: safeType, recall_enabled: !!overrides.recall_enabled })
       ? false
-      : !!overrides.required,
+      // A screener can't be optional — there'd be nothing to disqualify on if
+      // it were left blank — so marking a question as a screener forces
+      // required on, the same way recall_enabled forces it on for a
+      // post_reminder above.
+      : !!overrides.required || (SCREENER_ELIGIBLE_TYPES.includes(safeType) && !!overrides.is_screener),
     randomize_options: !!overrides.randomize_options,
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(safeType) && !!overrides.is_attention_check,
     attention_check_value: String(overrides.attention_check_value ?? ""),
+    is_screener: SCREENER_ELIGIBLE_TYPES.includes(safeType) && !!overrides.is_screener,
+    screener_pass_values: uniqueStringArray(overrides.screener_pass_values),
     options: cleanStringArray(overrides.options),
     rows: cleanStringArray(overrides.rows),
     columns: cleanStringArray(overrides.columns),
@@ -906,11 +921,15 @@ export function normalizeQuestion(raw = {}) {
     text,
     label: text,
     description: String(raw.description || ""),
-    required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled }) ? false : !!raw.required,
+    required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled })
+      ? false
+      : !!raw.required || (SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener),
     randomize_options: !!raw.randomize_options,
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
     attention_check_value: String(raw.attention_check_value ?? ""),
+    is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener,
+    screener_pass_values: uniqueStringArray(raw.screener_pass_values),
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c, i) => ({
@@ -1004,6 +1023,8 @@ export function frontendQuestionToBackend(question = {}) {
     visible_to_group_ids: q.visible_to_group_ids,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(q.type) && !!q.is_attention_check,
     attention_check_value: String(q.attention_check_value ?? ""),
+    is_screener: SCREENER_ELIGIBLE_TYPES.includes(q.type) && !!q.is_screener,
+    screener_pass_values: uniqueStringArray(q.screener_pass_values),
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
@@ -1424,6 +1445,27 @@ export function makeEmptySurvey(overrides = {}) {
       ""
     ),
 
+    // Shown instead of the normal thank-you flow when a screener question's
+    // answer isn't in its own screener_pass_values — same "message" vs
+    // "redirect" shape as completion_mode/completion_redirect_url above, for
+    // a Prolific-style screen-out return URL.
+    screenout_message_html: normalizeRichSurveyField(
+      safeOverrides.screenout_message_html,
+      "<p>Thank you for your interest in this study.</p><p>Based on your answers, you are not eligible to participate at this time.</p>"
+    ),
+
+    screenout_mode:
+      String(safeOverrides.screenout_mode || "")
+        .trim()
+        .toLowerCase() === "redirect"
+        ? "redirect"
+        : "message",
+
+    screenout_redirect_url: normalizeRichSurveyField(
+      safeOverrides.screenout_redirect_url,
+      ""
+    ),
+
     delivery_mode: normalizeSurveyDeliveryMode(
       safeOverrides.delivery_mode
     ),
@@ -1544,6 +1586,23 @@ export function normalizeSurvey(raw = {}) {
       ""
     ),
 
+    screenout_message_html: normalizeRichSurveyField(
+      safeRaw.screenout_message_html,
+      "<p>Thank you for your interest in this study.</p><p>Based on your answers, you are not eligible to participate at this time.</p>"
+    ),
+
+    screenout_mode:
+      String(safeRaw.screenout_mode || "")
+        .trim()
+        .toLowerCase() === "redirect"
+        ? "redirect"
+        : "message",
+
+    screenout_redirect_url: normalizeRichSurveyField(
+      safeRaw.screenout_redirect_url,
+      ""
+    ),
+
     delivery_mode: normalizeSurveyDeliveryMode(
       safeRaw.delivery_mode
     ),
@@ -1595,6 +1654,10 @@ export function frontendSurveyToBackend(survey = {}) {
     completion_code: s.completion_code,
     completion_mode: s.completion_mode,
     completion_redirect_url: s.completion_redirect_url,
+
+    screenout_message_html: s.screenout_message_html,
+    screenout_mode: s.screenout_mode,
+    screenout_redirect_url: s.screenout_redirect_url,
 
     delivery_mode: s.delivery_mode,
     linked_feed_ids: s.linked_feed_ids,
@@ -1914,6 +1977,25 @@ export function isQuestionAnswered(q, value) {
     default:
       return String(value ?? "").trim() !== "";
   }
+}
+
+// Evaluated once a page's required-answer validation already passed (an
+// unanswered screener is a validation error, not a screen-out — the caller
+// runs this only after that check), so `value` is guaranteed non-empty here.
+// Only SINGLE/DROPDOWN are screener-eligible (SCREENER_ELIGIBLE_TYPES) — a
+// question of any other type, or one with no screener_pass_values configured
+// yet (an admin still mid-setup), can never fail. Returns the first failing
+// question on the page, or null if every screener on it passed.
+export function findScreenerFailure(pageQuestions, responses) {
+  const list = Array.isArray(pageQuestions) ? pageQuestions : [];
+  for (const q of list) {
+    if (!q || !q.is_screener || !SCREENER_ELIGIBLE_TYPES.includes(q.type)) continue;
+    const passValues = Array.isArray(q.screener_pass_values) ? q.screener_pass_values : [];
+    if (!passValues.length) continue;
+    const value = responses?.[q.id];
+    if (!passValues.includes(String(value ?? ""))) return q;
+  }
+  return null;
 }
 
 // Format/range check for a numeric_only TEXT question (e.g. "age") — kept

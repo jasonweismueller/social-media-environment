@@ -5,6 +5,7 @@ import {
   SURVEY_QUESTION_TYPES,
   VISIBLE_IF_ELIGIBLE_TYPES,
   ATTENTION_CHECK_ELIGIBLE_TYPES,
+  SCREENER_ELIGIBLE_TYPES,
   saveQuestionLibraryItemToBackend,
 } from "../utils";
 import {
@@ -841,6 +842,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     ),
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!q?.is_attention_check,
     attention_check_value: String(q?.attention_check_value ?? ""),
+    is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!q?.is_screener,
+    screener_pass_values: uniqueStringList(q?.screener_pass_values),
     meta: q?.meta || {},
   };
 }
@@ -1812,6 +1815,15 @@ export function computeSurveyHealthIssues(survey, currentQuestions, experimentGr
       }
     }
 
+    if (q.is_screener && !(q.screener_pass_values || []).length) {
+      issues.push({
+        severity: "warning",
+        editorId,
+        title: `Screener has no qualifying answer on "${label}"`,
+        description: "No answer is marked as qualifying yet, so every participant would fail this screener regardless of what they select.",
+      });
+    }
+
     if (q.type === POST_REMINDER_TYPE && q.recall_enabled) {
       const texts = normalizeRecallDistractorTextsForEditor(q.recall_distractor_texts);
       if (!texts[0]?.trim() || !texts[1]?.trim()) {
@@ -2096,6 +2108,12 @@ export function buildSavedQuestion(q, index) {
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(cleanQ.type) && cleanQ.is_attention_check
         ? String(cleanQ.attention_check_value || "")
         : "",
+    is_screener:
+      SCREENER_ELIGIBLE_TYPES.includes(cleanQ.type) && !!cleanQ.is_screener,
+    screener_pass_values:
+      SCREENER_ELIGIBLE_TYPES.includes(cleanQ.type) && cleanQ.is_screener
+        ? uniqueStringList(cleanQ.screener_pass_values)
+        : [],
   };
 }
 
@@ -5254,6 +5272,29 @@ function CollapsedQuestionRow({
         </span>
       ) : null}
 
+      {q.is_screener ? (
+        <span
+          title={
+            (q.screener_pass_values || []).length
+              ? "Screener — disqualifies a participant whose answer isn't a qualifying one"
+              : "Screener — no qualifying answer picked yet, so everyone would fail"
+          }
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "var(--admin-danger-ink)",
+            background: "var(--admin-danger-soft)",
+            border: "1px solid var(--admin-danger-border)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            flex: "0 0 auto",
+            whiteSpace: "nowrap",
+          }}
+        >
+          SCR
+        </span>
+      ) : null}
+
       {!isDisplayOnly && updateQuestion ? (
         <button
           type="button"
@@ -5543,6 +5584,11 @@ function ChoiceEditorBlock({
   attentionCheckValue = "",
   onAttentionCheckToggle,
   onAttentionCheckValueChange,
+  showScreener = false,
+  isScreener = false,
+  screenerPassValues = [],
+  onScreenerToggle,
+  onScreenerPassValuesChange,
 }) {
   const safeChoices = (choices || []).filter((c) => String(c?.value || "").trim());
 
@@ -5587,6 +5633,54 @@ function ChoiceEditorBlock({
                   </option>
                 ))}
               </SelectInput>
+            </div>
+          )}
+        </FieldBlock>
+      )}
+
+      {showScreener && (
+        <FieldBlock
+          label="Screener"
+          hint="Disqualifies a participant whose answer isn't one of the qualifying choices below — they're shown the survey's screen-out message (set in the Participant flow tab) instead of continuing. Required is forced on, since there'd be nothing to screen on if this were left blank."
+        >
+          <Toggle
+            label="This question is a screener"
+            checked={isScreener}
+            onChange={onScreenerToggle}
+          />
+
+          {isScreener && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 4 }}>
+                Qualifying answer(s) — anything else fails screening
+              </div>
+              {safeChoices.length ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {safeChoices.map((c) => {
+                    const checked = screenerPassValues.includes(c.value);
+                    return (
+                      <label
+                        key={c.value}
+                        style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...screenerPassValues, c.value]
+                              : screenerPassValues.filter((v) => v !== c.value);
+                            onScreenerPassValuesChange(next);
+                          }}
+                        />
+                        <span>{c.label || c.value}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--admin-muted)" }}>Add options first</div>
+              )}
             </div>
           )}
         </FieldBlock>
@@ -5743,6 +5837,12 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(nextType)
         ? String(q.attention_check_value || "")
         : "",
+    is_screener:
+      SCREENER_ELIGIBLE_TYPES.includes(nextType) ? !!q.is_screener : false,
+    screener_pass_values:
+      SCREENER_ELIGIBLE_TYPES.includes(nextType)
+        ? uniqueStringList(q.screener_pass_values)
+        : [],
     meta: q.meta || {},
   };
 
@@ -5870,6 +5970,20 @@ function renderTypeSpecificFields({
             })
           }
           onAttentionCheckValueChange={(v) => updateQuestion(index, { attention_check_value: v })}
+          showScreener={SCREENER_ELIGIBLE_TYPES.includes(type)}
+          isScreener={!!q.is_screener}
+          screenerPassValues={q.screener_pass_values || []}
+          onScreenerToggle={(v) =>
+            updateQuestion(index, {
+              is_screener: v,
+              // Same reasoning as attention-check's toggle-off above, plus
+              // forcing Required on immediately (rather than leaving it to
+              // the next normalize/save round-trip) so the editor UI doesn't
+              // show an optional screener even momentarily.
+              ...(v ? { required: true } : { screener_pass_values: [] }),
+            })
+          }
+          onScreenerPassValuesChange={(v) => updateQuestion(index, { screener_pass_values: v })}
         />
       );
     case SURVEY_QUESTION_TYPES.MATRIX_SINGLE:

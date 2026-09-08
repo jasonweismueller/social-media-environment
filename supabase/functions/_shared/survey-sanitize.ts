@@ -67,6 +67,12 @@ const ATTENTION_CHECK_ELIGIBLE_TYPES: string[] = [
   SURVEY_QUESTION_TYPES.DROPDOWN,
 ];
 
+// Mirrors SCREENER_ELIGIBLE_TYPES in src/utils/utils-survey.js.
+const SCREENER_ELIGIBLE_TYPES: string[] = [
+  SURVEY_QUESTION_TYPES.SINGLE,
+  SURVEY_QUESTION_TYPES.DROPDOWN,
+];
+
 function asObject(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : {};
 }
@@ -554,10 +560,14 @@ export function normalizeQuestion(raw: any = {}): any {
     text,
     label: text,
     description: String(raw.description || ""),
-    required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled }) ? false : !!raw.required,
+    required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled })
+      ? false
+      : !!raw.required || (SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener),
     randomize_options: !!raw.randomize_options,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
     attention_check_value: String(raw.attention_check_value ?? ""),
+    is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener,
+    screener_pass_values: uniqueStringArray(raw.screener_pass_values),
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c: any, i: number) => ({
@@ -643,6 +653,8 @@ export function frontendQuestionToBackend(question: any = {}): any {
     visible_to_group_ids: q.visible_to_group_ids,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(q.type) && !!q.is_attention_check,
     attention_check_value: String(q.attention_check_value ?? ""),
+    is_screener: SCREENER_ELIGIBLE_TYPES.includes(q.type) && !!q.is_screener,
+    screener_pass_values: uniqueStringArray(q.screener_pass_values),
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
@@ -983,6 +995,16 @@ export function normalizeSurvey(raw: any = {}): any {
 
     completion_redirect_url: normalizeRichSurveyField(safeRaw.completion_redirect_url, ""),
 
+    screenout_message_html: normalizeRichSurveyField(
+      safeRaw.screenout_message_html,
+      "<p>Thank you for your interest in this study.</p><p>Based on your answers, you are not eligible to participate at this time.</p>"
+    ),
+
+    screenout_mode:
+      String(safeRaw.screenout_mode || "").trim().toLowerCase() === "redirect" ? "redirect" : "message",
+
+    screenout_redirect_url: normalizeRichSurveyField(safeRaw.screenout_redirect_url, ""),
+
     delivery_mode: normalizeSurveyDeliveryMode(safeRaw.delivery_mode),
 
     allow_dark_mode: !!safeRaw.allow_dark_mode,
@@ -1025,6 +1047,10 @@ export function frontendSurveyToBackend(survey: any = {}): any {
     completion_code: s.completion_code,
     completion_mode: s.completion_mode,
     completion_redirect_url: s.completion_redirect_url,
+
+    screenout_message_html: s.screenout_message_html,
+    screenout_mode: s.screenout_mode,
+    screenout_redirect_url: s.screenout_redirect_url,
 
     delivery_mode: s.delivery_mode,
     linked_feed_ids: s.linked_feed_ids,
