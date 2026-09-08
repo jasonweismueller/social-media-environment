@@ -10,8 +10,8 @@
 // Renders inside `.admin-shell` (the post-editor modal is mounted as a
 // sibling of `AdminShell` inside AdminDashboard's outer `.admin-shell` div),
 // so the `--admin-*` tokens from src/admin/ui/tokens.css are available here.
-import React, { useState } from "react";
-import { Toggle } from "./ui";
+import React, { useEffect, useState } from "react";
+import { Toggle, useAdminTheme } from "./ui";
 
 function ChevronIcon() {
   return (
@@ -145,6 +145,26 @@ export function CheckRow({ checked, onChange, children }) {
    from the existing .editor-grid) and .preview-zoom (scale transform) so no
    CSS files need to change — only what renders inside them. */
 export function PreviewPane({ label = "Live preview", platformLabel, zoom, children }) {
+  // The rendered post inside here is the real participant-facing `PostCard`,
+  // themed via the platform stylesheet's `.dark-mode` class on `body` (a
+  // completely separate mechanism from the admin's own `data-admin-theme`
+  // tokens) — the surface/text colors happen to already look themed because
+  // `tokens.css` bridges the generic `--card`/`--text`/etc. custom properties
+  // to `--admin-*` ones inside `.admin-shell`, but action-row buttons (Like/
+  // Comment/Share), icons, and the comment/share modals hardcode their own
+  // colors with a dedicated `.dark-mode` override rule — so without this
+  // class those specific elements stay stuck light regardless of admin
+  // theme. Mirrors the exact fix already applied to the Feed/Survey preview
+  // modals (`components-admin-feed-preview.jsx`) — same toggle-on-mount,
+  // remove-on-unmount pattern, since this component only renders while the
+  // post editor modal is open.
+  const { theme: adminTheme } = useAdminTheme();
+  useEffect(() => {
+    if (adminTheme !== "dark") return;
+    document.body.classList.add("dark-mode");
+    return () => document.body.classList.remove("dark-mode");
+  }, [adminTheme]);
+
   return (
     <aside className="editor-preview">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 2px" }}>

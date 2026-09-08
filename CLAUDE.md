@@ -8405,3 +8405,61 @@ one *specific* post consistently (which one, so the two DOM trees can be diffed)
 (macOS vs iOS, and roughly which version), and whether it happens on a fresh page load or only after
 scrolling. Whoever picks this up next should treat the `post-reveal-in`/pacing angle as closed and
 start from the body-scroll-container observation or a fresh angle instead.
+
+## Post editor: live preview dark-mode gap fixed, "Basics" split into three sections (2026-08-26, later)
+
+Two direct-feedback items on the admin post editor, unrelated to the Safari "…" investigation above.
+
+**Live preview stayed light for action buttons in dark mode.** Root cause: `PreviewPane`
+(`components-admin-editor-ui.jsx`, shared by all 5 post editors) never toggled the participant-
+facing `.dark-mode` class anywhere — confirmed via grep, zero references. The preview's *surface*
+colors happened to already look dark-appropriate anyway, because `tokens.css` bridges the generic
+`--card`/`--text`/`--bg`/etc. custom properties to `--admin-*` ones inside `.admin-shell` (so
+anything using `var(--card)`/`var(--text)` picks up the admin theme automatically) — but
+`.action`/`.dots` and the comment/share modal chrome hardcode their own light colors
+unconditionally in the base rule, with the actual dark styling gated behind a real `.dark-mode`
+class further up the tree (`.dark-mode .action{...}`, etc. — see the several "Dark mode" rounds
+earlier in this file). Since that class was never added, those specific elements stayed stuck
+light regardless of admin theme — exactly the reported symptom ("some buttons are still light,
+e.g. share, comment").
+
+**Fix**: mirrors the exact pattern `components-admin-feed-preview.jsx`/
+`components-admin-survey-preview.jsx` already established — `PreviewPane` now calls
+`useAdminTheme()` and toggles `document.body.classList.add("dark-mode")` for as long as it's
+mounted (cleanup on unmount), same as those two files' own comment about needing `body`
+specifically (not just a wrapper div) since comment/share content portals straight to
+`document.body`. One shared fix point (`PreviewPane` itself) covers all 5 editors — Amazon and
+Instagram's media fieldsets don't need a separate change.
+
+**Verified live** via a real mounted `AdminPostEditor` (Facebook) wrapped in the real
+`ToastProvider`, with `admin_theme_v1` toggled in `localStorage` (the actual key `useAdminTheme`
+reads — an earlier test attempt that mutated the `data-admin-theme` DOM attribute directly instead
+was overwritten by the hook's own effect on the next render, a test-harness mistake, not an app
+bug): dark admin theme → `.action` (Like/Comment/Share) read `rgb(232,234,237)` on
+`rgb(26,29,36)` (was `rgb(17,24,39)` on `rgb(255,255,255)` before the fix); light admin theme →
+unchanged from before (regression-checked); unmounting the editor correctly removed
+`body.dark-mode`. Also opened the mobile comment sheet (this preview renders at a narrow width,
+so `FacebookCommentSheetMobile` is what's actually reachable, not the desktop modal) and confirmed
+its portaled-to-`document.body` panel picked up the real participant dark surface color
+(`rgb(36,37,38)`, i.e. `#242526`) correctly, confirming the body-level toggle (not a wrapper class)
+was the right call. **Not verified**: the desktop comment/share modal specifically, or an actual
+click-through by a real logged-in admin — same standing limitation as everywhere else in this file.
+
+**"Basics" section split into three** (`Basics` / `Author` / `Post content`), applied identically
+to Facebook, Instagram, and X's editors (Amazon's was already split into `Review identity`/
+`Review metadata`/`Participant actions` — not touched, not the one being complained about):
+- **Basics** — just the "🎲 Fill with random content" button + "Post name (for CSV)" (pure
+  admin/export metadata, not participant-visible content).
+- **Author** — Author name (+ Handle, X only), Author Type radio, Verification badge toggle.
+- **Post content** — Time, Topic (FB/IG only, X has no topic field), Post text.
+
+All three still default collapsed (no `defaultOpen` passed), matching this file's existing
+"every section starts collapsed" convention. The Verification-badge+Time pairing that used to sit
+side by side in one `grid-2` row is now split across two different sections (Verification → Author,
+Time → Post content) — an intentional layout tradeoff, not an oversight. Every `value`/`onChange`
+wire was moved verbatim, no logic changes. Verified: all four touched files parse clean
+(`@babel/parser`); live-mounted `SurveyEditor`... no — live-mounted the real `AdminPostEditor`
+(Facebook) and confirmed via screenshot the three cards render distinctly, each independently
+collapsible, in the correct order before "Profile Photo". Instagram/X were not independently
+live-mounted (same mechanical edit pattern, already covered by the parse check) — worth a quick
+look if either behaves unexpectedly.

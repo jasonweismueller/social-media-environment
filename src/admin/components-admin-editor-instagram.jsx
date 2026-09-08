@@ -97,7 +97,7 @@ export function AdminPostEditor({
   return (
     <div className="editor-grid">
       <div className="editor-form">
-        <EditorSection title="Basics" subtitle="Author, timestamp &amp; caption">
+        <EditorSection title="Basics" subtitle="Post identity for CSV export">
           {isNew && (
             <button
               type="button"
@@ -133,7 +133,9 @@ export function AdminPostEditor({
               onChange={(e) => setEditing((ed) => ({ ...ed, postName: e.target.value }))}
             />
           </Field>
+        </EditorSection>
 
+        <EditorSection title="Author" subtitle="Name, type &amp; verification">
           <Field label="Author">
             <input
               className="input"
@@ -152,21 +154,6 @@ export function AdminPostEditor({
             />
           </Field>
 
-          <div className="grid-2">
-            <Toggle
-              label="Verification badge"
-              checked={!!editing.badge}
-              onChange={(v) => setEditing((ed) => ({ ...ed, badge: v }))}
-            />
-            <Field label="Time">
-              <input
-                className="input"
-                value={editing.time}
-                onChange={(e) => setEditing({ ...editing, time: e.target.value })}
-              />
-            </Field>
-          </div>
-
           <Group label="Author Type">
             <RadioGroup
               name={`authorType-${editing.id}`}
@@ -175,6 +162,22 @@ export function AdminPostEditor({
               options={[{ value: "female" }, { value: "male" }, { value: "company" }]}
             />
           </Group>
+
+          <Toggle
+            label="Verification badge"
+            checked={!!editing.badge}
+            onChange={(v) => setEditing((ed) => ({ ...ed, badge: v }))}
+          />
+        </EditorSection>
+
+        <EditorSection title="Post content" subtitle="Timestamp, topic &amp; caption">
+          <Field label="Time">
+            <input
+              className="input"
+              value={editing.time}
+              onChange={(e) => setEditing({ ...editing, time: e.target.value })}
+            />
+          </Field>
 
           <Field
             label="Topic"
