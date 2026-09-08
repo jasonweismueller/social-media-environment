@@ -212,10 +212,19 @@ a:hover{text-decoration:underline}
    intervention stayed light-background-only under dark mode. Fixed here via
    CSS variables (now the only place this background/border is set — the
    inline duplicate was removed) rather than adding a separate .dark-mode
-   override block. */
+   override block. Real regression from that fix, found and corrected later:
+   the note surface is deliberately a distinct grey from the card (the
+   original inline style's own comment called it a "Gray background note
+   surface (X-like)", `#f3f4f6`) — but `var(--card,#f3f4f6)` always resolves
+   to `--card` itself (always defined, `#fff` in light mode), so the fallback
+   never applies and the note bar silently became the same white as the rest
+   of the post, in light mode too, not just dark. `--bg` (the page's own
+   background, `#f0f2f5`/`#18191a`) is the token actually meant for "a shade
+   apart from the card" in both themes, and matches the original `#f3f4f6`
+   almost exactly in light mode. */
 .info-bar + .bar-stats,
 .note-bar{
-  background:var(--card,#f3f4f6);
+  background:var(--bg);
   border-top:1px solid var(--line,rgba(17,24,39,.08));
 }
 

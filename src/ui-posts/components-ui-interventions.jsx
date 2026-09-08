@@ -392,9 +392,9 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
   return (
     <>
       {/* Gray background note surface (X-like). Background/border-top come
-          from the .note-bar CSS class (styles-facebook.css), which is
-          theme-aware via var(--card)/var(--line) — no inline override here
-          so dark mode isn't silently defeated by it. */}
+          from the .note-bar CSS class (styles-facebook.css), themed via
+          var(--bg)/var(--line) — no inline override here so dark mode isn't
+          silently defeated by it. */}
       <div
         className="note-bar"
         style={{
