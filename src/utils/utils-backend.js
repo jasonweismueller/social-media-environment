@@ -14,6 +14,7 @@ import {
   supabaseAdminSignIn,
   supabaseAdminSignOut,
   supabaseAdminTouch,
+  supabaseSetPasswordFromInvite,
   supabaseListProjects,
   supabaseLoadPosts,
   supabaseListFeeds,
@@ -1955,8 +1956,13 @@ export async function adminListUsers() {
   }
 }
 
-export async function adminCreateUser(email, password, role = "viewer", username = "") {
-  if (isSupabaseBackend()) return supabaseAdminCreateUser(email, password, role, username);
+// `password` is only meaningful on the GAS backend (never live in
+// production — see CLAUDE.md "Backend migration"), which has no invite-email
+// mechanism of its own and still needs the caller to set an initial
+// password directly. On Supabase, the account is created via an emailed
+// invite instead (supabaseAdminCreateUser) and `password` is ignored.
+export async function adminCreateUser(email, role = "viewer", username = "", password = "") {
+  if (isSupabaseBackend()) return supabaseAdminCreateUser(email, role, username);
 
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
@@ -2301,6 +2307,16 @@ export async function touchAdminSession() {
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }
+}
+
+// Completes an invite/recovery link — AdminSetPassword.jsx (mounted at
+// /admin when isPendingAuthRedirect() is true, utils-core.js) calls this,
+// then touchAdminSession() to bridge the now-real session into this app's
+// own admin-session localStorage, same as a normal sign-in. GAS has no
+// invite-email mechanism of its own, so this is Supabase-only.
+export async function setPasswordFromInvite(password) {
+  if (!isSupabaseBackend()) return { ok: false, err: "Not available on this backend." };
+  return supabaseSetPasswordFromInvite(password);
 }
 
 export function getAdminExpiryMs() {

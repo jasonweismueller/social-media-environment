@@ -100,14 +100,20 @@ Deno.serve(async (req: Request) => {
 
   if (action === "create") {
     const email = String(body?.email || "").trim().toLowerCase();
-    const password = String(body?.password || "");
     const role = ROLES.includes(body?.role) ? body.role : "viewer";
     // Every new account gets a username even if the caller left the field
     // blank — falls back to the email's local part so the Users list never
     // has to fall back to a long email for an account created after this.
     const username = sanitizeUsername(body?.username) || sanitizeUsername(email.split("@")[0]);
-    if (!email || !password) {
-      return jsonResponse({ ok: false, err: "email and password are required" }, { status: 400 });
+    // Where the invite email's link sends the browser once the recipient
+    // sets their password (AdminSetPassword.jsx, mounted at /admin) — sent
+    // by the frontend as `${window.location.origin}/admin` so this works
+    // correctly on production, staging, and local dev alike. Falls back to
+    // SUPABASE_URL's own origin only so a malformed/missing value can't
+    // silently break the invite; the frontend should always send a real one.
+    const redirectTo = typeof body?.redirectTo === "string" && body.redirectTo ? body.redirectTo : `${supabaseUrl}/admin`;
+    if (!email) {
+      return jsonResponse({ ok: false, err: "email is required" }, { status: 400 });
     }
     if (role === "owner" && email !== SOLE_OWNER_EMAIL) {
       return jsonResponse(
@@ -116,13 +122,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
+    // Sends Supabase's own "Invite user" email template (customize it in
+    // Dashboard -> Authentication -> Emails -> Invite user) rather than
+    // setting a password here directly — the recipient sets their own via
+    // the emailed link, landing on AdminSetPassword.jsx. No password field
+    // is accepted from the caller at all any more.
+    const { data: created, error: createErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      redirectTo,
     });
     if (createErr || !created?.user) {
-      return jsonResponse({ ok: false, err: createErr?.message || "failed to create user" }, { status: 500 });
+      return jsonResponse({ ok: false, err: createErr?.message || "failed to invite user" }, { status: 500 });
     }
 
     // handle_new_auth_user (20260801000002_profiles.sql) already inserted a

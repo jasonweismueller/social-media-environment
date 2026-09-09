@@ -61,6 +61,24 @@ export async function supabaseAdminSignIn(email, password) {
   }
 }
 
+// Completes an invite/recovery email link (AdminSetPassword.jsx): the
+// browser already carries a temporary session from following that link
+// (Supabase's client auto-detects the URL's access_token on load), so this
+// just sets the real password against it — no separate token handling
+// needed. Caller still has to bridge into this app's own admin-session
+// localStorage afterward (touchAdminSession(), utils-backend.js), same as a
+// normal sign-in.
+export async function supabaseSetPasswordFromInvite(password) {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { ok: false, err: error.message };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
 export async function supabaseAdminSignOut() {
   try {
     const supabase = getSupabaseClient();
@@ -1333,8 +1351,15 @@ export async function supabaseAdminListUsers() {
   return { ok: true, users: Array.isArray(res.users) ? res.users : [] };
 }
 
-export async function supabaseAdminCreateUser(email, password, role = "viewer", username = "") {
-  return invokeAdminUsers({ action: "create", email, password, role, username });
+// No password is collected here any more — the account is created via a
+// Supabase "invite" email (admin-users Edge Function ->
+// auth.admin.inviteUserByEmail), and the recipient sets their own password
+// by following that link to AdminSetPassword.jsx (mounted at /admin).
+// redirectTo is computed from the browser's own current origin so the link
+// lands correctly on production, staging, or local dev alike.
+export async function supabaseAdminCreateUser(email, role = "viewer", username = "") {
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/admin` : undefined;
+  return invokeAdminUsers({ action: "create", email, role, username, redirectTo });
 }
 
 export async function supabaseAdminUpdateUser({ email, role, password, disabled, username }) {

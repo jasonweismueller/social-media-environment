@@ -48,6 +48,22 @@ export const CF_BASE =
 /* ============================ Project + URL helpers ============================= */
 const PROJECT_KEY = "current_project_id";
 
+// Captured once, at module-load time — before Supabase's own client has any
+// chance to process and strip it. A Supabase "invite"/"recovery" email link
+// lands here with tokens in the URL hash (e.g. `#access_token=...&type=
+// invite`, the default `flowType: "implicit"` shape); the Supabase client
+// auto-detects and consumes that hash asynchronously (a microtask, after
+// this module and every other one has already finished evaluating
+// synchronously), so a plain top-level read here is safe regardless of
+// import order relative to when the Supabase client gets constructed.
+// AdminEntry.jsx uses this to decide whether to show AdminSetPassword.jsx
+// instead of the normal login screen.
+const CAPTURED_AUTH_HASH = typeof window !== "undefined" ? window.location.hash || "" : "";
+
+export function isPendingAuthRedirect() {
+  return /type=(invite|recovery)/.test(CAPTURED_AUTH_HASH);
+}
+
 function getCombinedSearchParams() {
   try {
     const real = new URLSearchParams(window.location.search);

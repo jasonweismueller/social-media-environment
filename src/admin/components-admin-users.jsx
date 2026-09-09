@@ -458,18 +458,17 @@ function AddUserModal({ onClose, onCreated }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [role, setRole] = useState("viewer");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   const submit = async () => {
     setErr("");
-    if (!email.trim() || !password.trim()) {
-      setErr("Email and password are required.");
+    if (!email.trim()) {
+      setErr("Email is required.");
       return;
     }
     setBusy(true);
-    const res = await adminCreateUser(email.trim(), password.trim(), role, username.trim());
+    const res = await adminCreateUser(email.trim(), role, username.trim());
     setBusy(false);
     if (!res?.ok) {
       setErr(res?.err || "Failed to create user.");
@@ -481,7 +480,7 @@ function AddUserModal({ onClose, onCreated }) {
   return (
     <Modal
       title="Add user"
-      subtitle="Creates a new admin account with sign-in access."
+      subtitle="Sends an invite email — they set their own password and sign in from there."
       onClose={onClose}
       footer={
         <>
@@ -489,7 +488,7 @@ function AddUserModal({ onClose, onCreated }) {
             Cancel
           </Button>
           <Button variant="primary" onClick={submit} busy={busy}>
-            Add user
+            Send invite
           </Button>
         </>
       }
@@ -503,9 +502,14 @@ function AddUserModal({ onClose, onCreated }) {
             className="input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="name@example.com"
             style={{ fontSize: 14 }}
           />
+          <span style={{ fontWeight: 400, fontSize: 11 }}>
+            They'll get a welcome email at this address with a link to set their password and open the
+            dashboard.
+          </span>
         </label>
         <label style={{ display: "grid", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
           Username
@@ -526,17 +530,6 @@ function AddUserModal({ onClose, onCreated }) {
               that role, and creating a brand-new account can't ever be that
               specific account. */}
           <SegmentedControl options={NON_OWNER_ROLE_OPTIONS} value={role} onChange={setRole} />
-        </label>
-        <label style={{ display: "grid", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>
-          Password
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Set an initial password"
-            style={{ fontSize: 14 }}
-          />
         </label>
       </div>
     </Modal>
