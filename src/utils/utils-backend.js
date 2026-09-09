@@ -15,6 +15,7 @@ import {
   supabaseAdminSignOut,
   supabaseAdminTouch,
   supabaseSetPasswordFromInvite,
+  supabaseSetOwnUsername,
   supabaseListProjects,
   supabaseLoadPosts,
   supabaseListFeeds,
@@ -2317,6 +2318,17 @@ export async function touchAdminSession() {
 export async function setPasswordFromInvite(password) {
   if (!isSupabaseBackend()) return { ok: false, err: "Not available on this backend." };
   return supabaseSetPasswordFromInvite(password);
+}
+
+// Companion to setPasswordFromInvite — lets a newly-invited account choose
+// its own display username instead of being stuck with whatever the
+// inviting owner guessed (or left blank) at invite time. GAS has no
+// self-service equivalent (profile writes there always go through the
+// owner-only admin flow), so this is a no-op there rather than an error —
+// same posture as every other Supabase-only feature in this file.
+export async function setOwnUsername(username) {
+  if (!isSupabaseBackend()) return { ok: true };
+  return supabaseSetOwnUsername(username);
 }
 
 export function getAdminExpiryMs() {

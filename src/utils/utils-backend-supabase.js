@@ -79,6 +79,44 @@ export async function supabaseSetPasswordFromInvite(password) {
   }
 }
 
+// Mirrors admin-users/index.ts's own sanitizeUsername exactly (lowercase,
+// [a-z0-9._-] only, max 40 chars) — this call goes straight through
+// PostgREST, not that Edge Function, so there's no server-side sanitizer to
+// fall back on here.
+function sanitizeUsernameClient(raw) {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "")
+    .slice(0, 40);
+}
+
+// Lets a newly-invited (non-owner) account set its own display username —
+// AdminSetPassword.jsx calls this right after accepting an invite, since
+// they have no way to know or change whatever username the inviting owner
+// guessed. Works via a direct PostgREST update rather than the owner-gated
+// admin-users Edge Function: 20260801000028_profiles_self_update_username.sql
+// adds an RLS policy plus a column-scoped GRANT limiting this exact call to
+// touching only its own row's `username` column — role/disabled/email stay
+// owner-only regardless of what this function is given.
+export async function supabaseSetOwnUsername(rawUsername) {
+  const username = sanitizeUsernameClient(rawUsername);
+  if (!username) return { ok: true };
+  try {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userData?.user) return { ok: false, err: userErr?.message || "No active session" };
+
+    const { error } = await supabase.from("profiles").update({ username }).eq("id", userData.user.id);
+    if (error) {
+      return { ok: false, err: error.code === "23505" ? "That username is already taken" : error.message };
+    }
+    return { ok: true, username };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
 export async function supabaseAdminSignOut() {
   try {
     const supabase = getSupabaseClient();

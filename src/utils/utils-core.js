@@ -58,10 +58,24 @@ const PROJECT_KEY = "current_project_id";
 // import order relative to when the Supabase client gets constructed.
 // AdminEntry.jsx uses this to decide whether to show AdminSetPassword.jsx
 // instead of the normal login screen.
-const CAPTURED_AUTH_HASH = typeof window !== "undefined" ? window.location.hash || "" : "";
+let _pendingAuthHash = typeof window !== "undefined" ? window.location.hash || "" : "";
 
 export function isPendingAuthRedirect() {
-  return /type=(invite|recovery)/.test(CAPTURED_AUTH_HASH);
+  return /type=(invite|recovery)/.test(_pendingAuthHash);
+}
+
+// AdminSetPassword.jsx calls this once it's fully handled the invite/
+// recovery link (password set, admin session bridged) — without it,
+// AdminEntry would keep showing AdminSetPassword forever after a successful
+// submit, since the captured hash never changes on its own and
+// isPendingAuthRedirect() is checked ahead of the normal adminAuthed gate.
+export function clearPendingAuthRedirect() {
+  _pendingAuthHash = "";
+  try {
+    if (typeof window !== "undefined" && window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  } catch {}
 }
 
 function getCombinedSearchParams() {

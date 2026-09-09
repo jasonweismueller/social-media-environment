@@ -7,13 +7,14 @@
 // admin-session localStorage exactly like a normal sign-in (touchAdminSession)
 // before handing off to the same onAuth() callback AdminLogin uses.
 import React, { useState } from "react";
-import { setPasswordFromInvite, touchAdminSession } from "../utils";
+import { setPasswordFromInvite, setOwnUsername, touchAdminSession, clearPendingAuthRedirect } from "../utils";
 
 const MIN_PASSWORD_LEN = 8;
 
 export default function AdminSetPassword({ onAuth }) {
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const [username, setUsername] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -43,12 +44,31 @@ export default function AdminSetPassword({ onAuth }) {
     }
 
     const touched = await touchAdminSession();
-    setLoading(false);
     if (!touched?.ok) {
+      setLoading(false);
       setErr(touched?.err || "Password set, but couldn't sign you in — try signing in normally.");
       return;
     }
 
+    // Optional — if it collides with an existing username, surface that and
+    // let them pick a different one rather than silently dropping it; the
+    // password/session part above already succeeded either way, so this
+    // never blocks getting into the account, only choosing this username.
+    if (username.trim()) {
+      const named = await setOwnUsername(username.trim());
+      if (!named?.ok) {
+        setLoading(false);
+        setErr(named?.err || "Couldn't set that username — you can change it later from the Users page.");
+        return;
+      }
+    }
+
+    setLoading(false);
+    // Without this, AdminEntry would keep showing this exact screen after a
+    // successful submit — it checks "is this an invite/recovery link?"
+    // ahead of the normal login gate, and that check never clears on its
+    // own (see utils-core.js).
+    clearPendingAuthRedirect();
     onAuth?.();
   };
 
@@ -104,6 +124,19 @@ export default function AdminSetPassword({ onAuth }) {
             onChange={(e) => setPw2(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="••••••••"
+            style={{ width: "100%" }}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: ".6rem", marginTop: "1rem" }}>
+          Username <span style={{ fontWeight: 400 }}>(optional)</span>
+          <input
+            className="input"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="Shown instead of your email around the dashboard"
             style={{ width: "100%" }}
           />
         </label>
