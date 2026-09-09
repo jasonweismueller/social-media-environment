@@ -28,6 +28,8 @@ import {
   normalizeExperimentGroups,
   materializePagesFromBlocks,
   isQuestionVisible,
+  getOtherChoice,
+  otherSpecifyResponseKey,
 } from "./utils-survey";
 import {
   hasBio,
@@ -170,6 +172,18 @@ const TEXT_FILLERS = [
   "I'd say this was fairly typical.",
   "I'm neutral on this one.",
 ];
+
+const OTHER_SPECIFY_FILLERS = [
+  "Something not listed above.",
+  "None of these quite fit.",
+  "A mix of a few of these.",
+  "Not sure how to categorize it.",
+  "Prefer to describe it my own way.",
+];
+
+function pickOtherSpecifyFiller(rng) {
+  return OTHER_SPECIFY_FILLERS[Math.floor(rng() * OTHER_SPECIFY_FILLERS.length)];
+}
 
 function looksLikeAge(idAndText) {
   return /\bage\b/i.test(idAndText);
@@ -633,6 +647,22 @@ export function simulateSurveyResponseRows({
           isLowEffort,
           compositeThetaCache,
         });
+
+        // "Other, please specify" — if the generated answer landed on the
+        // choice flagged is_other, fill its sibling specify-text key too
+        // (see otherSpecifyResponseKey's own comment for why it's a sibling
+        // key rather than nested in responses[q.id]), so simulated data
+        // exercises the CSV's Other-text column instead of leaving it always
+        // blank.
+        if (
+          q.type === SURVEY_QUESTION_TYPES.SINGLE ||
+          q.type === SURVEY_QUESTION_TYPES.DROPDOWN
+        ) {
+          const otherChoice = getOtherChoice(q);
+          if (otherChoice && responses[q.id] === otherChoice.value) {
+            responses[otherSpecifyResponseKey(q.id)] = pickOtherSpecifyFiller(rng);
+          }
+        }
       });
     });
 

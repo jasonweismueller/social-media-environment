@@ -573,6 +573,7 @@ export function normalizeQuestion(raw: any = {}): any {
       ? raw.choices.map((c: any, i: number) => ({
           value: sanitizeStructuredValue(c?.value, `opt_${i + 1}`),
           label: String(c?.label ?? ""),
+          is_other: !!c?.is_other,
         }))
       : [],
 
@@ -682,8 +683,9 @@ export function frontendQuestionToBackend(question: any = {}): any {
             ? q.choices.map((choice: any, i: number) => ({
                 value: sanitizeStructuredValue(choice?.value, `opt_${i + 1}`),
                 label: String(choice?.label ?? ""),
+                is_other: !!choice?.is_other,
               }))
-            : q.options.map((opt: string, i: number) => ({ value: `opt_${i + 1}`, label: opt })),
+            : q.options.map((opt: string, i: number) => ({ value: `opt_${i + 1}`, label: opt, is_other: false })),
         randomize_options: !!q.randomize_options,
       };
 

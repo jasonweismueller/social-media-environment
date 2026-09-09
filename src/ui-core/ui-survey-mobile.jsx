@@ -22,6 +22,8 @@ import {
   trackElementDwellMs,
   getTextNumericRangeError,
   findScreenerFailure,
+  getOtherChoice,
+  otherSpecifyResponseKey,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -178,9 +180,20 @@ function isNumberedQuestion(question) {
   );
 }
 
-function isEmptyRequiredValue(q, value) {
+function isEmptyRequiredValue(q, value, responses) {
   if (value == null || value === "") return true;
   if (Array.isArray(value)) return value.length === 0;
+
+  if (
+    (q?.type === SURVEY_QUESTION_TYPES.SINGLE ||
+      q?.type === SURVEY_QUESTION_TYPES.DROPDOWN) &&
+    responses
+  ) {
+    const otherChoice = getOtherChoice(q);
+    if (otherChoice && value === otherChoice.value) {
+      return String(responses[otherSpecifyResponseKey(q.id)] ?? "").trim() === "";
+    }
+  }
 
   if (typeof value === "object") {
     const obj = value || {};
@@ -983,7 +996,7 @@ function MobileQuestionWrapper({ question, index, error, children }) {
   );
 }
 
-function MobileSingleChoice({ question, value, onChange }) {
+function MobileSingleChoice({ question, value, onChange, otherText, onOtherTextChange }) {
   const choiceItems = getChoiceItems(question);
 
   return (
@@ -999,6 +1012,17 @@ function MobileSingleChoice({ question, value, onChange }) {
           <span>{choice.label}</span>
         </label>
       ))}
+      {choiceItems.some((c) => c.is_other && c.value === value) && (
+        <input
+          type="text"
+          className="survey-input"
+          style={{ marginTop: 2 }}
+          placeholder="Please specify…"
+          value={otherText ?? ""}
+          onChange={(e) => onOtherTextChange(e.target.value)}
+          autoFocus
+        />
+      )}
     </div>
   );
 }
@@ -1255,11 +1279,20 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
   feedId,
   flags,
   participantSeed,
+  otherText,
 }) {
   const qType = question?.type;
 
   const emitChange = useCallback(
     (nextValue) => onChange(questionId, nextValue),
+    [onChange, questionId]
+  );
+
+  // The "Other, please specify" text lives in a sibling response key, not
+  // nested inside this question's own value — see otherSpecifyResponseKey's
+  // comment in utils-survey.js for why.
+  const emitOtherText = useCallback(
+    (text) => onChange(otherSpecifyResponseKey(questionId), text),
     [onChange, questionId]
   );
 
@@ -1305,6 +1338,8 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
           question={question}
           value={value}
           onChange={emitChange}
+          otherText={otherText}
+          onOtherTextChange={emitOtherText}
         />
       )}
 
@@ -1559,7 +1594,7 @@ export function SurveyScreenMobile({
       // isEmptyRequiredValue no-ops for a non-required question (returns
       // false), so this loop no longer needs its own `!q.required` bail-out
       // — see ui-survey.jsx's identical comment for why that matters here.
-      if (isEmptyRequiredValue(q, value)) {
+      if (isEmptyRequiredValue(q, value, responses)) {
         pageErrors[q.id] =
           q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
           q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI ||
@@ -1803,6 +1838,7 @@ export function SurveyScreenMobile({
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
+            const otherText = responses?.[otherSpecifyResponseKey(q.id)];
 
             return (
               <SurveyQuestionRendererMobile
@@ -1818,6 +1854,7 @@ export function SurveyScreenMobile({
                 feedId={feedId}
                 flags={flags}
                 participantSeed={participantSeed}
+                otherText={otherText}
               />
             );
           })}

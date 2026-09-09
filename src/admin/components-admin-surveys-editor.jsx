@@ -529,6 +529,7 @@ export function ensureChoiceArray(items = []) {
   return (Array.isArray(items) ? items : []).map((item, i) => ({
     value: preserveEmptyOrSanitize(item?.value, makeNumericValue(i)),
     label: String(item?.label ?? ""),
+    is_other: !!item?.is_other,
   }));
 }
 
@@ -1900,6 +1901,48 @@ export function getQuestionList(survey) {
 
 export function setQuestionList(survey, questions) {
   return buildSurveyPagesFromFlatQuestions(survey, questions);
+}
+
+// Deleting a question can leave its page with nothing in it — per direct
+// feedback, that page should then disappear too (later pages shifting up to
+// fill the gap) rather than surviving as a blank page the admin has to
+// remember to clean up separately. Applied only by the actual delete call
+// sites below (removeQuestion, bulkDeleteSelected) against the already
+// fully-rebuilt/reconciled survey — never inside setQuestionList/
+// buildSurveyPagesFromFlatQuestions itself, since every other caller of
+// those (addQuestion, insertQuestionAt, "insert page break", drag reorder)
+// can legitimately produce a still-empty page mid-edit that the admin hasn't
+// filled in yet and shouldn't have silently deleted out from under them.
+// Operating on the final `pages` array (rather than the flat item list) also
+// sidesteps buildSurveyPagesFromFlatQuestions's identity-by-break-tag
+// mechanism entirely — no risk of a merged page silently inheriting the
+// wrong survivor's title/delay, since dropped pages are just removed
+// wholesale and every kept page's own id/title/delay is untouched.
+function dropEmptyPagesAfterDelete(survey) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  if (pages.length <= 1) return survey;
+
+  const keptPages = pages.filter(
+    (p) => Array.isArray(p?.questions) && p.questions.length > 0
+  );
+  // If every page ended up empty (e.g. a bulk delete wiped the whole
+  // survey), fall back to keeping just the first one — buildSurveyPages-
+  // FromFlatQuestions already guarantees at least one page always exists, so
+  // this mirrors that same invariant rather than introducing a new one.
+  const finalPages = keptPages.length ? keptPages : [pages[0]];
+  if (finalPages.length === pages.length) return survey;
+
+  const keptIds = new Set(finalPages.map((p) => p.id));
+  return {
+    ...survey,
+    pages: finalPages,
+    page_blocks: Array.isArray(survey.page_blocks)
+      ? survey.page_blocks.map((block) => ({
+          ...block,
+          page_ids: (block.page_ids || []).filter((id) => keptIds.has(id)),
+        }))
+      : survey.page_blocks,
+  };
 }
 
 export function makePageBreakForEditor(index = 0) {
@@ -4019,11 +4062,45 @@ function RowAttentionCheckControl({ isAttentionCheck, attentionCheckValue, colum
   );
 }
 
+// A single per-choice toggle — no companion value picker needed, unlike
+// RowAttentionCheckControl above, since "Other" doesn't reference another
+// field's value, it just marks this one choice as the free-text escape
+// hatch. Only ever rendered for SINGLE/DROPDOWN "Options" (see
+// ChoiceEditorBlock) — a choice is the natural, and only, place this can
+// attach, since MULTI/matrix questions have their own separate row/column
+// shapes this feature doesn't extend to.
+function RowOtherSpecifyControl({ isOther, onToggle }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gridColumn: "1 / -1", paddingLeft: 2 }}>
+      <button
+        type="button"
+        className="admin-btn"
+        onClick={() => onToggle(!isOther)}
+        title="Mark this as an “Other” option — when a participant picks it, a text field appears so they can specify."
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "2px 8px",
+          borderRadius: 999,
+          border: "1px solid",
+          cursor: "pointer",
+          borderColor: isOther ? "var(--admin-accent-border)" : "var(--admin-border)",
+          background: isOther ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+          color: isOther ? "var(--admin-accent-ink)" : "var(--admin-muted)",
+        }}
+      >
+        {isOther ? "✓ “Other” (participant can specify)" : "Mark as “Other” (let participant specify)"}
+      </button>
+    </div>
+  );
+}
+
 function ItemTableEditor({
   title,
   items,
   onChange,
   attentionCheckColumns = null,
+  allowOtherFlag = false,
   prefix = "opt",
   addLabel = "Add row",
   valuePlaceholder = "Value",
@@ -4176,6 +4253,23 @@ function ItemTableEditor({
                   })
                 }
                 onValueChange={(v) => updateItem(i, { attention_check_value: v })}
+              />
+            )}
+
+            {allowOtherFlag && (
+              <RowOtherSpecifyControl
+                isOther={!!item?.is_other}
+                onToggle={(v) =>
+                  // At most one "Other" choice per question — turning one on
+                  // clears it from every other row, since getOtherChoice()
+                  // (utils-survey.js) only ever recognizes the first match.
+                  onChange(
+                    safeItems.map((it, ii) => ({
+                      ...it,
+                      is_other: v ? ii === i : ii === i ? false : !!it.is_other,
+                    }))
+                  )
+                }
               />
             )}
           </div>
@@ -5589,6 +5683,7 @@ function ChoiceEditorBlock({
   screenerPassValues = [],
   onScreenerToggle,
   onScreenerPassValuesChange,
+  allowOtherFlag = false,
 }) {
   const safeChoices = (choices || []).filter((c) => String(c?.value || "").trim());
 
@@ -5598,6 +5693,7 @@ function ChoiceEditorBlock({
         title="Options"
         items={choices}
         onChange={onChange}
+        allowOtherFlag={allowOtherFlag}
         prefix="opt"
         addLabel="Add option"
         allowScalePresets
@@ -5957,6 +6053,12 @@ function renderTypeSpecificFields({
         <ChoiceEditorBlock
           choices={q.choices}
           onChange={(items) => updateQuestion(index, { choices: ensureChoiceArray(items) })}
+          // "Other, please specify" reuses the same SINGLE/DROPDOWN
+          // eligibility list as attention checks (a per-choice free-text
+          // escape hatch is only meaningful for a single-pick question) —
+          // MULTI's checkbox-array response shape isn't wired up to render
+          // the specify field, so it's deliberately excluded here.
+          allowOtherFlag={ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type)}
           showAttentionCheck={ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type)}
           isAttentionCheck={!!q.is_attention_check}
           attentionCheckValue={q.attention_check_value || ""}
@@ -8459,7 +8561,7 @@ export function SurveyEditor({
           )
         : currentQuestionsCopy;
 
-      return setQuestionList(prev, cleaned);
+      return dropEmptyPagesAfterDelete(setQuestionList(prev, cleaned));
     });
   }
 
@@ -8489,7 +8591,7 @@ export function SurveyEditor({
           ? { ...question, visible_if: null }
           : question
       );
-      return setQuestionList(prev, cleaned);
+      return dropEmptyPagesAfterDelete(setQuestionList(prev, cleaned));
     });
     clearSelection();
     libraryToast.success(`Deleted ${count} question${count === 1 ? "" : "s"}.`);

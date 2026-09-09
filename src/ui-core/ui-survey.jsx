@@ -22,6 +22,8 @@ import {
   trackElementDwellMs,
   getTextNumericRangeError,
   findScreenerFailure,
+  getOtherChoice,
+  otherSpecifyResponseKey,
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
@@ -178,7 +180,7 @@ function isNumberedQuestion(question) {
   );
 }
 
-function isEmptyRequiredValue(question, value) {
+function isEmptyRequiredValue(question, value, responses) {
   if (!question || !question.required) return false;
 
   if (
@@ -187,6 +189,17 @@ function isEmptyRequiredValue(question, value) {
     (Array.isArray(value) && value.length === 0)
   ) {
     return true;
+  }
+
+  if (
+    (question.type === SURVEY_QUESTION_TYPES.SINGLE ||
+      question.type === SURVEY_QUESTION_TYPES.DROPDOWN) &&
+    responses
+  ) {
+    const otherChoice = getOtherChoice(question);
+    if (otherChoice && value === otherChoice.value) {
+      return String(responses[otherSpecifyResponseKey(question.id)] ?? "").trim() === "";
+    }
   }
 
   if (typeof value === "object" && !Array.isArray(value)) {
@@ -1300,6 +1313,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
   feedId,
   flags,
   participantSeed,
+  otherText,
 }) {
   const qType = question?.type;
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
@@ -1338,6 +1352,14 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
   const handleRadioChange = useCallback(
     (choiceValue) => emitChange(choiceValue),
     [emitChange]
+  );
+
+  // The "Other, please specify" text lives in a sibling response key, not
+  // nested inside this question's own value — see otherSpecifyResponseKey's
+  // comment in utils-survey.js for why.
+  const handleOtherTextChange = useCallback(
+    (e) => onChange(otherSpecifyResponseKey(questionId), e.target.value),
+    [onChange, questionId]
   );
 
   const handleMultiChange = useCallback(
@@ -1469,6 +1491,17 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
               <span>{choice.label}</span>
             </label>
           ))}
+          {choiceItems.some((c) => c.is_other && c.value === value) && (
+            <input
+              type="text"
+              className="survey-input"
+              style={{ marginTop: 2 }}
+              placeholder="Please specify…"
+              value={otherText ?? ""}
+              onChange={handleOtherTextChange}
+              autoFocus
+            />
+          )}
         </div>
       )}
 
@@ -1680,6 +1713,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
     prev.feedId === next.feedId &&
     prev.flags === next.flags &&
     prev.participantSeed === next.participantSeed &&
+    prev.otherText === next.otherText &&
     (prev.value === next.value ||
       shallowEqualArray(prev.value, next.value) ||
       shallowEqualObject(prev.value, next.value))
@@ -1917,7 +1951,7 @@ const isNextDelayed =
       // false), so this loop no longer needs its own `!q.required` bail-out
       // — that removal is what lets the numeric range check below still run
       // for an *optional* numeric_only TEXT question that has a value.
-      if (isEmptyRequiredValue(q, value)) {
+      if (isEmptyRequiredValue(q, value, responses)) {
         if (
           q.type === SURVEY_QUESTION_TYPES.MATRIX_SINGLE ||
           q.type === SURVEY_QUESTION_TYPES.MATRIX_MULTI ||
@@ -2154,6 +2188,7 @@ const isNextDelayed =
 
             const value = responses?.[q.id];
             const error = errors?.[q.id];
+            const otherText = responses?.[otherSpecifyResponseKey(q.id)];
 
             return (
               <SurveyQuestionRenderer
@@ -2169,6 +2204,7 @@ const isNextDelayed =
                 feedId={feedId}
                 flags={flags}
                 participantSeed={participantSeed}
+                otherText={otherText}
               />
             );
           })}

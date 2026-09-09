@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Toggle, IconPillButton, IconShuffle, EmptyState, useToast, useAdminTheme } from "./ui";
 import { SurveyScreen, SurveyScreenMobile, SurveyPrefaceFlow, ParticipantThemeToggle } from "../ui-core";
-import { materializePagesFromBlocks, SURVEY_QUESTION_TYPES } from "../utils";
+import { materializePagesFromBlocks, isQuestionVisible, SURVEY_QUESTION_TYPES } from "../utils";
 
 // Same "does this HTML field actually have content" check SurveyPrefaceFlow
 // itself uses internally (it builds its own `steps` array from these same
@@ -108,7 +108,35 @@ export function SurveyPreviewModal({
   const [responses, setResponses] = useState({});
   const [errors, setErrors] = useState({});
   const [errorMsg, setErrorMsg] = useState("");
-  const [previewGroupId, setPreviewGroupId] = useState(experimentGroups[0]?.id ?? "");
+  // Jumping straight to one question (initialQuestionId) used to always
+  // preview it under experimentGroups[0] — if that question (or its page
+  // block) is actually gated to a *different* group via
+  // visible_to_group_ids, it never appears in ui-survey.jsx's visiblePages
+  // for the default group, the jump effect there silently finds nothing to
+  // land on, and the preview falls back to page 1 — exactly the reported
+  // "preview this question" bug. Search for a group the target question is
+  // actually visible under and start there instead; only ever computed once,
+  // from the initial props, same as participantSeed/prefaceDone below.
+  const [previewGroupId, setPreviewGroupId] = useState(() => {
+    if (initialQuestionId && experimentGroups.length) {
+      for (const g of experimentGroups) {
+        const pages = materializePagesFromBlocks(survey, survey?.page_blocks, {
+          participantSeed: "preview",
+          randomize: false,
+          assignedGroupId: g.id,
+        });
+        const visible = pages.some((page) =>
+          page.questions.some(
+            (q) =>
+              q.id === initialQuestionId &&
+              isQuestionVisible(q, {}, { feedId: "", assignedGroupId: g.id })
+          )
+        );
+        if (visible) return g.id;
+      }
+    }
+    return experimentGroups[0]?.id ?? "";
+  });
   const [isMobile, setIsMobile] = useState(false);
   const [seedNonce, setSeedNonce] = useState(0);
   // Defaults to matching real participant behavior (required questions

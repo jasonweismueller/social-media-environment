@@ -73,6 +73,31 @@ export const SCREENER_ELIGIBLE_TYPES = [
   SURVEY_QUESTION_TYPES.DROPDOWN,
 ];
 
+// "Other, please specify" — a per-CHOICE flag (unlike attention-check/screener
+// above, which are question-level, exactly one choice out of several is the
+// free-text escape hatch here) available on SINGLE/DROPDOWN choices via
+// choice.is_other. The specification text is deliberately kept OUT of
+// responses[question.id] (which stays the plain selected-choice string, as
+// it's always been) and lives instead in a separate sibling response key —
+// every existing consumer of a SINGLE/DROPDOWN answer (isQuestionVisible's
+// equals/not_equals, findScreenerFailure's .includes(), attention-check
+// grading, the CSV flattener's plain scalar column) keeps working completely
+// unmodified against the bare string. Mirror this key convention in
+// utils-backend.js's CSV export (it can't import this function directly —
+// that file is deliberately utils-core-only, no circulars) and in
+// survey-sanitize.ts/.mjs's choices normalization.
+export function otherSpecifyResponseKey(questionId) {
+  return `${questionId}__other_text`;
+}
+
+export function getOtherChoice(question) {
+  return (
+    (Array.isArray(question?.choices) ? question.choices : []).find(
+      (c) => c?.is_other
+    ) || null
+  );
+}
+
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -935,6 +960,7 @@ export function normalizeQuestion(raw = {}) {
       ? raw.choices.map((c, i) => ({
           value: sanitizeStructuredValue(c?.value, `opt_${i + 1}`),
           label: String(c?.label ?? ""),
+          is_other: !!c?.is_other,
         }))
       : [],
 
@@ -1052,10 +1078,12 @@ export function frontendQuestionToBackend(question = {}) {
             ? q.choices.map((choice, i) => ({
                 value: sanitizeStructuredValue(choice?.value, `opt_${i + 1}`),
                 label: String(choice?.label ?? ""),
+                is_other: !!choice?.is_other,
               }))
             : q.options.map((opt, i) => ({
                 value: `opt_${i + 1}`,
                 label: opt,
+                is_other: false,
               })),
         randomize_options: !!q.randomize_options,
       };
@@ -1884,6 +1912,9 @@ export function makeEmptySurveyResponses(survey) {
   for (const page of normalized.pages || []) {
     for (const q of page.questions || []) {
       out[q.id] = emptyValueForQuestion(q);
+      if (getOtherChoice(q)) {
+        out[otherSpecifyResponseKey(q.id)] = "";
+      }
     }
   }
 
@@ -1947,7 +1978,7 @@ function isBipolarAnswered(q, value) {
   });
 }
 
-export function isQuestionAnswered(q, value) {
+export function isQuestionAnswered(q, value, responses) {
   if (!q || isDisplayOnlyQuestion(q)) return true;
   if (!q.required) return true;
 
@@ -1969,10 +2000,21 @@ export function isQuestionAnswered(q, value) {
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
       return !!(value && typeof value === "object" && value.selected_option);
 
+    // A choice flagged is_other needs its companion free-text specification
+    // filled in too, not just the radio picked — otherwise "Other" would
+    // silently count as a complete answer with nothing actually specified.
+    case SURVEY_QUESTION_TYPES.SINGLE:
+    case SURVEY_QUESTION_TYPES.DROPDOWN: {
+      if (String(value ?? "").trim() === "") return false;
+      const otherChoice = getOtherChoice(q);
+      if (otherChoice && value === otherChoice.value && responses) {
+        return String(responses[otherSpecifyResponseKey(q.id)] ?? "").trim() !== "";
+      }
+      return true;
+    }
+
     case SURVEY_QUESTION_TYPES.TEXT:
     case SURVEY_QUESTION_TYPES.TEXTAREA:
-    case SURVEY_QUESTION_TYPES.SINGLE:
-    case SURVEY_QUESTION_TYPES.DROPDOWN:
     case SURVEY_QUESTION_TYPES.SLIDER:
     default:
       return String(value ?? "").trim() !== "";
@@ -2045,7 +2087,7 @@ export function validateSurveyResponses(survey, responses, { feedId = "" } = {})
       if (!isQuestionVisible(q, responses, { feedId, assignedGroupId })) continue;
 
       const value = responses?.[q.id];
-      if (!isQuestionAnswered(q, value)) {
+      if (!isQuestionAnswered(q, value, responses)) {
         errors[q.id] = "This question is required.";
         continue;
       }

@@ -43,9 +43,7 @@ import {
   buildSurveyPagesFromFlatQuestions,
   flattenSurveyPagesForEditor,
   normalizeQuestionForEditor,
-  normalizeSurveyExperimentGroups,
 } from "./components-admin-surveys-editor";
-import { SurveyPreviewModal } from "./components-admin-survey-preview";
 
 import {
   Card as AdminUiCard,
@@ -59,7 +57,6 @@ import {
   usePrompt,
   EmptyState,
   IconClipboard,
-  IconEye,
   IconAlignLeft,
   IconAlignCenter,
   IconAlignRight,
@@ -1828,7 +1825,6 @@ export function AdminSurveysPanel({
   const [loadingReminderPosts, setLoadingReminderPosts] = useState(false);
   const [copiedLinkState, setCopiedLinkState] = useState("");
   const [descriptionForceOpen, setDescriptionForceOpen] = useState(false);
-  const [globalPreviewOpen, setGlobalPreviewOpen] = useState(false);
   const [activeEditorTab, setActiveEditorTab] = useState("setup");
   const [experimentGroupCounts, setExperimentGroupCounts] = useState(null);
   const [experimentGroupCountsLoading, setExperimentGroupCountsLoading] = useState(false);
@@ -1841,15 +1837,6 @@ export function AdminSurveysPanel({
 
   const hasExperimentGroups =
     Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
-
-  // Feeds the global "Preview" button — reachable from every tab, not just
-  // Questions (which owns its own, separate preview instance keyed to a
-  // specific question). Mirrors exactly what SurveyEditor computes/receives
-  // for its own SurveyPreviewModal instance.
-  const experimentGroupsForPreview = useMemo(
-    () => (survey ? normalizeSurveyExperimentGroups(survey) : []),
-    [survey]
-  );
 
   const refreshExperimentGroupCounts = useCallback(async () => {
     if (!survey?.survey_id) {
@@ -2976,16 +2963,6 @@ export function AdminSurveysPanel({
               subtitle={`${linkedFeedCount} linked feed${linkedFeedCount === 1 ? "" : "s"} · ${pageCount} page${pageCount === 1 ? "" : "s"}`}
               actions={
                 <>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setGlobalPreviewOpen(true)}
-                    title="See exactly what a participant would see: the information/consent/instructions pages, then the questions"
-                  >
-                    <IconEye size={14} />
-                    Preview
-                  </Button>
-
                   <input
                     ref={importFileRef}
                     type="file"
@@ -2994,21 +2971,15 @@ export function AdminSurveysPanel({
                     style={{ display: "none" }}
                   />
                   {/* Delete survey now lives below the survey list in the
-                      sidebar, next to Save survey — mirrors Delete feed. */}
+                      sidebar, next to Save survey — mirrors Delete feed.
+                      Preview now lives only in the Questions tab (SurveyEditor's
+                      own instance, which also supports jumping to a specific
+                      question) — this header used to have a second, redundant
+                      "Preview" reachable from every tab, removed per direct
+                      feedback. */}
                 </>
               }
             />
-
-            {globalPreviewOpen && (
-              <SurveyPreviewModal
-                survey={survey}
-                experimentGroups={experimentGroupsForPreview}
-                linkedFeeds={linkedFeedsForEditor}
-                linkedFeedPostsMap={linkedFeedPostsMap}
-                feedSequenceIds={selectedFeedIds}
-                onClose={() => setGlobalPreviewOpen(false)}
-              />
-            )}
 
             <Tabs
               ariaLabel="Survey editor sections"

@@ -416,6 +416,10 @@ function makeEmptySurveyShell(surveyId = "") {
 /* ======================= merged survey export helpers ====================== */
 
 const SURVEY_EXPORT_PREFIX = "survey";
+// Must exactly match otherSpecifyResponseKey()'s suffix in utils-survey.js —
+// duplicated here rather than imported since this file is deliberately
+// utils-core-only (see the file header comment; no circular import).
+const OTHER_TEXT_SUFFIX = "__other_text";
 export const SURVEY_COLUMN_LABEL_MODE = {
   VARIABLE: "variable",
   TEXT: "text",
@@ -634,6 +638,42 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
           question_index: qIdx,
           row_index: -1,
         });
+
+        // "Other, please specify" — an extra sibling column, only emitted
+        // when this question actually has a choice flagged is_other (empty
+        // for every survey that doesn't use the feature, so this never
+        // changes an existing export's columns). The specify text itself
+        // lives outside `responses[questionId]` in the raw response object
+        // (see OTHER_TEXT_SUFFIX below, and otherSpecifyResponseKey's own
+        // comment in utils-survey.js — this file can't import that function
+        // directly, it's deliberately utils-core-only, no circulars).
+        if (
+          (questionType === "single_choice" || questionType === "dropdown") &&
+          Array.isArray(q?.choices) &&
+          q.choices.some((c) => c?.is_other)
+        ) {
+          const otherVariableLabel = makeSurveyVariableLabel(questionId, "OTHER_TEXT");
+          const otherTextLabel = `${questionText} [Other, please specify]`;
+
+          questions.push({
+            kind: "other_text",
+            question_id: questionId,
+            question_text: questionText,
+            question_type: questionType,
+            row_value: "OTHER_TEXT",
+            row_label: "Other, please specify",
+            column_key: makeSurveyExportColumnKey(questionId, "OTHER_TEXT"),
+            variable_label: otherVariableLabel,
+            text_label: otherTextLabel,
+            label:
+              labelMode === SURVEY_COLUMN_LABEL_MODE.TEXT
+                ? otherTextLabel
+                : otherVariableLabel,
+            page_index: pIdx,
+            question_index: qIdx,
+            row_index: -1,
+          });
+        }
       }
     });
   });
@@ -746,6 +786,16 @@ export function flattenSurveyResponseRecord(responseRow, surveyColumns) {
       } else {
         out[col.column_key] = "";
       }
+      return;
+    }
+
+    // "Other, please specify" (see flattenSurveyQuestions above) — the
+    // specify text lives at a sibling key of the response object, not at
+    // `responses[col.question_id]` like every other column here reads.
+    if (col.kind === "other_text") {
+      out[col.column_key] = normalizeSurveyAnswerScalar(
+        responses[`${col.question_id}${OTHER_TEXT_SUFFIX}`]
+      );
       return;
     }
 
