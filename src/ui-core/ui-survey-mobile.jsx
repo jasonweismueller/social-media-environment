@@ -893,7 +893,9 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
       <SurveyReminderPostStyle />
       {question?.text ? (
         <div
-          className="survey-post-reminder-intro"
+          className={`survey-post-reminder-intro${
+            question.title_bold === false ? " survey-title-normal-weight" : ""
+          }`}
           dangerouslySetInnerHTML={{ __html: question.text || "" }}
         />
       ) : null}
@@ -968,7 +970,9 @@ function MobileQuestionWrapper({ question, index, error, children }) {
           <div className="survey-question-title-inner">
             <span className="survey-question-number">{index + 1}.</span>
             <div
-              className="survey-question-title-content"
+              className={`survey-question-title-content${
+                question.title_bold === false ? " survey-title-normal-weight" : ""
+              }`}
               dangerouslySetInnerHTML={{ __html: question.text || "" }}
             />
           </div>

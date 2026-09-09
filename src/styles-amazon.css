@@ -2473,6 +2473,17 @@ body.survey-mode .rail-right{
   font-weight:700;
 }
 
+/* Per-question override: title_bold=false on the question data lets an
+   admin opt a specific question (or a post_reminder's own intro text, see
+   .survey-post-reminder-intro below) out of the blanket bold-title rule
+   above. Written as a compound selector (two classes on the same element)
+   rather than a standalone .survey-title-normal-weight rule so it reliably
+   beats the single-class base rule regardless of stylesheet source order. */
+.survey-question-title-content.survey-title-normal-weight,
+.survey-post-reminder-intro.survey-title-normal-weight{
+  font-weight:400;
+}
+
 /* Preface steps (Participant Information / Consent / Instructions) reuse the
    .survey-question card shell but are prose, not a question prompt — keep
    them at normal weight regardless of the question-title bolding above. */

@@ -837,6 +837,13 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     attention_check_value: String(overrides.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(safeType) && !!overrides.is_screener,
     screener_pass_values: uniqueStringArray(overrides.screener_pass_values),
+    // Whether the question's own title/prompt text renders bold — defaults
+    // true (every existing survey's questions already render bold today via
+    // a blanket CSS rule, so this default is a no-op for anything that
+    // doesn't explicitly opt out) and applies uniformly across every
+    // question type, post_reminder included — the CSS class this controls
+    // (.survey-question-title-content) is shared by all of them.
+    title_bold: overrides.title_bold !== false,
     options: cleanStringArray(overrides.options),
     rows: cleanStringArray(overrides.rows),
     columns: cleanStringArray(overrides.columns),
@@ -955,6 +962,7 @@ export function normalizeQuestion(raw = {}) {
     attention_check_value: String(raw.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener,
     screener_pass_values: uniqueStringArray(raw.screener_pass_values),
+    title_bold: raw.title_bold !== false,
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c, i) => ({
@@ -1051,6 +1059,7 @@ export function frontendQuestionToBackend(question = {}) {
     attention_check_value: String(q.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(q.type) && !!q.is_screener,
     screener_pass_values: uniqueStringArray(q.screener_pass_values),
+    title_bold: q.title_bold !== false,
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER

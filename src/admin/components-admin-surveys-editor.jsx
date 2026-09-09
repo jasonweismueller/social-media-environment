@@ -845,6 +845,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     attention_check_value: String(q?.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!q?.is_screener,
     screener_pass_values: uniqueStringList(q?.screener_pass_values),
+    title_bold: q?.title_bold !== false,
     meta: q?.meta || {},
   };
 }
@@ -2202,6 +2203,7 @@ export function buildSavedQuestion(q, index) {
       SCREENER_ELIGIBLE_TYPES.includes(cleanQ.type) && cleanQ.is_screener
         ? uniqueStringList(cleanQ.screener_pass_values)
         : [],
+    title_bold: cleanQ.title_bold !== false,
   };
 }
 
@@ -2781,6 +2783,38 @@ function RequiredToggleButton({ active, onClick, disabled = false }) {
       }}
     >
       {active ? "Required" : "Optional"}
+    </button>
+  );
+}
+
+// Controls the same font-weight the participant-facing survey engine's
+// .survey-question-title-content CSS class applies — that class defaults to
+// bold unconditionally for every question type (a deliberate global choice,
+// see the "Survey question titles now bold" work), so this toggle is what
+// lets an individual question opt back out of it. Applies uniformly across
+// every type (post_reminder included) since it's the one shared class every
+// question's own title renders through, regardless of type.
+function TitleBoldToggleButton({ active, onClick }) {
+  return (
+    <button
+      type="button"
+      className="admin-btn"
+      onClick={onClick}
+      title={active ? "Question text is bold — click to make it normal weight" : "Question text is normal weight — click to make it bold"}
+      style={{
+        height: INPUT_HEIGHT,
+        minWidth: 36,
+        padding: "0 10px",
+        borderRadius: 8,
+        border: `1px solid ${active ? "var(--admin-accent)" : "var(--admin-border)"}`,
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
+        color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
+        fontWeight: 700,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      B
     </button>
   );
 }
@@ -5189,6 +5223,11 @@ function QuestionActions({
           />
         )}
 
+        <TitleBoldToggleButton
+          active={q.title_bold !== false}
+          onClick={() => updateQuestion(index, { title_bold: q.title_bold === false })}
+        />
+
         <button
           type="button"
           className="admin-btn"
@@ -5951,6 +5990,7 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
     visible_if: q.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
+    title_bold: q.title_bold !== false,
     numeric_only: nextType === SURVEY_QUESTION_TYPES.TEXT ? !!q.numeric_only : false,
     numeric_min:
       nextType === SURVEY_QUESTION_TYPES.TEXT && Number.isFinite(q.numeric_min)
