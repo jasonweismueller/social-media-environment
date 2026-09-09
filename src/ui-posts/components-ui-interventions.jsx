@@ -4,7 +4,7 @@ import { IconInfo, IconUsers } from "../ui-core"; // adjust path if needed
 import { resolveNoteReaderGroupSize } from "../utils";
 
 // --- NOTE: render URLs as real links that DO NOT trigger modal open ---
-function NoteRichText({ text, onLinkClick }) {
+function NoteRichText({ text, onLinkClick, disabled }) {
   const raw = String(text || "");
   const URL_RE = /(\bhttps?:\/\/[^\s]+|\bwww\.[^\s]+)/gi;
 
@@ -45,6 +45,7 @@ function NoteRichText({ text, onLinkClick }) {
             onClick={(e) => {
               e.preventDefault();      // 🚫 stop navigation
               e.stopPropagation();     // 🚫 stop modal open
+              if (disabled) return;
               onLinkClick?.(href);
             }}
           >
@@ -172,7 +173,7 @@ function renderGroup(g, key) {
 }
 
 // --- The “X-like” note details block inside the modal ---
-function NoteDetailsCard({ post, view, onAction, onClose }) {
+function NoteDetailsCard({ post, view, onAction, onClose, disabled }) {
   const hasImage = !!(view?.image?.url || view?.image?.svg);
   const author = view?.author || post.author || "User";
   const avatarUrl = view?.avatarUrl || post.avatarUrl || null;
@@ -309,6 +310,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
               padding: 0,
             }}
             onClick={() => {
+              if (disabled) return;
               onAction?.("note_view_details", { post_id: post.id });
               alert("We have noted your interest in exploring the note details. We will provide you with further information in the study debrief.");
             }}
@@ -342,6 +344,7 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
 >
   <NoteRichText
     text={post.noteText || ""}
+    disabled={disabled}
     onLinkClick={(href) => {
       onAction?.("note_link_open", { post_id: post.id, href });
 
@@ -366,7 +369,9 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   key={label}
   type="button"
   className="btn"
+  disabled={disabled}
   onClick={() => {
+    if (disabled) return;
     onAction?.("note_helpful_rate", { post_id: post.id, value: label.toLowerCase() });
     alert("Thank you for evaluating the helpfulness of the note.");
     onClose?.();
@@ -381,10 +386,11 @@ function NoteDetailsCard({ post, view, onAction, onClose }) {
   );
 }
 
-function NoteIntervention({ post, view, onAction, participantSeed }) {
+function NoteIntervention({ post, view, onAction, participantSeed, disabled }) {
   const [open, setOpen] = React.useState(false);
 
   const openModal = (source) => {
+    if (disabled) return;
     onAction?.("note_modal_open", { post_id: post.id, source });
     setOpen(true);
   };
@@ -405,7 +411,8 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
         {/* Clicking note surface opens modal, but links inside do not */}
         <div
           role="button"
-          tabIndex={0}
+          tabIndex={disabled ? -1 : 0}
+          aria-disabled={disabled || undefined}
           onClick={() => openModal("note_surface")}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -413,7 +420,7 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
               openModal("note_surface");
             }
           }}
-          style={{ cursor: "pointer" }}
+          style={{ cursor: disabled ? "default" : "pointer" }}
         >
           {/* header */}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -453,6 +460,7 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
 >
   <NoteRichText
   text={post.noteText || ""}
+  disabled={disabled}
   onLinkClick={(href) => {
     onAction?.("note_link_open", { post_id: post.id, href });
 
@@ -478,20 +486,20 @@ function NoteIntervention({ post, view, onAction, participantSeed }) {
         {/* rating row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ fontSize: 14, color: "var(--text, #374151)" }}>Do you find this helpful?</div>
-          <button type="button" className="btn" onClick={() => openModal("rate_it_button")}>
+          <button type="button" className="btn" disabled={disabled} onClick={() => openModal("rate_it_button")}>
             Rate it
           </button>
         </div>
       </div>
 
       <NoteModal open={open} onClose={() => setOpen(false)} title="Note">
-        <NoteDetailsCard post={post} view={view} onAction={onAction} onClose={() => setOpen(false)} />
+        <NoteDetailsCard post={post} view={view} onAction={onAction} onClose={() => setOpen(false)} disabled={disabled} />
       </NoteModal>
     </>
   );
 }
 
-function LabelIntervention({ post, onAction }) {
+function LabelIntervention({ post, onAction, disabled }) {
   return (
     <div className="info-bar info-clean">
       <div className="info-head">
@@ -510,7 +518,14 @@ function LabelIntervention({ post, onAction }) {
 
       <div className="info-row">
         <div>Want to see why?</div>
-        <button className="btn" onClick={() => onAction?.("intervention_learn_more", { post_id: post.id })}>
+        <button
+          className="btn"
+          disabled={disabled}
+          onClick={() => {
+            if (disabled) return;
+            onAction?.("intervention_learn_more", { post_id: post.id });
+          }}
+        >
           Learn more
         </button>
       </div>
@@ -518,15 +533,23 @@ function LabelIntervention({ post, onAction }) {
   );
 }
 
-export function InterventionBlock({ post, onAction, view, participantSeed }) {
+export function InterventionBlock({ post, onAction, view, participantSeed, disabled }) {
   if (!post?.interventionType) return null;
 
   if (post.interventionType === "note") {
-    return <NoteIntervention post={post} view={view} onAction={onAction} participantSeed={participantSeed} />;
+    return (
+      <NoteIntervention
+        post={post}
+        view={view}
+        onAction={onAction}
+        participantSeed={participantSeed}
+        disabled={disabled}
+      />
+    );
   }
 
   if (post.interventionType === "label") {
-    return <LabelIntervention post={post} onAction={onAction} />;
+    return <LabelIntervention post={post} onAction={onAction} disabled={disabled} />;
   }
 
   return null;

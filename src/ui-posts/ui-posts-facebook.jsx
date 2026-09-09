@@ -2411,6 +2411,7 @@ export function PostCard({
         post={post}
         onAction={onAction}
         participantSeed={participantSeed}
+        disabled={disabled}
         view={{
           author: displayAuthor,
           avatarUrl: displayAvatar,
