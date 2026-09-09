@@ -28,6 +28,15 @@ export function initSentry() {
     // Leaving PII collection off (the SDK default, made explicit here) so a
     // crash report never bundles more than the error itself.
     sendDefaultPii: false,
+    // Well-known false positive: browser extensions (password managers, ad
+    // blockers) inject scripts into every page and throw this exact
+    // generic rejection when their own internal message-passing target
+    // disappears mid-flight (e.g. the page navigates away) — nothing to do
+    // with this app's code, just caught by the page's global unhandled-
+    // rejection listener while it happens to be loaded here. Filtering by
+    // message rather than not reporting unhandled rejections at all, so a
+    // real one (an actual bug in this app) still gets reported.
+    ignoreErrors: [/Object Not Found Matching Id/i],
   });
 }
 

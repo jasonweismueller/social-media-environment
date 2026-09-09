@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex" />
+    <title>Verifying…</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        background: #f5f6fa;
+        color: #1f2430;
+      }
+      .card {
+        max-width: 360px;
+        padding: 32px 28px;
+        text-align: center;
+      }
+      a {
+        color: #4338ca;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <p id="msg">Redirecting…</p>
+      <p><a id="continue" href="#" style="display: none">Continue</a></p>
+    </div>
+    <script>
+      // Intermediate hop for Supabase Auth email links (invite/recovery),
+      // used from the "Invite user"/"Reset password" email templates
+      // instead of {{ .ConfirmationURL }} directly — see CLAUDE.md's admin
+      // invite-email work (2026-09-09). Two reasons this exists:
+      //
+      // 1. Deliverability: a raw {{ .ConfirmationURL }} points at
+      //    <project-ref>.supabase.co, a different domain than the one the
+      //    email is sent from (studyfeed.org) — Resend flags that mismatch
+      //    as a spam-score risk (legit mail usually links back to its own
+      //    domain). Routing through studyfeed.org/verify first makes the
+      //    link in the email match the sending domain.
+      // 2. Institutional link-scanners (e.g. Microsoft 365 Safe Links'
+      //    "time of click" protection) rewrite the ORIGINAL link found in
+      //    the email to route through their own proxy, which fetches that
+      //    exact URL server-side to check it's safe *before* forwarding the
+      //    real recipient's browser. Since the one-time Supabase token is
+      //    only ever consumed by whatever URL the email's link actually
+      //    points to, having that link be this inert static page (which the
+      //    scanner's own safety-check fetch can't consume anything from)
+      //    means the token only gets used once the real recipient's own
+      //    browser lands here and this script fires — not by the scanner's
+      //    check. Not a guaranteed fix for every scanner (a sufficiently
+      //    "deep" scanner that renders JS in a sandboxed browser would still
+      //    burn it), but it resolves the common case.
+      //
+      // Deliberately reads the whole query string rather than picking out
+      // individual params (token/type/redirect_to) — forwards whatever the
+      // email template actually put there untouched, so this doesn't need
+      // updating if Supabase's own template variables ever change shape.
+      (function () {
+        var SUPABASE_URL_BY_HOST = {
+          "studyfeed.org": "https://yrzqnlhbawzuzlrrocfd.supabase.co",
+          "staging.studyfeed.org": "https://hgctbgunlsesygzglbdv.supabase.co",
+        };
+        var supabaseUrl = SUPABASE_URL_BY_HOST[window.location.hostname] || SUPABASE_URL_BY_HOST["studyfeed.org"];
+        var search = window.location.search || "";
+
+        if (!/[?&]token=/.test(search)) {
+          document.getElementById("msg").textContent = "This link is invalid or has already been used.";
+          return;
+        }
+
+        var target = supabaseUrl + "/auth/v1/verify" + search;
+        var link = document.getElementById("continue");
+        link.href = target;
+        link.style.display = "inline";
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>
