@@ -206,16 +206,25 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
           </button>
         </div>
 
-        <div
-          ref={bodyRef}
-          style={
-            fullScreen
-              ? { flex: 1, minHeight: 0, overflowY: "auto" }
-              : { padding: 20, overflowY: "auto" }
-          }
-        >
-          {children}
-        </div>
+        {/* Skipped entirely (not just left empty) when there's no content —
+            a confirm dialog with no `message` (e.g. a bare "Delete this
+            question?" with nothing more to say) used to still get this
+            div's own 20px top+bottom padding, rendering as a real, visible
+            gap of nothing between the title and the buttons. Every other
+            caller always passes real children, so this is a no-op for
+            them. */}
+        {children && (
+          <div
+            ref={bodyRef}
+            style={
+              fullScreen
+                ? { flex: 1, minHeight: 0, overflowY: "auto" }
+                : { padding: 20, overflowY: "auto" }
+            }
+          >
+            {children}
+          </div>
+        )}
 
         {footer && (
           <div

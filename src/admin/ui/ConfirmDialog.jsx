@@ -44,9 +44,11 @@ export function ConfirmProvider({ children }) {
             </>
           }
         >
-          <div style={{ fontSize: 13, color: "var(--admin-text)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-            {state.message}
-          </div>
+          {state.message ? (
+            <div style={{ fontSize: 13, color: "var(--admin-text)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+              {state.message}
+            </div>
+          ) : null}
         </Modal>
       )}
     </ConfirmContext.Provider>

@@ -6300,6 +6300,7 @@ function QuestionCard({
   async function removeQuestionWithConfirm(idx) {
     const ok = await confirm({
       title: "Delete this question?",
+      message: "This can't be undone.",
       danger: true,
       confirmLabel: "Delete",
     });
@@ -7877,6 +7878,7 @@ function StudyOutlineModal({
                                   if (
                                     await confirm({
                                       title: "Delete this question?",
+                                      message: "This can't be undone.",
                                       danger: true,
                                       confirmLabel: "Delete",
                                     })
@@ -8681,6 +8683,7 @@ export function SurveyEditor({
     const count = idsToDelete.size;
     const ok = await bulkConfirm({
       title: count === 1 ? "Delete this question?" : `Delete ${count} questions?`,
+      message: "This can't be undone.",
       danger: true,
       confirmLabel: "Delete",
     });
