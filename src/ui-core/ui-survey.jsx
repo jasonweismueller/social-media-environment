@@ -862,6 +862,20 @@ const ReminderPostInner = memo(function ReminderPostInner({
       projectId={projectId}
       feedId={feedId}
       runSeed={participantSeed || "survey-reminder-preview"}
+      // PostCard's `runSeed` (above) and `participantSeed` (here) are two
+      // genuinely separate props — runSeed drives avatar/name/time
+      // randomization, participantSeed is what InterventionBlock's own
+      // "rated as helpful by N readers" range randomization
+      // (resolveNoteReaderGroupSize, utils-core.js) actually reads. Real
+      // feed rendering (Feed, ui-posts-facebook.jsx) already passes both;
+      // this call site used to only pass runSeed, silently leaving
+      // PostCard's participantSeed prop undefined here — which
+      // resolveNoteReaderGroupSize's own default param then turned into an
+      // empty string, collapsing its seed hash to a fixed, non-varying
+      // value regardless of the real participant/session. That's the exact
+      // "reminder shows the same reader-group numbers every time, but the
+      // real feed varies correctly" bug this fixes.
+      participantSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
       assignedAvatarUrl={assignedAvatarUrl || null}
       suppressDisplayedSnapshot={suppressDisplayedSnapshot}

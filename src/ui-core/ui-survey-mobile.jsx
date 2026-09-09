@@ -526,6 +526,11 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
       projectId={projectId}
       feedId={feedId}
       runSeed={participantSeed || "survey-reminder-preview"}
+      // See the identical comment in ReminderPostInner (ui-survey.jsx,
+      // desktop) — PostCard's `participantSeed` prop is separate from
+      // `runSeed` above and is what InterventionBlock's reader-group-size
+      // randomization actually reads; this call site used to never pass it.
+      participantSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
       assignedAvatarUrl={assignedAvatarUrl || null}
       suppressDisplayedSnapshot={suppressDisplayedSnapshot}
