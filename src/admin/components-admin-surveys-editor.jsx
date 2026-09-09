@@ -845,7 +845,6 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     attention_check_value: String(q?.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!q?.is_screener,
     screener_pass_values: uniqueStringList(q?.screener_pass_values),
-    title_bold: q?.title_bold !== false,
     meta: q?.meta || {},
   };
 }
@@ -1991,6 +1990,51 @@ function dropEmptyPagesAfterDelete(survey) {
   };
 }
 
+// Page 1 is the one page that can never get the ordinary "Remove this page
+// break" treatment every later page has (PageCardHeader's onRemoveBreak) —
+// there's no earlier page for it to merge backward into, since nothing
+// precedes the first page at all. This is the equivalent operation in the
+// only direction that's actually possible for page 1: merge its own
+// questions FORWARD onto page 2, and let page 2 survive as the new first
+// page (its own id/title/delay kept, matching how a normal backward merge
+// always keeps the *receiving* page's identity).
+//
+// Deliberately NOT implemented as flat-list break-removal the way
+// buildSurveyPagesFromFlatQuestions's own reconciliation works for every
+// other page-merge in this file: that function hardcodes segment 0's
+// identity to always be existingPages[0]'s id, specifically so a plain
+// question edit/reorder never reassigns page 1's own identity out from under
+// it (see its own comment) — which is exactly the one case a *page 1 into
+// page 2* forward merge needs to do the opposite of. Operating directly on
+// survey.pages (mirroring dropEmptyPagesAfterDelete just above) sidesteps
+// that constraint entirely instead of fighting it.
+function mergeFirstPageForward(survey) {
+  const pages = Array.isArray(survey?.pages) ? survey.pages : [];
+  if (pages.length < 2) return survey;
+
+  const [firstPage, secondPage, ...rest] = pages;
+  const mergedSecondPage = {
+    ...secondPage,
+    questions: [
+      ...(Array.isArray(firstPage?.questions) ? firstPage.questions : []),
+      ...(Array.isArray(secondPage?.questions) ? secondPage.questions : []),
+    ],
+  };
+  const nextPages = [mergedSecondPage, ...rest];
+  const keptIds = new Set(nextPages.map((p) => p.id));
+
+  return {
+    ...survey,
+    pages: nextPages,
+    page_blocks: Array.isArray(survey.page_blocks)
+      ? survey.page_blocks.map((block) => ({
+          ...block,
+          page_ids: (block.page_ids || []).filter((id) => keptIds.has(id)),
+        }))
+      : survey.page_blocks,
+  };
+}
+
 export function makePageBreakForEditor(index = 0) {
   return normalizeQuestionForEditor(
     {
@@ -2203,7 +2247,6 @@ export function buildSavedQuestion(q, index) {
       SCREENER_ELIGIBLE_TYPES.includes(cleanQ.type) && cleanQ.is_screener
         ? uniqueStringList(cleanQ.screener_pass_values)
         : [],
-    title_bold: cleanQ.title_bold !== false,
   };
 }
 
@@ -2783,38 +2826,6 @@ function RequiredToggleButton({ active, onClick, disabled = false }) {
       }}
     >
       {active ? "Required" : "Optional"}
-    </button>
-  );
-}
-
-// Controls the same font-weight the participant-facing survey engine's
-// .survey-question-title-content CSS class applies — that class defaults to
-// bold unconditionally for every question type (a deliberate global choice,
-// see the "Survey question titles now bold" work), so this toggle is what
-// lets an individual question opt back out of it. Applies uniformly across
-// every type (post_reminder included) since it's the one shared class every
-// question's own title renders through, regardless of type.
-function TitleBoldToggleButton({ active, onClick }) {
-  return (
-    <button
-      type="button"
-      className="admin-btn"
-      onClick={onClick}
-      title={active ? "Question text is bold — click to make it normal weight" : "Question text is normal weight — click to make it bold"}
-      style={{
-        height: INPUT_HEIGHT,
-        minWidth: 36,
-        padding: "0 10px",
-        borderRadius: 8,
-        border: `1px solid ${active ? "var(--admin-accent)" : "var(--admin-border)"}`,
-        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface)",
-        color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
-        fontWeight: 700,
-        cursor: "pointer",
-        whiteSpace: "nowrap",
-      }}
-    >
-      B
     </button>
   );
 }
@@ -5223,11 +5234,6 @@ function QuestionActions({
           />
         )}
 
-        <TitleBoldToggleButton
-          active={q.title_bold !== false}
-          onClick={() => updateQuestion(index, { title_bold: q.title_bold === false })}
-        />
-
         <button
           type="button"
           className="admin-btn"
@@ -5990,7 +5996,6 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
     visible_if: q.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
-    title_bold: q.title_bold !== false,
     numeric_only: nextType === SURVEY_QUESTION_TYPES.TEXT ? !!q.numeric_only : false,
     numeric_min:
       nextType === SURVEY_QUESTION_TYPES.TEXT && Number.isFinite(q.numeric_min)
@@ -7820,7 +7825,22 @@ function StudyOutlineModal({
                                   });
                                   if (ok) removeQuestion(leadingBreakFlatIndex);
                                 }
-                              : undefined
+                              // Page 1 has no leading break to remove (nothing
+                              // precedes it) — the only page that can merge
+                              // *forward* instead. See mergeFirstPageForward's
+                              // own comment for why this can't reuse the
+                              // leadingBreakFlatIndex mechanism above.
+                              : groupIndex === 0 && nextGroup
+                                ? async () => {
+                                    const ok = await confirm({
+                                      title: "Remove this page?",
+                                      message: "Page 1's questions will move onto page 2, and page 2 becomes the new page 1 (keeping its own title/delay, if any).",
+                                      danger: true,
+                                      confirmLabel: "Remove",
+                                    });
+                                    if (ok) onSurveyChange((prev) => mergeFirstPageForward(prev));
+                                  }
+                                : undefined
                           }
                         />
 
@@ -9070,7 +9090,22 @@ export function SurveyEditor({
                             });
                             if (ok) removeQuestion(leadingBreakFlatIndex);
                           }
-                        : undefined
+                        // Page 1 has no leading break to remove (nothing
+                        // precedes it) — the only page that can merge
+                        // *forward* instead. See mergeFirstPageForward's own
+                        // comment for why this can't reuse the
+                        // leadingBreakFlatIndex mechanism above.
+                        : groupIndex === 0 && nextGroup
+                          ? async () => {
+                              const ok = await bulkConfirm({
+                                title: "Remove this page?",
+                                message: "Page 1's questions will move onto page 2, and page 2 becomes the new page 1 (keeping its own title/delay, if any).",
+                                danger: true,
+                                confirmLabel: "Remove",
+                              });
+                              if (ok) onSurveyChange((prev) => mergeFirstPageForward(prev));
+                            }
+                          : undefined
                     }
                     onAddQuestion={
                       realQuestionCount > 0

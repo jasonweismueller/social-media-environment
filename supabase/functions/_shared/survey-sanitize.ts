@@ -568,7 +568,6 @@ export function normalizeQuestion(raw: any = {}): any {
     attention_check_value: String(raw.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener,
     screener_pass_values: uniqueStringArray(raw.screener_pass_values),
-    title_bold: raw.title_bold !== false,
 
     choices: Array.isArray(raw.choices)
       ? raw.choices.map((c: any, i: number) => ({
@@ -657,7 +656,6 @@ export function frontendQuestionToBackend(question: any = {}): any {
     attention_check_value: String(q.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(q.type) && !!q.is_screener,
     screener_pass_values: uniqueStringArray(q.screener_pass_values),
-    title_bold: q.title_bold !== false,
     meta: {
       ...(q.meta || {}),
       ...(q.type === SURVEY_QUESTION_TYPES.POST_REMINDER

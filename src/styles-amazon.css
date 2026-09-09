@@ -2470,17 +2470,6 @@ body.survey-mode .rail-right{
 .survey-question-title-content{
   min-width:0;
   flex:1;
-  font-weight:700;
-}
-
-/* Per-question override: title_bold=false on the question data lets an
-   admin opt a specific question (or a post_reminder's own intro text, see
-   .survey-post-reminder-intro below) out of the blanket bold-title rule
-   above. Written as a compound selector (two classes on the same element)
-   rather than a standalone .survey-title-normal-weight rule so it reliably
-   beats the single-class base rule regardless of stylesheet source order. */
-.survey-question-title-content.survey-title-normal-weight,
-.survey-post-reminder-intro.survey-title-normal-weight{
   font-weight:400;
 }
 
@@ -2510,7 +2499,9 @@ body.survey-mode .rail-right{
 .survey-question-description strong,
 .survey-question-description b,
 .survey-info-block strong,
-.survey-info-block b{
+.survey-info-block b,
+.survey-post-reminder-intro strong,
+.survey-post-reminder-intro b{
   font-weight:700;
 }
 
@@ -2823,7 +2814,7 @@ body.survey-mode .rail-right{
 
 .survey-post-reminder-intro{
   margin-bottom:10px;
-  font-weight:700;
+  font-weight:400;
 }
 
 .survey-post-reminder-outer{

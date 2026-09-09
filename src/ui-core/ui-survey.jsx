@@ -1234,9 +1234,7 @@ const PostReminderCard = memo(function PostReminderCard({
     <SurveyReminderPostStyle />
     {question?.text ? (
       <div
-        className={`survey-post-reminder-intro${
-          question.title_bold === false ? " survey-title-normal-weight" : ""
-        }`}
+        className="survey-post-reminder-intro"
         dangerouslySetInnerHTML={{ __html: question.text || "" }}
       />
     ) : null}
@@ -1427,9 +1425,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
           <div className="survey-question-title-inner">
             <span className="survey-question-number">{index + 1}.</span>
             <div
-              className={`survey-question-title-content${
-                question.title_bold === false ? " survey-title-normal-weight" : ""
-              }`}
+              className="survey-question-title-content"
               dangerouslySetInnerHTML={{ __html: question.text || "" }}
             />
           </div>
