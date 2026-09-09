@@ -1256,22 +1256,48 @@ export function computeBlockIndexForQuestions(survey, currentQuestions, pageNumb
 // use) so page-card drag-reorder can look up block membership directly.
 export function computePageGroupsForQuestions(survey, currentQuestions, pageNumbers) {
   const pages = Array.isArray(survey?.pages) ? survey.pages : [];
-  const groups = [];
+
+  // One pass over the flat list: bucket every item (question or page-break)
+  // by the real page it belongs to, and separately note which flat index
+  // carries the page-break that STARTS each page number (computePageNumbers-
+  // ForQuestions tags a break with the number of the page it's about to
+  // start, so "the break that starts page N" is just "the break item whose
+  // own tagged number is N" — page 1 never has one, since nothing precedes
+  // it).
+  const itemsByPageNumber = new Map();
+  const leadingBreakFlatIndexByPageNumber = new Map();
   currentQuestions.forEach((item, i) => {
     const pageNumber = pageNumbers[i];
-    const last = groups[groups.length - 1];
-    if (last && last.pageNumber === pageNumber) {
-      last.items.push({ item, flatIndex: i });
-    } else {
-      const page = pages[pageNumber - 1];
-      groups.push({
-        pageNumber,
-        pageId: String(page?.id || `page_${pageNumber}`),
-        items: [{ item, flatIndex: i }],
-      });
+    if (!itemsByPageNumber.has(pageNumber)) itemsByPageNumber.set(pageNumber, []);
+    itemsByPageNumber.get(pageNumber).push({ item, flatIndex: i });
+    if (item?.type === EDITOR_PAGE_BREAK_TYPE) {
+      leadingBreakFlatIndexByPageNumber.set(pageNumber, i);
     }
   });
-  return groups;
+
+  // Walking survey.pages directly (rather than only the pages that happen to
+  // have at least one flat item) is the fix for a real bug: a page with zero
+  // questions contributes literally nothing to the flat list — no question
+  // rows, and its own leading break (if any) is tagged with the NEXT page's
+  // number, not its own — so the old item-by-item grouping above silently
+  // produced no entry for it at all. That made an emptied-out page (e.g. one
+  // whose last question was just deleted, or moved elsewhere) completely
+  // disappear from "Pages and questions"/Study overview even though
+  // survey.pages still genuinely contained it — confusing ("I can't see
+  // page 1, but it's still there") and, worse, meant there was no way to add
+  // a question back to it or delete it through this view at all.
+  return pages.map((page, idx) => {
+    const pageNumber = idx + 1;
+    return {
+      pageNumber,
+      pageId: String(page?.id || `page_${pageNumber}`),
+      items: itemsByPageNumber.get(pageNumber) || [],
+      // Present for every page but the first, empty or not — unlike the old
+      // group.items[0]?.flatIndex derivation, this doesn't depend on the
+      // page having any items of its own.
+      leadingBreakFlatIndex: leadingBreakFlatIndexByPageNumber.get(pageNumber) ?? null,
+    };
+  });
 }
 
 // `isCollapsed`/`onToggleCollapsed` are optional — StudyOutlineModal and
@@ -1501,6 +1527,14 @@ function PageCardHeader({
   // only surviving way to undo "start a new page here" now that page
   // breaks no longer render as their own standalone card in the list.
   onRemoveBreak,
+  // Only meaningful (and only ever passed) when questionCount is 0 — a page
+  // with real questions already gets an insert-above/below affordance on
+  // each of its own QuestionCard rows; a genuinely empty page (e.g. right
+  // after its last question was deleted, or one created via "insert page
+  // break" and never filled in) has no row to hang that off of at all, so
+  // without this it would be visible but have no way to actually add
+  // content to it.
+  onAddQuestion,
   dense = false,
 }) {
   return (
@@ -1632,6 +1666,17 @@ function PageCardHeader({
           style={{ width: dense ? 20 : 24, height: dense ? 20 : 24, flex: "0 0 auto" }}
         >
           <BookmarkIcon size={dense ? 11 : 12} />
+        </IconOnlyButton>
+      )}
+      {onAddQuestion && questionCount === 0 && (
+        <IconOnlyButton
+          onClick={onAddQuestion}
+          title="Add a question to this page"
+          aria-label={`Add a question to page ${pageNumber}`}
+          size={dense ? 11 : 12}
+          style={{ width: dense ? 20 : 24, height: dense ? 20 : 24, flex: "0 0 auto" }}
+        >
+          <PlusIcon size={dense ? 11 : 12} />
         </IconOnlyButton>
       )}
     </div>
@@ -7625,9 +7670,18 @@ function StudyOutlineModal({
                 );
                 if (outlineFilter.trim() && filteredItems.length === 0) return null;
 
-                const firstFlatIndex = group.items[0].flatIndex;
-                const boundary = blockBoundaries[firstFlatIndex];
-                const groupBlockIndex = blockIndexPerQuestion[firstFlatIndex];
+                // group.leadingBreakFlatIndex (computePageGroupsForQuestions)
+                // is used here instead of group.items[0]?.flatIndex — the
+                // latter is simply absent for a page with zero questions
+                // (nothing in group.items to read from at all), which used
+                // to make an emptied-out page silently vanish from this list
+                // instead of showing up with 0 questions.
+                const firstFlatIndex = group.items[0]?.flatIndex ?? group.leadingBreakFlatIndex;
+                const boundary = firstFlatIndex != null ? blockBoundaries[firstFlatIndex] : undefined;
+                const groupBlockIndex =
+                  firstFlatIndex != null
+                    ? blockIndexPerQuestion[firstFlatIndex]
+                    : pageIdToBlockIndex.get(group.pageId) ?? null;
                 const blockIsCollapsed =
                   groupBlockIndex != null && collapsedBlockIds.has(groupBlockIndex);
 
@@ -7652,18 +7706,10 @@ function StudyOutlineModal({
                 // explanation of why the break that STARTS this page and
                 // the break that carries THIS page's own delay are two
                 // different flat items.
-                const leadingItem = group.items[0]?.item;
-                const leadingBreakFlatIndex =
-                  groupIndex > 0 && leadingItem?.type === EDITOR_PAGE_BREAK_TYPE
-                    ? group.items[0].flatIndex
-                    : null;
+                const leadingBreakFlatIndex = group.leadingBreakFlatIndex;
 
                 const nextGroup = pageGroups[groupIndex + 1];
-                const nextLeadingItem = nextGroup?.items?.[0]?.item;
-                const delayFlatIndex =
-                  nextGroup && nextLeadingItem?.type === EDITOR_PAGE_BREAK_TYPE
-                    ? nextGroup.items[0].flatIndex
-                    : null;
+                const delayFlatIndex = nextGroup?.leadingBreakFlatIndex ?? null;
                 const delaySeconds =
                   delayFlatIndex != null
                     ? (currentQuestions[delayFlatIndex]?.next_delay_seconds ?? 0)
@@ -8875,9 +8921,18 @@ export function SurveyEditor({
           );
           if (questionFilter.trim() && filteredItems.length === 0) return null;
 
-          const firstFlatIndex = group.items[0].flatIndex;
-          const boundary = blockBoundaries[firstFlatIndex];
-          const groupBlockIndex = blockIndexPerQuestion[firstFlatIndex];
+          // group.leadingBreakFlatIndex (computePageGroupsForQuestions) is
+          // used here instead of group.items[0]?.flatIndex — the latter is
+          // simply absent for a page with zero questions (nothing in
+          // group.items to read from at all), which used to make an
+          // emptied-out page silently vanish from this list instead of
+          // showing up with 0 questions.
+          const firstFlatIndex = group.items[0]?.flatIndex ?? group.leadingBreakFlatIndex;
+          const boundary = firstFlatIndex != null ? blockBoundaries[firstFlatIndex] : undefined;
+          const groupBlockIndex =
+            firstFlatIndex != null
+              ? blockIndexPerQuestion[firstFlatIndex]
+              : pageIdToBlockIndex.get(group.pageId) ?? null;
           const blockIsCollapsed = groupBlockIndex != null && collapsedBlockIds.has(groupBlockIndex);
 
           // Mirrors Study overview's own logic exactly: a page that starts a
@@ -8897,14 +8952,10 @@ export function SurveyEditor({
           ).length;
           const pageTitle = String(survey?.pages?.[group.pageNumber - 1]?.title || "").trim();
 
-          // The break that STARTS this page (this group's own leading item,
-          // for every page but the first) — removing it merges this page's
-          // questions back into the previous page.
-          const leadingItem = group.items[0]?.item;
-          const leadingBreakFlatIndex =
-            groupIndex > 0 && leadingItem?.type === EDITOR_PAGE_BREAK_TYPE
-              ? group.items[0].flatIndex
-              : null;
+          // The break that STARTS this page (for every page but the first)
+          // — removing it merges this page's questions back into the
+          // previous page.
+          const leadingBreakFlatIndex = group.leadingBreakFlatIndex;
 
           // The break that ENDS this page (the NEXT page's own leading
           // item) carries THIS page's own next_delay_seconds — see
@@ -8913,11 +8964,7 @@ export function SurveyEditor({
           // precedes it. No next group (last page) means no delay control:
           // the last page's delay is always forced to 0 on save.
           const nextGroup = pageGroups[groupIndex + 1];
-          const nextLeadingItem = nextGroup?.items?.[0]?.item;
-          const delayFlatIndex =
-            nextGroup && nextLeadingItem?.type === EDITOR_PAGE_BREAK_TYPE
-              ? nextGroup.items[0].flatIndex
-              : null;
+          const delayFlatIndex = nextGroup?.leadingBreakFlatIndex ?? null;
           const delaySeconds =
             delayFlatIndex != null
               ? (currentQuestions[delayFlatIndex]?.next_delay_seconds ?? 0)
@@ -8984,6 +9031,15 @@ export function SurveyEditor({
                             if (ok) removeQuestion(leadingBreakFlatIndex);
                           }
                         : undefined
+                    }
+                    onAddQuestion={
+                      realQuestionCount > 0
+                        ? undefined
+                        : leadingBreakFlatIndex != null
+                          ? () => openAddQuestionAt(leadingBreakFlatIndex, "below")
+                          : delayFlatIndex != null
+                            ? () => openAddQuestionAt(delayFlatIndex, "above")
+                            : openAddQuestionAppend
                     }
                   />
 
