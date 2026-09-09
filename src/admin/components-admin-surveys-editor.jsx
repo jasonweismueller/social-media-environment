@@ -8254,6 +8254,16 @@ export function SurveyEditor({
     setLibraryInsertTarget(null);
   }
 
+  // A standalone "browse/manage the library" entry point, independent of
+  // inserting a question — previously the only ways to reach the library
+  // modal at all were "From library…" (buried inside the empty-state or the
+  // Add-question type picker) or "Save to library" (the reverse direction),
+  // both of which imply you're already mid-way through adding a question.
+  // Passing no onInsert here is what QuestionLibraryPickerModal's own
+  // "insert or just manage" branching already keys off of — see its own
+  // header comment — so this needed no change there, just a way to reach it.
+  const [libraryManageOpen, setLibraryManageOpen] = useState(false);
+
   // Same null / "append" / {index, position} contract as libraryInsertTarget
   // just above — the two pickers (type gallery, library) share one target
   // shape so "From library…" inside the type gallery can hand off to
@@ -8894,6 +8904,15 @@ export function SurveyEditor({
           >
             Preview
           </Button>
+
+          <Button
+            variant="secondary"
+            onClick={() => setLibraryManageOpen(true)}
+            title="Browse, edit, or delete saved questions and measures — reusable across every survey"
+          >
+            <IconBookmark size={14} />
+            Question library
+          </Button>
         </div>
       </div>
 
@@ -9218,6 +9237,10 @@ export function SurveyEditor({
 
       {libraryInsertTarget !== null && (
         <QuestionLibraryPickerModal onInsert={insertLibraryQuestions} onClose={closeLibraryModal} />
+      )}
+
+      {libraryManageOpen && (
+        <QuestionLibraryPickerModal onClose={() => setLibraryManageOpen(false)} />
       )}
 
       {outlineOpen && (
