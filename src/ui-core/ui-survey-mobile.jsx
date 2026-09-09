@@ -20,6 +20,7 @@ import {
   makeEmptyPostInteractionAggregate,
   buildRecallReminderOptions,
   trackElementDwellMs,
+  resolveNoteReaderGroupSize,
   getTextNumericRangeError,
   findScreenerFailure,
   getOtherChoice,
@@ -892,6 +893,29 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
       },
     });
   }, [post, questionId]);
+
+  // Context-note contributor-group size — see the identical comment in
+  // ui-survey.jsx's PostReminderCard (desktop) for the full rationale; same
+  // mechanism, applied to the mobile-only near-duplicate component.
+  useEffect(() => {
+    if (!post || question?.recall_enabled || !post.noteMetaEnabled) return;
+    const groups = Array.isArray(post.noteReaderGroups) ? post.noteReaderGroups : [];
+    if (!groups.length) return;
+
+    const patch = {};
+    if (groups[0]) {
+      patch.note_group1_size_shown = resolveNoteReaderGroupSize(post.id, 0, groups[0], participantSeed);
+    }
+    if (groups[1]) {
+      patch.note_group2_size_shown = resolveNoteReaderGroupSize(post.id, 1, groups[1], participantSeed);
+    }
+    if (!Object.keys(patch).length) return;
+
+    const prev = dwellValueRef.current;
+    const next = { ...(prev && typeof prev === "object" ? prev : {}), ...patch };
+    dwellValueRef.current = next;
+    onChangeRef.current?.(questionId, next);
+  }, [post, questionId, participantSeed, question?.recall_enabled]);
 
   return (
     <div ref={dwellRef} className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>

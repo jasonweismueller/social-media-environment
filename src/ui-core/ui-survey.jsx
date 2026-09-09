@@ -20,6 +20,7 @@ import {
   makeEmptyPostInteractionAggregate,
   buildRecallReminderOptions,
   trackElementDwellMs,
+  resolveNoteReaderGroupSize,
   getTextNumericRangeError,
   findScreenerFailure,
   getOtherChoice,
@@ -1242,6 +1243,38 @@ const PostReminderCard = memo(function PostReminderCard({
       },
     });
   }, [post, questionId]);
+
+  // Context-note contributor-group size — if the reminder's post has the
+  // "Add contributor info tooltip" intervention on with a group set to
+  // "Random range" (resolveNoteReaderGroupSize, utils-core.js), record the
+  // actual per-participant number it resolved to and displayed, so it can be
+  // controlled for in analysis the same way buildParticipantRow's own
+  // `_note_group{1,2}_size_shown` columns already do for a real feed visit —
+  // this is the same deterministic (postId, groupIndex, participantSeed)
+  // draw, so a participant who saw the post live sees the identical number
+  // again here; this just also captures it for the (survey_only-style) case
+  // where a reminder is the only place they ever encounter this post at all.
+  // Excluded for recall questions, matching RECALL_FIELDS' own deliberately
+  // minimal CSV output (utils-backend.js) — no dwell there either.
+  useEffect(() => {
+    if (!post || question?.recall_enabled || !post.noteMetaEnabled) return;
+    const groups = Array.isArray(post.noteReaderGroups) ? post.noteReaderGroups : [];
+    if (!groups.length) return;
+
+    const patch = {};
+    if (groups[0]) {
+      patch.note_group1_size_shown = resolveNoteReaderGroupSize(post.id, 0, groups[0], participantSeed);
+    }
+    if (groups[1]) {
+      patch.note_group2_size_shown = resolveNoteReaderGroupSize(post.id, 1, groups[1], participantSeed);
+    }
+    if (!Object.keys(patch).length) return;
+
+    const prev = dwellValueRef.current;
+    const next = { ...(prev && typeof prev === "object" ? prev : {}), ...patch };
+    dwellValueRef.current = next;
+    onChangeRef.current?.(questionId, next);
+  }, [post, questionId, participantSeed, question?.recall_enabled]);
 
   return (
   <div ref={dwellRef} className={`survey-post-reminder-block ${app === "ig" ? "ig-reminder-post" : "fb-reminder-post"}`}>

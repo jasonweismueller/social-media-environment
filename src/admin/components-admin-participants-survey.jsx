@@ -46,6 +46,7 @@ import {
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Tr, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
+import { PowerAnalysisModal } from "./components-admin-power-analysis";
 
 /* ----------------------------- helpers ----------------------------- */
 
@@ -1388,6 +1389,7 @@ export function SurveyParticipantsPage({
   // client-side (never touches the backend) so an analysis script can be
   // built/tested against realistic data instead of waiting on real
   // participants. See utils-survey-simulate.js for the generation model.
+  const [powerAnalysisOpen, setPowerAnalysisOpen] = useState(false);
   const [simOpen, setSimOpen] = useState(false);
   const [usingSimulated, setUsingSimulated] = useState(false);
   const [simRows, setSimRows] = useState([]);
@@ -1894,6 +1896,18 @@ export function SurveyParticipantsPage({
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <Card
+              title="Power analysis"
+              subtitle="Required sample size, achieved power, or minimum detectable effect — across t-tests, ANOVA, chi-square, and correlation."
+              actions={
+                <Button variant="secondary" onClick={() => setPowerAnalysisOpen(true)}>
+                  Open power analysis
+                </Button>
+              }
+            />
+            {powerAnalysisOpen && (
+              <PowerAnalysisModal survey={survey} groupComparison={groupComparison} onClose={() => setPowerAnalysisOpen(false)} />
+            )}
             <SimulateResponsesCard
               survey={survey}
               simOpen={simOpen}

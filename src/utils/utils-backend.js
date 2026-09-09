@@ -551,6 +551,24 @@ const REMINDER_DWELL_FIELDS = [
   { value: "dwell_s", label: "Dwell time (s)" },
 ];
 
+// Present whenever the reminder's underlying post has the "Add contributor
+// info tooltip" intervention on with a group set to "Random range"
+// (resolveNoteReaderGroupSize, utils-core.js) — the actual per-participant
+// number that resolved to and was displayed, same value
+// buildParticipantRow's own `_note_group{1,2}_size_shown` columns already
+// capture for a real feed visit (this covers the reminder-only case too —
+// see the matching effect in ui-survey.jsx/-mobile.jsx's PostReminderCard).
+// Included unconditionally alongside dwell for every non-recall post_reminder
+// question — whether the referenced post actually has this intervention on
+// isn't knowable from the survey definition alone (it's a property of the
+// post, which can vary per feed), so the column is simply blank/NA for any
+// reminder that isn't a range-configured context note, same "blank means
+// genuinely not applicable" convention every other reminder field here uses.
+const REMINDER_NOTE_GROUP_FIELDS = [
+  { value: "note_group1_size_shown", label: "Note group 1 size shown" },
+  { value: "note_group2_size_shown", label: "Note group 2 size shown" },
+];
+
 export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
@@ -581,6 +599,7 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
               : [
                   ...(q?.reminder_interactive ? REMINDER_INTERACTION_FIELDS : []),
                   ...REMINDER_DWELL_FIELDS,
+                  ...REMINDER_NOTE_GROUP_FIELDS,
                 ])
           : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
