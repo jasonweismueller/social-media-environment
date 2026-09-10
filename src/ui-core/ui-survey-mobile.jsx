@@ -1564,19 +1564,12 @@ export function SurveyScreenMobile({
   }, [currentPageIndex]);
 
   useEffect(() => {
-    if (!currentPage || isLastPage) {
+    if (!currentPage || isLastPage || currentPageDelaySeconds <= 0) {
       setDelayRemaining(0);
       return;
     }
 
-    const delaySeconds = normalizePageDelaySeconds(currentPage?.next_delay_seconds);
-
-    if (delaySeconds <= 0) {
-      setDelayRemaining(0);
-      return;
-    }
-
-    setDelayRemaining(delaySeconds);
+    setDelayRemaining(currentPageDelaySeconds);
 
     const intervalId = window.setInterval(() => {
       setDelayRemaining((prev) => {
@@ -1589,7 +1582,13 @@ export function SurveyScreenMobile({
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [currentPageIndex, currentPage, isLastPage]);
+    // Deliberately keyed on currentPage?.id (a stable string), not the
+    // `currentPage` object itself — see ui-survey.jsx's identical fix for
+    // the full reasoning: `visiblePages`/`currentPage` get a fresh object
+    // reference on every recompute, including ones triggered by a
+    // post-reminder dwell-tracker update while the participant merely
+    // scrolls, which was silently resetting this countdown back to full.
+  }, [currentPageIndex, currentPage?.id, currentPageDelaySeconds, isLastPage]);
 
   const questionNumberOffset = useMemo(() => {
     let count = 0;

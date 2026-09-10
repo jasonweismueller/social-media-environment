@@ -1929,19 +1929,12 @@ const isNextDelayed =
   }, [currentPageIndex]);
 
   useEffect(() => {
-  if (!currentPage || isLastPage) {
+  if (!currentPage || isLastPage || currentPageDelaySeconds <= 0) {
     setDelayRemaining(0);
     return;
   }
 
-  const delaySeconds = normalizePageDelaySeconds(currentPage?.next_delay_seconds);
-
-  if (delaySeconds <= 0) {
-    setDelayRemaining(0);
-    return;
-  }
-
-  setDelayRemaining(delaySeconds);
+  setDelayRemaining(currentPageDelaySeconds);
 
   const intervalId = window.setInterval(() => {
     setDelayRemaining((prev) => {
@@ -1954,7 +1947,20 @@ const isNextDelayed =
   }, 1000);
 
   return () => window.clearInterval(intervalId);
-}, [currentPageIndex, currentPage, isLastPage]);
+  // Deliberately keyed on currentPage?.id (a stable string), NOT the
+  // `currentPage` object itself — `visiblePages` (and therefore
+  // `currentPage`) gets a brand-new object reference on every recompute,
+  // including ones triggered by something as unrelated as a post-reminder
+  // question's dwell-time tracker updating `responses` while a participant
+  // merely scrolls the page. Depending on the object identity meant any such
+  // unrelated re-render silently reset this countdown back to full — a real
+  // reported bug, not just a hypothetical: scrolling was long enough to
+  // trigger at least one dwell-tracking tick on some pages, so the timer
+  // never actually reached zero for an attentive, scrolling participant.
+  // currentPageDelaySeconds is already the number the effect actually
+  // cares about, so using it directly (instead of recomputing `delaySeconds`
+  // from the object inside the effect) keeps the dependency array honest.
+}, [currentPageIndex, currentPage?.id, currentPageDelaySeconds, isLastPage]);
 
   
 
