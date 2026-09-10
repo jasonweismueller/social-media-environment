@@ -11,7 +11,7 @@
 // model's own prompt text never contains per-row data — only the small
 // design/aggregate Markdown context the frontend already built does.
 //
-// Gated in two places, deliberately, both re-checked here server-side, not
+// Gated in three places, deliberately, all re-checked here server-side, not
 // just hidden client-side — same "frontend gate is UX, not the boundary"
 // posture as save-survey/admin-users: (1) the caller's own
 // `profiles.ai_analysis_enabled` — a per-account grant only an owner can
@@ -20,7 +20,11 @@
 // app_settings switch instead, per direct user decision to make this a
 // per-user grant so an owner can hand it to specific admins rather than
 // turning it on for everyone at once); (2) the caller's own role
-// (editor/owner), same role floor as save-survey.
+// (editor/owner), same role floor as save-survey; (3) a platform-wide
+// monthly spend cap (ai_report_usage, 20260801000031_ai_report_usage.sql) —
+// warns at $5, hard-stops at $10, shared across every admin — layered on
+// top of, not instead of, whatever spend limit the user sets in the
+// Anthropic Console itself (account-wide, covers everything on that key).
 //
 // Needs a real function (not a plain PostgREST call) because the
 // ANTHROPIC_API_KEY must never reach the frontend — set via
@@ -37,13 +41,45 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-sonnet-5";
 const ALLOWED_MODELS = new Set(["claude-sonnet-5", "claude-opus-5"]);
 
-// $/1M tokens, cached 2026-09 — used only to show the admin a rough
-// estimated cost alongside the real response.usage figures Anthropic
-// returns; never used to gate or block anything.
+// $/1M tokens, cached 2026-09 — used both to show the admin a rough
+// pre-generation estimate and to compute the real per-report cost recorded
+// in ai_report_usage after a call actually completes (see PRICING's own use
+// below) — the two numbers are deliberately the same table, so a shown
+// estimate and the running monthly total stay internally consistent even
+// though neither is Anthropic's own literal invoiced figure.
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-5": { input: 2.0, output: 10.0 },
   "claude-opus-5": { input: 5.0, output: 25.0 },
 };
+
+// Platform-wide monthly spend guardrails for this feature specifically —
+// per direct user request, separate from (and in addition to) whatever
+// spend limit they set in the Anthropic Console itself (account-wide,
+// covers everything on that API key). Shared across every admin who's been
+// granted ai_analysis_enabled — this is about bounding the platform's total
+// invoice exposure from this one feature, not a per-researcher allowance.
+// Calendar-month (UTC) boundary, reset automatically on the 1st.
+const MONTHLY_WARNING_USD = 5;
+const MONTHLY_HARD_LIMIT_USD = 10;
+
+function startOfCurrentMonthIso(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+}
+
+// Sums estimated_cost_usd across every ai_report_usage row since the start
+// of the current UTC month. Small table (one row per report ever
+// generated), so a plain select-and-sum client-side is simpler than a
+// Postgres aggregate function for what's realistically a handful of rows
+// per month — revisit if usage ever grows enough for that to matter.
+async function getMonthlySpendUsd(admin: any): Promise<number> {
+  const { data, error } = await admin
+    .from("ai_report_usage")
+    .select("estimated_cost_usd")
+    .gte("created_at", startOfCurrentMonthIso());
+  if (error) throw new Error(error.message);
+  return (data || []).reduce((sum: number, row: any) => sum + Number(row.estimated_cost_usd || 0), 0);
+}
 
 const SYSTEM_PROMPT = `You are a careful, conservative research-methods assistant helping a
 behavioral-science researcher get a first-pass, honest read on their study's
@@ -152,6 +188,32 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return jsonResponse({ ok: false, err: "invalid JSON body" }, { status: 400 });
+  }
+
+  // Read-only spend check (Analysis Hub page calls this on load, and after
+  // every generation, to show "$X of $10 this month" and pre-emptively
+  // disable the button) — no Anthropic call, so doesn't need ANTHROPIC_API_KEY
+  // configured at all and is available even to an account whose only
+  // problem is a missing secret on this project.
+  if (body?.check_only === true) {
+    try {
+      const monthlySpendUsd = await getMonthlySpendUsd(admin);
+      return jsonResponse({
+        ok: true,
+        monthly_spend_usd: Number(monthlySpendUsd.toFixed(4)),
+        monthly_warning_usd: MONTHLY_WARNING_USD,
+        monthly_hard_limit_usd: MONTHLY_HARD_LIMIT_USD,
+      });
+    } catch (e) {
+      return jsonResponse({ ok: false, err: String((e as Error)?.message || e) }, { status: 500 });
+    }
+  }
+
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return jsonResponse(
@@ -161,13 +223,6 @@ Deno.serve(async (req: Request) => {
       },
       { status: 500 }
     );
-  }
-
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return jsonResponse({ ok: false, err: "invalid JSON body" }, { status: 400 });
   }
 
   const markdown = String(body?.markdown || "").trim();
@@ -183,6 +238,35 @@ Deno.serve(async (req: Request) => {
   // single call that's more likely a bug than an intentional huge export.
   if (csv.length > 15_000_000) {
     return jsonResponse({ ok: false, err: "response CSV is too large for a single AI report (over ~15MB)." }, { status: 400 });
+  }
+
+  // Hard cap, checked against the total *before* this call — not
+  // "current total + this call's own cost", since that cost isn't known
+  // until Anthropic actually responds. This means one report can push the
+  // running total slightly past $10 (reports typically cost a few cents to
+  // around a quarter of a dollar, so the overshoot is small and bounded),
+  // but the *next* call is reliably blocked once the total has crossed it.
+  // A "reserve, then commit" two-phase design would close that gap but is
+  // more machinery than this internal safety cap needs.
+  let monthlySpendBeforeCall = 0;
+  try {
+    monthlySpendBeforeCall = await getMonthlySpendUsd(admin);
+  } catch (e) {
+    return jsonResponse({ ok: false, err: String((e as Error)?.message || e) }, { status: 500 });
+  }
+  if (monthlySpendBeforeCall >= MONTHLY_HARD_LIMIT_USD) {
+    return jsonResponse(
+      {
+        ok: false,
+        err: `Monthly AI analysis spend cap ($${MONTHLY_HARD_LIMIT_USD}) reached for this platform (currently ~$${monthlySpendBeforeCall.toFixed(
+          2
+        )} this month). Resets on the 1st.`,
+        monthly_spend_usd: Number(monthlySpendBeforeCall.toFixed(4)),
+        monthly_warning_usd: MONTHLY_WARNING_USD,
+        monthly_hard_limit_usd: MONTHLY_HARD_LIMIT_USD,
+      },
+      { status: 403 }
+    );
   }
 
   let fileId: string | null = null;
@@ -243,6 +327,23 @@ Deno.serve(async (req: Request) => {
     const outputTok = Number(usage.output_tokens || 0);
     const estimatedCostUsd = (inputTok * price.input) / 1e6 + (cacheReadTok * price.input * 0.1) / 1e6 + (outputTok * price.output) / 1e6;
 
+    // Record real spend as soon as it's known — even for the "no report
+    // text" failure branch just below, since Anthropic still billed for
+    // those tokens; only requests that never reached Anthropic at all
+    // (bad input, the hard-cap rejection above) record nothing, correctly.
+    let monthlySpendAfterCall = monthlySpendBeforeCall + estimatedCostUsd;
+    try {
+      const { error: insertErr } = await admin
+        .from("ai_report_usage")
+        .insert({ user_id: userData.user.id, model, estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)) });
+      if (insertErr) console.error("ai_report_usage insert failed:", insertErr.message);
+    } catch (e) {
+      // Non-fatal — a logging failure shouldn't hide a real report the
+      // admin is waiting on; the monthly cap just becomes slightly less
+      // accurate for this one call instead of the whole feature breaking.
+      console.error("ai_report_usage insert threw:", e);
+    }
+
     if (!reportMarkdown) {
       // stop_reason "refusal" or a response that was all tool-use/thinking
       // with no final text both land here — surface the raw stop reason
@@ -264,6 +365,9 @@ Deno.serve(async (req: Request) => {
       estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
       stop_reason: msg?.stop_reason || null,
       execution_trace: extractExecutionTrace(msg),
+      monthly_spend_usd: Number(monthlySpendAfterCall.toFixed(4)),
+      monthly_warning_usd: MONTHLY_WARNING_USD,
+      monthly_hard_limit_usd: MONTHLY_HARD_LIMIT_USD,
     });
   } catch (e) {
     return jsonResponse({ ok: false, err: String((e as Error)?.message || e) }, { status: 500 });

@@ -16,6 +16,12 @@
 // the same study-context markdown + response CSV that hub already builds,
 // reusing its exported buildStudyContextMarkdown/CSV helpers rather than
 // duplicating that ~200-line function.
+//
+// Also surfaces the platform-wide monthly spend cap the ai-study-report
+// Edge Function itself enforces ($5 warning / $10 hard stop, shared across
+// every admin, see that function's own comment) — this page just displays
+// and reacts to what the Edge Function already decided; it never makes the
+// stop/warn call itself.
 import React, { useEffect, useMemo, useState } from "react";
 import {
   getProjectId as getProjectIdUtil,
@@ -36,6 +42,7 @@ import {
   getSurveyAttentionCheckItems,
   countAttentionChecksPassed,
   generateAiStudyReport,
+  getAiReportUsage,
 } from "../utils";
 import { PageHeader, Card, Button, Badge, EmptyState, RoleGate, useToast, useConfirm, IconSparkle } from "./ui";
 import {
@@ -87,6 +94,28 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
   const [model, setModel] = useState("claude-sonnet-5");
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState(null);
+
+  // Platform-wide monthly spend cap the Edge Function itself enforces (see
+  // its own comment) — fetched once on mount (not per-survey, since it's
+  // shared across the whole platform, not scoped to any one study) and
+  // refreshed from every generate response afterward without a second
+  // round-trip, since the Edge Function already returns the post-call total.
+  const [usage, setUsage] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAiReportUsage().then((res) => {
+      if (!cancelled && res.ok) setUsage(res);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const monthlyWarningUsd = usage?.monthly_warning_usd ?? 5;
+  const monthlyHardLimitUsd = usage?.monthly_hard_limit_usd ?? 10;
+  const monthlySpendUsd = usage?.monthly_spend_usd ?? 0;
+  const hardLimitReached = usage != null && monthlySpendUsd >= monthlyHardLimitUsd;
+  const warningReached = usage != null && monthlySpendUsd >= monthlyWarningUsd;
 
   useEffect(() => {
     let cancelled = false;
@@ -248,6 +277,18 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
       const csvFilename = `${safeFileStem(survey?.name || surveyId)}_responses.csv`;
       const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model });
 
+      // Refresh the running monthly total from whatever this call returned —
+      // present on both a successful generation and a hard-cap rejection
+      // (the Edge Function reports the current total either way), so the
+      // banner below reflects reality without a second round-trip.
+      if (res.monthly_spend_usd != null) {
+        setUsage({
+          monthly_spend_usd: res.monthly_spend_usd,
+          monthly_warning_usd: res.monthly_warning_usd,
+          monthly_hard_limit_usd: res.monthly_hard_limit_usd,
+        });
+      }
+
       if (!res.ok) {
         toast.error(`AI report failed${res.err ? `: ${res.err}` : "."}`);
         return;
@@ -306,6 +347,35 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
             }
           />
 
+          {(warningReached || hardLimitReached) && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 14px",
+                borderRadius: 8,
+                marginBottom: 14,
+                fontSize: 13,
+                background: hardLimitReached ? "var(--admin-danger-soft)" : "var(--admin-warning-soft)",
+                color: hardLimitReached ? "var(--admin-danger-ink)" : "var(--admin-warning-ink)",
+                border: `1px solid ${hardLimitReached ? "var(--admin-danger-border)" : "var(--admin-warning-border)"}`,
+              }}
+            >
+              {hardLimitReached ? (
+                <span>
+                  <strong>Monthly cap reached.</strong> This platform has spent ~${monthlySpendUsd.toFixed(2)} of ${monthlyHardLimitUsd} on AI
+                  analysis this month — generating is paused until it resets on the 1st.
+                </span>
+              ) : (
+                <span>
+                  <strong>Approaching this month's AI analysis budget.</strong> ~${monthlySpendUsd.toFixed(2)} of ${monthlyHardLimitUsd} spent so
+                  far (shared across every admin) — generation pauses automatically at ${monthlyHardLimitUsd}.
+                </span>
+              )}
+            </div>
+          )}
+
           {!surveyId && !loadingSurveys ? (
             <Card>
               <EmptyState icon={IconSparkle} title="No surveys yet" message="Create a survey first, then come back here to analyse its responses." />
@@ -346,7 +416,20 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                     <div style={{ fontSize: 20, fontWeight: 800 }}>{loading ? "…" : `~$${estimatedCostUsd.toFixed(3)}`}</div>
                   </div>
 
-                  <Button size="md" onClick={generateReport} busy={generating} disabled={!surveyId || loading || responseCount === 0}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--admin-muted)", marginBottom: 6 }}>This month (platform-wide)</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: hardLimitReached ? "var(--admin-danger-ink)" : warningReached ? "var(--admin-warning-ink)" : undefined }}>
+                      {usage == null ? "…" : `$${monthlySpendUsd.toFixed(2)} / $${monthlyHardLimitUsd}`}
+                    </div>
+                  </div>
+
+                  <Button
+                    size="md"
+                    onClick={generateReport}
+                    busy={generating}
+                    disabled={!surveyId || loading || responseCount === 0 || hardLimitReached}
+                    title={hardLimitReached ? `Paused — this month's $${monthlyHardLimitUsd} AI analysis cap has been reached.` : undefined}
+                  >
                     Generate AI report
                   </Button>
                 </div>

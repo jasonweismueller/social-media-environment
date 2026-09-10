@@ -1501,12 +1501,40 @@ export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename
 
   if (error) {
     let msg = error.message || String(error);
+    let extra = {};
+    try {
+      const body = await error.context?.json?.();
+      // Preserves monthly_spend_usd/monthly_warning_usd/monthly_hard_limit_usd
+      // on the hard-cap-rejected (403) case too, not just the error string —
+      // so the Analysis Hub page can still show "you're at $X of $10" even
+      // when a generate attempt itself was blocked.
+      if (body?.err) msg = body.err;
+      if (body && typeof body === "object") extra = body;
+    } catch {}
+    return { ok: false, err: msg, ...extra };
+  }
+  if (!data?.ok) return { ok: false, err: data?.err || "AI report generation failed", ...data };
+  return data;
+}
+
+// Read-only spend check — same Edge Function, `check_only: true` short-
+// circuits before any Anthropic call (see that function's own comment). Used
+// by the Analysis Hub page to show "$X of $10 this month" on load and after
+// every generation, without needing a real report to have just been made.
+export async function supabaseGetAiReportUsage() {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.functions.invoke("ai-study-report", {
+    body: { check_only: true },
+  });
+
+  if (error) {
+    let msg = error.message || String(error);
     try {
       const body = await error.context?.json?.();
       if (body?.err) msg = body.err;
     } catch {}
     return { ok: false, err: msg };
   }
-  if (!data?.ok) return { ok: false, err: data?.err || "AI report generation failed" };
+  if (!data?.ok) return { ok: false, err: data?.err || "Failed to load AI analysis usage" };
   return data;
 }

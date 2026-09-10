@@ -63,6 +63,7 @@ import {
   supabaseSaveQuestionLibraryItem,
   supabaseDeleteQuestionLibraryItem,
   supabaseGenerateAiStudyReport,
+  supabaseGetAiReportUsage,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -4363,6 +4364,21 @@ export async function generateAiStudyReport({ markdown, csv, csvFilename, model 
   if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
   try {
     return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model });
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+// Read-only running total for the platform-wide monthly spend cap the Edge
+// Function itself enforces ($5 warning / $10 hard stop, see that function's
+// own comment) — lets the Analysis Hub page show "$X of $10 this month" and
+// pre-emptively disable the Generate button, without needing a report to
+// have just been generated.
+export async function getAiReportUsage() {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
+  try {
+    return await supabaseGetAiReportUsage();
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }
