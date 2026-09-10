@@ -63,6 +63,7 @@ import {
   supabaseSaveQuestionLibraryItem,
   supabaseDeleteQuestionLibraryItem,
   supabaseGenerateAiStudyReport,
+  supabaseGetAiReportJob,
   supabaseGetAiReportUsage,
 } from "./utils-backend-supabase";
 
@@ -4358,12 +4359,34 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
  * re-checked server-side by the Edge Function itself against the caller's
  * own row, not just hidden client-side. Supabase-only — this postdates the
  * GAS cutover and has no GAS counterpart.
+ *
+ * Background-job rewrite (2026-09-10): this only *starts* generation now —
+ * returns `{ok:true, job_id}` almost immediately, real reports take well
+ * over the ~20s connection window Supabase's edge gateway allows before
+ * dropping an idle response (see ai-study-report/index.ts's own header
+ * comment for the full "EarlyDrop" incident this fixes). Poll
+ * pollAiReportJob(job_id) for the actual result.
  */
-export async function generateAiStudyReport({ markdown, csv, csvFilename, model } = {}) {
+export async function generateAiStudyReport({ markdown, csv, csvFilename, model, surveyId } = {}) {
   if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
   if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
   try {
-    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model });
+    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId });
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+// Poll one report job's current status/result. Called on an interval by the
+// Analysis Hub page while a report is generating, and once on mount to
+// resume tracking a job that was still running when the page was last open
+// (job id kept in localStorage — see components-admin-analysis-hub.jsx).
+export async function pollAiReportJob(jobId) {
+  if (!jobId) return { ok: false, err: "job id is required" };
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
+  try {
+    return await supabaseGetAiReportJob(jobId);
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }

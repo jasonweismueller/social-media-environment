@@ -33,9 +33,46 @@
 // — secrets aren't shared across projects). Not something Claude can set
 // from this sandbox: a live-service API key is a real credential, same "the
 // user runs this themselves" posture as every other secret in this repo.
+//
+// ===== BACKGROUND-JOB REWRITE (2026-09-10) =====
+// Originally ran the whole Anthropic call synchronously inside one HTTP
+// request — real studies with code_execution regularly took well over ~20s
+// to produce a first byte, and Supabase's edge gateway drops a connection
+// with zero response activity after roughly that long (`reason: "EarlyDrop"`
+// in the function's own logs — confirmed live, not guessed: near-zero
+// cpu_time_used on the shutdown event, ruling out a CPU/memory limit).
+// Worse: since the old code only inserted into ai_report_usage *after* a
+// full Anthropic response was received, an EarlyDropped attempt (which had
+// already sent a real, billable request to Anthropic) was invisible to this
+// platform's own $5/$10 monthly safety cap — a real gap, found the hard way
+// after several EarlyDropped retries had already run up real spend on the
+// Anthropic side with the in-app spend tracker still showing $0.
+//
+// Fix: `action: "generate"` (the default) now creates a row in
+// public.ai_report_jobs and returns immediately with {ok:true, job_id} —
+// the actual Anthropic call keeps running via EdgeRuntime.waitUntil() after
+// the response is sent, completely decoupled from whether the browser is
+// still connected. The frontend polls ai_report_jobs directly (RLS-gated
+// plain select, not a second function call) until status is done/error.
+// Cost is recorded from inside the background task the moment Anthropic's
+// response is known, same as before — just no longer gated on the original
+// HTTP connection surviving that long.
+//
+// Dedup guard: if the caller already has a pending/running job for the same
+// survey within the last 15 minutes, that job's id is returned instead of
+// starting a second paid call — specifically to stop repeated "nothing
+// happened, let me click Generate again" clicks (exactly what caused the
+// EarlyDrop-driven overspend above) from silently multiplying cost.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handlePreflight, jsonResponse } from "../_shared/cors.ts";
+
+// Ambient global Supabase's Edge Runtime provides for exactly this
+// "respond now, keep working after" pattern (mirrors Cloudflare Workers'
+// event.waitUntil()). Typed loosely and guarded at the one call site below
+// so `deno check` passes even though nothing declares this global in
+// standard Deno/lib types.
+declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;
 
 const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-sonnet-5";
@@ -61,6 +98,14 @@ const PRICING: Record<string, { input: number; output: number }> = {
 // Calendar-month (UTC) boundary, reset automatically on the 1st.
 const MONTHLY_WARNING_USD = 5;
 const MONTHLY_HARD_LIMIT_USD = 10;
+
+// How long a pending/running job is trusted before being treated as
+// orphaned (e.g. the background task itself threw somewhere that isn't
+// wrapped, or the whole isolate was killed by something other than a normal
+// EarlyDrop — now largely moot since the Anthropic call no longer depends
+// on the client connection, but kept as a safety floor so a truly stuck row
+// can't block that survey's report generation forever).
+const DEDUP_WINDOW_MS = 15 * 60 * 1000;
 
 function startOfCurrentMonthIso(): string {
   const now = new Date();
@@ -141,6 +186,145 @@ function extractExecutionTrace(msg: any): any[] {
     return [{ note: "Execution trace omitted — too large to return." }];
   }
   return trace;
+}
+
+// The actual Anthropic call — upload, generate, record cost, update the job
+// row. Runs via EdgeRuntime.waitUntil() *after* the HTTP response has
+// already been sent, so nothing about the caller's connection can affect
+// it. Every exit path (success, Anthropic error, no-text response) updates
+// the job row exactly once so the frontend's poll always eventually
+// resolves to 'done' or 'error' — never left permanently 'running'.
+async function runReportGeneration(opts: {
+  admin: any;
+  apiKey: string;
+  jobId: string;
+  userId: string;
+  markdown: string;
+  csv: string;
+  csvFilename: string;
+  model: string;
+}): Promise<void> {
+  const { admin, apiKey, jobId, userId, markdown, csv, csvFilename, model } = opts;
+  let fileId: string | null = null;
+
+  try {
+    if (csv && csv.length > 0) {
+      const form = new FormData();
+      form.append("file", new Blob([csv], { type: "text/csv" }), csvFilename);
+      const uploadRes = await fetch("https://api.anthropic.com/v1/files", {
+        method: "POST",
+        headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
+        body: form,
+      });
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        throw new Error(`Anthropic file upload failed (${uploadRes.status}): ${errText.slice(0, 500)}`);
+      }
+      const uploaded = await uploadRes.json();
+      fileId = uploaded?.id || null;
+    }
+
+    const userContent: any[] = [{ type: "text", text: buildPrompt(markdown, !!fileId, csvFilename) }];
+    if (fileId) {
+      userContent.push({ type: "container_upload", file_id: fileId });
+    }
+
+    const msgRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 16000,
+        output_config: { effort: "medium" },
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userContent }],
+        tools: [{ type: "code_execution_20260521", name: "code_execution" }],
+      }),
+    });
+
+    if (!msgRes.ok) {
+      const errText = await msgRes.text();
+      throw new Error(`Anthropic API error (${msgRes.status}): ${errText.slice(0, 800)}`);
+    }
+
+    const msg = await msgRes.json();
+    const reportMarkdown = extractText(msg);
+    const usage = msg?.usage || {};
+    const price = PRICING[model] || PRICING[DEFAULT_MODEL];
+    const inputTok = Number(usage.input_tokens || 0) + Number(usage.cache_creation_input_tokens || 0);
+    const cacheReadTok = Number(usage.cache_read_input_tokens || 0);
+    const outputTok = Number(usage.output_tokens || 0);
+    const estimatedCostUsd = (inputTok * price.input) / 1e6 + (cacheReadTok * price.input * 0.1) / 1e6 + (outputTok * price.output) / 1e6;
+
+    // Record real spend as soon as it's known — even for the "no report
+    // text" failure branch just below, since Anthropic still billed for
+    // those tokens; only requests that never reached Anthropic at all
+    // (bad input, the hard-cap rejection before a job is even created)
+    // record nothing, correctly. This now runs unconditionally once
+    // Anthropic has actually responded, regardless of the original caller's
+    // connection state — the exact gap this rewrite closes.
+    try {
+      const { error: insertErr } = await admin
+        .from("ai_report_usage")
+        .insert({ user_id: userId, model, estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)) });
+      if (insertErr) console.error("ai_report_usage insert failed:", insertErr.message);
+    } catch (e) {
+      console.error("ai_report_usage insert threw:", e);
+    }
+
+    if (!reportMarkdown) {
+      await admin
+        .from("ai_report_jobs")
+        .update({
+          status: "error",
+          error: `Anthropic returned no report text (stop_reason: ${msg?.stop_reason || "unknown"}). Usage: ${JSON.stringify(usage)}`,
+          usage,
+          estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
+        })
+        .eq("id", jobId);
+      return;
+    }
+
+    await admin
+      .from("ai_report_jobs")
+      .update({
+        status: "done",
+        report_markdown: reportMarkdown,
+        usage,
+        estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
+        execution_trace: extractExecutionTrace(msg),
+      })
+      .eq("id", jobId);
+  } catch (e) {
+    try {
+      await admin
+        .from("ai_report_jobs")
+        .update({ status: "error", error: String((e as Error)?.message || e) })
+        .eq("id", jobId);
+    } catch (updateErr) {
+      // If even the error-update fails, the job stays 'running' forever and
+      // the frontend's own poll timeout is the last line of defense — log
+      // loudly so this shows up in function logs at least.
+      console.error("ai_report_jobs error-update failed:", updateErr);
+    }
+  } finally {
+    // Best-effort cleanup — don't let response data sit in Anthropic's
+    // Files storage any longer than this one job needed it for.
+    if (fileId) {
+      try {
+        await fetch(`https://api.anthropic.com/v1/files/${fileId}`, {
+          method: "DELETE",
+          headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
+        });
+      } catch {
+        // Non-fatal.
+      }
+    }
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -229,6 +413,7 @@ Deno.serve(async (req: Request) => {
   const csv = typeof body?.csv === "string" ? body.csv : "";
   const csvFilename = (String(body?.csv_filename || "survey_responses.csv").replace(/[^\w.\-]+/g, "_") || "survey_responses.csv").slice(0, 120);
   const model = ALLOWED_MODELS.has(body?.model) ? body.model : DEFAULT_MODEL;
+  const surveyId = body?.survey_id ? String(body.survey_id).slice(0, 200) : null;
 
   if (!markdown) {
     return jsonResponse({ ok: false, err: "markdown study context is required" }, { status: 400 });
@@ -240,14 +425,14 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: false, err: "response CSV is too large for a single AI report (over ~15MB)." }, { status: 400 });
   }
 
-  // Hard cap, checked against the total *before* this call — not
-  // "current total + this call's own cost", since that cost isn't known
-  // until Anthropic actually responds. This means one report can push the
-  // running total slightly past $10 (reports typically cost a few cents to
-  // around a quarter of a dollar, so the overshoot is small and bounded),
-  // but the *next* call is reliably blocked once the total has crossed it.
-  // A "reserve, then commit" two-phase design would close that gap but is
-  // more machinery than this internal safety cap needs.
+  // Hard cap, checked against the total *before* this call is dispatched —
+  // not "current total + this call's own eventual cost", since that cost
+  // isn't known until Anthropic actually responds (which now happens well
+  // after this check, in the background). This means one in-flight
+  // background job can still push the running total slightly past $10
+  // (reports typically cost a few cents to around a quarter of a dollar,
+  // so the overshoot is small and bounded), but the *next* generate request
+  // is reliably blocked once the total has crossed it.
   let monthlySpendBeforeCall = 0;
   try {
     monthlySpendBeforeCall = await getMonthlySpendUsd(admin);
@@ -269,122 +454,59 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  let fileId: string | null = null;
-
+  // Dedup guard — reuse an already in-flight job for this user+survey
+  // instead of starting a second paid Anthropic call. This is specifically
+  // what the old synchronous design lacked: a participant/admin clicking
+  // "Generate" again because the previous attempt *looked* like it failed
+  // (EarlyDrop, no error shown) would silently fire a second real API call
+  // on top of the still-running first one.
   try {
-    // 1. Upload the response CSV to Anthropic's Files API, if present, so
-    // the model's own code (run in its sandbox) reads real per-row data —
-    // the prompt text below never contains a single response row.
-    if (csv && csv.length > 0) {
-      const form = new FormData();
-      form.append("file", new Blob([csv], { type: "text/csv" }), csvFilename);
-      const uploadRes = await fetch("https://api.anthropic.com/v1/files", {
-        method: "POST",
-        headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
-        body: form,
-      });
-      if (!uploadRes.ok) {
-        const errText = await uploadRes.text();
-        throw new Error(`Anthropic file upload failed (${uploadRes.status}): ${errText.slice(0, 500)}`);
-      }
-      const uploaded = await uploadRes.json();
-      fileId = uploaded?.id || null;
+    const { data: existing, error: existingErr } = await admin
+      .from("ai_report_jobs")
+      .select("id, status, created_at")
+      .eq("user_id", userData.user.id)
+      .eq("survey_id", surveyId)
+      .in("status", ["pending", "running"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!existingErr && existing && Date.now() - new Date(existing.created_at).getTime() < DEDUP_WINDOW_MS) {
+      return jsonResponse({ ok: true, job_id: existing.id, resumed: true });
     }
-
-    const userContent: any[] = [{ type: "text", text: buildPrompt(markdown, !!fileId, csvFilename) }];
-    if (fileId) {
-      userContent.push({ type: "container_upload", file_id: fileId });
-    }
-
-    const msgRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 16000,
-        output_config: { effort: "medium" },
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userContent }],
-        tools: [{ type: "code_execution_20260521", name: "code_execution" }],
-      }),
-    });
-
-    if (!msgRes.ok) {
-      const errText = await msgRes.text();
-      throw new Error(`Anthropic API error (${msgRes.status}): ${errText.slice(0, 800)}`);
-    }
-
-    const msg = await msgRes.json();
-    const reportMarkdown = extractText(msg);
-    const usage = msg?.usage || {};
-    const price = PRICING[model] || PRICING[DEFAULT_MODEL];
-    const inputTok = Number(usage.input_tokens || 0) + Number(usage.cache_creation_input_tokens || 0);
-    const cacheReadTok = Number(usage.cache_read_input_tokens || 0);
-    const outputTok = Number(usage.output_tokens || 0);
-    const estimatedCostUsd = (inputTok * price.input) / 1e6 + (cacheReadTok * price.input * 0.1) / 1e6 + (outputTok * price.output) / 1e6;
-
-    // Record real spend as soon as it's known — even for the "no report
-    // text" failure branch just below, since Anthropic still billed for
-    // those tokens; only requests that never reached Anthropic at all
-    // (bad input, the hard-cap rejection above) record nothing, correctly.
-    let monthlySpendAfterCall = monthlySpendBeforeCall + estimatedCostUsd;
-    try {
-      const { error: insertErr } = await admin
-        .from("ai_report_usage")
-        .insert({ user_id: userData.user.id, model, estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)) });
-      if (insertErr) console.error("ai_report_usage insert failed:", insertErr.message);
-    } catch (e) {
-      // Non-fatal — a logging failure shouldn't hide a real report the
-      // admin is waiting on; the monthly cap just becomes slightly less
-      // accurate for this one call instead of the whole feature breaking.
-      console.error("ai_report_usage insert threw:", e);
-    }
-
-    if (!reportMarkdown) {
-      // stop_reason "refusal" or a response that was all tool-use/thinking
-      // with no final text both land here — surface the raw stop reason
-      // rather than a silent-looking blank report.
-      return jsonResponse(
-        {
-          ok: false,
-          err: `Anthropic returned no report text (stop_reason: ${msg?.stop_reason || "unknown"}). Usage: ${JSON.stringify(usage)}`,
-        },
-        { status: 502 }
-      );
-    }
-
-    return jsonResponse({
-      ok: true,
-      report_markdown: reportMarkdown,
-      model,
-      usage,
-      estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
-      stop_reason: msg?.stop_reason || null,
-      execution_trace: extractExecutionTrace(msg),
-      monthly_spend_usd: Number(monthlySpendAfterCall.toFixed(4)),
-      monthly_warning_usd: MONTHLY_WARNING_USD,
-      monthly_hard_limit_usd: MONTHLY_HARD_LIMIT_USD,
-    });
-  } catch (e) {
-    return jsonResponse({ ok: false, err: String((e as Error)?.message || e) }, { status: 500 });
-  } finally {
-    // Best-effort cleanup — don't let response data sit in Anthropic's
-    // Files storage any longer than this one request needed it for.
-    if (fileId) {
-      try {
-        await fetch(`https://api.anthropic.com/v1/files/${fileId}`, {
-          method: "DELETE",
-          headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
-        });
-      } catch {
-        // Non-fatal — nothing else in this function depends on the delete
-        // succeeding, and failing to clean up isn't worth masking the real
-        // response (success or error) with a secondary error.
-      }
-    }
+  } catch {
+    // Non-fatal — worst case, dedup doesn't fire for this one request and a
+    // fresh job is created below, same as before this guard existed.
   }
+
+  const { data: job, error: jobErr } = await admin
+    .from("ai_report_jobs")
+    .insert({ user_id: userData.user.id, survey_id: surveyId, model, status: "running" })
+    .select("id")
+    .single();
+  if (jobErr || !job) {
+    return jsonResponse({ ok: false, err: jobErr?.message || "failed to create report job" }, { status: 500 });
+  }
+
+  const backgroundWork = runReportGeneration({
+    admin,
+    apiKey,
+    jobId: job.id,
+    userId: userData.user.id,
+    markdown,
+    csv,
+    csvFilename,
+    model,
+  });
+
+  // Keep the isolate alive to finish the Anthropic call after this response
+  // has already been sent — the whole point of this rewrite. Falls back to
+  // a plain (unawaited, logged-on-failure) fire-and-forget if EdgeRuntime
+  // isn't present, e.g. under `supabase functions serve` locally.
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+    EdgeRuntime.waitUntil(backgroundWork);
+  } else {
+    backgroundWork.catch((e) => console.error("background report generation failed:", e));
+  }
+
+  return jsonResponse({ ok: true, job_id: job.id });
 });

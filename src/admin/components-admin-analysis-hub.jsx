@@ -22,7 +22,7 @@
 // every admin, see that function's own comment) — this page just displays
 // and reacts to what the Edge Function already decided; it never makes the
 // stop/warn call itself.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getProjectId as getProjectIdUtil,
   getAdminAiAnalysisEnabled,
@@ -42,6 +42,7 @@ import {
   getSurveyAttentionCheckItems,
   countAttentionChecksPassed,
   generateAiStudyReport,
+  pollAiReportJob,
   getAiReportUsage,
 } from "../utils";
 import { PageHeader, Card, Button, Badge, EmptyState, RoleGate, useToast, useConfirm, IconSparkle } from "./ui";
@@ -63,6 +64,23 @@ const MODEL_OPTIONS = [
   { value: "claude-sonnet-5", label: "Sonnet — fast, cheap", input: 2.0, output: 10.0 },
   { value: "claude-opus-5", label: "Opus — slower, deeper", input: 5.0, output: 25.0 },
 ];
+
+// Background-job polling (2026-09-10) — see ai-study-report/index.ts's own
+// header comment for the "EarlyDrop" root cause this replaces. A real
+// code_execution report regularly takes 1-3 minutes (each tool turn is its
+// own Anthropic round-trip), so this page no longer waits on one HTTP call
+// — it kicks off a job, then polls this table every few seconds.
+const AI_REPORT_JOB_STORAGE_PREFIX = "ai_report_job_v1::";
+const AI_REPORT_POLL_INTERVAL_MS = 4000;
+// Client-side patience only — the job itself keeps running server-side
+// (EdgeRuntime.waitUntil) regardless of whether this page is still polling,
+// so hitting this just stops the spinner and leaves the job trackable via
+// localStorage; reopening this survey resumes polling automatically.
+const AI_REPORT_POLL_MAX_MS = 8 * 60 * 1000;
+
+function aiReportJobStorageKey(surveyId) {
+  return `${AI_REPORT_JOB_STORAGE_PREFIX}${surveyId || ""}`;
+}
 
 // Rough, clearly-labeled estimate only — real cost always comes back from
 // Anthropic's own usage figures once a report is actually generated. ~4
@@ -94,6 +112,114 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
   const [model, setModel] = useState("claude-sonnet-5");
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState(null);
+  const [generatingElapsedMs, setGeneratingElapsedMs] = useState(0);
+  const pollTimerRef = useRef(null);
+  const pollDeadlineRef = useRef(0);
+  const pollTickRef = useRef(null);
+
+  const stopPolling = () => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (pollTickRef.current) {
+      clearInterval(pollTickRef.current);
+      pollTickRef.current = null;
+    }
+  };
+  useEffect(() => () => stopPolling(), []);
+
+  const refreshUsage = () => {
+    getAiReportUsage().then((res) => {
+      if (res.ok) setUsage(res);
+    });
+  };
+
+  // Polls one job until it resolves (or this tab gives up waiting — the job
+  // itself is unaffected either way, see AI_REPORT_POLL_MAX_MS above).
+  // `announce` controls whether a completed/failed job surfaces a toast —
+  // suppressed on the initial "resume tracking after reopening this
+  // survey" check so a report that was already shown once doesn't re-toast.
+  const pollJob = (jobId, sid, { announce } = { announce: true }) => {
+    stopPolling();
+    setGenerating(true);
+    setGeneratingElapsedMs(0);
+    const startedAt = Date.now();
+    pollDeadlineRef.current = startedAt + AI_REPORT_POLL_MAX_MS;
+
+    const tick = async () => {
+      const res = await pollAiReportJob(jobId);
+      if (!res.ok) {
+        // Job row genuinely missing (e.g. a stale id from before this table
+        // existed) — nothing to resume, clear it quietly.
+        stopPolling();
+        setGenerating(false);
+        localStorage.removeItem(aiReportJobStorageKey(sid));
+        return;
+      }
+      const job = res.job;
+      if (job.status === "done") {
+        stopPolling();
+        setGenerating(false);
+        setReport({
+          report_markdown: job.report_markdown,
+          model: job.model,
+          usage: job.usage,
+          estimated_cost_usd: job.estimated_cost_usd,
+          execution_trace: job.execution_trace,
+        });
+        localStorage.removeItem(aiReportJobStorageKey(sid));
+        refreshUsage();
+        return;
+      }
+      if (job.status === "error") {
+        stopPolling();
+        setGenerating(false);
+        if (announce) toast.error(`AI report failed${job.error ? `: ${job.error}` : "."}`);
+        localStorage.removeItem(aiReportJobStorageKey(sid));
+        refreshUsage();
+        return;
+      }
+      // Still pending/running — keep polling until the client-side patience
+      // window above runs out (the job itself is unaffected either way).
+      if (Date.now() >= pollDeadlineRef.current) {
+        stopPolling();
+        setGenerating(false);
+        if (announce) {
+          toast.info("Still generating on the server — reopen this survey in a bit to see it once it's ready.");
+        }
+      }
+    };
+
+    tick();
+    pollTimerRef.current = setInterval(tick, AI_REPORT_POLL_INTERVAL_MS);
+    pollTickRef.current = setInterval(() => setGeneratingElapsedMs(Date.now() - startedAt), 1000);
+  };
+
+  // On survey switch (including the very first load), check whether this
+  // survey already has a job tracked in localStorage — either still running
+  // (resume polling silently) or finished while this page was closed (show
+  // it without re-toasting, since the user isn't watching it complete live).
+  useEffect(() => {
+    stopPolling();
+    setGenerating(false);
+    if (!surveyId) return;
+    let raw = null;
+    try {
+      raw = localStorage.getItem(aiReportJobStorageKey(surveyId));
+    } catch {}
+    if (!raw) return;
+    let stored;
+    try {
+      stored = JSON.parse(raw);
+    } catch {
+      localStorage.removeItem(aiReportJobStorageKey(surveyId));
+      return;
+    }
+    if (!stored?.jobId) return;
+    pollJob(stored.jobId, surveyId, { announce: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyId]);
 
   // Platform-wide monthly spend cap the Edge Function itself enforces (see
   // its own comment) — fetched once on mount (not per-survey, since it's
@@ -275,12 +401,17 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
       });
 
       const csvFilename = `${safeFileStem(survey?.name || surveyId)}_responses.csv`;
-      const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model });
+      // Only starts the job now — a real code_execution report regularly
+      // takes 1-3 minutes, well past the ~20s connection window Supabase's
+      // edge gateway allows (see ai-study-report/index.ts's own header
+      // comment for the "EarlyDrop" incident this replaced). The Edge
+      // Function itself keeps generating in the background via
+      // EdgeRuntime.waitUntil() regardless of what this call returns.
+      const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model, surveyId });
 
-      // Refresh the running monthly total from whatever this call returned —
-      // present on both a successful generation and a hard-cap rejection
-      // (the Edge Function reports the current total either way), so the
-      // banner below reflects reality without a second round-trip.
+      // Present on the hard-cap-rejection case (job never started) — the
+      // success case's real total is only known once the job finishes, and
+      // gets refreshed then instead (see pollJob's refreshUsage() calls).
       if (res.monthly_spend_usd != null) {
         setUsage({
           monthly_spend_usd: res.monthly_spend_usd,
@@ -289,15 +420,22 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
         });
       }
 
-      if (!res.ok) {
+      if (!res.ok || !res.job_id) {
         toast.error(`AI report failed${res.err ? `: ${res.err}` : "."}`);
+        setGenerating(false);
         return;
       }
-      setReport(res);
+
+      try {
+        localStorage.setItem(aiReportJobStorageKey(surveyId), JSON.stringify({ jobId: res.job_id, model }));
+      } catch {}
+      if (res.resumed) {
+        toast.info("A report for this survey was already generating — tracking that one instead of starting a new (billed) call.");
+      }
+      pollJob(res.job_id, surveyId, { announce: true });
     } catch (e) {
       console.error("AI report generation failed:", e);
       toast.error(`AI report failed${e?.message ? `: ${e.message}` : "."}`);
-    } finally {
       setGenerating(false);
     }
   };
@@ -427,7 +565,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                     size="md"
                     onClick={generateReport}
                     busy={generating}
-                    disabled={!surveyId || loading || responseCount === 0 || hardLimitReached}
+                    disabled={!surveyId || loading || responseCount === 0 || hardLimitReached || generating}
                     title={hardLimitReached ? `Paused — this month's $${monthlyHardLimitUsd} AI analysis cap has been reached.` : undefined}
                   >
                     Generate AI report
@@ -436,6 +574,14 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                 {responseCount === 0 && !loading && (
                   <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--admin-muted)" }}>
                     This survey has no responses yet — nothing to analyse.
+                  </div>
+                )}
+                {generating && (
+                  <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--admin-muted)" }}>
+                    Generating — this typically takes 1–3 minutes for a real study (the model runs real code
+                    against your data in several steps). Safe to leave this page open or come back later; it
+                    keeps running either way.
+                    {generatingElapsedMs > 0 ? ` (${Math.round(generatingElapsedMs / 1000)}s elapsed)` : ""}
                   </div>
                 )}
               </Card>

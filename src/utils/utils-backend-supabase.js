@@ -1493,10 +1493,17 @@ export async function supabaseSetUserProjectAccess(userId, entries) {
 // supabaseSaveSurvey/invokeAdminUsers above — the Edge Function itself
 // re-checks role + the caller's own profiles.ai_analysis_enabled grant
 // server-side, this is not the real gate.
-export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model }) {
+//
+// Background-job rewrite (2026-09-10, see the Edge Function's own header
+// comment for the full "EarlyDrop" root cause): this no longer waits for
+// the actual report — the Edge Function creates a row in ai_report_jobs and
+// returns {ok:true, job_id} immediately, then keeps generating in the
+// background regardless of whether this call's own connection survives.
+// Callers must poll supabasePollAiReportJob(job_id) for the real result.
+export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId }) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.functions.invoke("ai-study-report", {
-    body: { markdown, csv: csv || "", csv_filename: csvFilename || "", model },
+    body: { markdown, csv: csv || "", csv_filename: csvFilename || "", model, survey_id: surveyId || null },
   });
 
   if (error) {
@@ -1515,6 +1522,25 @@ export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename
   }
   if (!data?.ok) return { ok: false, err: data?.err || "AI report generation failed", ...data };
   return data;
+}
+
+// Plain RLS-gated select against ai_report_jobs — the frontend polls this
+// directly rather than round-tripping through the Edge Function again, since
+// the row's own owner (auth.uid() = user_id) is already allowed to read it
+// (ai_report_jobs_select_own, 20260801000032_ai_report_jobs.sql). Returns
+// the row as-is (status: pending/running/done/error) or {ok:false} if the
+// job genuinely can't be found (e.g. a stale localStorage reference to a
+// job id from before this table existed).
+export async function supabaseGetAiReportJob(jobId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("ai_report_jobs")
+    .select("id, status, report_markdown, usage, estimated_cost_usd, execution_trace, error, model, created_at")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (error) return { ok: false, err: error.message };
+  if (!data) return { ok: false, err: "report job not found" };
+  return { ok: true, job: data };
 }
 
 // Read-only spend check — same Edge Function, `check_only: true` short-
