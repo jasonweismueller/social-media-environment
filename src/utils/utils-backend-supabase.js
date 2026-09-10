@@ -1500,10 +1500,17 @@ export async function supabaseSetUserProjectAccess(userId, entries) {
 // returns {ok:true, job_id} immediately, then keeps generating in the
 // background regardless of whether this call's own connection survives.
 // Callers must poll supabasePollAiReportJob(job_id) for the real result.
-export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId }) {
+export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount }) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.functions.invoke("ai-study-report", {
-    body: { markdown, csv: csv || "", csv_filename: csvFilename || "", model, survey_id: surveyId || null },
+    body: {
+      markdown,
+      csv: csv || "",
+      csv_filename: csvFilename || "",
+      model,
+      survey_id: surveyId || null,
+      response_count: Number.isFinite(responseCount) ? responseCount : null,
+    },
   });
 
   if (error) {
@@ -1531,6 +1538,27 @@ export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename
 // the row as-is (status: pending/running/done/error) or {ok:false} if the
 // job genuinely can't be found (e.g. a stale localStorage reference to a
 // job id from before this table existed).
+// Real usage history — every finished (done/error) report this account has
+// generated, most recent first. Backs two things on the Analysis Hub page:
+// (1) a visible "Recent reports" table, so real cost/token figures don't
+// disappear the moment you navigate away from a finished report; (2) a
+// real $/response ratio the pre-generation estimate uses instead of a
+// static formula (see estimateReportCost) once at least one real report
+// exists. Plain RLS-gated select, same as supabaseGetAiReportJob — no new
+// policy needed, ai_report_jobs_select_own already scopes this to the
+// caller's own rows.
+export async function supabaseListAiReportJobHistory({ limit = 20 } = {}) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("ai_report_jobs")
+    .select("id, survey_id, model, status, response_count, estimated_cost_usd, usage, error, created_at")
+    .in("status", ["done", "error"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return { ok: false, err: error.message };
+  return { ok: true, jobs: Array.isArray(data) ? data : [] };
+}
+
 export async function supabaseGetAiReportJob(jobId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase

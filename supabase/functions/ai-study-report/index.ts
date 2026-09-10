@@ -414,6 +414,10 @@ Deno.serve(async (req: Request) => {
   const csvFilename = (String(body?.csv_filename || "survey_responses.csv").replace(/[^\w.\-]+/g, "_") || "survey_responses.csv").slice(0, 120);
   const model = ALLOWED_MODELS.has(body?.model) ? body.model : DEFAULT_MODEL;
   const surveyId = body?.survey_id ? String(body.survey_id).slice(0, 200) : null;
+  // Purely descriptive — used only to compute a real $/response ratio for
+  // future cost estimates (see the Analysis Hub page's estimateReportCost),
+  // never trusted for anything security/billing-relevant.
+  const responseCount = Number.isFinite(Number(body?.response_count)) ? Math.max(0, Math.round(Number(body.response_count))) : null;
 
   if (!markdown) {
     return jsonResponse({ ok: false, err: "markdown study context is required" }, { status: 400 });
@@ -480,7 +484,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: job, error: jobErr } = await admin
     .from("ai_report_jobs")
-    .insert({ user_id: userData.user.id, survey_id: surveyId, model, status: "running" })
+    .insert({ user_id: userData.user.id, survey_id: surveyId, model, status: "running", response_count: responseCount })
     .select("id")
     .single();
   if (jobErr || !job) {

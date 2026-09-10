@@ -43,9 +43,10 @@ import {
   countAttentionChecksPassed,
   generateAiStudyReport,
   pollAiReportJob,
+  listAiReportJobHistory,
   getAiReportUsage,
 } from "../utils";
-import { PageHeader, Card, Button, Badge, EmptyState, RoleGate, useToast, useConfirm, IconSparkle } from "./ui";
+import { PageHeader, Card, Button, Badge, EmptyState, RoleGate, useToast, useConfirm, IconSparkle, Table, Th, Td, Tr } from "./ui";
 import {
   buildStudyContextMarkdown,
   buildCsv,
@@ -82,18 +83,32 @@ function aiReportJobStorageKey(surveyId) {
   return `${AI_REPORT_JOB_STORAGE_PREFIX}${surveyId || ""}`;
 }
 
-// Rough, clearly-labeled estimate only — real cost always comes back from
-// Anthropic's own usage figures once a report is actually generated. ~4
-// characters/token is the standard rough approximation for English text;
-// ~500 characters/response row is a rough average across this app's survey
-// CSVs (varies a lot by question count, hence "rough" everywhere this is
-// shown). Output is assumed near the system prompt's own ~1200-word cap.
-function estimateReportCost(responseCount, model) {
+// Grounded in real usage once it exists (2026-09-10) — the original
+// formula below (single-turn token estimate) badly undercounted real cost:
+// code_execution runs as a multi-turn server-side loop (the model writes
+// code, runs it, sees output, writes more code...), and Anthropic bills
+// *each turn* separately, with input tokens growing turn over turn as
+// context accumulates. Confirmed live: a real 305-response report cost
+// $1.48 total across 11 turns — about 15x this formula's own $0.097
+// estimate for the same input. `historicalPerResponseUsd` (the real
+// $/response average from this account's own completed reports, computed
+// by the caller from ai_report_jobs — see the "Recent reports" section
+// below) is used whenever at least one real data point exists, since a
+// real average beats any formula; LEGACY_MULTIPLIER only kicks in before
+// that first real report ever completes, calibrated from the one
+// observation above so a brand-new account's very first estimate is in
+// the right order of magnitude rather than off by 15x.
+const LEGACY_MULTIPLIER = 15;
+
+function estimateReportCost(responseCount, model, historicalPerResponseUsd) {
+  if (historicalPerResponseUsd != null && Number.isFinite(historicalPerResponseUsd) && historicalPerResponseUsd > 0) {
+    return historicalPerResponseUsd * Math.max(1, responseCount);
+  }
   const price = MODEL_OPTIONS.find((m) => m.value === model) || MODEL_OPTIONS[0];
   const estimatedCsvChars = Math.max(0, responseCount) * 500;
   const inputTokens = Math.round(estimatedCsvChars / 4) + 1500;
   const outputTokens = 1800;
-  return (inputTokens * price.input) / 1e6 + (outputTokens * price.output) / 1e6;
+  return ((inputTokens * price.input) / 1e6 + (outputTokens * price.output) / 1e6) * LEGACY_MULTIPLIER;
 }
 
 export function AiAnalysisHubPage({ projectId: projectIdProp }) {
@@ -170,6 +185,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
         });
         localStorage.removeItem(aiReportJobStorageKey(sid));
         refreshUsage();
+        loadHistory();
         return;
       }
       if (job.status === "error") {
@@ -178,6 +194,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
         if (announce) toast.error(`AI report failed${job.error ? `: ${job.error}` : "."}`);
         localStorage.removeItem(aiReportJobStorageKey(sid));
         refreshUsage();
+        loadHistory();
         return;
       }
       // Still pending/running — keep polling until the client-side patience
@@ -236,6 +253,29 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
       cancelled = true;
     };
   }, []);
+
+  // Real usage history — every finished report this account has generated
+  // (see supabaseListAiReportJobHistory's own comment for why this is a
+  // plain RLS-gated select, not a second Edge Function round-trip). Powers
+  // both the "Recent reports" table below and estimateReportCost's real
+  // $/response ratio. Refetched after every job completion via loadHistory,
+  // not just once on mount.
+  const [jobHistory, setJobHistory] = useState(null);
+  const loadHistory = () => {
+    listAiReportJobHistory({ limit: 20 }).then((res) => {
+      if (res.ok) setJobHistory(res.jobs);
+    });
+  };
+  useEffect(loadHistory, []);
+
+  const historicalPerResponseUsd = useMemo(() => {
+    const usable = (jobHistory || []).filter(
+      (j) => j.status === "done" && j.estimated_cost_usd != null && j.response_count > 0
+    );
+    if (!usable.length) return null;
+    const ratios = usable.map((j) => j.estimated_cost_usd / j.response_count);
+    return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+  }, [jobHistory]);
 
   const monthlyWarningUsd = usage?.monthly_warning_usd ?? 5;
   const monthlyHardLimitUsd = usage?.monthly_hard_limit_usd ?? 10;
@@ -312,8 +352,13 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
   }, [dataset]);
 
   const feedIdsForSurvey = useMemo(() => orderedLinkedFeedIdsFromSurvey(survey), [survey]);
+  const surveyNameById = useMemo(() => {
+    const m = new Map();
+    surveys.forEach((s) => m.set(s.survey_id, s.name || s.survey_id));
+    return m;
+  }, [surveys]);
   const responseCount = dataset?.rows?.length || 0;
-  const estimatedCostUsd = estimateReportCost(responseCount, model);
+  const estimatedCostUsd = estimateReportCost(responseCount, model, historicalPerResponseUsd);
 
   const generateReport = async () => {
     if (!surveyId || !survey) return;
@@ -407,7 +452,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
       // comment for the "EarlyDrop" incident this replaced). The Edge
       // Function itself keeps generating in the background via
       // EdgeRuntime.waitUntil() regardless of what this call returns.
-      const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model, surveyId });
+      const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model, surveyId, responseCount });
 
       // Present on the hard-cap-rejection case (job never started) — the
       // success case's real total is only known once the job finishes, and
@@ -674,6 +719,71 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                   </div>
                 </Card>
               )}
+
+              {/* Real usage history — every finished report, not just the
+                  last one shown above, so real cost stays visible after
+                  navigating away and back. Also what estimateReportCost's
+                  historicalPerResponseUsd is computed from. */}
+              <Card>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700 }}>Recent reports</div>
+                  <span style={{ fontSize: 12 }} className="subtle">
+                    Real cost and token usage from every report you've generated.
+                  </span>
+                </div>
+                {jobHistory == null ? (
+                  <div style={{ fontSize: 12.5, color: "var(--admin-muted)" }}>Loading…</div>
+                ) : jobHistory.length === 0 ? (
+                  <EmptyState
+                    compact
+                    title="No reports generated yet"
+                    message="Real cost and token usage will show up here once you generate your first report."
+                  />
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <Table>
+                      <thead>
+                        <Tr hover={false}>
+                          <Th>Survey</Th>
+                          <Th>When</Th>
+                          <Th>Model</Th>
+                          <Th>Responses</Th>
+                          <Th>Tokens (in / out)</Th>
+                          <Th>Cost</Th>
+                          <Th>Status</Th>
+                        </Tr>
+                      </thead>
+                      <tbody>
+                        {jobHistory.map((j) => {
+                          const inTok = (j.usage?.input_tokens || 0) + (j.usage?.cache_creation_input_tokens || 0);
+                          const outTok = j.usage?.output_tokens || 0;
+                          return (
+                            <Tr key={j.id}>
+                              <Td>{surveyNameById.get(j.survey_id) || j.survey_id || "—"}</Td>
+                              <Td>{new Date(j.created_at).toLocaleString()}</Td>
+                              <Td>{j.model}</Td>
+                              <Td>{j.response_count ?? "—"}</Td>
+                              <Td>
+                                {j.status === "done" ? `${inTok.toLocaleString()} / ${outTok.toLocaleString()}` : "—"}
+                              </Td>
+                              <Td>{j.estimated_cost_usd != null ? `$${Number(j.estimated_cost_usd).toFixed(3)}` : "—"}</Td>
+                              <Td>
+                                {j.status === "done" ? (
+                                  <Badge tone="accent">done</Badge>
+                                ) : (
+                                  <span title={j.error || undefined}>
+                                    <Badge tone="danger">failed</Badge>
+                                  </span>
+                                )}
+                              </Td>
+                            </Tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </div>
+                )}
+              </Card>
             </div>
           )}
         </>

@@ -64,6 +64,7 @@ import {
   supabaseDeleteQuestionLibraryItem,
   supabaseGenerateAiStudyReport,
   supabaseGetAiReportJob,
+  supabaseListAiReportJobHistory,
   supabaseGetAiReportUsage,
 } from "./utils-backend-supabase";
 
@@ -4367,11 +4368,22 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
  * comment for the full "EarlyDrop" incident this fixes). Poll
  * pollAiReportJob(job_id) for the actual result.
  */
-export async function generateAiStudyReport({ markdown, csv, csvFilename, model, surveyId } = {}) {
+export async function generateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount } = {}) {
   if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
   if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
   try {
-    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId });
+    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount });
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+// Real usage history — see supabaseListAiReportJobHistory's own comment.
+export async function listAiReportJobHistory({ limit } = {}) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
+  try {
+    return await supabaseListAiReportJobHistory({ limit });
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }
