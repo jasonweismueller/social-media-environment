@@ -351,10 +351,17 @@ function buildStudyContextMarkdown({ survey, dataset, demographics, measures, gr
     safeSection(lines, "Measures", () => {
       lines.push("### Measures (composite scales)");
       (measures.composites || []).forEach(({ composite, summary }) => {
+        // summary.reliability is cronbachAlpha()'s own return shape
+        // ({ alpha, n, k, lowN }), not a bare number — matches how the
+        // on-screen Measures card reads it (summary.reliability.alpha)
+        // just below in this same file. Reading it as a number here (the
+        // original bug) threw `reliability.toFixed is not a function` on
+        // any survey with a real composite reliability computed, which
+        // took down the *entire* export before safeSection existed.
+        const alpha = summary.reliability?.alpha;
+        const alphaStr = alpha != null ? `${alpha.toFixed(2)}${summary.reliability.lowN ? " (low N)" : ""}` : "n/a";
         lines.push(
-          `- **${composite.label}** (${composite.items?.length ?? summary.nItems} items): mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), Cronbach's α = ${
-            summary.reliability != null ? summary.reliability.toFixed(2) : "n/a"
-          }, n=${summary.nAnswered}`
+          `- **${composite.label}** (${composite.items?.length ?? summary.nItems} items): mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), Cronbach's α = ${alphaStr}, n=${summary.nAnswered}`
         );
       });
       (measures.standaloneNumeric || []).forEach(({ item, summary }) => {
