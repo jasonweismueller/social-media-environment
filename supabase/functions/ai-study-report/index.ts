@@ -135,6 +135,17 @@ attached to this conversation, read it in code before writing anything
 about it, and recompute every measure/comparison described in the context
 directly from it rather than trusting the aggregate numbers already given.
 
+You are running under a hard time limit. Work efficiently: load the data
+and compute EVERY statistic you'll need (means, SDs, tests, effect sizes,
+reliability, etc.) in as few code_execution calls as possible — ideally
+one or two, computing many things in the same script rather than one thing
+per call. Do not re-run the same or similar computation multiple times to
+double-check it, and do not iteratively explore the data out of curiosity.
+As soon as you have the numbers you need, stop running code and write the
+report. If you notice you are many steps in and have not started writing
+the report yet, stop investigating and write it now with whatever you have
+already computed, noting any gaps briefly rather than continuing to explore.
+
 Write a plain-Markdown report with these sections, in this order:
 1. Study overview — one paragraph restating the design in your own words,
    from the context given.
@@ -169,15 +180,28 @@ function buildPrompt(markdown: string, hasCsv: boolean, csvFilename: string): st
 // it. Every exit path (success, Anthropic error, no-text response) updates
 // the job row exactly once so the frontend's poll always eventually
 // resolves to 'done' or 'error' — never left permanently 'running'.
-// Comfortably above every real generation observed so far (a full,
-// successful run has taken up to ~4 minutes) — a hard, self-imposed ceiling
-// so *we* decide when to give up with a clean, saved-partial-content error,
-// rather than depending on Supabase's own undocumented background-task
-// duration limit to be the one that silently kills us (which is exactly
-// what happened the one time a real run ran long: Anthropic finished and
-// billed for the full report, but the isolate died before anything was
-// ever saved, and the whole result was unrecoverable).
-const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+//
+// CONFIRMED, not guessed (2026-09-10): Supabase's wall-clock limit for a
+// function invocation — including any EdgeRuntime.waitUntil() background
+// work, which does NOT extend it — is 150s on the Free plan, 400s on paid
+// plans (https://supabase.com/docs/guides/functions/limits). This project
+// is on the Free plan, confirmed directly by the user. That limit is a hard
+// kill: nothing in this file's own try/catch/finally gets a chance to run
+// once it fires, which is exactly what happened twice already — a report
+// that was still genuinely generating past that point lost everything
+// except whatever flushProgress had already saved up to a few seconds
+// before the kill.
+//
+// Set comfortably UNDER 150s so *our own* graceful shutdown (save whatever
+// was generated, write a clean 'error', let the frontend show it as a real
+// partial report) reliably wins the race against Supabase's kill, instead
+// of leaving it to chance which one fires first. This does not raise the
+// real ceiling — a report that genuinely needs longer than this to finish
+// will still fail, just cleanly instead of silently. The two actual levers
+// for that are the SYSTEM_PROMPT's efficiency instructions above (fewer,
+// more purposeful code_execution calls) and upgrading the Supabase project
+// to a paid plan (400s) if reports keep needing more time than this allows.
+const GENERATION_TIMEOUT_MS = 120 * 1000;
 
 // How often accumulated progress (partial report text + a short "what's
 // happening" note) gets written to ai_report_jobs while streaming — frequent
@@ -199,7 +223,15 @@ async function runReportGeneration(opts: {
   const { admin, apiKey, jobId, userId, markdown, csv, csvFilename, model } = opts;
   let fileId: string | null = null;
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
+  // Plain string (not a literal union) so TypeScript's control-flow
+  // narrowing — which can't see into the setTimeout closure below that
+  // assigns "timeout" — doesn't incorrectly drop it from the type by the
+  // time the catch block below reads this.
+  let abortReason: string | null = null;
+  const timeoutHandle = setTimeout(() => {
+    abortReason = "timeout";
+    controller.abort();
+  }, GENERATION_TIMEOUT_MS);
 
   // Accumulated across the whole stream — this is what makes a killed/timed
   // -out run recoverable instead of a total loss: whatever's in here at any
@@ -212,6 +244,12 @@ async function runReportGeneration(opts: {
   let sawMessageStop = false;
   let lastFlushAt = 0;
   let stepCount = 0;
+  // Deterministic backstop for the SYSTEM_PROMPT's efficiency instructions —
+  // confirmed live (2026-09-10) that the model can reach 32+ tool-use steps
+  // with zero report text written, well past what the 150s Free-plan limit
+  // allows for. Prompt instructions are a request, not a guarantee; this is
+  // enforced in code regardless of whether the model follows them.
+  const MAX_STEPS_WITHOUT_TEXT = 16;
 
   const flushProgress = async (note: string, force = false) => {
     const now = Date.now();
@@ -322,6 +360,10 @@ async function runReportGeneration(opts: {
                 ? `Step ${stepCount}: running code against your data`
                 : `Step ${stepCount}: ${blockType}`;
             await flushProgress(note);
+            if (stepCount >= MAX_STEPS_WITHOUT_TEXT && !accumulatedText.trim()) {
+              abortReason = "too_many_steps";
+              controller.abort();
+            }
             break;
           }
           case "content_block_delta":
@@ -393,10 +435,12 @@ async function runReportGeneration(opts: {
       .eq("id", jobId);
   } catch (e) {
     clearTimeout(timeoutHandle);
-    const timedOut = controller.signal.aborted;
-    const message = timedOut
-      ? `Timed out after ${Math.round(GENERATION_TIMEOUT_MS / 1000)}s while still generating — whatever was written up to that point is saved below.`
-      : String((e as Error)?.message || e);
+    const message =
+      abortReason === "timeout"
+        ? `Timed out after ${Math.round(GENERATION_TIMEOUT_MS / 1000)}s while still generating — whatever was written up to that point is saved below. This survey's report may need more time than the current plan allows; consider a smaller response sample or upgrading the Supabase plan.`
+        : abortReason === "too_many_steps"
+        ? `Stopped after ${MAX_STEPS_WITHOUT_TEXT} exploratory steps without the model starting to write the report — likely running longer than useful for this dataset. Try again, or simplify the survey/measures being analyzed.`
+        : String((e as Error)?.message || e);
     try {
       await admin
         .from("ai_report_jobs")
