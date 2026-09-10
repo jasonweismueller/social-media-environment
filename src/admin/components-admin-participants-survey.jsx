@@ -47,7 +47,7 @@ import {
   applySurveyColumnValue,
   updateSurveyResponseAnswers,
 } from "../utils";
-import { PageHeader, Card, Table, Th, Td, Tr, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
+import { PageHeader, Card, Table, Th, Td, Tr, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconNote, IconWarning } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
 import { PowerAnalysisModal } from "./components-admin-power-analysis";
 
@@ -1557,6 +1557,7 @@ function buildCorrectionPreview(csvRows, survey, datasetRowsBySessionId) {
   const notFound = [];
   const unknownColumns = new Set();
   const unsupportedColumns = new Set();
+  const changedLabelSet = new Set();
 
   csvRows.forEach((csvRow) => {
     const sessionId = String(csvRow.session_id || "").trim();
@@ -1568,6 +1569,7 @@ function buildCorrectionPreview(csvRows, survey, datasetRowsBySessionId) {
     }
 
     const changes = [];
+    const changesByLabel = new Map();
     Object.keys(csvRow).forEach((headerKey) => {
       if (headerKey === "session_id" || CORRECTION_META_COLUMNS.has(headerKey)) return;
       const col = columnByVariableLabel.get(headerKey);
@@ -1584,21 +1586,193 @@ function buildCorrectionPreview(csvRows, survey, datasetRowsBySessionId) {
       const newValueRaw = csvRow[headerKey];
       const newValue = newValueRaw === "NA" ? "" : newValueRaw;
       if (String(currentValue) !== String(newValue)) {
-        changes.push({ col, label: headerKey, oldValue: currentValue, newValue });
+        const change = { col, label: headerKey, oldValue: currentValue, newValue };
+        changes.push(change);
+        changesByLabel.set(headerKey, change);
+        changedLabelSet.add(headerKey);
       }
     });
 
     if (changes.length) {
-      matchedRows.push({ sessionId, changes, currentResponses: existing.responses });
+      matchedRows.push({ sessionId, changes, changesByLabel, currentResponses: existing.responses });
     }
   });
+
+  // Preserve the survey's own question order for the changed columns (so the
+  // review grid below reads left-to-right the same way the survey itself
+  // flows), rather than whatever order object keys happened to iterate in.
+  const changedLabels = columns.map((c) => c.variable_label).filter((label) => changedLabelSet.has(label));
 
   return {
     matchedRows,
     notFound,
     unknownColumns: Array.from(unknownColumns),
     unsupportedColumns: Array.from(unsupportedColumns),
+    changedLabels,
   };
+}
+
+// A small "changed cell" styling — shared by the header/first-column sticky
+// cells and the diff cells below, so the review grid's sticky edges and its
+// data cells agree on background/border rather than drifting independently.
+function reviewStickyCellStyle(extra) {
+  return {
+    position: "sticky",
+    top: 0,
+    background: "var(--admin-surface)",
+    zIndex: 2,
+    padding: "8px 12px",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "var(--admin-muted)",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    borderBottom: "1px solid var(--admin-border-subtle)",
+    whiteSpace: "nowrap",
+    maxWidth: 220,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    ...extra,
+  };
+}
+
+function WarningNote({ children }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 8,
+        fontSize: 12,
+        color: "var(--admin-warning-ink)",
+        background: "var(--admin-warning-soft)",
+        border: "1px solid var(--admin-warning-border)",
+        borderRadius: "var(--admin-radius-sm)",
+        padding: "8px 10px",
+      }}
+    >
+      <IconWarning size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function CorrectionDiffCell({ change }) {
+  if (!change) {
+    return <span style={{ color: "var(--admin-muted)", opacity: 0.45 }}>—</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 100 }}>
+      <span
+        style={{
+          fontSize: 11,
+          color: "var(--admin-muted)",
+          textDecoration: "line-through",
+          textDecorationColor: "var(--admin-danger)",
+          opacity: 0.85,
+        }}
+      >
+        {change.oldValue || "(blank)"}
+      </span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--admin-success-ink)" }}>
+        {change.newValue || "(blank)"}
+      </span>
+    </div>
+  );
+}
+
+// The spreadsheet-style review grid — rows are participants (by session_id,
+// pinned in the leftmost column), columns are every question that has at
+// least one change anywhere in the upload, in the survey's own question
+// order. A cell shows nothing (a muted dash) when that participant's answer
+// to that question is unchanged; a changed cell shows the old value
+// struck through above the new value, so the whole shape of a bulk edit is
+// visible at a glance instead of scrolling a long one-row-per-change list.
+function CorrectionsReviewModal({ preview, applying, onClose, onApply }) {
+  const totalChanges = preview.matchedRows.reduce((s, r) => s + r.changes.length, 0);
+  return (
+    <Modal
+      title="Review corrections"
+      subtitle={`${totalChanges} change${totalChanges === 1 ? "" : "s"} across ${preview.matchedRows.length} participant${
+        preview.matchedRows.length === 1 ? "" : "s"
+      } — struck-through value is current, bold value is the correction.`}
+      onClose={onClose}
+      fullScreen
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={applying}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={onApply} busy={applying} disabled={applying}>
+            Apply {totalChanges} correction{totalChanges === 1 ? "" : "s"}
+          </Button>
+        </>
+      }
+    >
+      <div
+        style={{
+          overflow: "auto",
+          height: "100%",
+          border: "1px solid var(--admin-border-subtle)",
+          borderRadius: "var(--admin-radius-md)",
+        }}
+      >
+        <table style={{ borderCollapse: "separate", borderSpacing: 0, fontSize: 13, width: "max-content", minWidth: "100%" }}>
+          <thead>
+            <tr>
+              <th style={reviewStickyCellStyle({ position: "sticky", left: 0, top: 0, zIndex: 3, boxShadow: "1px 0 0 var(--admin-border-subtle)" })}>
+                Session
+              </th>
+              {preview.changedLabels.map((label) => (
+                <th key={label} style={reviewStickyCellStyle({})} title={label}>
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {preview.matchedRows.map((r) => (
+              <tr key={r.sessionId} className="admin-row-hover">
+                <td
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 1,
+                    background: "var(--admin-surface)",
+                    padding: "8px 12px",
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                    color: "var(--admin-text)",
+                    borderBottom: "1px solid var(--admin-border-subtle)",
+                    boxShadow: "1px 0 0 var(--admin-border-subtle)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {r.sessionId}
+                </td>
+                {preview.changedLabels.map((label) => {
+                  const change = r.changesByLabel.get(label);
+                  return (
+                    <td
+                      key={label}
+                      style={{
+                        padding: "8px 12px",
+                        borderBottom: "1px solid var(--admin-border-subtle)",
+                        background: change ? "var(--admin-warning-soft)" : "transparent",
+                        borderLeft: change ? "2px solid var(--admin-warning-border)" : "2px solid transparent",
+                      }}
+                    >
+                      <CorrectionDiffCell change={change} />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
+  );
 }
 
 function CorrectResponsesCard({ survey, dataset, surveyId, usingSimulated, onApplied }) {
@@ -1608,6 +1782,7 @@ function CorrectResponsesCard({ survey, dataset, surveyId, usingSimulated, onApp
   const [preview, setPreview] = useState(null);
   const [fileName, setFileName] = useState("");
   const [applying, setApplying] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const datasetRowsBySessionId = useMemo(() => {
     const map = new Map();
@@ -1663,6 +1838,7 @@ function CorrectResponsesCard({ survey, dataset, surveyId, usingSimulated, onApp
     setApplying(false);
     setPreview(null);
     setFileName("");
+    setReviewOpen(false);
     if (failed) {
       toast.error(`${succeeded} corrected, ${failed} failed — check the console for details.`);
     } else {
@@ -1695,65 +1871,60 @@ function CorrectResponsesCard({ survey, dataset, surveyId, usingSimulated, onApp
           {fileName && <span style={{ marginLeft: 10, fontSize: 12, color: "var(--admin-muted)" }}>{fileName}</span>}
 
           {preview && (
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
               {totalChanges === 0 ? (
                 <div style={{ fontSize: 13, color: "var(--admin-muted)" }}>No differences found — nothing to apply.</div>
               ) : (
-                <>
-                  <div style={{ fontSize: 13, marginBottom: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    padding: "10px 12px",
+                    background: "var(--admin-surface-alt)",
+                    border: "1px solid var(--admin-border-subtle)",
+                    borderRadius: "var(--admin-radius-sm)",
+                  }}
+                >
+                  <div style={{ fontSize: 13 }}>
                     <strong>{totalChanges}</strong> change{totalChanges === 1 ? "" : "s"} across{" "}
-                    <strong>{preview.matchedRows.length}</strong> participant{preview.matchedRows.length === 1 ? "" : "s"}:
+                    <strong>{preview.matchedRows.length}</strong> participant{preview.matchedRows.length === 1 ? "" : "s"} found.
                   </div>
-                  <div style={{ overflowX: "auto", marginBottom: 10 }}>
-                    <Table>
-                      <thead>
-                        <Tr>
-                          <Th>Session</Th>
-                          <Th>Question</Th>
-                          <Th>Current</Th>
-                          <Th>New</Th>
-                        </Tr>
-                      </thead>
-                      <tbody>
-                        {preview.matchedRows.flatMap((r) =>
-                          r.changes.map((c, i) => (
-                            <Tr key={`${r.sessionId}-${i}`}>
-                              <Td style={{ fontFamily: "monospace", fontSize: 11 }}>{r.sessionId}</Td>
-                              <Td>{c.label}</Td>
-                              <Td>{c.oldValue || <em>(blank)</em>}</Td>
-                              <Td>{c.newValue || <em>(blank)</em>}</Td>
-                            </Tr>
-                          ))
-                        )}
-                      </tbody>
-                    </Table>
-                  </div>
-                  <Button variant="secondary" onClick={applyCorrections} busy={applying} disabled={applying}>
-                    Apply {totalChanges} correction{totalChanges === 1 ? "" : "s"}
+                  <Button size="sm" variant="secondary" onClick={() => setReviewOpen(true)}>
+                    Review changes
                   </Button>
-                </>
+                </div>
               )}
 
               {preview.notFound.length > 0 && (
-                <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 10 }}>
+                <WarningNote>
                   {preview.notFound.length} session id{preview.notFound.length === 1 ? "" : "s"} not found in this
                   survey's responses (typo, or a different survey's export): {preview.notFound.slice(0, 10).join(", ")}
                   {preview.notFound.length > 10 ? "…" : ""}
-                </div>
+                </WarningNote>
               )}
               {preview.unsupportedColumns.length > 0 && (
-                <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 6 }}>
+                <WarningNote>
                   Skipped (a computed or multi-answer field, not editable via this tool): {preview.unsupportedColumns.join(", ")}
-                </div>
+                </WarningNote>
               )}
               {preview.unknownColumns.length > 0 && (
-                <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 6 }}>
-                  Skipped (column not recognized on this survey): {preview.unknownColumns.join(", ")}
-                </div>
+                <WarningNote>Skipped (column not recognized on this survey): {preview.unknownColumns.join(", ")}</WarningNote>
               )}
             </div>
           )}
         </>
+      )}
+
+      {reviewOpen && preview && totalChanges > 0 && (
+        <CorrectionsReviewModal
+          preview={preview}
+          applying={applying}
+          onClose={() => setReviewOpen(false)}
+          onApply={applyCorrections}
+        />
       )}
     </Card>
   );
