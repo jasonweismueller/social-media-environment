@@ -1358,6 +1358,24 @@ export async function supabaseDeleteSurveyResponses({ surveyId, projectId, app, 
   return true;
 }
 
+// Corrects one already-submitted participant's stored answers — a rare but
+// real need: a participant emails saying they clicked the wrong option on
+// one question. Row-level RLS + a column-level grant (see migration
+// 20260801000029) restrict this to the `responses` jsonb column only, so
+// this call can never touch experiment_group_id/session_id/prolific_pid on
+// the same row even if the caller passed a wider patch by mistake.
+export async function supabaseUpdateSurveyResponseAnswers({ surveyId, sessionId, responses }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from("survey_responses")
+    .update({ responses })
+    .eq("survey_id", surveyId)
+    .eq("session_id", sessionId)
+    .select("session_id");
+  if (error) throw new Error(error.message);
+  return Array.isArray(data) && data.length > 0;
+}
+
 /* ======================= Admin user management ======================= */
 // Calls the deployed admin-users Edge Function (supabase/functions/admin-users)
 // rather than a plain profiles upsert — creating/disabling/deleting a Supabase

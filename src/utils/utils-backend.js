@@ -43,6 +43,7 @@ import {
   supabaseLoadSurveyParticipantsRoster,
   supabaseLoadSurveyParticipantsStats,
   supabaseDeleteSurveyResponses,
+  supabaseUpdateSurveyResponseAnswers,
   supabaseAdminListUsers,
   supabaseAdminCreateUser,
   supabaseAdminUpdateUser,
@@ -824,6 +825,49 @@ export function flattenSurveyResponseRecord(responseRow, surveyColumns) {
   });
 
   return out;
+}
+
+// Question types whose flattened CSV column is a single, un-derived value
+// with an unambiguous round-trip back into `responses` — used to gate the
+// "correct a participant's response via CSV" tool (components-admin-
+// participants-survey.jsx) to only ever touch a real stored answer, never a
+// computed/compound one. Deliberately excludes post_reminder entirely (its
+// RECALL/engagement columns are all derived, not a raw stored answer) and
+// multi-choice (its "|"-joined array format is technically round-trippable,
+// but this tool exists for single-answer mistakes — silently reconstructing
+// an array wrong is a worse failure mode than just refusing to touch it).
+const SURVEY_COLUMN_CSV_EDITABLE_TYPES = new Set([
+  "text",
+  "textarea",
+  "single_choice",
+  "dropdown",
+  "slider",
+  "matrix_single",
+  "bipolar",
+]);
+
+export function isSurveyColumnEditableViaCsv(col) {
+  if (!col || !col.question_id) return false;
+  if (col.kind !== "question" && col.kind !== "row") return false;
+  return SURVEY_COLUMN_CSV_EDITABLE_TYPES.has(col.question_type);
+}
+
+// The write-side counterpart to flattenSurveyResponseRecord's
+// `out[col.column_key] = ...` above — applies one corrected cell value back
+// into a response's raw `responses` object. Returns a new object; never
+// mutates the input. Caller must have already confirmed
+// isSurveyColumnEditableViaCsv(col) for this column.
+export function applySurveyColumnValue(responses, col, rawValue) {
+  const next = { ...(isPlainObject(responses) ? responses : {}) };
+  const value = rawValue === "NA" ? "" : rawValue;
+  if (col.kind === "row") {
+    const existingRow = isPlainObject(next[col.question_id]) ? { ...next[col.question_id] } : {};
+    existingRow[col.row_value] = value;
+    next[col.question_id] = existingRow;
+  } else {
+    next[col.question_id] = value;
+  }
+  return next;
 }
 
 function makeSurveyResponseLookup(surveyRows = [], surveyColumns = []) {
@@ -3509,6 +3553,32 @@ export async function deleteSurveyResponsesOnBackend({
     }
 
     return { ok: true, deleted_count: data?.deleted_count ?? null };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+/**
+ * Corrects one already-submitted participant's stored survey answers — for
+ * the rare case a participant reports clicking the wrong option and asks
+ * for a fix, which previously had no path other than leaving the stored
+ * data permanently disagreeing with what actually happened. Supabase-only —
+ * postdates the GAS cutover, no GAS counterpart, same posture as
+ * loadCustomMeasureGroups. `responses` is the *complete* replacement
+ * responses object for that row, not a patch — callers build it against the
+ * row's current responses via applySurveyColumnValue first, one column at a
+ * time, so only well-understood scalar/row answer types are ever touched.
+ */
+export async function updateSurveyResponseAnswers({ surveyId, sessionId, responses } = {}) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  const survey_id = String(surveyId || "").trim();
+  const session_id = String(sessionId || "").trim();
+  if (!survey_id || !session_id) return { ok: false, err: "survey_id and session_id required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "not available on this backend" };
+
+  try {
+    const updated = await supabaseUpdateSurveyResponseAnswers({ surveyId: survey_id, sessionId: session_id, responses });
+    return updated ? { ok: true } : { ok: false, err: "no matching response found for that session id" };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }

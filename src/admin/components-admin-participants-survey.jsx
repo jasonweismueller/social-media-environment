@@ -43,6 +43,9 @@ import {
   stripSurveyExportPrefix,
   getSurveyAttentionCheckItems,
   countAttentionChecksPassed,
+  isSurveyColumnEditableViaCsv,
+  applySurveyColumnValue,
+  updateSurveyResponseAnswers,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Tr, Button, Badge, Toggle, useToast, useConfirm, EmptyState, IconNote } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
@@ -122,6 +125,239 @@ function triggerCsvDownload(filename, csv) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function triggerTextDownload(filename, text) {
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---- "Study context export" — a single Markdown bundle of this survey's
+// design (questions, experiment groups, linked feed/post content) plus the
+// aggregate statistics this hub already computes, meant to be pasted into an
+// LLM chat (Claude/ChatGPT) for a researcher-driven preliminary write-up.
+// Deliberately excludes individual participant response rows — design +
+// already-computed aggregates only, matching how a report-generation feature
+// would be scoped if this were ever automated behind an API call instead.
+
+function stripHtmlForExport(html) {
+  if (!html) return "";
+  if (typeof document !== "undefined") {
+    const div = document.createElement("div");
+    div.innerHTML = String(html);
+    return (div.textContent || "").replace(/\s+/g, " ").trim();
+  }
+  return String(html).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function exportListItemText(item) {
+  if (item == null) return "";
+  if (typeof item === "object") return String(item.text ?? item.label ?? "");
+  return String(item);
+}
+
+function describeQuestionForExport(q, groupNameById) {
+  if (!q || q.type === "page_break") return null;
+  const vis =
+    Array.isArray(q.visible_to_group_ids) && q.visible_to_group_ids.length
+      ? ` [shown only to: ${q.visible_to_group_ids.map((id) => groupNameById.get(id) || id).join(", ")}]`
+      : "";
+  const req = q.required ? " (required)" : "";
+  const attn = q.is_attention_check ? ` (ATTENTION CHECK — expects "${q.attention_check_value}")` : "";
+  const text = stripHtmlForExport(q.text);
+
+  const lines = [`- **${q.id}** [${q.type}]${req}${attn}${vis}: ${text || "(no text)"}`];
+
+  if (Array.isArray(q.options) && q.options.length) {
+    lines.push(`  - Options: ${q.options.map(exportListItemText).join(" / ")}`);
+  }
+  if (Array.isArray(q.rows) && q.rows.length) {
+    const rowBits = q.rows.map((r) => {
+      const t = exportListItemText(r);
+      const isAc = typeof r === "object" && r?.is_attention_check;
+      return isAc ? `${t} (ATTENTION CHECK — expects "${r.attention_check_value}")` : t;
+    });
+    lines.push(`  - Rows: ${rowBits.join(" / ")}`);
+  }
+  if (Array.isArray(q.columns) && q.columns.length) {
+    lines.push(`  - Columns: ${q.columns.map(exportListItemText).join(" / ")}`);
+  }
+  if (q.type === "slider" || q.type === "bipolar") {
+    const lo = q.left_label || q.min_label || q.min;
+    const hi = q.right_label || q.max_label || q.max;
+    lines.push(`  - Scale: ${q.min} (${lo}) to ${q.max} (${hi})`);
+  }
+  if (q.type === "post_reminder") {
+    const mode = q.recall_enabled
+      ? "recall test — participant picks the real post out of authored decoys"
+      : q.reminder_interactive
+      ? "interactive — like/comment/share tracked same as the live feed"
+      : "static — display only, no interaction";
+    lines.push(`  - References post "${q.post_id}" from feed "${q.post_feed_id}" — ${mode}`);
+  }
+  return lines.join("\n");
+}
+
+function describePostForExport(p) {
+  if (!p) return "";
+  const text = p.text || p.review_text || "";
+  const author = p.author || p.name || p.handle || "";
+  const kind =
+    p.adType && p.adType !== "none"
+      ? `ad: ${p.adType}`
+      : p.interventionType && p.interventionType !== "none"
+      ? `intervention: ${p.interventionType}`
+      : "regular post";
+  const truncated = text.length > 400 ? `${text.slice(0, 400)}…` : text;
+  return `  - **${p.id}** (${kind})${author ? `, author: ${author}` : ""}: "${truncated}"`;
+}
+
+function buildStudyContextMarkdown({ survey, dataset, demographics, measures, groupComparison, topStats, attentionSummary, feedPostsByFeedId, responseCsv }) {
+  const lines = [];
+  const groups = Array.isArray(survey?.experiment_groups) ? survey.experiment_groups : [];
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
+
+  lines.push(`# Study context export: ${survey?.name || "Untitled survey"}`);
+  lines.push(`Generated ${new Date().toISOString().slice(0, 10)}`);
+  lines.push("");
+  lines.push(`Delivery mode: ${survey?.delivery_mode || "unknown"}`);
+  if (survey?.description) lines.push(`Study description: ${stripHtmlForExport(survey.description)}`);
+  lines.push("");
+
+  lines.push("## Experiment groups");
+  if (!groups.length) {
+    lines.push("No experiment groups configured — single-arm study, no between-group manipulation.");
+  } else {
+    groups.forEach((g) => {
+      const seq = g.feed_sequence_ids?.length ? ` — feed sequence override: ${g.feed_sequence_ids.join(" → ")}` : "";
+      lines.push(`- **${g.name}** (id: ${g.id})${seq}`);
+    });
+  }
+  lines.push("");
+
+  lines.push("## Survey structure (pages & questions)");
+  const pageById = new Map((survey?.pages || []).map((p) => [p.id, p]));
+  const blocks =
+    Array.isArray(survey?.page_blocks) && survey.page_blocks.length
+      ? survey.page_blocks
+      : [{ id: "_default", title: "All pages", page_ids: (survey?.pages || []).map((p) => p.id), visible_to_group_ids: [] }];
+  blocks.forEach((block) => {
+    const blockVis = block.visible_to_group_ids?.length
+      ? ` [shown only to: ${block.visible_to_group_ids.map((id) => groupNameById.get(id) || id).join(", ")}]`
+      : "";
+    lines.push(`### Block: ${block.title}${blockVis}`);
+    (block.page_ids || []).forEach((pid) => {
+      const page = pageById.get(pid);
+      if (!page) return;
+      if (page.title) lines.push(`#### Page: ${page.title}`);
+      (page.questions || []).forEach((q) => {
+        const desc = describeQuestionForExport(q, groupNameById);
+        if (desc) lines.push(desc);
+      });
+    });
+  });
+  lines.push("");
+
+  lines.push("## What participants were exposed to (linked feed content)");
+  const feedIds = Object.keys(feedPostsByFeedId || {});
+  if (!feedIds.length) {
+    lines.push("No linked feed content (survey-only delivery, or no posts could be loaded).");
+  } else {
+    feedIds.forEach((fid) => {
+      const posts = feedPostsByFeedId[fid] || [];
+      lines.push(`### Feed: ${fid} (${posts.length} posts)`);
+      posts.forEach((p) => lines.push(describePostForExport(p)));
+    });
+  }
+  lines.push("");
+
+  lines.push("## Collected data summary");
+  lines.push(`- Total responses: ${topStats?.total ?? 0}`);
+  lines.push(`- Unique participants: ${topStats?.uniqueParticipants ?? 0}`);
+  if (topStats?.first) lines.push(`- Collection window: ${topStats.first.slice(0, 10)} to ${(topStats.last || topStats.first).slice(0, 10)}`);
+  if (groupComparison?.groups?.length) {
+    lines.push(`- Per-group N: ${groupComparison.groups.map((g) => `${g.name}=${g.n}`).join(", ")}`);
+  }
+  if (attentionSummary) {
+    lines.push(`- Attention checks: average ${attentionSummary.avgPassed.toFixed(1)}/${attentionSummary.total} passed across ${attentionSummary.n} responses`);
+  }
+  lines.push("");
+
+  if (demographics?.length) {
+    lines.push("### Demographics");
+    demographics.forEach(({ item, summary }) => {
+      if (summary.kind === "numeric") {
+        lines.push(`- ${item.itemLabel}: mean ${summary.mean?.toFixed(1)} (SD ${summary.sd?.toFixed(1)}), n=${summary.nAnswered}`);
+      } else if (summary.kind === "categorical" || summary.kind === "multi") {
+        const top = (summary.options || []).slice(0, 6).map((o) => `${o.label} (${Math.round(o.pct * 100)}%)`).join(", ");
+        lines.push(`- ${item.itemLabel}: ${top}`);
+      } else {
+        lines.push(`- ${item.itemLabel}: free text, ${summary.nAnswered} answered`);
+      }
+    });
+    lines.push("");
+  }
+
+  if (measures && (measures.composites?.length || measures.standaloneNumeric?.length)) {
+    lines.push("### Measures (composite scales)");
+    (measures.composites || []).forEach(({ composite, summary }) => {
+      lines.push(
+        `- **${composite.label}** (${composite.items?.length ?? summary.nItems} items): mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), Cronbach's α = ${
+          summary.reliability != null ? summary.reliability.toFixed(2) : "n/a"
+        }, n=${summary.nAnswered}`
+      );
+    });
+    (measures.standaloneNumeric || []).forEach(({ item, summary }) => {
+      lines.push(`- ${item.itemLabel}: mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), n=${summary.nAnswered}`);
+    });
+    lines.push("");
+  }
+
+  if (groupComparison) {
+    lines.push("### Group comparison results");
+    (groupComparison.numericComparisons || []).forEach((c) => {
+      const groupsStr = c.perGroup.map((g) => `${g.groupName}: mean ${g.mean?.toFixed(2)} (SD ${g.sd?.toFixed(2)}, n=${g.n})`).join("; ");
+      const t = c.test;
+      const testStr =
+        t?.type === "welch_t"
+          ? `Welch's t(${t.df?.toFixed(1)}) = ${t.t?.toFixed(2)}, ${formatPValue(t.p)}`
+          : t?.type === "anova"
+          ? `F(${t.dfBetween},${t.dfWithin}) = ${t.F?.toFixed(2)}, ${formatPValue(t.p)}`
+          : "not testable (insufficient data)";
+      lines.push(`- **${c.label}** — ${groupsStr} — ${testStr}`);
+    });
+    (groupComparison.categoricalComparisons || []).forEach((c) => {
+      const t = c.test;
+      const testStr = t ? `chi-square(${t.df}) = ${t.chisq?.toFixed(2)}, ${formatPValue(t.p)}` : "not testable (insufficient data)";
+      lines.push(`- **${c.label}** (categorical) — ${testStr}`);
+    });
+    lines.push("");
+  }
+
+  if (responseCsv) {
+    lines.push("## Raw response data (one row per participant)");
+    lines.push("No identifying information is collected by this app — session/participant ids are opaque study identifiers, not personal data.");
+    lines.push("");
+    lines.push("```csv");
+    lines.push(responseCsv);
+    lines.push("```");
+    lines.push("");
+  }
+
+  lines.push("---");
+  lines.push(
+    "_This export includes the study's design (questions, experiment groups, and the feed/post content participants were exposed to), aggregate statistics" +
+      (responseCsv ? ", and the full set of individual (non-identifying) response rows." : ". No individual response rows are included.")
+  );
+
+  return lines.join("\n");
 }
 
 // Mirrors loadMultiFeedParticipantSurveyRoster's merged-row shape (feedN_...
@@ -1231,6 +1467,298 @@ const GROUP_EFFECT_PRESETS = [
   { value: 0.8, label: "Large" },
 ];
 
+// ---- "Correct responses (CSV)" — for the rare case a participant reports
+// clicking the wrong option and asks for a fix. Re-uses "Download Survey
+// CSV"'s own column shape (variable-style headers: questionId[_rowValue],
+// matching makeSurveyVariableLabel exactly) so the natural workflow is
+// download → fix a cell or two in a spreadsheet → re-upload here.
+
+// A tiny RFC4180-ish CSV parser — this app has only ever *written* CSVs
+// before (buildCsv/csvEscape above), never parsed an uploaded one. Handles
+// quoted fields with embedded commas/quotes/newlines; no library needed for
+// something this bounded.
+function parseCsvRows(text) {
+  const rows = [];
+  let field = "";
+  let row = [];
+  let inQuotes = false;
+  const s = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (s[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += c;
+    }
+  }
+  if (field.length || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => !(r.length === 1 && r[0] === ""));
+}
+
+function parseCsvRecords(text) {
+  const rows = parseCsvRows(text);
+  if (!rows.length) return [];
+  const header = rows[0].map((h) => h.trim());
+  return rows.slice(1).map((r) => {
+    const obj = {};
+    header.forEach((h, i) => {
+      obj[h] = (r[i] ?? "").trim();
+    });
+    return obj;
+  });
+}
+
+// Fixed participant-meta columns "Download Survey CSV" also includes —
+// never editable via this tool regardless of what a re-uploaded CSV says,
+// since identity/assignment/timing fields are out of scope for "fix one
+// wrong answer" and are protected server-side too (see migration
+// 20260801000029 — the DB grant only allows touching the `responses` column
+// at all).
+const CORRECTION_META_COLUMNS = new Set([
+  "participant_id",
+  "ip_address",
+  "prolific_pid",
+  "entered_at_iso",
+  "submitted_at_iso",
+  "duration_s",
+  "feed_id",
+  "experiment_group_id",
+  "experiment_group_name",
+  "attention_checks_passed",
+]);
+
+function buildCorrectionPreview(csvRows, survey, datasetRowsBySessionId) {
+  const columns = flattenSurveyQuestions(survey);
+  const columnByVariableLabel = new Map(columns.map((c) => [c.variable_label, c]));
+
+  const matchedRows = [];
+  const notFound = [];
+  const unknownColumns = new Set();
+  const unsupportedColumns = new Set();
+
+  csvRows.forEach((csvRow) => {
+    const sessionId = String(csvRow.session_id || "").trim();
+    if (!sessionId) return;
+    const existing = datasetRowsBySessionId.get(sessionId);
+    if (!existing) {
+      notFound.push(sessionId);
+      return;
+    }
+
+    const changes = [];
+    Object.keys(csvRow).forEach((headerKey) => {
+      if (headerKey === "session_id" || CORRECTION_META_COLUMNS.has(headerKey)) return;
+      const col = columnByVariableLabel.get(headerKey);
+      if (!col) {
+        unknownColumns.add(headerKey);
+        return;
+      }
+      if (!isSurveyColumnEditableViaCsv(col)) {
+        unsupportedColumns.add(headerKey);
+        return;
+      }
+      const currentFlat = flattenSurveyResponseRecord({ responses: existing.responses }, [col]);
+      const currentValue = currentFlat[col.column_key] ?? "";
+      const newValueRaw = csvRow[headerKey];
+      const newValue = newValueRaw === "NA" ? "" : newValueRaw;
+      if (String(currentValue) !== String(newValue)) {
+        changes.push({ col, label: headerKey, oldValue: currentValue, newValue });
+      }
+    });
+
+    if (changes.length) {
+      matchedRows.push({ sessionId, changes, currentResponses: existing.responses });
+    }
+  });
+
+  return {
+    matchedRows,
+    notFound,
+    unknownColumns: Array.from(unknownColumns),
+    unsupportedColumns: Array.from(unsupportedColumns),
+  };
+}
+
+function CorrectResponsesCard({ survey, dataset, surveyId, usingSimulated, onApplied }) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [applying, setApplying] = useState(false);
+
+  const datasetRowsBySessionId = useMemo(() => {
+    const map = new Map();
+    (dataset?.rows || []).forEach((r) => {
+      if (r.session_id) map.set(r.session_id, r);
+    });
+    return map;
+  }, [dataset]);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setFileName(file.name);
+    setPreview(null);
+    try {
+      const text = await file.text();
+      const csvRows = parseCsvRecords(text);
+      setPreview(buildCorrectionPreview(csvRows, survey, datasetRowsBySessionId));
+    } catch (err) {
+      console.error("Failed to parse correction CSV:", err);
+      toast.error("Couldn't read that file as CSV.");
+    }
+  };
+
+  const totalChanges = preview?.matchedRows?.reduce((s, r) => s + r.changes.length, 0) || 0;
+
+  const applyCorrections = async () => {
+    if (!totalChanges) return;
+    const ok = await confirm({
+      title: "Apply corrections?",
+      message: `This writes directly into ${preview.matchedRows.length} already-submitted participant${
+        preview.matchedRows.length === 1 ? "'s" : "s'"
+      } response data (${totalChanges} field${totalChanges === 1 ? "" : "s"} total) and can't be undone automatically — double-check the preview above first.`,
+      danger: true,
+      confirmLabel: "Apply corrections",
+    });
+    if (!ok) return;
+
+    setApplying(true);
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of preview.matchedRows) {
+      let nextResponses = row.currentResponses;
+      row.changes.forEach((change) => {
+        nextResponses = applySurveyColumnValue(nextResponses, change.col, change.newValue);
+      });
+      // eslint-disable-next-line no-await-in-loop
+      const result = await updateSurveyResponseAnswers({ surveyId, sessionId: row.sessionId, responses: nextResponses });
+      if (result.ok) succeeded += 1;
+      else failed += 1;
+    }
+    setApplying(false);
+    setPreview(null);
+    setFileName("");
+    if (failed) {
+      toast.error(`${succeeded} corrected, ${failed} failed — check the console for details.`);
+    } else {
+      toast.success(`Corrected ${succeeded} participant${succeeded === 1 ? "" : "s"}.`);
+    }
+    onApplied?.();
+  };
+
+  return (
+    <Card
+      title="Correct responses (CSV)"
+      subtitle="For the rare case a participant reports clicking the wrong option: download a CSV, fix the specific cell(s), and re-upload here."
+      actions={
+        <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)}>
+          {open ? "Hide" : "Show"}
+        </Button>
+      }
+    >
+      {open && (
+        <>
+          <div style={{ fontSize: 12, color: "var(--admin-muted)", marginBottom: 10 }}>
+            Upload a CSV shaped like "Download Survey CSV" (a session_id column plus question columns). Rows are
+            matched by session_id — only single-answer question columns (text, choice, slider, matrix/bipolar rows)
+            can be corrected this way; anything else is skipped and listed below rather than guessed at.
+          </div>
+          <input type="file" accept=".csv,text/csv" onChange={handleFile} disabled={usingSimulated} />
+          {usingSimulated && (
+            <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 6 }}>Clear the simulation first — there's no real data to correct.</div>
+          )}
+          {fileName && <span style={{ marginLeft: 10, fontSize: 12, color: "var(--admin-muted)" }}>{fileName}</span>}
+
+          {preview && (
+            <div style={{ marginTop: 14 }}>
+              {totalChanges === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--admin-muted)" }}>No differences found — nothing to apply.</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, marginBottom: 8 }}>
+                    <strong>{totalChanges}</strong> change{totalChanges === 1 ? "" : "s"} across{" "}
+                    <strong>{preview.matchedRows.length}</strong> participant{preview.matchedRows.length === 1 ? "" : "s"}:
+                  </div>
+                  <div style={{ overflowX: "auto", marginBottom: 10 }}>
+                    <Table>
+                      <thead>
+                        <Tr>
+                          <Th>Session</Th>
+                          <Th>Question</Th>
+                          <Th>Current</Th>
+                          <Th>New</Th>
+                        </Tr>
+                      </thead>
+                      <tbody>
+                        {preview.matchedRows.flatMap((r) =>
+                          r.changes.map((c, i) => (
+                            <Tr key={`${r.sessionId}-${i}`}>
+                              <Td style={{ fontFamily: "monospace", fontSize: 11 }}>{r.sessionId}</Td>
+                              <Td>{c.label}</Td>
+                              <Td>{c.oldValue || <em>(blank)</em>}</Td>
+                              <Td>{c.newValue || <em>(blank)</em>}</Td>
+                            </Tr>
+                          ))
+                        )}
+                      </tbody>
+                    </Table>
+                  </div>
+                  <Button variant="secondary" onClick={applyCorrections} busy={applying} disabled={applying}>
+                    Apply {totalChanges} correction{totalChanges === 1 ? "" : "s"}
+                  </Button>
+                </>
+              )}
+
+              {preview.notFound.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 10 }}>
+                  {preview.notFound.length} session id{preview.notFound.length === 1 ? "" : "s"} not found in this
+                  survey's responses (typo, or a different survey's export): {preview.notFound.slice(0, 10).join(", ")}
+                  {preview.notFound.length > 10 ? "…" : ""}
+                </div>
+              )}
+              {preview.unsupportedColumns.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 6 }}>
+                  Skipped (a computed or multi-answer field, not editable via this tool): {preview.unsupportedColumns.join(", ")}
+                </div>
+              )}
+              {preview.unknownColumns.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 6 }}>
+                  Skipped (column not recognized on this survey): {preview.unknownColumns.join(", ")}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function SimulateResponsesCard({
   survey,
   simOpen,
@@ -1382,6 +1910,7 @@ export function SurveyParticipantsPage({
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [downloadingFeedCsv, setDownloadingFeedCsv] = useState(false);
+  const [exportingContext, setExportingContext] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [customGroups, setCustomGroups] = useState([]);
 
@@ -1767,6 +2296,96 @@ export function SurveyParticipantsPage({
     }
   };
 
+  const exportStudyContext = async () => {
+    if (!surveyId || !survey) return;
+    try {
+      setExportingContext(true);
+
+      let feedPostsByFeedId = {};
+      if (feedIdsForSurvey.length) {
+        if (usingSimulated) {
+          // Reuse the exact posts the simulation was generated against, same
+          // reasoning as "Download feed + survey CSV" above — avoids drifting
+          // out of sync with whatever a fresh fetch might return.
+          feedPostsByFeedId = simPostsByFeed;
+        } else {
+          const pairs = await Promise.all(
+            feedIdsForSurvey.map(async (fid) => {
+              try {
+                const loaded = await loadPostsFromBackend(fid, { projectId: projectId || undefined, force: true });
+                return [fid, Array.isArray(loaded) ? loaded : []];
+              } catch (_) {
+                return [fid, []];
+              }
+            })
+          );
+          feedPostsByFeedId = Object.fromEntries(pairs);
+        }
+      }
+
+      const attentionItems = getSurveyAttentionCheckItems(survey);
+      let attentionSummary = null;
+      if (attentionItems.length && dataset?.rows?.length) {
+        const counts = dataset.rows.map((r) => countAttentionChecksPassed(attentionItems, r.responses));
+        attentionSummary = {
+          total: attentionItems.length,
+          avgPassed: counts.reduce((a, b) => a + b, 0) / counts.length,
+          n: dataset.rows.length,
+        };
+      }
+
+      // Per-participant response rows, no identifiable information collected
+      // by this app (session/participant ids are opaque study identifiers) —
+      // same fetch/shape "Download Survey CSV" already uses, reused here
+      // rather than re-deriving column logic a second time.
+      let responseCsv = "";
+      try {
+        const safeRows = usingSimulated
+          ? buildSimulatedCsvRows(survey, simRows)
+          : (await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" })).rows || [];
+        if (safeRows.length) {
+          const header = Array.from(
+            safeRows.reduce((set, row) => {
+              Object.keys(row || {}).forEach((key) => set.add(key));
+              return set;
+            }, new Set())
+          );
+          const normalizedRows = safeRows.map((row) => {
+            const next = {};
+            header.forEach((key) => {
+              next[key] = normalizeCsvValue(row?.[key]);
+            });
+            return next;
+          });
+          responseCsv = buildCsv(normalizedRows, header, header.map(stripSurveyExportPrefix));
+        }
+      } catch (_) {
+        // A failed response fetch shouldn't block the rest of the export —
+        // the design/aggregate sections are still useful without it.
+      }
+
+      const markdown = buildStudyContextMarkdown({
+        survey,
+        dataset,
+        demographics,
+        measures,
+        groupComparison,
+        topStats,
+        attentionSummary,
+        feedPostsByFeedId,
+        responseCsv,
+      });
+
+      const filename = `${safeFileStem(survey?.name || surveyId)}_study_context_${todayStamp()}${usingSimulated ? "_SIMULATED" : ""}.md`;
+      triggerTextDownload(filename, markdown);
+    } catch (e) {
+      console.error("Study context export failed:", e);
+      toast.error("Failed to export study context.");
+    } finally {
+      setExportingContext(false);
+    }
+  };
+
   return (
     <>
       {!embed ? (
@@ -1827,6 +2446,16 @@ export function SurveyParticipantsPage({
                   Download feed + survey CSV
                 </Button>
               )}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={exportStudyContext}
+                busy={exportingContext}
+                disabled={!surveyId}
+                title="Downloads a Markdown file describing this survey's design, experiment groups, linked feed/post content, and aggregate stats (no individual responses) — paste it into Claude or ChatGPT for a preliminary write-up."
+              >
+                Export study context
+              </Button>
             </>
           }
         />
@@ -1860,6 +2489,16 @@ export function SurveyParticipantsPage({
               Download feed + survey CSV
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={exportStudyContext}
+            busy={exportingContext}
+            disabled={!surveyId}
+            title="Downloads a Markdown file describing this survey's design, experiment groups, linked feed/post content, and aggregate stats (no individual responses) — paste it into Claude or ChatGPT for a preliminary write-up."
+          >
+            Export study context
+          </Button>
         </div>
       )}
 
@@ -1908,6 +2547,7 @@ export function SurveyParticipantsPage({
             {powerAnalysisOpen && (
               <PowerAnalysisModal survey={survey} groupComparison={groupComparison} onClose={() => setPowerAnalysisOpen(false)} />
             )}
+            <CorrectResponsesCard survey={survey} dataset={dataset} surveyId={surveyId} usingSimulated={usingSimulated} onApplied={refresh} />
             <SimulateResponsesCard
               survey={survey}
               simOpen={simOpen}
