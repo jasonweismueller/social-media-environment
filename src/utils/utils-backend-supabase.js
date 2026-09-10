@@ -1426,7 +1426,7 @@ export async function supabaseAdminUpdateUser({ email, role, password, disabled,
   if (password != null) payload.password = password;
   if (typeof disabled === "boolean") payload.disabled = disabled;
   if (username != null) payload.username = username;
-  if (typeof aiAnalysisEnabled === "boolean") payload.aiAnalysisEnabled = aiAnalysisEnabled;
+  if (typeof aiAnalysisEnabled === "boolean") payload.ai_analysis_enabled = aiAnalysisEnabled;
   return invokeAdminUsers(payload);
 }
 
