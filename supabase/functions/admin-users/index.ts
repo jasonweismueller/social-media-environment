@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
   if (action === "list") {
     const { data, error } = await admin
       .from("profiles")
-      .select("id, email, username, role, disabled, created_at")
+      .select("id, email, username, role, disabled, ai_analysis_enabled, created_at")
       .order("email", { ascending: true });
     if (error) return jsonResponse({ ok: false, err: error.message }, { status: 500 });
     return jsonResponse({ ok: true, users: data || [] }, { headers: corsHeaders });
@@ -214,6 +214,13 @@ Deno.serve(async (req: Request) => {
     // (falls back to displaying email again) rather than being silently
     // ignored — only a fully-absent key means "don't touch this field".
     if (body?.username != null) profileUpdates.username = sanitizeUsername(body.username) || null;
+    // Per-account "AI analysis" feature grant (Users page toggle,
+    // ai-study-report Edge Function re-checks this same column server-side
+    // before ever calling Anthropic — this write is the real gate, not a
+    // display flag). No self/sole-owner guard needed here, unlike role/
+    // disabled above — granting or revoking this for any account, including
+    // your own, carries no lockout risk.
+    if (typeof body?.ai_analysis_enabled === "boolean") profileUpdates.ai_analysis_enabled = body.ai_analysis_enabled;
 
     if (Object.keys(profileUpdates).length) {
       const { error: updateErr } = await admin.from("profiles").update(profileUpdates).eq("id", target.id);

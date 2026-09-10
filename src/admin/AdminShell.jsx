@@ -1,6 +1,7 @@
 import React, { createContext, useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { IconFeed, IconClipboard, ThemeToggle, LogoutButton } from "./ui";
+import { IconFeed, IconClipboard, IconSparkle, ThemeToggle, LogoutButton } from "./ui";
+import { getAdminAiAnalysisEnabled } from "../utils";
 
 // Absolute paths (not relative "feeds"/"surveys") — relative NavLink targets
 // resolve against the current URL segment-by-segment in react-router, so a
@@ -8,6 +9,7 @@ import { IconFeed, IconClipboard, ThemeToggle, LogoutButton } from "./ui";
 // path instead of replacing it.
 const FEEDS_PATH = "/admin/dashboard/feeds";
 const SURVEYS_PATH = "/admin/dashboard/surveys";
+const ANALYSIS_PATH = "/admin/dashboard/analysis";
 
 // Lets AdminFeedsPanel/AdminSurveysPanel portal their own list column (feed
 // list / survey list — filter box, create/refresh buttons, the rows
@@ -179,6 +181,50 @@ function TreeSection({ to, icon, label, active, expanded, onToggleExpand, slotRe
   );
 }
 
+// A plain, single-row nav link — same outer chrome (background/border/hover)
+// as TreeSection's own header row, minus the expand chevron and portaled
+// list slot, since this item has no per-project list underneath it (unlike
+// Feeds/Surveys). Used for "AI Analysis" below.
+function SimpleNavLink({ to, icon, label, active }) {
+  return (
+    <div
+      className={active ? undefined : "admin-row-hover"}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        borderRadius: "var(--admin-radius-md)",
+        background: active ? "var(--admin-accent-soft)" : "var(--admin-surface-alt)",
+        border: active ? "1px solid transparent" : "1px solid var(--admin-border-subtle)",
+        transition: "background var(--admin-duration-fast) var(--admin-ease), border-color var(--admin-duration-fast) var(--admin-ease)",
+        flex: "0 0 auto",
+      }}
+    >
+      <NavLink
+        to={to}
+        className="admin-btn"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "8px 10px",
+          fontSize: "var(--admin-text-sm)",
+          fontWeight: 600,
+          textDecoration: "none",
+          color: active ? "var(--admin-accent-ink)" : "var(--admin-text)",
+          flex: 1,
+          minWidth: 0,
+          borderRadius: "var(--admin-radius-md)",
+        }}
+      >
+        <span aria-hidden="true" style={{ display: "flex" }}>
+          {icon}
+        </span>
+        <span style={{ flex: 1 }}>{label}</span>
+      </NavLink>
+    </div>
+  );
+}
+
 /**
  * Presentational layout only — owns no data. All project/feed/session state
  * stays in AdminDashboard and is threaded in as props/children so nothing
@@ -205,6 +251,13 @@ export function AdminShell({
   const isFeedsActive = location.pathname.startsWith(FEEDS_PATH);
   const isSurveysActive = location.pathname.startsWith(SURVEYS_PATH);
   const activeKey = isFeedsActive ? "feeds" : isSurveysActive ? "surveys" : null;
+
+  // Cached mirror of profiles.ai_analysis_enabled (see getAdminAiAnalysisEnabled's
+  // own comment) — re-read on every render, which route navigation already
+  // triggers often enough to pick up a change from the periodic
+  // touchAdminSession() silent refresh without needing dedicated state.
+  const aiAnalysisEnabled = getAdminAiAnalysisEnabled();
+  const isAnalysisActive = location.pathname.startsWith(ANALYSIS_PATH);
 
   // Which section's list is currently shown, independent of which route is
   // active — lets a user collapse the active section down to just its
@@ -330,6 +383,9 @@ export function AdminShell({
             slotRef={setSurveysSlotEl}
             addSlotRef={setSurveysAddSlotEl}
           />
+          {aiAnalysisEnabled && (
+            <SimpleNavLink to={ANALYSIS_PATH} icon={<IconSparkle size={16} />} label="AI Analysis" active={isAnalysisActive} />
+          )}
         </nav>
       </aside>
 

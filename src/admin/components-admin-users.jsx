@@ -606,6 +606,7 @@ export function AdminUsersPage({ onLogout }) {
   const [selectedEmail, setSelectedEmail] = useState("");
   const [roleBusyEmail, setRoleBusyEmail] = useState(null);
   const [statusBusyEmail, setStatusBusyEmail] = useState(null);
+  const [aiBusyEmail, setAiBusyEmail] = useState(null);
   const [deleteBusyEmail, setDeleteBusyEmail] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [resetPwUser, setResetPwUser] = useState(null);
@@ -671,6 +672,21 @@ export function AdminUsersPage({ onLogout }) {
     const res = await adminUpdateUser({ email: user.email, disabled: !user.disabled });
     setStatusBusyEmail(null);
     if (!res?.ok) toast.error(res?.err || "Failed to update status");
+    else load();
+  };
+
+  // Grants/revokes the "AI Analysis" nav item + "Generate AI report" feature
+  // (profiles.ai_analysis_enabled) — a real, billed Anthropic API call once
+  // used, so this is deliberately per-account rather than a single
+  // platform-wide switch, letting an owner hand it to specific researchers.
+  // No self/sole-owner lockout guard needed here (unlike toggleStatus/
+  // changeRole above) — granting or revoking this for any account, including
+  // your own, carries no risk of losing access to this page.
+  const toggleAiAnalysis = async (user) => {
+    setAiBusyEmail(user.email);
+    const res = await adminUpdateUser({ email: user.email, aiAnalysisEnabled: !user.ai_analysis_enabled });
+    setAiBusyEmail(null);
+    if (!res?.ok) toast.error(res?.err || "Failed to update AI analysis access");
     else load();
   };
 
@@ -801,6 +817,7 @@ export function AdminUsersPage({ onLogout }) {
                     <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                       <Badge tone={ROLE_TONE[u.role] || "neutral"}>{u.role}</Badge>
                       {u.disabled && <Badge tone="danger">disabled</Badge>}
+                      {u.ai_analysis_enabled && <Badge tone="accent">AI</Badge>}
                       {backendHasAccessControl && (
                         <Badge tone="neutral">{grants && grants.length ? `${grants.length} project${grants.length === 1 ? "" : "s"}` : "all projects"}</Badge>
                       )}
@@ -881,6 +898,20 @@ export function AdminUsersPage({ onLogout }) {
                       busy={statusBusyEmail === selectedUser.email}
                       disabled={isSelf || isSoleOwner}
                       onChange={() => toggleStatus(selectedUser)}
+                    />
+                  </div>
+
+                  <div style={{ marginTop: 16, maxWidth: 360 }}>
+                    <Toggle
+                      label="AI analysis"
+                      hint={
+                        selectedUser.ai_analysis_enabled
+                          ? "Can generate AI study reports — an “AI Analysis” item appears in their sidebar"
+                          : "Turn on to let this account generate AI study reports (a real, billed API call)"
+                      }
+                      checked={!!selectedUser.ai_analysis_enabled}
+                      busy={aiBusyEmail === selectedUser.email}
+                      onChange={() => toggleAiAnalysis(selectedUser)}
                     />
                   </div>
                 </Card>

@@ -35,6 +35,7 @@ import "./ui/tokens.css";
 import { Modal, LoadingOverlay } from "../ui-core";
 import { AdminSurveysPanel } from "./components-admin-surveys";
 import { AdminFeedsPanel } from "./components-admin-feeds";
+import { AiAnalysisHubPage } from "./components-admin-analysis-hub";
 import { randomAvatarByKind } from "../avatar-utils";
 import { AdminShell } from "./AdminShell";
 import { Badge, RoleGate, useToast, useConfirm, usePrompt, ErrorBoundary, Button } from "./ui";
@@ -1637,6 +1638,23 @@ export function AdminDashboard({
             <Route index element={<Navigate to="/admin/dashboard/feeds" replace />} />
             <Route path="feeds" element={null} />
             <Route path="surveys" element={null} />
+
+            {/* Only reachable at all via AdminShell's own conditional nav
+                item (hidden unless getAdminAiAnalysisEnabled()) — the page
+                itself re-checks role + the same per-account flag before
+                rendering anything, so a stale bookmark/typed URL degrades to
+                a clear message rather than a broken page. A plain <Route>,
+                not a persistent sibling like Feeds/Surveys above — this page
+                has no expensive-to-refetch state worth preserving across a
+                tab switch. */}
+            <Route
+              path="analysis"
+              element={
+                <ErrorBoundary label="AI Analysis crashed">
+                  <AiAnalysisHubPage projectId={projectId} />
+                </ErrorBoundary>
+              }
+            />
 
             {/* Old top-level Posts/Participants routes are now tabs nested
                 under a selected feed/survey (AdminFeedsPanel / AdminSurveysPanel) —

@@ -1,0 +1,454 @@
+/// components-admin-analysis-hub.jsx
+//
+// "AI Analysis" — a dedicated, standalone page (not a tab inside the Survey
+// Participants hub) that only exists at all for accounts an owner has
+// explicitly granted `profiles.ai_analysis_enabled` (see the "AI analysis"
+// toggle on the Users & access page and AdminShell.jsx's conditional nav
+// item). Its whole job is the "Generate AI report" workflow that used to
+// live inline in components-admin-participants-survey.jsx: pick a survey,
+// pick a model, see a rough cost estimate, generate a real (billed)
+// Anthropic report against that survey's own responses.
+//
+// Deliberately does NOT re-implement the full Survey Participants analysis
+// hub (demographics/measures/group-comparison charts, response tables,
+// CSV corrections, simulated-data testing) — this page's own survey
+// picker loads just enough (survey definition + response roster) to build
+// the same study-context markdown + response CSV that hub already builds,
+// reusing its exported buildStudyContextMarkdown/CSV helpers rather than
+// duplicating that ~200-line function.
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  getProjectId as getProjectIdUtil,
+  getAdminAiAnalysisEnabled,
+  listSurveysFromBackend,
+  loadSurveyFromBackend,
+  loadSurveyResponsesBySurveyRoster,
+  loadSurveyOnlyRoster,
+  loadPostsFromBackend,
+  loadCustomMeasureGroups,
+  orderedLinkedFeedIdsFromSurvey,
+  buildAnalysisDataset,
+  computeDemographicsSummary,
+  computeMeasuresSummary,
+  computeGroupComparison,
+  buildCustomGroupComposite,
+  stripSurveyExportPrefix,
+  getSurveyAttentionCheckItems,
+  countAttentionChecksPassed,
+  generateAiStudyReport,
+} from "../utils";
+import { PageHeader, Card, Button, Badge, EmptyState, RoleGate, useToast, useConfirm, IconSparkle } from "./ui";
+import {
+  buildStudyContextMarkdown,
+  buildCsv,
+  normalizeCsvValue,
+  safeFileStem,
+  todayStamp,
+  triggerTextDownload,
+} from "./components-admin-participants-survey";
+
+// $/1M tokens — mirrors supabase/functions/ai-study-report/index.ts's own
+// PRICING map exactly (kept in sync by hand, same as that file's own
+// "cached 2026-09" comment already flags as something to revisit) since
+// this is only ever used for a rough pre-generation estimate; the real
+// number always comes back from the Edge Function's own response.usage.
+const MODEL_OPTIONS = [
+  { value: "claude-sonnet-5", label: "Sonnet — fast, cheap", input: 2.0, output: 10.0 },
+  { value: "claude-opus-5", label: "Opus — slower, deeper", input: 5.0, output: 25.0 },
+];
+
+// Rough, clearly-labeled estimate only — real cost always comes back from
+// Anthropic's own usage figures once a report is actually generated. ~4
+// characters/token is the standard rough approximation for English text;
+// ~500 characters/response row is a rough average across this app's survey
+// CSVs (varies a lot by question count, hence "rough" everywhere this is
+// shown). Output is assumed near the system prompt's own ~1200-word cap.
+function estimateReportCost(responseCount, model) {
+  const price = MODEL_OPTIONS.find((m) => m.value === model) || MODEL_OPTIONS[0];
+  const estimatedCsvChars = Math.max(0, responseCount) * 500;
+  const inputTokens = Math.round(estimatedCsvChars / 4) + 1500;
+  const outputTokens = 1800;
+  return (inputTokens * price.input) / 1e6 + (outputTokens * price.output) / 1e6;
+}
+
+export function AiAnalysisHubPage({ projectId: projectIdProp }) {
+  const projectId = projectIdProp ?? getProjectIdUtil() ?? "global";
+  const toast = useToast();
+  const confirm = useConfirm();
+
+  const [surveys, setSurveys] = useState([]);
+  const [loadingSurveys, setLoadingSurveys] = useState(true);
+  const [surveyId, setSurveyId] = useState("");
+  const [survey, setSurvey] = useState(null);
+  const [responseRows, setResponseRows] = useState([]);
+  const [customGroups, setCustomGroups] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const [model, setModel] = useState("claude-sonnet-5");
+  const [generating, setGenerating] = useState(false);
+  const [report, setReport] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingSurveys(true);
+    listSurveysFromBackend({ projectId, force: true }).then((list) => {
+      if (cancelled) return;
+      const arr = Array.isArray(list) ? list : [];
+      setSurveys(arr);
+      setLoadingSurveys(false);
+      setSurveyId((cur) => (cur && arr.some((s) => s.survey_id === cur) ? cur : arr[0]?.survey_id || ""));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!surveyId) {
+      setSurvey(null);
+      setResponseRows([]);
+      setCustomGroups([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setReport(null);
+    Promise.all([
+      loadSurveyFromBackend(surveyId, { projectId, force: true }),
+      loadSurveyResponsesBySurveyRoster(surveyId, { projectId }),
+      loadCustomMeasureGroups({ surveyId, projectId }),
+    ])
+      .then(([def, rows, groups]) => {
+        if (cancelled) return;
+        setSurvey(def);
+        setResponseRows(Array.isArray(rows) ? rows : []);
+        setCustomGroups(Array.isArray(groups) ? groups : []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error("AI Analysis: failed to load survey data:", e);
+        toast.error("Failed to load this survey's data.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [surveyId, projectId]);
+
+  const dataset = useMemo(() => (survey ? buildAnalysisDataset({ survey, responseRows }) : null), [survey, responseRows]);
+  const demographics = useMemo(() => (dataset ? computeDemographicsSummary(dataset) : []), [dataset]);
+  const measures = useMemo(() => (dataset ? computeMeasuresSummary(dataset) : null), [dataset]);
+  const customGroupComposites = useMemo(
+    () => (dataset ? customGroups.map((g) => buildCustomGroupComposite(g, dataset)) : []),
+    [dataset, customGroups]
+  );
+  const groupComparison = useMemo(
+    () => (dataset ? computeGroupComparison(dataset, survey?.experiment_groups, customGroupComposites) : null),
+    [dataset, survey, customGroupComposites]
+  );
+  const topStats = useMemo(() => {
+    if (!dataset) return null;
+    const rows = dataset.rows;
+    const uniqueParticipants = new Set(rows.map((r) => r.participant_id).filter(Boolean)).size;
+    const dates = rows.map((r) => r.submitted_at_iso).filter(Boolean).sort();
+    return { total: rows.length, uniqueParticipants, first: dates[0] || null, last: dates[dates.length - 1] || null };
+  }, [dataset]);
+
+  const feedIdsForSurvey = useMemo(() => orderedLinkedFeedIdsFromSurvey(survey), [survey]);
+  const responseCount = dataset?.rows?.length || 0;
+  const estimatedCostUsd = estimateReportCost(responseCount, model);
+
+  const generateReport = async () => {
+    if (!surveyId || !survey) return;
+    const ok = await confirm({
+      title: "Generate AI report?",
+      message:
+        "This sends this study's design, aggregate stats, and de-identified individual response rows to Anthropic's API to write a first-pass analysis. It's a real, billed API call and can't be undone once it starts. Continue?",
+      confirmLabel: "Generate report",
+    });
+    if (!ok) return;
+
+    try {
+      setGenerating(true);
+      setReport(null);
+
+      // Same context-gathering shape components-admin-participants-survey.jsx's
+      // own (now-removed) "Generate AI report" button used — see this file's
+      // header comment for why it's reused, not rebuilt, via the exported
+      // buildStudyContextMarkdown. The CSV is uploaded separately (via the
+      // Edge Function's Files API call), never embedded in the prompt text.
+      let feedPostsByFeedId = {};
+      if (feedIdsForSurvey.length) {
+        const pairs = await Promise.all(
+          feedIdsForSurvey.map(async (fid) => {
+            try {
+              const loaded = await loadPostsFromBackend(fid, { projectId: projectId || undefined, force: true });
+              return [fid, Array.isArray(loaded) ? loaded : []];
+            } catch (_) {
+              return [fid, []];
+            }
+          })
+        );
+        feedPostsByFeedId = Object.fromEntries(pairs);
+      }
+
+      let attentionSummary = null;
+      try {
+        const attentionItems = getSurveyAttentionCheckItems(survey);
+        if (attentionItems.length && dataset?.rows?.length) {
+          const counts = dataset.rows.map((r) => countAttentionChecksPassed(attentionItems, r.responses));
+          attentionSummary = {
+            total: attentionItems.length,
+            avgPassed: counts.reduce((a, b) => a + b, 0) / counts.length,
+            n: dataset.rows.length,
+          };
+        }
+      } catch (e) {
+        console.error("AI report: attention-check summary failed", e);
+      }
+
+      let responseCsv = "";
+      try {
+        const safeRows = (await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" })).rows || [];
+        if (safeRows.length) {
+          const header = Array.from(
+            safeRows.reduce((set, row) => {
+              Object.keys(row || {}).forEach((key) => set.add(key));
+              return set;
+            }, new Set())
+          );
+          const normalizedRows = safeRows.map((row) => {
+            const next = {};
+            header.forEach((key) => {
+              next[key] = normalizeCsvValue(row?.[key]);
+            });
+            return next;
+          });
+          responseCsv = buildCsv(normalizedRows, header, header.map(stripSurveyExportPrefix));
+        }
+      } catch (_) {
+        // A failed response fetch shouldn't block the report entirely — the
+        // model still gets the design/aggregate context with no CSV attached.
+      }
+
+      const markdown = buildStudyContextMarkdown({
+        survey,
+        dataset,
+        demographics,
+        measures,
+        groupComparison,
+        topStats,
+        attentionSummary,
+        feedPostsByFeedId,
+        responseCsv: "", // uploaded separately, not embedded — see comment above
+      });
+
+      const csvFilename = `${safeFileStem(survey?.name || surveyId)}_responses.csv`;
+      const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model });
+
+      if (!res.ok) {
+        toast.error(`AI report failed${res.err ? `: ${res.err}` : "."}`);
+        return;
+      }
+      setReport(res);
+    } catch (e) {
+      console.error("AI report generation failed:", e);
+      toast.error(`AI report failed${e?.message ? `: ${e.message}` : "."}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <RoleGate
+      min="editor"
+      elseRender={
+        <Card>
+          <EmptyState
+            icon={IconSparkle}
+            title="Editor access required"
+            message="AI report generation needs an editor or owner role — an owner can also grant it directly from the Users & access page."
+          />
+        </Card>
+      }
+    >
+      {!getAdminAiAnalysisEnabled() ? (
+        <Card>
+          <EmptyState
+            icon={IconSparkle}
+            title="AI analysis isn't turned on for your account"
+            message="An owner can grant this from the Users & access page. If it was just turned on, sign out and back in to pick it up."
+          />
+        </Card>
+      ) : (
+        <>
+          <PageHeader
+            title="AI Analysis"
+            subtitle={
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span>Generate a first-pass AI report for </span>
+                <select
+                  value={surveyId}
+                  onChange={(e) => setSurveyId(e.target.value)}
+                  disabled={loadingSurveys}
+                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid var(--admin-border)", fontSize: 13 }}
+                >
+                  {surveys.length === 0 && <option value="">No surveys yet</option>}
+                  {surveys.map((s) => (
+                    <option key={s.survey_id} value={s.survey_id}>
+                      {s.name || s.survey_id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            }
+          />
+
+          {!surveyId && !loadingSurveys ? (
+            <Card>
+              <EmptyState icon={IconSparkle} title="No surveys yet" message="Create a survey first, then come back here to analyse its responses." />
+            </Card>
+          ) : (
+            <div style={{ display: "grid", gap: 16 }}>
+              <Card>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-end" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--admin-muted)", marginBottom: 6 }}>Model</div>
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      disabled={generating}
+                      style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid var(--admin-border)", fontSize: 13, minWidth: 220 }}
+                    >
+                      {MODEL_OPTIONS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--admin-muted)", marginBottom: 6 }}>Responses</div>
+                    <div style={{ fontSize: 20, fontWeight: 800 }}>{loading ? "…" : responseCount}</div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--admin-muted)", marginBottom: 6 }}>
+                      Estimated cost
+                      <span title="A rough estimate only, based on response count and typical report length — the real cost is shown once a report comes back, from Anthropic's own usage figures.">
+                        {" "}
+                        ⓘ
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800 }}>{loading ? "…" : `~$${estimatedCostUsd.toFixed(3)}`}</div>
+                  </div>
+
+                  <Button size="md" onClick={generateReport} busy={generating} disabled={!surveyId || loading || responseCount === 0}>
+                    Generate AI report
+                  </Button>
+                </div>
+                {responseCount === 0 && !loading && (
+                  <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--admin-muted)" }}>
+                    This survey has no responses yet — nothing to analyse.
+                  </div>
+                )}
+              </Card>
+
+              {report && (
+                <Card>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                      <Badge tone="accent">Report</Badge>
+                      <span style={{ fontSize: 12 }} className="subtle">
+                        Model: {report.model}
+                      </span>
+                      {report.usage && (
+                        <span style={{ fontSize: 12 }} className="subtle">
+                          {(report.usage.input_tokens || 0) + (report.usage.cache_creation_input_tokens || 0)} in ·{" "}
+                          {report.usage.output_tokens || 0} out
+                          {report.usage.cache_read_input_tokens ? ` · ${report.usage.cache_read_input_tokens} cached` : ""}
+                        </span>
+                      )}
+                      {report.estimated_cost_usd != null && (
+                        <span style={{ fontSize: 12 }} className="subtle">
+                          Actual cost: ~${report.estimated_cost_usd.toFixed(3)}
+                        </span>
+                      )}
+                    </div>
+                    <pre
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        fontFamily: "inherit",
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        margin: 0,
+                        maxHeight: "60vh",
+                        overflow: "auto",
+                        padding: 12,
+                        background: "var(--admin-surface-alt)",
+                        borderRadius: 8,
+                        border: "1px solid var(--admin-border)",
+                      }}
+                    >
+                      {report.report_markdown}
+                    </pre>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const filename = `${safeFileStem(survey?.name || surveyId)}_ai_report_${todayStamp()}.md`;
+                          triggerTextDownload(filename, report.report_markdown);
+                        }}
+                      >
+                        Download .md
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(report.report_markdown);
+                            toast.success("Copied to clipboard.");
+                          } catch {
+                            toast.error("Couldn't copy — your browser may be blocking clipboard access.");
+                          }
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                    {Array.isArray(report.execution_trace) && report.execution_trace.length > 0 && (
+                      <details>
+                        <summary style={{ cursor: "pointer", fontSize: 12 }} className="subtle">
+                          View the code Claude ran ({report.execution_trace.length} step{report.execution_trace.length === 1 ? "" : "s"})
+                        </summary>
+                        <pre
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            fontSize: 11.5,
+                            maxHeight: 300,
+                            overflow: "auto",
+                            background: "var(--admin-surface-alt)",
+                            border: "1px solid var(--admin-border)",
+                            borderRadius: 6,
+                            padding: 8,
+                            marginTop: 6,
+                          }}
+                        >
+                          {JSON.stringify(report.execution_trace, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </RoleGate>
+  );
+}

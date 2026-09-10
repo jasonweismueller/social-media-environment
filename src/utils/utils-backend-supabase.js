@@ -15,7 +15,7 @@ import { getSupabaseClient } from "./utils-supabase-client";
 async function fetchAdminProfile(supabase, userId) {
   const { data, error } = await supabase
     .from("profiles")
-    .select("role, disabled, email, username")
+    .select("role, disabled, email, username, ai_analysis_enabled")
     .eq("id", userId)
     .single();
 
@@ -55,6 +55,7 @@ export async function supabaseAdminSignIn(email, password) {
       role: profile.role || "viewer",
       email: profile.email || data.user.email,
       username: profile.username || "",
+      aiAnalysisEnabled: !!profile.ai_analysis_enabled,
     };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
@@ -154,6 +155,7 @@ export async function supabaseAdminTouch() {
       role: profile.role || "viewer",
       email: profile.email || data.session.user.email,
       username: profile.username || "",
+      aiAnalysisEnabled: !!profile.ai_analysis_enabled,
     };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
@@ -1418,12 +1420,13 @@ export async function supabaseAdminCreateUser(email, role = "viewer", username =
   return invokeAdminUsers({ action: "create", email, role, username, redirectTo });
 }
 
-export async function supabaseAdminUpdateUser({ email, role, password, disabled, username }) {
+export async function supabaseAdminUpdateUser({ email, role, password, disabled, username, aiAnalysisEnabled }) {
   const payload = { action: "update", email };
   if (role != null) payload.role = role;
   if (password != null) payload.password = password;
   if (typeof disabled === "boolean") payload.disabled = disabled;
   if (username != null) payload.username = username;
+  if (typeof aiAnalysisEnabled === "boolean") payload.aiAnalysisEnabled = aiAnalysisEnabled;
   return invokeAdminUsers(payload);
 }
 
@@ -1481,4 +1484,29 @@ export async function supabaseSetUserProjectAccess(userId, entries) {
   const { error: insErr } = await supabase.from("project_access").insert(rows);
   if (insErr) throw new Error(insErr.message);
   return true;
+}
+
+// AI-generated study report (real Anthropic API call, code_execution tool
+// against the real response CSV via the Files API — see supabase/
+// functions/ai-study-report/index.ts for the full reasoning). functions.
+// invoke attaches the caller's JWT automatically, same pattern as
+// supabaseSaveSurvey/invokeAdminUsers above — the Edge Function itself
+// re-checks role + the caller's own profiles.ai_analysis_enabled grant
+// server-side, this is not the real gate.
+export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model }) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.functions.invoke("ai-study-report", {
+    body: { markdown, csv: csv || "", csv_filename: csvFilename || "", model },
+  });
+
+  if (error) {
+    let msg = error.message || String(error);
+    try {
+      const body = await error.context?.json?.();
+      if (body?.err) msg = body.err;
+    } catch {}
+    return { ok: false, err: msg };
+  }
+  if (!data?.ok) return { ok: false, err: data?.err || "AI report generation failed" };
+  return data;
 }

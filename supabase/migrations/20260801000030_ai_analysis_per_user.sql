@@ -1,0 +1,22 @@
+-- Per-user "AI analysis" access flag, replacing an earlier same-day draft of
+-- this feature that used a single platform-wide app_settings row instead
+-- (never applied to any Supabase project, no app_settings table/migration
+-- exists anywhere live — safe to fully replace rather than layer on top
+-- of). Per direct user decision: instead of one global on/off switch, an
+-- owner grants the "Generate AI report" feature to specific admin accounts
+-- individually from the Users & access page, the same account-level-toggle
+-- pattern "Account enabled" already uses on that same page. Nullable would
+-- have worked too, but a plain boolean with a default keeps every existing
+-- reader (fetchAdminProfile, supabaseAdminTouch, admin-users list) simple —
+-- no null-checking anywhere.
+--
+-- Defaults false, so every existing account (including brand new ones
+-- created after this ships) starts without the feature, same "opt-in,
+-- no-op for existing accounts" posture as project_access/wipe_on_change
+-- elsewhere in this schema. Only an owner can flip it — enforced by the
+-- admin-users Edge Function re-checking the caller's own role server-side
+-- before writing (same boundary as role/disabled/username changes there),
+-- not by RLS on this column specifically, since profiles writes already
+-- only ever happen through that Edge Function's service-role client.
+alter table public.profiles
+  add column if not exists ai_analysis_enabled boolean not null default false;

@@ -204,6 +204,19 @@ export function IconBookmark(props) {
   );
 }
 
+// A 4-point "sparkle" (one big point + one small companion point) — used
+// for the AI Analysis nav item, distinct from every other icon here so it
+// reads as "AI" at a glance rather than blending into the generic nav-icon
+// set.
+export function IconSparkle(props) {
+  return (
+    <Base {...props}>
+      <path d="M11 3c.4 3.2 1.4 4.9 4.6 5.4-3.2.5-4.2 2.2-4.6 5.4-.4-3.2-1.4-4.9-4.6-5.4C9.6 7.9 10.6 6.2 11 3Z" />
+      <path d="M18 14c.2 1.5.7 2.2 2 2.4-1.3.2-1.8.9-2 2.4-.2-1.5-.7-2.2-2-2.4 1.3-.2 1.8-.9 2-2.4Z" />
+    </Base>
+  );
+}
+
 export function IconChevronRight(props) {
   return (
     <Base {...props}>

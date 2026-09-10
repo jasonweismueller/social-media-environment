@@ -33,6 +33,7 @@ export {
   IconSun,
   IconMoon,
   IconBookmark,
+  IconSparkle,
   IconChevronRight,
   IconAlignLeft,
   IconAlignCenter,

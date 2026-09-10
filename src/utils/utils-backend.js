@@ -62,6 +62,7 @@ import {
   supabaseListQuestionLibraryItems,
   supabaseSaveQuestionLibraryItem,
   supabaseDeleteQuestionLibraryItem,
+  supabaseGenerateAiStudyReport,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -2050,8 +2051,8 @@ export async function adminCreateUser(email, role = "viewer", username = "", pas
   }
 }
 
-export async function adminUpdateUser({ email, role, password, disabled, username }) {
-  if (isSupabaseBackend()) return supabaseAdminUpdateUser({ email, role, password, disabled, username });
+export async function adminUpdateUser({ email, role, password, disabled, username, aiAnalysisEnabled }) {
+  if (isSupabaseBackend()) return supabaseAdminUpdateUser({ email, role, password, disabled, username, aiAnalysisEnabled });
 
   const admin_token = getAdminToken();
   if (!admin_token) return { ok: false, err: "admin auth required" };
@@ -2323,6 +2324,14 @@ const ADMIN_TOKEN_EXP_KEY = `admin_token_exp_v1`;
 const ADMIN_ROLE_KEY = `admin_role_v1`;
 const ADMIN_EMAIL_KEY = `admin_email_v1`;
 const ADMIN_USERNAME_KEY = `admin_username_v1`;
+// Per-account "AI analysis" grant (profiles.ai_analysis_enabled, owner-only
+// toggle on the Users & access page) — mirrors ADMIN_USERNAME_KEY's own
+// "cache what the last profile fetch/touch returned" shape, so AdminShell
+// can synchronously decide whether to show the AI Analysis nav item without
+// an extra round-trip. The real gate is still the ai-study-report Edge
+// Function re-checking this same column server-side — this cached value is
+// only ever used for nav visibility / UI hints.
+const ADMIN_AI_ANALYSIS_KEY = `admin_ai_analysis_v1`;
 
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 };
 
@@ -2336,7 +2345,14 @@ export async function touchAdminSession() {
     const res = await supabaseAdminTouch();
     if (!res.ok) return { ok: false, err: res.err };
 
-    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email, username: res.username });
+    setAdminSession({
+      token: res.token,
+      ttlSec: res.ttlSec,
+      role: res.role,
+      email: res.email,
+      username: res.username,
+      aiAnalysisEnabled: res.aiAnalysisEnabled,
+    });
     return { ok: true, ttl_s: Number(res.ttlSec || 0), role: res.role, email: res.email };
   }
 
@@ -2441,7 +2457,7 @@ export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, 
   return () => clearInterval(id);
 }
 
-export function setAdminSession({ token, ttlSec, role, email, username } = {}) {
+export function setAdminSession({ token, ttlSec, role, email, username, aiAnalysisEnabled } = {}) {
   try {
     if (!token) {
       clearAdminSession();
@@ -2467,6 +2483,14 @@ export function setAdminSession({ token, ttlSec, role, email, username } = {}) {
       if (username) localStorage.setItem(ADMIN_USERNAME_KEY, String(username));
       else localStorage.removeItem(ADMIN_USERNAME_KEY);
     }
+    // Same "explicit undefined leaves it alone" convention as username —
+    // the GAS branch never passes this (see adminLoginUser/adminLogin below,
+    // which explicitly pass `aiAnalysisEnabled: false` so a stale Supabase
+    // session's grant can't leak into a GAS session on the same browser).
+    if (aiAnalysisEnabled !== undefined) {
+      if (aiAnalysisEnabled) localStorage.setItem(ADMIN_AI_ANALYSIS_KEY, "1");
+      else localStorage.removeItem(ADMIN_AI_ANALYSIS_KEY);
+    }
   } catch {}
 }
 
@@ -2476,6 +2500,7 @@ export function clearAdminSession() {
   localStorage.removeItem(ADMIN_ROLE_KEY);
   localStorage.removeItem(ADMIN_EMAIL_KEY);
   localStorage.removeItem(ADMIN_USERNAME_KEY);
+  localStorage.removeItem(ADMIN_AI_ANALYSIS_KEY);
 }
 
 export function getAdminToken() {
@@ -2537,6 +2562,28 @@ export function getAdminUsername() {
   }
 }
 
+// Cached mirror of this account's profiles.ai_analysis_enabled column,
+// refreshed at login and by the periodic touchAdminSession() silent
+// refresh — used only to decide whether AdminShell shows the "AI Analysis"
+// nav item and whether the Analysis Hub page bothers rendering its
+// generate-report UI at all. Not the real gate: the ai-study-report Edge
+// Function re-checks the live column server-side on every call, so a stale
+// cached "true" here (e.g. an owner just revoked it in another tab) can
+// only ever produce a clear rejection from that call, never an actual
+// unauthorized report.
+export function getAdminAiAnalysisEnabled() {
+  try {
+    const exp = Number(localStorage.getItem(ADMIN_TOKEN_EXP_KEY) || "");
+    if (exp && Date.now() > exp) {
+      clearAdminSession();
+      return false;
+    }
+    return localStorage.getItem(ADMIN_AI_ANALYSIS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function hasAdminSession() {
   return !!getAdminToken();
 }
@@ -2572,6 +2619,10 @@ export async function adminLogin(password) {
         // so a stale username from a previous Supabase session on the same
         // browser can't leak into a GAS session's display.
         username: "",
+        // Same reasoning — GAS predates and has no concept of the AI
+        // analysis grant, so clear it explicitly rather than leaving a
+        // stale Supabase-session "true" reachable from a GAS session.
+        aiAnalysisEnabled: false,
       });
       return { ok: true };
     }
@@ -2587,7 +2638,14 @@ export async function adminLoginUser(email, password) {
     const res = await supabaseAdminSignIn(email, password);
     if (!res.ok) return { ok: false, err: res.err };
 
-    setAdminSession({ token: res.token, ttlSec: res.ttlSec, role: res.role, email: res.email, username: res.username });
+    setAdminSession({
+      token: res.token,
+      ttlSec: res.ttlSec,
+      role: res.role,
+      email: res.email,
+      username: res.username,
+      aiAnalysisEnabled: res.aiAnalysisEnabled,
+    });
     return { ok: true };
   }
 
@@ -2605,6 +2663,7 @@ export async function adminLoginUser(email, password) {
         role: data.role || "viewer",
         email: data.email || email,
         username: "",
+        aiAnalysisEnabled: false,
       });
       return { ok: true };
     }
@@ -4282,6 +4341,28 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
   try {
     await supabaseSaveCustomMeasureGroups({ surveyId: survey_id, groups: Array.isArray(groups) ? groups : [] });
     return { ok: true };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+/**
+ * AI-generated study report — a real, billed Anthropic API call (the
+ * ai-study-report Edge Function, code_execution tool against the real
+ * response CSV via the Files API). NOT the same thing as exportStudyContext's
+ * copy-paste-into-Claude Markdown download in components-admin-participants-
+ * survey.jsx — that one has no API call and no cost. Gated per-account —
+ * `profiles.ai_analysis_enabled`, granted per admin from the Users & access
+ * page (see getAdminAiAnalysisEnabled), not a platform-wide switch — and
+ * re-checked server-side by the Edge Function itself against the caller's
+ * own row, not just hidden client-side. Supabase-only — this postdates the
+ * GAS cutover and has no GAS counterpart.
+ */
+export async function generateAiStudyReport({ markdown, csv, csvFilename, model } = {}) {
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
+  try {
+    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model });
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }

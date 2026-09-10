@@ -64,7 +64,7 @@ function csvEscape(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function buildCsv(rows = [], header = [], labels = []) {
+export function buildCsv(rows = [], header = [], labels = []) {
   const lines = [];
   if (header.length) {
     const firstRow = Array.isArray(labels) && labels.length === header.length ? labels : header;
@@ -76,7 +76,7 @@ function buildCsv(rows = [], header = [], labels = []) {
   return lines.join("\n");
 }
 
-function normalizeCsvValue(value) {
+export function normalizeCsvValue(value) {
   // null/undefined means genuinely missing/not-applicable data — e.g. a
   // feedN_* column for a feed this particular participant never visited
   // (group-routed studies route each participant to only one of several
@@ -97,7 +97,7 @@ function normalizeCsvValue(value) {
   return String(value);
 }
 
-function safeFileStem(value = "survey") {
+export function safeFileStem(value = "survey") {
   return (
     String(value || "survey")
       .trim()
@@ -109,7 +109,7 @@ function safeFileStem(value = "survey") {
 
 // Local date (not UTC) so a CSV downloaded late at night still gets the
 // filename date the admin actually sees on their own clock.
-function todayStamp() {
+export function todayStamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -127,7 +127,7 @@ function triggerCsvDownload(filename, csv) {
   URL.revokeObjectURL(url);
 }
 
-function triggerTextDownload(filename, text) {
+export function triggerTextDownload(filename, text) {
   const blob = new Blob([text], { type: "text/markdown;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -238,7 +238,7 @@ function safeSection(lines, label, fn) {
   }
 }
 
-function buildStudyContextMarkdown({ survey, dataset, demographics, measures, groupComparison, topStats, attentionSummary, feedPostsByFeedId, responseCsv }) {
+export function buildStudyContextMarkdown({ survey, dataset, demographics, measures, groupComparison, topStats, attentionSummary, feedPostsByFeedId, responseCsv }) {
   const lines = [];
   const groups = Array.isArray(survey?.experiment_groups) ? survey.experiment_groups : [];
   const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
