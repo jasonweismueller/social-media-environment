@@ -219,6 +219,25 @@ function describePostForExport(p) {
   return `  - **${p.id}** (${kind})${author ? `, author: ${author}` : ""}: "${truncated}"`;
 }
 
+// Runs one section-builder in isolation so a bad/unexpected shape in one
+// part of the study's data (e.g. a legacy question, an odd composite) can't
+// take down the whole export — before this, any single throw anywhere in
+// this function surfaced as one opaque "Failed to export study context."
+// toast with no indication of which section or why. Now the rest of the
+// document still generates, the failing section is called out inline (with
+// the real error visible in the console for follow-up), and the export
+// itself only fails outright for something outside any one section (e.g.
+// the initial header lines below).
+function safeSection(lines, label, fn) {
+  try {
+    fn();
+  } catch (e) {
+    console.error(`Study context export: "${label}" section failed`, e);
+    lines.push(`_[${label}: could not be generated — ${e?.message || e}]_`);
+    lines.push("");
+  }
+}
+
 function buildStudyContextMarkdown({ survey, dataset, demographics, measures, groupComparison, topStats, attentionSummary, feedPostsByFeedId, responseCsv }) {
   const lines = [];
   const groups = Array.isArray(survey?.experiment_groups) ? survey.experiment_groups : [];
@@ -231,124 +250,153 @@ function buildStudyContextMarkdown({ survey, dataset, demographics, measures, gr
   if (survey?.description) lines.push(`Study description: ${stripHtmlForExport(survey.description)}`);
   lines.push("");
 
-  lines.push("## Experiment groups");
-  if (!groups.length) {
-    lines.push("No experiment groups configured — single-arm study, no between-group manipulation.");
-  } else {
-    groups.forEach((g) => {
-      const seq = g.feed_sequence_ids?.length ? ` — feed sequence override: ${g.feed_sequence_ids.join(" → ")}` : "";
-      lines.push(`- **${g.name}** (id: ${g.id})${seq}`);
-    });
-  }
-  lines.push("");
+  safeSection(lines, "Experiment groups", () => {
+    lines.push("## Experiment groups");
+    if (!groups.length) {
+      lines.push("No experiment groups configured — single-arm study, no between-group manipulation.");
+    } else {
+      groups.forEach((g) => {
+        const seq = g.feed_sequence_ids?.length ? ` — feed sequence override: ${g.feed_sequence_ids.join(" → ")}` : "";
+        lines.push(`- **${g.name}** (id: ${g.id})${seq}`);
+      });
+    }
+    lines.push("");
+  });
 
-  lines.push("## Survey structure (pages & questions)");
-  const pageById = new Map((survey?.pages || []).map((p) => [p.id, p]));
-  const blocks =
-    Array.isArray(survey?.page_blocks) && survey.page_blocks.length
-      ? survey.page_blocks
-      : [{ id: "_default", title: "All pages", page_ids: (survey?.pages || []).map((p) => p.id), visible_to_group_ids: [] }];
-  blocks.forEach((block) => {
-    const blockVis = block.visible_to_group_ids?.length
-      ? ` [shown only to: ${block.visible_to_group_ids.map((id) => groupNameById.get(id) || id).join(", ")}]`
-      : "";
-    lines.push(`### Block: ${block.title}${blockVis}`);
-    (block.page_ids || []).forEach((pid) => {
-      const page = pageById.get(pid);
-      if (!page) return;
-      if (page.title) lines.push(`#### Page: ${page.title}`);
-      (page.questions || []).forEach((q) => {
-        const desc = describeQuestionForExport(q, groupNameById);
-        if (desc) lines.push(desc);
+  safeSection(lines, "Survey structure (pages & questions)", () => {
+    lines.push("## Survey structure (pages & questions)");
+    const pageById = new Map((survey?.pages || []).map((p) => [p.id, p]));
+    const blocks =
+      Array.isArray(survey?.page_blocks) && survey.page_blocks.length
+        ? survey.page_blocks
+        : [{ id: "_default", title: "All pages", page_ids: (survey?.pages || []).map((p) => p.id), visible_to_group_ids: [] }];
+    blocks.forEach((block) => {
+      const blockVis = block.visible_to_group_ids?.length
+        ? ` [shown only to: ${block.visible_to_group_ids.map((id) => groupNameById.get(id) || id).join(", ")}]`
+        : "";
+      lines.push(`### Block: ${block.title}${blockVis}`);
+      (block.page_ids || []).forEach((pid) => {
+        const page = pageById.get(pid);
+        if (!page) return;
+        if (page.title) lines.push(`#### Page: ${page.title}`);
+        (page.questions || []).forEach((q) => {
+          let desc = null;
+          try {
+            desc = describeQuestionForExport(q, groupNameById);
+          } catch (e) {
+            console.error(`Study context export: question "${q?.id}" failed to describe`, e);
+            desc = `- **${q?.id || "?"}**: _(could not be described — ${e?.message || e})_`;
+          }
+          if (desc) lines.push(desc);
+        });
       });
     });
+    lines.push("");
   });
-  lines.push("");
 
-  lines.push("## What participants were exposed to (linked feed content)");
-  const feedIds = Object.keys(feedPostsByFeedId || {});
-  if (!feedIds.length) {
-    lines.push("No linked feed content (survey-only delivery, or no posts could be loaded).");
-  } else {
-    feedIds.forEach((fid) => {
-      const posts = feedPostsByFeedId[fid] || [];
-      lines.push(`### Feed: ${fid} (${posts.length} posts)`);
-      posts.forEach((p) => lines.push(describePostForExport(p)));
-    });
-  }
-  lines.push("");
+  safeSection(lines, "Linked feed content", () => {
+    lines.push("## What participants were exposed to (linked feed content)");
+    const feedIds = Object.keys(feedPostsByFeedId || {});
+    if (!feedIds.length) {
+      lines.push("No linked feed content (survey-only delivery, or no posts could be loaded).");
+    } else {
+      feedIds.forEach((fid) => {
+        const posts = feedPostsByFeedId[fid] || [];
+        lines.push(`### Feed: ${fid} (${posts.length} posts)`);
+        posts.forEach((p) => {
+          try {
+            lines.push(describePostForExport(p));
+          } catch (e) {
+            console.error(`Study context export: post "${p?.id}" failed to describe`, e);
+            lines.push(`  - **${p?.id || "?"}**: _(could not be described — ${e?.message || e})_`);
+          }
+        });
+      });
+    }
+    lines.push("");
+  });
 
-  lines.push("## Collected data summary");
-  lines.push(`- Total responses: ${topStats?.total ?? 0}`);
-  lines.push(`- Unique participants: ${topStats?.uniqueParticipants ?? 0}`);
-  if (topStats?.first) lines.push(`- Collection window: ${topStats.first.slice(0, 10)} to ${(topStats.last || topStats.first).slice(0, 10)}`);
-  if (groupComparison?.groups?.length) {
-    lines.push(`- Per-group N: ${groupComparison.groups.map((g) => `${g.name}=${g.n}`).join(", ")}`);
-  }
-  if (attentionSummary) {
-    lines.push(`- Attention checks: average ${attentionSummary.avgPassed.toFixed(1)}/${attentionSummary.total} passed across ${attentionSummary.n} responses`);
-  }
-  lines.push("");
+  safeSection(lines, "Collected data summary", () => {
+    lines.push("## Collected data summary");
+    lines.push(`- Total responses: ${topStats?.total ?? 0}`);
+    lines.push(`- Unique participants: ${topStats?.uniqueParticipants ?? 0}`);
+    if (topStats?.first) lines.push(`- Collection window: ${topStats.first.slice(0, 10)} to ${(topStats.last || topStats.first).slice(0, 10)}`);
+    if (groupComparison?.groups?.length) {
+      lines.push(`- Per-group N: ${groupComparison.groups.map((g) => `${g.name}=${g.n}`).join(", ")}`);
+    }
+    if (attentionSummary) {
+      lines.push(`- Attention checks: average ${attentionSummary.avgPassed.toFixed(1)}/${attentionSummary.total} passed across ${attentionSummary.n} responses`);
+    }
+    lines.push("");
+  });
 
   if (demographics?.length) {
-    lines.push("### Demographics");
-    demographics.forEach(({ item, summary }) => {
-      if (summary.kind === "numeric") {
-        lines.push(`- ${item.itemLabel}: mean ${summary.mean?.toFixed(1)} (SD ${summary.sd?.toFixed(1)}), n=${summary.nAnswered}`);
-      } else if (summary.kind === "categorical" || summary.kind === "multi") {
-        const top = (summary.options || []).slice(0, 6).map((o) => `${o.label} (${Math.round(o.pct * 100)}%)`).join(", ");
-        lines.push(`- ${item.itemLabel}: ${top}`);
-      } else {
-        lines.push(`- ${item.itemLabel}: free text, ${summary.nAnswered} answered`);
-      }
+    safeSection(lines, "Demographics", () => {
+      lines.push("### Demographics");
+      demographics.forEach(({ item, summary }) => {
+        if (summary.kind === "numeric") {
+          lines.push(`- ${item.itemLabel}: mean ${summary.mean?.toFixed(1)} (SD ${summary.sd?.toFixed(1)}), n=${summary.nAnswered}`);
+        } else if (summary.kind === "categorical" || summary.kind === "multi") {
+          const top = (summary.options || []).slice(0, 6).map((o) => `${o.label} (${Math.round(o.pct * 100)}%)`).join(", ");
+          lines.push(`- ${item.itemLabel}: ${top}`);
+        } else {
+          lines.push(`- ${item.itemLabel}: free text, ${summary.nAnswered} answered`);
+        }
+      });
+      lines.push("");
     });
-    lines.push("");
   }
 
   if (measures && (measures.composites?.length || measures.standaloneNumeric?.length)) {
-    lines.push("### Measures (composite scales)");
-    (measures.composites || []).forEach(({ composite, summary }) => {
-      lines.push(
-        `- **${composite.label}** (${composite.items?.length ?? summary.nItems} items): mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), Cronbach's α = ${
-          summary.reliability != null ? summary.reliability.toFixed(2) : "n/a"
-        }, n=${summary.nAnswered}`
-      );
+    safeSection(lines, "Measures", () => {
+      lines.push("### Measures (composite scales)");
+      (measures.composites || []).forEach(({ composite, summary }) => {
+        lines.push(
+          `- **${composite.label}** (${composite.items?.length ?? summary.nItems} items): mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), Cronbach's α = ${
+            summary.reliability != null ? summary.reliability.toFixed(2) : "n/a"
+          }, n=${summary.nAnswered}`
+        );
+      });
+      (measures.standaloneNumeric || []).forEach(({ item, summary }) => {
+        lines.push(`- ${item.itemLabel}: mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), n=${summary.nAnswered}`);
+      });
+      lines.push("");
     });
-    (measures.standaloneNumeric || []).forEach(({ item, summary }) => {
-      lines.push(`- ${item.itemLabel}: mean ${summary.mean?.toFixed(2)} (SD ${summary.sd?.toFixed(2)}), n=${summary.nAnswered}`);
-    });
-    lines.push("");
   }
 
   if (groupComparison) {
-    lines.push("### Group comparison results");
-    (groupComparison.numericComparisons || []).forEach((c) => {
-      const groupsStr = c.perGroup.map((g) => `${g.groupName}: mean ${g.mean?.toFixed(2)} (SD ${g.sd?.toFixed(2)}, n=${g.n})`).join("; ");
-      const t = c.test;
-      const testStr =
-        t?.type === "welch_t"
-          ? `Welch's t(${t.df?.toFixed(1)}) = ${t.t?.toFixed(2)}, ${formatPValue(t.p)}`
-          : t?.type === "anova"
-          ? `F(${t.dfBetween},${t.dfWithin}) = ${t.F?.toFixed(2)}, ${formatPValue(t.p)}`
-          : "not testable (insufficient data)";
-      lines.push(`- **${c.label}** — ${groupsStr} — ${testStr}`);
+    safeSection(lines, "Group comparison results", () => {
+      lines.push("### Group comparison results");
+      (groupComparison.numericComparisons || []).forEach((c) => {
+        const groupsStr = c.perGroup.map((g) => `${g.groupName}: mean ${g.mean?.toFixed(2)} (SD ${g.sd?.toFixed(2)}, n=${g.n})`).join("; ");
+        const t = c.test;
+        const testStr =
+          t?.type === "welch_t"
+            ? `Welch's t(${t.df?.toFixed(1)}) = ${t.t?.toFixed(2)}, ${formatPValue(t.p)}`
+            : t?.type === "anova"
+            ? `F(${t.dfBetween},${t.dfWithin}) = ${t.F?.toFixed(2)}, ${formatPValue(t.p)}`
+            : "not testable (insufficient data)";
+        lines.push(`- **${c.label}** — ${groupsStr} — ${testStr}`);
+      });
+      (groupComparison.categoricalComparisons || []).forEach((c) => {
+        const t = c.test;
+        const testStr = t ? `chi-square(${t.df}) = ${t.chisq?.toFixed(2)}, ${formatPValue(t.p)}` : "not testable (insufficient data)";
+        lines.push(`- **${c.label}** (categorical) — ${testStr}`);
+      });
+      lines.push("");
     });
-    (groupComparison.categoricalComparisons || []).forEach((c) => {
-      const t = c.test;
-      const testStr = t ? `chi-square(${t.df}) = ${t.chisq?.toFixed(2)}, ${formatPValue(t.p)}` : "not testable (insufficient data)";
-      lines.push(`- **${c.label}** (categorical) — ${testStr}`);
-    });
-    lines.push("");
   }
 
   if (responseCsv) {
-    lines.push("## Raw response data (one row per participant)");
-    lines.push("No identifying information is collected by this app — session/participant ids are opaque study identifiers, not personal data.");
-    lines.push("");
-    lines.push("```csv");
-    lines.push(responseCsv);
-    lines.push("```");
-    lines.push("");
+    safeSection(lines, "Raw response data", () => {
+      lines.push("## Raw response data (one row per participant)");
+      lines.push("No identifying information is collected by this app — session/participant ids are opaque study identifiers, not personal data.");
+      lines.push("");
+      lines.push("```csv");
+      lines.push(responseCsv);
+      lines.push("```");
+      lines.push("");
+    });
   }
 
   lines.push("---");
@@ -2494,15 +2542,22 @@ export function SurveyParticipantsPage({
         }
       }
 
-      const attentionItems = getSurveyAttentionCheckItems(survey);
       let attentionSummary = null;
-      if (attentionItems.length && dataset?.rows?.length) {
-        const counts = dataset.rows.map((r) => countAttentionChecksPassed(attentionItems, r.responses));
-        attentionSummary = {
-          total: attentionItems.length,
-          avgPassed: counts.reduce((a, b) => a + b, 0) / counts.length,
-          n: dataset.rows.length,
-        };
+      try {
+        const attentionItems = getSurveyAttentionCheckItems(survey);
+        if (attentionItems.length && dataset?.rows?.length) {
+          const counts = dataset.rows.map((r) => countAttentionChecksPassed(attentionItems, r.responses));
+          attentionSummary = {
+            total: attentionItems.length,
+            avgPassed: counts.reduce((a, b) => a + b, 0) / counts.length,
+            n: dataset.rows.length,
+          };
+        }
+      } catch (e) {
+        // Same reasoning as the response-CSV fetch just below: attention-check
+        // stats are one small piece of the export, not worth failing the
+        // whole thing over if this survey's questions have an unexpected shape.
+        console.error("Study context export: attention-check summary failed", e);
       }
 
       // Per-participant response rows, no identifiable information collected
@@ -2551,7 +2606,12 @@ export function SurveyParticipantsPage({
       triggerTextDownload(filename, markdown);
     } catch (e) {
       console.error("Study context export failed:", e);
-      toast.error("Failed to export study context.");
+      // Surfaces the real error instead of a dead-end generic message — every
+      // section that can plausibly fail on odd survey data is now isolated
+      // above (safeSection), so reaching this catch means something outside
+      // any one section broke (or a section's own isolation itself threw),
+      // which is exactly the case worth showing detail for.
+      toast.error(`Failed to export study context${e?.message ? `: ${e.message}` : "."}`);
     } finally {
       setExportingContext(false);
     }
