@@ -1531,13 +1531,6 @@ export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename
   return data;
 }
 
-// Plain RLS-gated select against ai_report_jobs — the frontend polls this
-// directly rather than round-tripping through the Edge Function again, since
-// the row's own owner (auth.uid() = user_id) is already allowed to read it
-// (ai_report_jobs_select_own, 20260801000032_ai_report_jobs.sql). Returns
-// the row as-is (status: pending/running/done/error) or {ok:false} if the
-// job genuinely can't be found (e.g. a stale localStorage reference to a
-// job id from before this table existed).
 // Real usage history — every finished (done/error) report this account has
 // generated, most recent first. Backs two things on the Analysis Hub page:
 // (1) a visible "Recent reports" table, so real cost/token figures don't
@@ -1559,16 +1552,30 @@ export async function supabaseListAiReportJobHistory({ limit = 20 } = {}) {
   return { ok: true, jobs: Array.isArray(data) ? data : [] };
 }
 
+// Polls one report job's status via the Edge Function's `action: "poll"`
+// (see ai-study-report/index.ts's own "BATCHES-API REWRITE" header comment)
+// rather than a plain PostgREST select — this is what actually asks
+// Anthropic "is this batch done yet?" and finalizes the row once it is, so
+// it has to be a real function call now, not a bare table read. Still a
+// fast, cheap call on every tick: when the job is already done/error, or
+// still mid-submission (no batch id yet), it's just a select; only once a
+// batch id exists does it make one quick status request to Anthropic.
 export async function supabaseGetAiReportJob(jobId) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from("ai_report_jobs")
-    .select("id, status, report_markdown, progress_note, usage, estimated_cost_usd, execution_trace, error, model, created_at")
-    .eq("id", jobId)
-    .maybeSingle();
-  if (error) return { ok: false, err: error.message };
-  if (!data) return { ok: false, err: "report job not found" };
-  return { ok: true, job: data };
+  const { data, error } = await supabase.functions.invoke("ai-study-report", {
+    body: { action: "poll", job_id: jobId },
+  });
+
+  if (error) {
+    let msg = error.message || String(error);
+    try {
+      const body = await error.context?.json?.();
+      if (body?.err) msg = body.err;
+    } catch {}
+    return { ok: false, err: msg };
+  }
+  if (!data?.ok || !data?.job) return { ok: false, err: data?.err || "report job not found" };
+  return { ok: true, job: data.job };
 }
 
 // Read-only spend check — same Edge Function, `check_only: true` short-

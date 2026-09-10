@@ -34,35 +34,46 @@
 // from this sandbox: a live-service API key is a real credential, same "the
 // user runs this themselves" posture as every other secret in this repo.
 //
-// ===== BACKGROUND-JOB REWRITE (2026-09-10) =====
-// Originally ran the whole Anthropic call synchronously inside one HTTP
-// request — real studies with code_execution regularly took well over ~20s
-// to produce a first byte, and Supabase's edge gateway drops a connection
-// with zero response activity after roughly that long (`reason: "EarlyDrop"`
-// in the function's own logs — confirmed live, not guessed: near-zero
-// cpu_time_used on the shutdown event, ruling out a CPU/memory limit).
-// Worse: since the old code only inserted into ai_report_usage *after* a
-// full Anthropic response was received, an EarlyDropped attempt (which had
-// already sent a real, billable request to Anthropic) was invisible to this
-// platform's own $5/$10 monthly safety cap — a real gap, found the hard way
-// after several EarlyDropped retries had already run up real spend on the
-// Anthropic side with the in-app spend tracker still showing $0.
+// ===== BATCHES-API REWRITE (2026-09-11) =====
+// Superseded the 2026-09-10 "background-job" design below, which still had
+// a real ceiling: `action: "generate"` created a job row and returned
+// immediately, but the actual Anthropic call kept running via
+// EdgeRuntime.waitUntil() *inside that same function invocation* — and
+// Supabase's wall-clock limit (150s Free plan, 400s paid — confirmed
+// directly, not guessed, from Supabase's own docs and this project's own
+// plan) governs the invocation as a whole, including any waitUntil()
+// background work. A report that genuinely needed longer than
+// GENERATION_TIMEOUT_MS allowed still failed — cleanly instead of
+// silently, but still failed — with no real workaround short of a paid
+// Supabase plan, and even 400s wasn't a hard guarantee for a large study.
 //
-// Fix: `action: "generate"` (the default) now creates a row in
-// public.ai_report_jobs and returns immediately with {ok:true, job_id} —
-// the actual Anthropic call keeps running via EdgeRuntime.waitUntil() after
-// the response is sent, completely decoupled from whether the browser is
-// still connected. The frontend polls ai_report_jobs directly (RLS-gated
-// plain select, not a second function call) until status is done/error.
-// Cost is recorded from inside the background task the moment Anthropic's
-// response is known, same as before — just no longer gated on the original
-// HTTP connection surviving that long.
+// Real fix, not a bigger band-aid: submit the report to Anthropic's Message
+// Batches API (confirmed directly from Anthropic's own docs that the
+// code_execution tool is supported there) instead of calling /v1/messages
+// directly. `action: "generate"` now does two fast things in the
+// background — upload the CSV, then POST to /v1/messages/batches — and
+// stops there; the actual generation runs entirely on Anthropic's own
+// infrastructure with no Supabase execution ceiling involved at all.
+// `action: "poll"` (new — replaces the old plain-PostgREST-select polling
+// the frontend used to do directly against ai_report_jobs) is what the
+// frontend now calls on every tick instead: a fast "is this batch done
+// yet?" check against Anthropic, well under a second, that only updates
+// the job row when something has actually changed. Real, meaningful
+// tradeoffs from this switch, surfaced to the user before building it:
+// no more live character-by-character report text (batches don't stream —
+// progress is now just "still processing"), and turnaround is less
+// predictable (Anthropic's own guidance: usually well under an hour, no
+// hard upper bound short of the batch's own 24h expiry) — but it can no
+// longer fail purely because Supabase's clock ran out, on any plan, for any
+// study size. Real bonus, not just a tradeoff: Batches pricing is 50% off
+// the regular Messages API for identical work (see BATCH_DISCOUNT below).
 //
-// Dedup guard: if the caller already has a pending/running job for the same
-// survey within the last 15 minutes, that job's id is returned instead of
-// starting a second paid call — specifically to stop repeated "nothing
-// happened, let me click Generate again" clicks (exactly what caused the
-// EarlyDrop-driven overspend above) from silently multiplying cost.
+// Dedup guard widened from 15 minutes to 24 hours (see DEDUP_WINDOW_MS) to
+// match this new reality — a real in-flight batch can now legitimately
+// still be "running" long after the old window would have let a second,
+// duplicate billed batch start on top of it. 24h also matches a batch's own
+// outer expiration bound, so a truly stuck job still self-resolves (as an
+// "expired" error, via the poll path) within the same window.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, handlePreflight, jsonResponse } from "../_shared/cors.ts";
@@ -75,6 +86,7 @@ import { corsHeaders, handlePreflight, jsonResponse } from "../_shared/cors.ts";
 declare const EdgeRuntime: { waitUntil: (p: Promise<unknown>) => void } | undefined;
 
 const ANTHROPIC_VERSION = "2023-06-01";
+const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 const DEFAULT_MODEL = "claude-sonnet-5";
 const ALLOWED_MODELS = new Set(["claude-sonnet-5", "claude-opus-5"]);
 
@@ -83,11 +95,17 @@ const ALLOWED_MODELS = new Set(["claude-sonnet-5", "claude-opus-5"]);
 // in ai_report_usage after a call actually completes (see PRICING's own use
 // below) — the two numbers are deliberately the same table, so a shown
 // estimate and the running monthly total stay internally consistent even
-// though neither is Anthropic's own literal invoiced figure.
+// though neither is Anthropic's own literal invoiced figure. These are
+// standard (non-batch) per-token rates — BATCH_DISCOUNT below is applied on
+// top when computing a real batch job's actual cost.
 const PRICING: Record<string, { input: number; output: number }> = {
   "claude-sonnet-5": { input: 2.0, output: 10.0 },
   "claude-opus-5": { input: 5.0, output: 25.0 },
 };
+
+// The Message Batches API is billed at half the standard per-token rate for
+// identical work — https://platform.claude.com/docs/en/build-with-claude/batch-processing.
+const BATCH_DISCOUNT = 0.5;
 
 // Platform-wide monthly spend guardrails for this feature specifically —
 // per direct user request, separate from (and in addition to) whatever
@@ -99,13 +117,26 @@ const PRICING: Record<string, { input: number; output: number }> = {
 const MONTHLY_WARNING_USD = 5;
 const MONTHLY_HARD_LIMIT_USD = 10;
 
-// How long a pending/running job is trusted before being treated as
-// orphaned (e.g. the background task itself threw somewhere that isn't
-// wrapped, or the whole isolate was killed by something other than a normal
-// EarlyDrop — now largely moot since the Anthropic call no longer depends
-// on the client connection, but kept as a safety floor so a truly stuck row
-// can't block that survey's report generation forever).
-const DEDUP_WINDOW_MS = 15 * 60 * 1000;
+// How long a pending/running job is trusted as "still legitimately in
+// flight" before a second Generate click is allowed to start a fresh
+// (billed) batch instead of just resuming the existing one. Widened from
+// 15 minutes (the old streaming design's own window) to 24 hours — a real
+// batch can now take well over 15 minutes and still be completely healthy,
+// and 24 hours matches a batch's own outer expiration bound, so a truly
+// stuck job still self-resolves (as an "expired" error, discovered the next
+// time it's polled) within the same window rather than blocking forever.
+const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Generous timeouts for the two kinds of Anthropic calls this function
+// itself still makes synchronously (never the report generation itself,
+// which now happens entirely on Anthropic's side, outside any of this):
+// submitting a batch (upload + create — both plain, fast POSTs, even for a
+// several-MB CSV) and checking/finalizing one (a status GET, or — once
+// ended — fetching a results file that's realistically at most a few
+// hundred KB of report text plus a short code transcript). Both are
+// comfortably under Supabase's wall-clock limit on either plan tier.
+const SUBMIT_TIMEOUT_MS = 60 * 1000;
+const POLL_CHECK_TIMEOUT_MS = 45 * 1000;
 
 function startOfCurrentMonthIso(): string {
   const now = new Date();
@@ -126,6 +157,43 @@ async function getMonthlySpendUsd(admin: any): Promise<number> {
   return (data || []).reduce((sum: number, row: any) => sum + Number(row.estimated_cost_usd || 0), 0);
 }
 
+// Thin wrapper around fetch() with a real timeout and a clearer error than
+// a bare AbortError when one fires — every Anthropic call in this file goes
+// through this, never a bare fetch(), so nothing can hang indefinitely.
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number, label: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if ((e as any)?.name === "AbortError") {
+      throw new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function anthropicHeaders(apiKey: string, extra: Record<string, string> = {}): Record<string, string> {
+  return { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION, ...extra };
+}
+
+async function deleteAnthropicFile(apiKey: string, fileId: string): Promise<void> {
+  try {
+    await fetchWithTimeout(
+      `${ANTHROPIC_API_BASE}/v1/files/${fileId}`,
+      { method: "DELETE", headers: anthropicHeaders(apiKey) },
+      SUBMIT_TIMEOUT_MS,
+      "Deleting uploaded file"
+    );
+  } catch (e) {
+    // Best-effort cleanup — don't let response data sit in Anthropic's
+    // Files storage indefinitely, but don't fail a whole job over it either.
+    console.error("deleteAnthropicFile failed:", e);
+  }
+}
+
 const SYSTEM_PROMPT = `You are a careful, conservative research-methods assistant helping a
 behavioral-science researcher get a first-pass, honest read on their study's
 data. You have a code_execution tool with Python (pandas, numpy, scipy
@@ -135,16 +203,17 @@ attached to this conversation, read it in code before writing anything
 about it, and recompute every measure/comparison described in the context
 directly from it rather than trusting the aggregate numbers already given.
 
-You are running under a hard time limit. Work efficiently: load the data
-and compute EVERY statistic you'll need (means, SDs, tests, effect sizes,
-reliability, etc.) in as few code_execution calls as possible — ideally
-one or two, computing many things in the same script rather than one thing
-per call. Do not re-run the same or similar computation multiple times to
-double-check it, and do not iteratively explore the data out of curiosity.
-As soon as you have the numbers you need, stop running code and write the
-report. If you notice you are many steps in and have not started writing
-the report yet, stop investigating and write it now with whatever you have
-already computed, noting any gaps briefly rather than continuing to explore.
+You are billed per token and per code_execution turn, so work efficiently:
+load the data and compute EVERY statistic you'll need (means, SDs, tests,
+effect sizes, reliability, etc.) in as few code_execution calls as possible
+— ideally one or two, computing many things in the same script rather than
+one thing per call. Do not re-run the same or similar computation multiple
+times to double-check it, and do not iteratively explore the data out of
+curiosity. As soon as you have the numbers you need, stop running code and
+write the report. If you notice you are many steps in and have not started
+writing the report yet, stop investigating and write it now with whatever
+you have already computed, noting any gaps briefly rather than continuing
+to explore.
 
 Write a plain-Markdown report with these sections, in this order:
 1. Study overview — one paragraph restating the design in your own words,
@@ -174,111 +243,51 @@ function buildPrompt(markdown: string, hasCsv: boolean, csvFilename: string): st
   return `${header}\n\n${markdown}${csvNote}`;
 }
 
-// The actual Anthropic call — upload, generate, record cost, update the job
-// row. Runs via EdgeRuntime.waitUntil() *after* the HTTP response has
-// already been sent, so nothing about the caller's connection can affect
-// it. Every exit path (success, Anthropic error, no-text response) updates
-// the job row exactly once so the frontend's poll always eventually
-// resolves to 'done' or 'error' — never left permanently 'running'.
-//
-// CONFIRMED, not guessed (2026-09-10): Supabase's wall-clock limit for a
-// function invocation — including any EdgeRuntime.waitUntil() background
-// work, which does NOT extend it — is 150s on the Free plan, 400s on paid
-// plans (https://supabase.com/docs/guides/functions/limits). This project
-// is on the Free plan, confirmed directly by the user. That limit is a hard
-// kill: nothing in this file's own try/catch/finally gets a chance to run
-// once it fires, which is exactly what happened twice already — a report
-// that was still genuinely generating past that point lost everything
-// except whatever flushProgress had already saved up to a few seconds
-// before the kill.
-//
-// Set comfortably UNDER 150s so *our own* graceful shutdown (save whatever
-// was generated, write a clean 'error', let the frontend show it as a real
-// partial report) reliably wins the race against Supabase's kill, instead
-// of leaving it to chance which one fires first. This does not raise the
-// real ceiling — a report that genuinely needs longer than this to finish
-// will still fail, just cleanly instead of silently. The two actual levers
-// for that are the SYSTEM_PROMPT's efficiency instructions above (fewer,
-// more purposeful code_execution calls) and upgrading the Supabase project
-// to a paid plan (400s) if reports keep needing more time than this allows.
-const GENERATION_TIMEOUT_MS = 120 * 1000;
+function buildBatchParams(markdown: string, hasCsv: boolean, csvFilename: string, fileId: string | null, model: string) {
+  const userContent: any[] = [{ type: "text", text: buildPrompt(markdown, hasCsv, csvFilename) }];
+  if (fileId) userContent.push({ type: "container_upload", file_id: fileId });
+  return {
+    model,
+    max_tokens: 16000,
+    output_config: { effort: "medium" },
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userContent }],
+    tools: [{ type: "code_execution_20260521", name: "code_execution" }],
+    // Deliberately no `stream` field — the Message Batches API only ever
+    // returns a complete, non-streamed message per request.
+  };
+}
 
-// How often accumulated progress (partial report text + a short "what's
-// happening" note) gets written to ai_report_jobs while streaming — frequent
-// enough to be a real heartbeat and to bound how much could ever be lost if
-// something does still kill the isolate mid-stream, without hammering the
-// database on every single small text delta Anthropic sends.
-const PROGRESS_FLUSH_INTERVAL_MS = 2500;
-
-async function runReportGeneration(opts: {
+// Step 1 of 2: upload the CSV (if any) and submit the batch. Runs via
+// EdgeRuntime.waitUntil() *after* the HTTP response has already been sent,
+// so nothing about the caller's connection can affect it — but unlike the
+// old design, this itself does almost no waiting: both Anthropic calls here
+// are plain, fast requests, not the report generation itself. Once the
+// batch id is known, this writes it to the job row and returns; the actual
+// generation is checked/finalized later, from a separate `action: "poll"`
+// call (see checkAndAdvanceBatchJob below), not from here.
+async function submitReportBatch(opts: {
   admin: any;
   apiKey: string;
   jobId: string;
-  userId: string;
   markdown: string;
   csv: string;
   csvFilename: string;
   model: string;
 }): Promise<void> {
-  const { admin, apiKey, jobId, userId, markdown, csv, csvFilename, model } = opts;
+  const { admin, apiKey, jobId, markdown, csv, csvFilename, model } = opts;
   let fileId: string | null = null;
-  const controller = new AbortController();
-  // Plain string (not a literal union) so TypeScript's control-flow
-  // narrowing — which can't see into the setTimeout closure below that
-  // assigns "timeout" — doesn't incorrectly drop it from the type by the
-  // time the catch block below reads this.
-  let abortReason: string | null = null;
-  const timeoutHandle = setTimeout(() => {
-    abortReason = "timeout";
-    controller.abort();
-  }, GENERATION_TIMEOUT_MS);
-
-  // Accumulated across the whole stream — this is what makes a killed/timed
-  // -out run recoverable instead of a total loss: whatever's in here at any
-  // moment is also what's already been saved to the database (see
-  // flushProgress below), so even a hard failure below still has this.
-  let accumulatedText = "";
-  const steps: { index: number; type: string }[] = [];
-  let finalUsage: any = null;
-  let finalStopReason: string | null = null;
-  let sawMessageStop = false;
-  let lastFlushAt = 0;
-  let stepCount = 0;
-  // Deterministic backstop for the SYSTEM_PROMPT's efficiency instructions —
-  // confirmed live (2026-09-10) that the model can reach 32+ tool-use steps
-  // with zero report text written, well past what the 150s Free-plan limit
-  // allows for. Prompt instructions are a request, not a guarantee; this is
-  // enforced in code regardless of whether the model follows them.
-  const MAX_STEPS_WITHOUT_TEXT = 16;
-
-  const flushProgress = async (note: string, force = false) => {
-    const now = Date.now();
-    if (!force && now - lastFlushAt < PROGRESS_FLUSH_INTERVAL_MS) return;
-    lastFlushAt = now;
-    try {
-      await admin
-        .from("ai_report_jobs")
-        .update({ report_markdown: accumulatedText || null, progress_note: note })
-        .eq("id", jobId);
-    } catch (e) {
-      // Non-fatal — a missed heartbeat isn't worth failing the whole
-      // generation over; the next successful flush (or the final write)
-      // catches up.
-      console.error("progress flush failed:", e);
-    }
-  };
-
+  let batchSubmitted = false;
   try {
     if (csv && csv.length > 0) {
-      await flushProgress("Uploading response data…", true);
       const form = new FormData();
       form.append("file", new Blob([csv], { type: "text/csv" }), csvFilename);
-      const uploadRes = await fetch("https://api.anthropic.com/v1/files", {
-        method: "POST",
-        headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
-        body: form,
-        signal: controller.signal,
-      });
+      const uploadRes = await fetchWithTimeout(
+        `${ANTHROPIC_API_BASE}/v1/files`,
+        { method: "POST", headers: anthropicHeaders(apiKey), body: form },
+        SUBMIT_TIMEOUT_MS,
+        "Uploading response CSV"
+      );
       if (!uploadRes.ok) {
         const errText = await uploadRes.text();
         throw new Error(`Anthropic file upload failed (${uploadRes.status}): ${errText.slice(0, 500)}`);
@@ -287,192 +296,213 @@ async function runReportGeneration(opts: {
       fileId = uploaded?.id || null;
     }
 
-    const userContent: any[] = [{ type: "text", text: buildPrompt(markdown, !!fileId, csvFilename) }];
-    if (fileId) {
-      userContent.push({ type: "container_upload", file_id: fileId });
-    }
-
-    await flushProgress("Starting…", true);
-
-    const msgRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": ANTHROPIC_VERSION,
+    const batchRes = await fetchWithTimeout(
+      `${ANTHROPIC_API_BASE}/v1/messages/batches`,
+      {
+        method: "POST",
+        headers: anthropicHeaders(apiKey, { "content-type": "application/json" }),
+        body: JSON.stringify({
+          requests: [{ custom_id: "report", params: buildBatchParams(markdown, !!fileId, csvFilename, fileId, model) }],
+        }),
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: 16000,
-        output_config: { effort: "medium" },
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userContent }],
-        tools: [{ type: "code_execution_20260521", name: "code_execution" }],
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!msgRes.ok || !msgRes.body) {
-      const errText = await msgRes.text().catch(() => "");
-      throw new Error(`Anthropic API error (${msgRes.status}): ${errText.slice(0, 800)}`);
+      SUBMIT_TIMEOUT_MS,
+      "Submitting report batch"
+    );
+    if (!batchRes.ok) {
+      const errText = await batchRes.text().catch(() => "");
+      throw new Error(`Anthropic batch submission failed (${batchRes.status}): ${errText.slice(0, 800)}`);
     }
-
-    // Plain SSE parser — Anthropic's streaming format is `data: <json>\n\n`
-    // per event, and each JSON payload carries its own `type` matching the
-    // event name, so the `event:` line itself never needs parsing. Buffers
-    // across chunk boundaries since a `\n\n` separator can land mid-chunk.
-    const reader = msgRes.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sepIdx: number;
-      while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
-        const rawEvent = buffer.slice(0, sepIdx);
-        buffer = buffer.slice(sepIdx + 2);
-        const dataLine = rawEvent.split("\n").find((l) => l.startsWith("data:"));
-        if (!dataLine) continue;
-        const jsonStr = dataLine.slice(5).trim();
-        if (!jsonStr) continue;
-        let evt: any;
-        try {
-          evt = JSON.parse(jsonStr);
-        } catch {
-          continue;
-        }
-
-        switch (evt?.type) {
-          case "message_start":
-            finalUsage = evt.message?.usage || null;
-            break;
-          case "content_block_start": {
-            stepCount++;
-            const blockType = evt.content_block?.type || "content";
-            steps.push({ index: stepCount, type: blockType });
-            const note =
-              blockType === "text"
-                ? `Step ${stepCount}: writing the report`
-                : blockType.includes("code")
-                ? `Step ${stepCount}: running code against your data`
-                : `Step ${stepCount}: ${blockType}`;
-            await flushProgress(note);
-            if (stepCount >= MAX_STEPS_WITHOUT_TEXT && !accumulatedText.trim()) {
-              abortReason = "too_many_steps";
-              controller.abort();
-            }
-            break;
-          }
-          case "content_block_delta":
-            if (evt.delta?.type === "text_delta" && typeof evt.delta.text === "string") {
-              accumulatedText += evt.delta.text;
-              await flushProgress(`Step ${stepCount}: writing the report (${accumulatedText.length.toLocaleString()} characters so far)`);
-            }
-            break;
-          case "message_delta":
-            if (evt.usage) finalUsage = { ...(finalUsage || {}), ...evt.usage };
-            if (evt.delta?.stop_reason) finalStopReason = evt.delta.stop_reason;
-            break;
-          case "message_stop":
-            sawMessageStop = true;
-            break;
-          default:
-            break;
-        }
-      }
-    }
-
-    clearTimeout(timeoutHandle);
-
-    const usage = finalUsage || {};
-    const price = PRICING[model] || PRICING[DEFAULT_MODEL];
-    const inputTok = Number(usage.input_tokens || 0) + Number(usage.cache_creation_input_tokens || 0);
-    const cacheReadTok = Number(usage.cache_read_input_tokens || 0);
-    const outputTok = Number(usage.output_tokens || 0);
-    const estimatedCostUsd = (inputTok * price.input) / 1e6 + (cacheReadTok * price.input * 0.1) / 1e6 + (outputTok * price.output) / 1e6;
-
-    // Record real spend as soon as it's known — this now runs the moment
-    // the stream actually ends, regardless of whether the original HTTP
-    // caller is still connected (the whole point of this rewrite).
-    try {
-      const { error: insertErr } = await admin
-        .from("ai_report_usage")
-        .insert({ user_id: userId, model, estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)) });
-      if (insertErr) console.error("ai_report_usage insert failed:", insertErr.message);
-    } catch (e) {
-      console.error("ai_report_usage insert threw:", e);
-    }
-
-    if (!accumulatedText.trim()) {
-      await admin
-        .from("ai_report_jobs")
-        .update({
-          status: "error",
-          error: `Anthropic returned no report text (stop_reason: ${finalStopReason || "unknown"}${
-            sawMessageStop ? "" : ", stream ended before message_stop"
-          }).`,
-          usage,
-          estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
-          progress_note: null,
-        })
-        .eq("id", jobId);
-      return;
-    }
+    const batch = await batchRes.json();
+    const batchId = batch?.id;
+    if (!batchId) throw new Error("Anthropic did not return a batch id.");
+    batchSubmitted = true;
 
     await admin
       .from("ai_report_jobs")
       .update({
-        status: "done",
-        report_markdown: accumulatedText,
-        usage,
-        estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
-        execution_trace: steps,
-        progress_note: null,
+        status: "running",
+        anthropic_batch_id: batchId,
+        anthropic_file_id: fileId,
+        progress_note:
+          "Submitted to Anthropic — generating on their own infrastructure now. Usually finishes within a few minutes; can occasionally take longer for a large study. Safe to close this page; it'll be here when you come back.",
       })
       .eq("id", jobId);
   } catch (e) {
-    clearTimeout(timeoutHandle);
-    const message =
-      abortReason === "timeout"
-        ? `Timed out after ${Math.round(GENERATION_TIMEOUT_MS / 1000)}s while still generating — whatever was written up to that point is saved below. This survey's report may need more time than the current plan allows; consider a smaller response sample or upgrading the Supabase plan.`
-        : abortReason === "too_many_steps"
-        ? `Stopped after ${MAX_STEPS_WITHOUT_TEXT} exploratory steps without the model starting to write the report — likely running longer than useful for this dataset. Try again, or simplify the survey/measures being analyzed.`
-        : String((e as Error)?.message || e);
+    const message = String((e as Error)?.message || e);
     try {
-      await admin
-        .from("ai_report_jobs")
-        // Deliberately keeps report_markdown as whatever was already
-        // accumulated (not cleared to null) — a timed-out or interrupted
-        // run should still leave a real, usable partial report behind
-        // instead of losing everything, same as a successful flush would
-        // have already saved moments earlier.
-        .update({ status: "error", error: message, progress_note: null })
-        .eq("id", jobId);
+      await admin.from("ai_report_jobs").update({ status: "error", error: message, progress_note: null }).eq("id", jobId);
     } catch (updateErr) {
-      // If even the error-update fails, the job stays 'running' forever and
-      // the frontend's own poll timeout is the last line of defense — log
-      // loudly so this shows up in function logs at least. Extremely
-      // unlikely now compared to before this rewrite, since every prior
-      // flushProgress call already independently persisted the partial
-      // text, so even this worst case doesn't lose the report content.
-      console.error("ai_report_jobs error-update failed:", updateErr);
+      console.error("ai_report_jobs error-update failed (submit step):", updateErr);
     }
-  } finally {
-    // Best-effort cleanup — don't let response data sit in Anthropic's
-    // Files storage any longer than this one job needed it for.
-    if (fileId) {
-      try {
-        await fetch(`https://api.anthropic.com/v1/files/${fileId}`, {
-          method: "DELETE",
-          headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
-        });
-      } catch {
-        // Non-fatal.
+    if (fileId && !batchSubmitted) {
+      await deleteAnthropicFile(apiKey, fileId);
+    }
+  }
+}
+
+function describeBatchProgress(createdAt: string): string {
+  const elapsedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
+  const elapsedMin = Math.round(elapsedMs / 60000);
+  const elapsedLabel = elapsedMin < 1 ? "under a minute" : `${elapsedMin} minute${elapsedMin === 1 ? "" : "s"}`;
+  return `Still generating on Anthropic's own infrastructure (usually a few minutes, occasionally longer for a large study) — ${elapsedLabel} so far.`;
+}
+
+// Turns one finished batch result (a single line of the batch's results
+// JSONL — this batch only ever has the one "report" request in it) into a
+// finished job row: the real report text, real usage/cost (at the Batches
+// API's 50%-off rate), and a richer execution trace than the old streaming
+// design could show live, since the whole final message is available at
+// once here rather than being reconstructed incrementally from SSE events.
+async function finalizeBatchResult(admin: any, apiKey: string, job: any, resultObj: any): Promise<any> {
+  const cleanup = async () => {
+    if (job.anthropic_file_id) await deleteAnthropicFile(apiKey, job.anthropic_file_id);
+  };
+
+  const result = resultObj?.result;
+  const resultType = result?.type;
+
+  if (resultType !== "succeeded") {
+    await cleanup();
+    const errMsg =
+      resultType === "errored"
+        ? `Anthropic returned an error for this batch request: ${result?.error?.message || result?.error?.type || "unknown error"}`
+        : resultType === "canceled"
+        ? "This report's batch request was canceled."
+        : resultType === "expired"
+        ? "This report's batch request expired before it could complete (batch requests expire after 24 hours)."
+        : `Unexpected batch result type: ${resultType || "unknown"}`;
+    const update = { status: "error", error: errMsg, progress_note: null };
+    await admin.from("ai_report_jobs").update(update).eq("id", job.id);
+    return { ...job, ...update };
+  }
+
+  const message = result.message;
+  const contentBlocks: any[] = Array.isArray(message?.content) ? message.content : [];
+  const reportText = contentBlocks
+    .filter((b) => b?.type === "text")
+    .map((b) => b.text || "")
+    .join("\n\n")
+    .trim();
+  // Richer than the old streaming design's {index, type} — the whole final
+  // message is available in one shot here, so the existing "View the code
+  // Claude ran" panel can show the actual code/output, not just block
+  // labels. Truncated per-block so a large printed dataframe can't bloat
+  // this jsonb column unreasonably.
+  const steps = contentBlocks.map((b, i) => {
+    const base: any = { index: i + 1, type: b?.type || "content" };
+    if (b?.type === "server_tool_use" && typeof b?.input?.code === "string") {
+      base.code = b.input.code.slice(0, 4000);
+    }
+    if (b?.type === "code_execution_tool_result") {
+      const inner = Array.isArray(b?.content) ? b.content : b?.content ? [b.content] : [];
+      const stdout = inner.map((c: any) => c?.stdout).filter((s: any) => typeof s === "string").join("\n").slice(0, 4000);
+      const stderr = inner.map((c: any) => c?.stderr).filter((s: any) => typeof s === "string").join("\n").slice(0, 2000);
+      if (stdout) base.stdout = stdout;
+      if (stderr) base.stderr = stderr;
+    }
+    return base;
+  });
+
+  const usage = message?.usage || {};
+  const price = PRICING[job.model] || PRICING[DEFAULT_MODEL];
+  const inputTok = Number(usage.input_tokens || 0) + Number(usage.cache_creation_input_tokens || 0);
+  const cacheReadTok = Number(usage.cache_read_input_tokens || 0);
+  const outputTok = Number(usage.output_tokens || 0);
+  const estimatedCostUsd =
+    ((inputTok * price.input) / 1e6 + (cacheReadTok * price.input * 0.1) / 1e6 + (outputTok * price.output) / 1e6) * BATCH_DISCOUNT;
+
+  await cleanup();
+
+  if (!reportText) {
+    const update = {
+      status: "error",
+      error: `Anthropic returned no report text (stop_reason: ${message?.stop_reason || "unknown"}).`,
+      usage,
+      estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
+      progress_note: null,
+    };
+    await admin.from("ai_report_jobs").update(update).eq("id", job.id);
+    return { ...job, ...update };
+  }
+
+  try {
+    const { error: insertErr } = await admin
+      .from("ai_report_usage")
+      .insert({ user_id: job.user_id, model: job.model, estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)) });
+    if (insertErr) console.error("ai_report_usage insert failed:", insertErr.message);
+  } catch (e) {
+    console.error("ai_report_usage insert threw:", e);
+  }
+
+  const update = {
+    status: "done",
+    report_markdown: reportText,
+    usage,
+    estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
+    execution_trace: steps,
+    progress_note: null,
+  };
+  await admin.from("ai_report_jobs").update(update).eq("id", job.id);
+  return { ...job, ...update };
+}
+
+// Step 2 of 2, called on every `action: "poll"` request for a still
+// pending/running job that already has an anthropic_batch_id — a fast
+// status check (well under a second), only doing real work (fetching
+// results + finalizing) once Anthropic reports the batch as "ended". Always
+// resolves to a row shape the caller can return directly; never throws —
+// an Anthropic-side failure here is persisted as a real job error instead
+// of surfacing as a bare 500 with nothing saved.
+async function checkAndAdvanceBatchJob(admin: any, apiKey: string, job: any): Promise<any> {
+  try {
+    const statusRes = await fetchWithTimeout(
+      `${ANTHROPIC_API_BASE}/v1/messages/batches/${job.anthropic_batch_id}`,
+      { headers: anthropicHeaders(apiKey) },
+      POLL_CHECK_TIMEOUT_MS,
+      "Checking batch status"
+    );
+    if (!statusRes.ok) {
+      const errText = await statusRes.text().catch(() => "");
+      throw new Error(`Anthropic batch status check failed (${statusRes.status}): ${errText.slice(0, 500)}`);
+    }
+    const batch = await statusRes.json();
+
+    if (batch?.processing_status !== "ended") {
+      const note = describeBatchProgress(job.created_at);
+      if (note !== job.progress_note) {
+        await admin.from("ai_report_jobs").update({ progress_note: note }).eq("id", job.id);
       }
+      return { ...job, progress_note: note };
     }
+
+    if (!batch?.results_url) {
+      throw new Error("Anthropic marked this batch as ended but returned no results.");
+    }
+    const resultsRes = await fetchWithTimeout(
+      batch.results_url,
+      { headers: anthropicHeaders(apiKey) },
+      POLL_CHECK_TIMEOUT_MS,
+      "Fetching batch results"
+    );
+    if (!resultsRes.ok) {
+      const errText = await resultsRes.text().catch(() => "");
+      throw new Error(`Fetching batch results failed (${resultsRes.status}): ${errText.slice(0, 500)}`);
+    }
+    const resultsText = await resultsRes.text();
+    const line = resultsText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)[0];
+    if (!line) throw new Error("Batch ended with no result lines.");
+    return await finalizeBatchResult(admin, apiKey, job, JSON.parse(line));
+  } catch (e) {
+    const message = String((e as Error)?.message || e);
+    try {
+      await admin.from("ai_report_jobs").update({ status: "error", error: message, progress_note: null }).eq("id", job.id);
+    } catch (updateErr) {
+      console.error("ai_report_jobs error-update failed (poll step):", updateErr);
+    }
+    return { ...job, status: "error", error: message, progress_note: null };
   }
 }
 
@@ -547,6 +577,63 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Poll one job's status — replaces the plain PostgREST select the
+  // frontend used to do directly against ai_report_jobs (see this file's
+  // own "BATCHES-API REWRITE" header comment). Needs to be a real function
+  // call now, not a bare table read, because it's what actually asks
+  // Anthropic "is this batch done yet?" and finalizes the row once it is.
+  if (body?.action === "poll") {
+    const jobId = String(body?.job_id || "").trim();
+    if (!jobId) return jsonResponse({ ok: false, err: "job_id is required" }, { status: 400 });
+
+    const { data: jobRow, error: jobErr } = await admin
+      .from("ai_report_jobs")
+      .select(
+        "id, user_id, model, status, report_markdown, progress_note, usage, estimated_cost_usd, execution_trace, error, anthropic_batch_id, anthropic_file_id, created_at"
+      )
+      .eq("id", jobId)
+      .maybeSingle();
+    if (jobErr) return jsonResponse({ ok: false, err: jobErr.message }, { status: 500 });
+    if (!jobRow) return jsonResponse({ ok: false, err: "report job not found" }, { status: 404 });
+    if (jobRow.user_id !== userData.user.id) {
+      return jsonResponse({ ok: false, err: "not authorized to view this report job" }, { status: 403 });
+    }
+
+    let resultRow = jobRow;
+    if (jobRow.status === "pending" || jobRow.status === "running") {
+      if (!jobRow.anthropic_batch_id) {
+        // Still inside the initial submit step (uploading the CSV / creating
+        // the batch, both quick) — nothing to check on Anthropic's side yet.
+        resultRow = jobRow;
+      } else {
+        const pollApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+        if (!pollApiKey) {
+          return jsonResponse(
+            { ok: false, err: "ANTHROPIC_API_KEY is not configured on this Supabase project." },
+            { status: 500 }
+          );
+        }
+        resultRow = await checkAndAdvanceBatchJob(admin, pollApiKey, jobRow);
+      }
+    }
+
+    return jsonResponse({
+      ok: true,
+      job: {
+        id: resultRow.id,
+        status: resultRow.status,
+        report_markdown: resultRow.report_markdown,
+        progress_note: resultRow.progress_note,
+        usage: resultRow.usage,
+        estimated_cost_usd: resultRow.estimated_cost_usd,
+        execution_trace: resultRow.execution_trace,
+        error: resultRow.error,
+        model: resultRow.model,
+        created_at: resultRow.created_at,
+      },
+    });
+  }
+
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return jsonResponse(
@@ -580,12 +667,12 @@ Deno.serve(async (req: Request) => {
 
   // Hard cap, checked against the total *before* this call is dispatched —
   // not "current total + this call's own eventual cost", since that cost
-  // isn't known until Anthropic actually responds (which now happens well
-  // after this check, in the background). This means one in-flight
-  // background job can still push the running total slightly past $10
-  // (reports typically cost a few cents to around a quarter of a dollar,
-  // so the overshoot is small and bounded), but the *next* generate request
-  // is reliably blocked once the total has crossed it.
+  // isn't known until Anthropic actually finishes the batch (which now
+  // happens well after this check, entirely on Anthropic's side). This
+  // means one in-flight batch can still push the running total slightly
+  // past $10 (reports typically cost a few cents to around a quarter of a
+  // dollar, so the overshoot is small and bounded), but the *next* generate
+  // request is reliably blocked once the total has crossed it.
   let monthlySpendBeforeCall = 0;
   try {
     monthlySpendBeforeCall = await getMonthlySpendUsd(admin);
@@ -608,11 +695,11 @@ Deno.serve(async (req: Request) => {
   }
 
   // Dedup guard — reuse an already in-flight job for this user+survey
-  // instead of starting a second paid Anthropic call. This is specifically
-  // what the old synchronous design lacked: a participant/admin clicking
-  // "Generate" again because the previous attempt *looked* like it failed
-  // (EarlyDrop, no error shown) would silently fire a second real API call
-  // on top of the still-running first one.
+  // instead of starting a second paid batch. Specifically what stops a
+  // repeated "nothing happened, let me click Generate again" click from
+  // silently multiplying cost while a real batch is still legitimately
+  // processing (see DEDUP_WINDOW_MS above for why this is now 24h, not the
+  // old streaming design's 15 minutes).
   try {
     const { data: existing, error: existingErr } = await admin
       .from("ai_report_jobs")
@@ -633,32 +720,32 @@ Deno.serve(async (req: Request) => {
 
   const { data: job, error: jobErr } = await admin
     .from("ai_report_jobs")
-    .insert({ user_id: userData.user.id, survey_id: surveyId, model, status: "running", response_count: responseCount })
+    .insert({ user_id: userData.user.id, survey_id: surveyId, model, status: "running", response_count: responseCount, progress_note: "Preparing…" })
     .select("id")
     .single();
   if (jobErr || !job) {
     return jsonResponse({ ok: false, err: jobErr?.message || "failed to create report job" }, { status: 500 });
   }
 
-  const backgroundWork = runReportGeneration({
+  const backgroundWork = submitReportBatch({
     admin,
     apiKey,
     jobId: job.id,
-    userId: userData.user.id,
     markdown,
     csv,
     csvFilename,
     model,
   });
 
-  // Keep the isolate alive to finish the Anthropic call after this response
-  // has already been sent — the whole point of this rewrite. Falls back to
-  // a plain (unawaited, logged-on-failure) fire-and-forget if EdgeRuntime
-  // isn't present, e.g. under `supabase functions serve` locally.
+  // Keep the isolate alive long enough to finish uploading the CSV and
+  // submitting the batch (both fast) after this response has already been
+  // sent — falls back to a plain (unawaited, logged-on-failure) fire-and-
+  // forget if EdgeRuntime isn't present, e.g. under `supabase functions
+  // serve` locally.
   if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
     EdgeRuntime.waitUntil(backgroundWork);
   } else {
-    backgroundWork.catch((e) => console.error("background report generation failed:", e));
+    backgroundWork.catch((e) => console.error("background batch submission failed:", e));
   }
 
   return jsonResponse({ ok: true, job_id: job.id });

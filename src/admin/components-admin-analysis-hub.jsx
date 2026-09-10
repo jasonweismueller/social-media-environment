@@ -66,21 +66,35 @@ const MODEL_OPTIONS = [
   { value: "claude-opus-5", label: "Opus — slower, deeper", input: 5.0, output: 25.0 },
 ];
 
-// Background-job polling (2026-09-10) — see ai-study-report/index.ts's own
-// header comment for the "EarlyDrop" root cause this replaces. A real
-// code_execution report regularly takes 1-3 minutes (each tool turn is its
-// own Anthropic round-trip), so this page no longer waits on one HTTP call
-// — it kicks off a job, then polls this table every few seconds.
+// Background-job polling, now against Anthropic's Message Batches API
+// (2026-09-11 — see ai-study-report/index.ts's own header comment for the
+// full history, including the 2026-09-10 EarlyDrop incident this
+// eventually replaced). Generation runs entirely on Anthropic's own
+// infrastructure now, so there's no live character-by-character text —
+// this page just kicks off a job, then polls every few seconds for a
+// cheap "is it done yet?" check.
 const AI_REPORT_JOB_STORAGE_PREFIX = "ai_report_job_v1::";
 const AI_REPORT_POLL_INTERVAL_MS = 4000;
-// Client-side patience only — the job itself keeps running server-side
-// (EdgeRuntime.waitUntil) regardless of whether this page is still polling,
-// so hitting this just stops the spinner and leaves the job trackable via
-// localStorage; reopening this survey resumes polling automatically.
-const AI_REPORT_POLL_MAX_MS = 8 * 60 * 1000;
+// Client-side patience only — the batch itself keeps running on Anthropic's
+// side regardless of whether this page is still polling, so hitting this
+// just stops the spinner and leaves the job trackable via localStorage;
+// reopening this survey resumes polling automatically. Widened from the
+// old streaming design's 8 minutes since a batch commonly takes longer than
+// that to finish even under completely normal conditions.
+const AI_REPORT_POLL_MAX_MS = 30 * 60 * 1000;
 
 function aiReportJobStorageKey(surveyId) {
   return `${AI_REPORT_JOB_STORAGE_PREFIX}${surveyId || ""}`;
+}
+
+// A batch commonly runs for several minutes, sometimes longer — "812s
+// elapsed" reads worse than "13m 32s elapsed" once it's past a minute.
+function formatElapsedMs(ms) {
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}m ${sec}s`;
 }
 
 // Grounded in real usage once it exists (2026-09-10) — the original
@@ -97,8 +111,15 @@ function aiReportJobStorageKey(surveyId) {
 // real average beats any formula; LEGACY_MULTIPLIER only kicks in before
 // that first real report ever completes, calibrated from the one
 // observation above so a brand-new account's very first estimate is in
-// the right order of magnitude rather than off by 15x.
-const LEGACY_MULTIPLIER = 15;
+// the right order of magnitude rather than off by 15x. Halved to 7.5
+// (2026-09-11) now that reports run through Anthropic's Message Batches
+// API, which bills at 50% off the standard per-token rate for identical
+// work — the $1.48 observation above predates that switch, so a real batch
+// report at the same token volume now costs about half as much. Purely a
+// pre-first-report fallback; the moment any report completes under the new
+// (already-discounted) pricing, historicalPerResponseUsd takes over and
+// this constant stops mattering for that account.
+const LEGACY_MULTIPLIER = 7.5;
 
 function estimateReportCost(responseCount, model, historicalPerResponseUsd) {
   if (historicalPerResponseUsd != null && Number.isFinite(historicalPerResponseUsd) && historicalPerResponseUsd > 0) {
@@ -643,12 +664,13 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                 {generating && (
                   <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--admin-muted)" }}>
                     <div>
-                      {progressNote || "Starting…"}
-                      {generatingElapsedMs > 0 ? ` · ${Math.round(generatingElapsedMs / 1000)}s elapsed` : ""}
+                      {progressNote || "Submitting to Anthropic…"}
+                      {generatingElapsedMs > 0 ? ` · ${formatElapsedMs(generatingElapsedMs)} elapsed` : ""}
                     </div>
                     <div style={{ marginTop: 2 }}>
-                      Real progress from the server, saved as it's written — safe to leave this page and come
-                      back later; nothing is lost either way.
+                      Generating on Anthropic's own infrastructure — no live text to show while it runs, but this
+                      page checks in every few seconds. Safe to leave and come back later; the report will be here
+                      either way.
                     </div>
                   </div>
                 )}

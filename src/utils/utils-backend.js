@@ -4361,11 +4361,12 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
  * own row, not just hidden client-side. Supabase-only — this postdates the
  * GAS cutover and has no GAS counterpart.
  *
- * Background-job rewrite (2026-09-10): this only *starts* generation now —
- * returns `{ok:true, job_id}` almost immediately, real reports take well
- * over the ~20s connection window Supabase's edge gateway allows before
- * dropping an idle response (see ai-study-report/index.ts's own header
- * comment for the full "EarlyDrop" incident this fixes). Poll
+ * Background-job rewrite (2026-09-10), superseded by the Batches-API
+ * rewrite (2026-09-11, see ai-study-report/index.ts's own header comment
+ * for the full history): this only *submits* the report now — returns
+ * `{ok:true, job_id}` almost immediately, then Anthropic's Message Batches
+ * API runs the actual generation entirely on its own infrastructure, with
+ * no Supabase execution-time ceiling involved at all. Poll
  * pollAiReportJob(job_id) for the actual result.
  */
 export async function generateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount } = {}) {
