@@ -163,37 +163,29 @@ function buildPrompt(markdown: string, hasCsv: boolean, csvFilename: string): st
   return `${header}\n\n${markdown}${csvNote}`;
 }
 
-function extractText(msg: any): string {
-  const blocks = Array.isArray(msg?.content) ? msg.content : [];
-  return blocks
-    .filter((b: any) => b?.type === "text")
-    .map((b: any) => b.text)
-    .join("\n\n")
-    .trim();
-}
-
-// Best-effort, deliberately not guessing exact block-shape field names —
-// just passes through whatever non-text/non-thinking blocks Anthropic
-// actually returned (the code_execution tool_use/tool_result pairs), so the
-// admin UI can show "the code Claude ran" for real transparency without
-// this function needing to know the precise schema. Capped so a pathological
-// response can't blow up the payload back to the browser.
-function extractExecutionTrace(msg: any): any[] {
-  const blocks = Array.isArray(msg?.content) ? msg.content : [];
-  const trace = blocks.filter((b: any) => b?.type && b.type !== "text" && b.type !== "thinking");
-  const json = JSON.stringify(trace);
-  if (json.length > 200000) {
-    return [{ note: "Execution trace omitted — too large to return." }];
-  }
-  return trace;
-}
-
 // The actual Anthropic call — upload, generate, record cost, update the job
 // row. Runs via EdgeRuntime.waitUntil() *after* the HTTP response has
 // already been sent, so nothing about the caller's connection can affect
 // it. Every exit path (success, Anthropic error, no-text response) updates
 // the job row exactly once so the frontend's poll always eventually
 // resolves to 'done' or 'error' — never left permanently 'running'.
+// Comfortably above every real generation observed so far (a full,
+// successful run has taken up to ~4 minutes) — a hard, self-imposed ceiling
+// so *we* decide when to give up with a clean, saved-partial-content error,
+// rather than depending on Supabase's own undocumented background-task
+// duration limit to be the one that silently kills us (which is exactly
+// what happened the one time a real run ran long: Anthropic finished and
+// billed for the full report, but the isolate died before anything was
+// ever saved, and the whole result was unrecoverable).
+const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+
+// How often accumulated progress (partial report text + a short "what's
+// happening" note) gets written to ai_report_jobs while streaming — frequent
+// enough to be a real heartbeat and to bound how much could ever be lost if
+// something does still kill the isolate mid-stream, without hammering the
+// database on every single small text delta Anthropic sends.
+const PROGRESS_FLUSH_INTERVAL_MS = 2500;
+
 async function runReportGeneration(opts: {
   admin: any;
   apiKey: string;
@@ -206,15 +198,48 @@ async function runReportGeneration(opts: {
 }): Promise<void> {
   const { admin, apiKey, jobId, userId, markdown, csv, csvFilename, model } = opts;
   let fileId: string | null = null;
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
+
+  // Accumulated across the whole stream — this is what makes a killed/timed
+  // -out run recoverable instead of a total loss: whatever's in here at any
+  // moment is also what's already been saved to the database (see
+  // flushProgress below), so even a hard failure below still has this.
+  let accumulatedText = "";
+  const steps: { index: number; type: string }[] = [];
+  let finalUsage: any = null;
+  let finalStopReason: string | null = null;
+  let sawMessageStop = false;
+  let lastFlushAt = 0;
+  let stepCount = 0;
+
+  const flushProgress = async (note: string, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastFlushAt < PROGRESS_FLUSH_INTERVAL_MS) return;
+    lastFlushAt = now;
+    try {
+      await admin
+        .from("ai_report_jobs")
+        .update({ report_markdown: accumulatedText || null, progress_note: note })
+        .eq("id", jobId);
+    } catch (e) {
+      // Non-fatal — a missed heartbeat isn't worth failing the whole
+      // generation over; the next successful flush (or the final write)
+      // catches up.
+      console.error("progress flush failed:", e);
+    }
+  };
 
   try {
     if (csv && csv.length > 0) {
+      await flushProgress("Uploading response data…", true);
       const form = new FormData();
       form.append("file", new Blob([csv], { type: "text/csv" }), csvFilename);
       const uploadRes = await fetch("https://api.anthropic.com/v1/files", {
         method: "POST",
         headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION },
         body: form,
+        signal: controller.signal,
       });
       if (!uploadRes.ok) {
         const errText = await uploadRes.text();
@@ -228,6 +253,8 @@ async function runReportGeneration(opts: {
     if (fileId) {
       userContent.push({ type: "container_upload", file_id: fileId });
     }
+
+    await flushProgress("Starting…", true);
 
     const msgRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -243,30 +270,91 @@ async function runReportGeneration(opts: {
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userContent }],
         tools: [{ type: "code_execution_20260521", name: "code_execution" }],
+        stream: true,
       }),
+      signal: controller.signal,
     });
 
-    if (!msgRes.ok) {
-      const errText = await msgRes.text();
+    if (!msgRes.ok || !msgRes.body) {
+      const errText = await msgRes.text().catch(() => "");
       throw new Error(`Anthropic API error (${msgRes.status}): ${errText.slice(0, 800)}`);
     }
 
-    const msg = await msgRes.json();
-    const reportMarkdown = extractText(msg);
-    const usage = msg?.usage || {};
+    // Plain SSE parser — Anthropic's streaming format is `data: <json>\n\n`
+    // per event, and each JSON payload carries its own `type` matching the
+    // event name, so the `event:` line itself never needs parsing. Buffers
+    // across chunk boundaries since a `\n\n` separator can land mid-chunk.
+    const reader = msgRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sepIdx: number;
+      while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
+        const rawEvent = buffer.slice(0, sepIdx);
+        buffer = buffer.slice(sepIdx + 2);
+        const dataLine = rawEvent.split("\n").find((l) => l.startsWith("data:"));
+        if (!dataLine) continue;
+        const jsonStr = dataLine.slice(5).trim();
+        if (!jsonStr) continue;
+        let evt: any;
+        try {
+          evt = JSON.parse(jsonStr);
+        } catch {
+          continue;
+        }
+
+        switch (evt?.type) {
+          case "message_start":
+            finalUsage = evt.message?.usage || null;
+            break;
+          case "content_block_start": {
+            stepCount++;
+            const blockType = evt.content_block?.type || "content";
+            steps.push({ index: stepCount, type: blockType });
+            const note =
+              blockType === "text"
+                ? `Step ${stepCount}: writing the report`
+                : blockType.includes("code")
+                ? `Step ${stepCount}: running code against your data`
+                : `Step ${stepCount}: ${blockType}`;
+            await flushProgress(note);
+            break;
+          }
+          case "content_block_delta":
+            if (evt.delta?.type === "text_delta" && typeof evt.delta.text === "string") {
+              accumulatedText += evt.delta.text;
+              await flushProgress(`Step ${stepCount}: writing the report (${accumulatedText.length.toLocaleString()} characters so far)`);
+            }
+            break;
+          case "message_delta":
+            if (evt.usage) finalUsage = { ...(finalUsage || {}), ...evt.usage };
+            if (evt.delta?.stop_reason) finalStopReason = evt.delta.stop_reason;
+            break;
+          case "message_stop":
+            sawMessageStop = true;
+            break;
+          default:
+            break;
+        }
+      }
+    }
+
+    clearTimeout(timeoutHandle);
+
+    const usage = finalUsage || {};
     const price = PRICING[model] || PRICING[DEFAULT_MODEL];
     const inputTok = Number(usage.input_tokens || 0) + Number(usage.cache_creation_input_tokens || 0);
     const cacheReadTok = Number(usage.cache_read_input_tokens || 0);
     const outputTok = Number(usage.output_tokens || 0);
     const estimatedCostUsd = (inputTok * price.input) / 1e6 + (cacheReadTok * price.input * 0.1) / 1e6 + (outputTok * price.output) / 1e6;
 
-    // Record real spend as soon as it's known — even for the "no report
-    // text" failure branch just below, since Anthropic still billed for
-    // those tokens; only requests that never reached Anthropic at all
-    // (bad input, the hard-cap rejection before a job is even created)
-    // record nothing, correctly. This now runs unconditionally once
-    // Anthropic has actually responded, regardless of the original caller's
-    // connection state — the exact gap this rewrite closes.
+    // Record real spend as soon as it's known — this now runs the moment
+    // the stream actually ends, regardless of whether the original HTTP
+    // caller is still connected (the whole point of this rewrite).
     try {
       const { error: insertErr } = await admin
         .from("ai_report_usage")
@@ -276,14 +364,17 @@ async function runReportGeneration(opts: {
       console.error("ai_report_usage insert threw:", e);
     }
 
-    if (!reportMarkdown) {
+    if (!accumulatedText.trim()) {
       await admin
         .from("ai_report_jobs")
         .update({
           status: "error",
-          error: `Anthropic returned no report text (stop_reason: ${msg?.stop_reason || "unknown"}). Usage: ${JSON.stringify(usage)}`,
+          error: `Anthropic returned no report text (stop_reason: ${finalStopReason || "unknown"}${
+            sawMessageStop ? "" : ", stream ended before message_stop"
+          }).`,
           usage,
           estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
+          progress_note: null,
         })
         .eq("id", jobId);
       return;
@@ -293,22 +384,36 @@ async function runReportGeneration(opts: {
       .from("ai_report_jobs")
       .update({
         status: "done",
-        report_markdown: reportMarkdown,
+        report_markdown: accumulatedText,
         usage,
         estimated_cost_usd: Number(estimatedCostUsd.toFixed(4)),
-        execution_trace: extractExecutionTrace(msg),
+        execution_trace: steps,
+        progress_note: null,
       })
       .eq("id", jobId);
   } catch (e) {
+    clearTimeout(timeoutHandle);
+    const timedOut = controller.signal.aborted;
+    const message = timedOut
+      ? `Timed out after ${Math.round(GENERATION_TIMEOUT_MS / 1000)}s while still generating — whatever was written up to that point is saved below.`
+      : String((e as Error)?.message || e);
     try {
       await admin
         .from("ai_report_jobs")
-        .update({ status: "error", error: String((e as Error)?.message || e) })
+        // Deliberately keeps report_markdown as whatever was already
+        // accumulated (not cleared to null) — a timed-out or interrupted
+        // run should still leave a real, usable partial report behind
+        // instead of losing everything, same as a successful flush would
+        // have already saved moments earlier.
+        .update({ status: "error", error: message, progress_note: null })
         .eq("id", jobId);
     } catch (updateErr) {
       // If even the error-update fails, the job stays 'running' forever and
       // the frontend's own poll timeout is the last line of defense — log
-      // loudly so this shows up in function logs at least.
+      // loudly so this shows up in function logs at least. Extremely
+      // unlikely now compared to before this rewrite, since every prior
+      // flushProgress call already independently persisted the partial
+      // text, so even this worst case doesn't lose the report content.
       console.error("ai_report_jobs error-update failed:", updateErr);
     }
   } finally {

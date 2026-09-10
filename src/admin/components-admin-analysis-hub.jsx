@@ -128,6 +128,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
   const [generating, setGenerating] = useState(false);
   const [report, setReport] = useState(null);
   const [generatingElapsedMs, setGeneratingElapsedMs] = useState(0);
+  const [progressNote, setProgressNote] = useState("");
   const pollTimerRef = useRef(null);
   const pollDeadlineRef = useRef(0);
   const pollTickRef = useRef(null);
@@ -159,6 +160,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
     stopPolling();
     setGenerating(true);
     setGeneratingElapsedMs(0);
+    setProgressNote("");
     const startedAt = Date.now();
     pollDeadlineRef.current = startedAt + AI_REPORT_POLL_MAX_MS;
 
@@ -192,13 +194,30 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
         stopPolling();
         setGenerating(false);
         if (announce) toast.error(`AI report failed${job.error ? `: ${job.error}` : "."}`);
+        // Streaming progress (2026-09-10) means even a failed/timed-out job
+        // usually still has real partial content saved — show it instead of
+        // silently discarding whatever was already generated and billed for.
+        if (job.report_markdown && job.report_markdown.trim()) {
+          setReport({
+            report_markdown: job.report_markdown,
+            model: job.model,
+            usage: job.usage,
+            estimated_cost_usd: job.estimated_cost_usd,
+            execution_trace: job.execution_trace,
+            partial: true,
+            partialError: job.error,
+          });
+        }
         localStorage.removeItem(aiReportJobStorageKey(sid));
         refreshUsage();
         loadHistory();
         return;
       }
-      // Still pending/running — keep polling until the client-side patience
-      // window above runs out (the job itself is unaffected either way).
+      // Still pending/running — real, server-reported progress (not a guess)
+      // once the streaming rewrite has flushed at least one update.
+      if (job.progress_note) setProgressNote(job.progress_note);
+      // Keep polling until the client-side patience window above runs out
+      // (the job itself is unaffected either way).
       if (Date.now() >= pollDeadlineRef.current) {
         stopPolling();
         setGenerating(false);
@@ -623,10 +642,14 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                 )}
                 {generating && (
                   <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--admin-muted)" }}>
-                    Generating — this typically takes 1–3 minutes for a real study (the model runs real code
-                    against your data in several steps). Safe to leave this page open or come back later; it
-                    keeps running either way.
-                    {generatingElapsedMs > 0 ? ` (${Math.round(generatingElapsedMs / 1000)}s elapsed)` : ""}
+                    <div>
+                      {progressNote || "Starting…"}
+                      {generatingElapsedMs > 0 ? ` · ${Math.round(generatingElapsedMs / 1000)}s elapsed` : ""}
+                    </div>
+                    <div style={{ marginTop: 2 }}>
+                      Real progress from the server, saved as it's written — safe to leave this page and come
+                      back later; nothing is lost either way.
+                    </div>
                   </div>
                 )}
               </Card>
@@ -634,8 +657,24 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
               {report && (
                 <Card>
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {report.partial && (
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          background: "var(--admin-danger-soft)",
+                          color: "var(--admin-danger-ink)",
+                          border: "1px solid var(--admin-danger-border)",
+                        }}
+                      >
+                        This report didn't finish — {report.partialError || "generation failed"}. What's shown
+                        below is the real, partial content that was written before it stopped (already billed,
+                        so shown rather than discarded).
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                      <Badge tone="accent">Report</Badge>
+                      <Badge tone={report.partial ? "danger" : "accent"}>{report.partial ? "Partial report" : "Report"}</Badge>
                       <span style={{ fontSize: 12 }} className="subtle">
                         Model: {report.model}
                       </span>

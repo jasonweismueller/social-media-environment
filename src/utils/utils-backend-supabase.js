@@ -1563,7 +1563,7 @@ export async function supabaseGetAiReportJob(jobId) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("ai_report_jobs")
-    .select("id, status, report_markdown, usage, estimated_cost_usd, execution_trace, error, model, created_at")
+    .select("id, status, report_markdown, progress_note, usage, estimated_cost_usd, execution_trace, error, model, created_at")
     .eq("id", jobId)
     .maybeSingle();
   if (error) return { ok: false, err: error.message };

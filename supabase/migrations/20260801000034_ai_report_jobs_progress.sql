@@ -1,0 +1,12 @@
+-- Backs the streaming rewrite of ai-study-report (2026-09-10, see that
+-- function's own header comment): a short human-readable "what's happening
+-- right now" note, updated every couple of seconds while a report
+-- generates, alongside report_markdown itself now being written
+-- incrementally (the accumulated text-so-far) rather than only once at the
+-- very end. This closes the real gap found the hard way: a background task
+-- that gets killed (Supabase's own wall-clock limit on EdgeRuntime.
+-- waitUntil() background work, hit once already — a real generation that
+-- Anthropic itself finished in ~4 minutes still lost its entire result
+-- because nothing was persisted until the very end) now leaves whatever was
+-- already written intact and visible, instead of losing everything.
+alter table public.ai_report_jobs add column if not exists progress_note text;
