@@ -20,6 +20,7 @@ import {
   COHEN_D,
   COHEN_DZ,
   COHEN_F,
+  COHEN_F2,
   COHEN_W,
   COHEN_R,
   sampleSizeTwoMeans,
@@ -31,6 +32,12 @@ import {
   sampleSizePerGroupAnova,
   achievedPowerAnova,
   minDetectableEffectAnova,
+  sampleSizeFactorialInteraction,
+  achievedPowerFactorialInteraction,
+  minDetectableEffectFactorialInteraction,
+  sampleSizeRegressionInteraction,
+  achievedPowerRegressionInteraction,
+  minDetectableEffectRegressionInteraction,
   sampleSizeChiSquare,
   achievedPowerChiSquare,
   minDetectableEffectChiSquare,
@@ -53,6 +60,22 @@ const FAMILIES = [
   { id: "means", label: "2 groups, numeric outcome (t-test)", benchmarks: COHEN_D, effectLabel: "Cohen's d", hasTails: true, unit: "per group" },
   { id: "paired", label: "Paired / pre-post comparison (t-test)", benchmarks: COHEN_DZ, effectLabel: "Cohen's dz", hasTails: true, unit: "participants" },
   { id: "anova", label: "3+ groups, numeric outcome (ANOVA)", benchmarks: COHEN_F, effectLabel: "Cohen's f", hasTails: false, unit: "per group" },
+  {
+    id: "anova2way",
+    label: "2-way interaction, numeric outcome (factorial ANOVA)",
+    benchmarks: COHEN_F,
+    effectLabel: "Cohen's f",
+    hasTails: false,
+    unit: "per cell",
+  },
+  {
+    id: "modreg",
+    label: "Interaction with a continuous moderator (moderated regression)",
+    benchmarks: COHEN_F2,
+    effectLabel: "Cohen's f²",
+    hasTails: false,
+    unit: "total",
+  },
   { id: "chisq", label: "Categorical outcome (chi-square)", benchmarks: COHEN_W, effectLabel: "Cohen's w", hasTails: false, unit: "total" },
   { id: "correlation", label: "Correlation between two measures", benchmarks: COHEN_R, effectLabel: "Pearson's r", hasTails: true, unit: "pairs" },
 ];
@@ -64,6 +87,10 @@ const FAMILY_NOTES = {
     "Same normal-approximation method as the two-group case, applied to the one column of difference scores a paired/pre-post design produces.",
   anova:
     "Uses the noncentral-chi-square approximation to the F-distribution (Cohen, 1988) — a reasonable planning estimate for 3+ groups, not an exact figure. For exactly 2 groups, use the t-test option instead.",
+  anova2way:
+    "Tests the interaction term only — e.g. your 5 conditions × a categorical individual-differences variable like political party (or ideology split into groups). Uses an exact noncentral-F test (more precise than the one-way ANOVA option above), assuming a balanced design with equal n per cell. Interactions typically need noticeably more N than a main effect of the same nominal size — don't be surprised if this asks for a lot more participants than the one-way option would.",
+  modreg:
+    "For a continuous moderator (e.g. a political-ideology scale) rather than grouping it — tests whether adding the condition × moderator interaction term(s) to a model that already includes both main effects explains additional variance, via Cohen's f² for the added R² (Cohen, 1988, ch. 9). Generally preferable to binning a continuous moderator into groups just to run the factorial-ANOVA option instead, since binning throws away real information.",
   chisq:
     "Exact, from the noncentral chi-square distribution — the same test the Group comparison section uses for categorical outcomes.",
   correlation:
@@ -80,7 +107,7 @@ function computeDfForChisq(groups, categories) {
 }
 
 function computeResult(familyId, analysisType, p) {
-  const { effectSize, alpha, power, n, tails, groups, categories } = p;
+  const { effectSize, alpha, power, n, tails, groups, categories, levelsA, levelsB, interactionDf, totalPredictors } = p;
   const df = familyId === "chisq" ? computeDfForChisq(groups, categories) : null;
   const g = Math.max(2, Number(groups) || 2);
 
@@ -105,6 +132,22 @@ function computeResult(familyId, analysisType, p) {
     if (analysisType === "posthoc") return wrap(achievedPowerAnova({ f: effectSize, groups: g, nPerGroup: n, alpha }));
     return wrap(minDetectableEffectAnova({ nPerGroup: n, groups: g, alpha, power }));
   }
+  if (familyId === "anova2way") {
+    if (analysisType === "apriori") {
+      const v = sampleSizeFactorialInteraction({ f: effectSize, levelsA, levelsB, alpha, power });
+      return v == null ? null : { value: v.perCell, total: v.total, df1: v.df1, cells: v.cells };
+    }
+    if (analysisType === "posthoc") return wrap(achievedPowerFactorialInteraction({ f: effectSize, levelsA, levelsB, nPerCell: n, alpha }));
+    return wrap(minDetectableEffectFactorialInteraction({ levelsA, levelsB, nPerCell: n, alpha, power }));
+  }
+  if (familyId === "modreg") {
+    if (analysisType === "apriori") {
+      const v = sampleSizeRegressionInteraction({ f2: effectSize, interactionDf, totalPredictors, alpha, power });
+      return v == null ? null : { value: v.total, total: v.total, df1: v.df1 };
+    }
+    if (analysisType === "posthoc") return wrap(achievedPowerRegressionInteraction({ f2: effectSize, interactionDf, totalPredictors, n, alpha }));
+    return wrap(minDetectableEffectRegressionInteraction({ interactionDf, totalPredictors, n, alpha, power }));
+  }
   if (familyId === "chisq") {
     if (analysisType === "apriori") return wrap(sampleSizeChiSquare({ w: effectSize, df, alpha, power }));
     if (analysisType === "posthoc") return wrap(achievedPowerChiSquare({ w: effectSize, df, n, alpha }));
@@ -125,12 +168,14 @@ function wrap(v) {
 // Power at an arbitrary N, holding effect size/alpha/tails/groups fixed —
 // what the curve plots, independent of which analysis mode is selected.
 function powerAt(familyId, p, nAtPoint) {
-  const { effectSize, alpha, tails, groups, categories } = p;
+  const { effectSize, alpha, tails, groups, categories, levelsA, levelsB, interactionDf, totalPredictors } = p;
   const df = familyId === "chisq" ? computeDfForChisq(groups, categories) : null;
   const g = Math.max(2, Number(groups) || 2);
   if (familyId === "means") return achievedPowerTwoMeans({ d: effectSize, n: nAtPoint, alpha, tails });
   if (familyId === "paired") return achievedPowerPairedMeans({ dz: effectSize, n: nAtPoint, alpha, tails });
   if (familyId === "anova") return achievedPowerAnova({ f: effectSize, groups: g, nPerGroup: nAtPoint, alpha });
+  if (familyId === "anova2way") return achievedPowerFactorialInteraction({ f: effectSize, levelsA, levelsB, nPerCell: nAtPoint, alpha });
+  if (familyId === "modreg") return achievedPowerRegressionInteraction({ f2: effectSize, interactionDf, totalPredictors, n: nAtPoint, alpha });
   if (familyId === "chisq") return achievedPowerChiSquare({ w: effectSize, df, n: nAtPoint, alpha });
   if (familyId === "correlation") return achievedPowerCorrelation({ r: effectSize, n: nAtPoint, alpha, tails });
   return null;
@@ -378,6 +423,15 @@ function formatResultHeadline(familyId, analysisType, family, result, ctx) {
         </>
       );
     }
+    if (familyId === "anova2way") {
+      return (
+        <>
+          You need approximately <strong>{result.value.toLocaleString()} participants {family.unit}</strong> (about{" "}
+          {result.total.toLocaleString()} total across {result.cells} cells, interaction df = {result.df1}) to detect this interaction at
+          α = {alpha} with {Math.round(power * 100)}% power.
+        </>
+      );
+    }
     return (
       <>
         You need approximately <strong>{result.value.toLocaleString()} {family.unit}</strong> to detect this effect at α = {alpha} with{" "}
@@ -417,8 +471,27 @@ export function PowerAnalysisModal({ onClose, survey, groupComparison }) {
   const [categories, setCategories] = useState(2);
   const [showEffectHelper, setShowEffectHelper] = useState(false);
 
+  // Factorial ANOVA interaction (anova2way) — Factor A defaults to this
+  // survey's own experiment groups (the manipulated conditions), Factor B
+  // defaults to 2 (the common minimal case: a binary moderator like party,
+  // or a median-split of a continuous one).
+  const [levelsA, setLevelsA] = useState(Math.max(2, surveyGroupCount || 5));
+  const [levelsB, setLevelsB] = useState(2);
+  // Moderated-regression interaction (modreg) — defaults to "the interaction
+  // terms are the only predictors in the model" (interactionDf ===
+  // totalPredictors), the simplest case; a researcher with real main-effect
+  // predictors already in the model should raise totalPredictors above
+  // interactionDf.
+  const [interactionDf, setInteractionDf] = useState(Math.max(1, surveyGroupCount - 1 || 4));
+  const [totalPredictors, setTotalPredictors] = useState(Math.max(1, surveyGroupCount - 1 || 4));
+
   useEffect(() => {
-    if (surveyGroupCount >= 2) setGroups(surveyGroupCount);
+    if (surveyGroupCount >= 2) {
+      setGroups(surveyGroupCount);
+      setLevelsA(surveyGroupCount);
+      setInteractionDf(Math.max(1, surveyGroupCount - 1));
+      setTotalPredictors(Math.max(1, surveyGroupCount - 1));
+    }
   }, [surveyGroupCount]);
 
   const family = FAMILIES.find((f) => f.id === familyId);
@@ -432,7 +505,7 @@ export function PowerAnalysisModal({ onClose, survey, groupComparison }) {
 
   const nearestLabel = nearestCohenLabel(family.benchmarks, effectSize);
 
-  const ctx = { effectSize, alpha, power, n, tails, groups, categories };
+  const ctx = { effectSize, alpha, power, n, tails, groups, categories, levelsA, levelsB, interactionDf, totalPredictors };
   const result = effectSize > 0 || analysisType === "sensitivity" ? computeResult(familyId, analysisType, ctx) : null;
 
   // The chart always plots power vs N *at the effect size the current
@@ -483,6 +556,63 @@ export function PowerAnalysisModal({ onClose, survey, groupComparison }) {
               <input type="number" min={2} value={categories} onChange={(e) => setCategories(Math.max(2, Number(e.target.value) || 2))} style={{ ...fieldInputStyle, width: 70 }} />
             </label>
             <div style={{ fontSize: 11, color: "var(--admin-muted)" }}>df = {computeDfForChisq(groups, categories)}</div>
+          </>
+        )}
+
+        {familyId === "anova2way" && (
+          <>
+            <label style={labelStyle}>
+              Factor A levels
+              <input
+                type="number"
+                min={2}
+                value={levelsA}
+                onChange={(e) => setLevelsA(Math.max(2, Number(e.target.value) || 2))}
+                style={{ ...fieldInputStyle, width: 70 }}
+                title="Your manipulated conditions — e.g. 5, for a 5-condition study."
+              />
+            </label>
+            <label style={labelStyle}>
+              Factor B levels
+              <input
+                type="number"
+                min={2}
+                value={levelsB}
+                onChange={(e) => setLevelsB(Math.max(2, Number(e.target.value) || 2))}
+                style={{ ...fieldInputStyle, width: 70 }}
+                title="Your categorical moderator — e.g. 2 or 3, for a party-affiliation grouping."
+              />
+            </label>
+            <div style={{ fontSize: 11, color: "var(--admin-muted)" }}>
+              interaction df = {(Math.max(2, Number(levelsA) || 2) - 1) * (Math.max(2, Number(levelsB) || 2) - 1)}
+            </div>
+          </>
+        )}
+
+        {familyId === "modreg" && (
+          <>
+            <label style={labelStyle}>
+              Interaction df
+              <input
+                type="number"
+                min={1}
+                value={interactionDf}
+                onChange={(e) => setInteractionDf(Math.max(1, Number(e.target.value) || 1))}
+                style={{ ...fieldInputStyle, width: 70 }}
+                title="Number of interaction terms tested at once — e.g. 4, for a 5-level condition's dummy codes each interacting with one continuous moderator."
+              />
+            </label>
+            <label style={labelStyle}>
+              Total predictors in full model
+              <input
+                type="number"
+                min={interactionDf}
+                value={totalPredictors}
+                onChange={(e) => setTotalPredictors(Math.max(Number(interactionDf) || 1, Number(e.target.value) || 1))}
+                style={{ ...fieldInputStyle, width: 70 }}
+                title="Every predictor in the model once the interaction is added — condition dummies + moderator + interaction terms. Must be at least the interaction df."
+              />
+            </label>
           </>
         )}
 

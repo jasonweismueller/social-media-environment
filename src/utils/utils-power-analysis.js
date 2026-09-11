@@ -11,6 +11,11 @@ export const COHEN_DZ = { small: 0.2, medium: 0.5, large: 0.8 };
 export const COHEN_F = { small: 0.1, medium: 0.25, large: 0.4 };
 export const COHEN_W = { small: 0.1, medium: 0.3, large: 0.5 };
 export const COHEN_R = { small: 0.1, medium: 0.3, large: 0.5 };
+// Cohen's (1988) f² benchmarks for a set of predictors in multiple
+// regression (e.g. an interaction term/block) — a genuinely different scale
+// from COHEN_F above (f² = f squared only in name; .02/.15/.35 are Cohen's
+// own published regression conventions, not derived from .1/.25/.4).
+export const COHEN_F2 = { small: 0.02, medium: 0.15, large: 0.35 };
 
 function clamp01(x) {
   return Math.max(0, Math.min(1, x));
@@ -352,6 +357,201 @@ export function achievedPowerAnova({ f, groups, nPerGroup, alpha = 0.05 }) {
 export function minDetectableEffectAnova({ nPerGroup, groups, alpha = 0.05, power = 0.8 }) {
   if (!(nPerGroup > 0) || !(groups >= 2)) return null;
   return solveEffectSizeForPower((f) => achievedPowerAnova({ f, groups, nPerGroup, alpha }), power, { lo: 1e-4, hi: 2 });
+}
+
+// ---- Noncentral F machinery — needed for the two families below (a
+// factorial-ANOVA interaction, and an interaction/ΔR² term in moderated
+// regression), since both genuinely depend on df2 (residual/error df), not
+// just df1 the way the one-way-ANOVA chi-square stand-in above gets away
+// with ignoring. Real noncentral F, not another approximation — the same
+// regularized-incomplete-beta identity for the F distribution already used
+// elsewhere in this app for real p-values (utils-survey-analysis.js's
+// fDistPValue), reimplemented locally rather than imported per this file's
+// own "deliberately self-contained" header comment, plus a noncentral
+// extension via the same Poisson-mixture pattern noncentralChiSquareCDF
+// above already uses (mixing central distributions with df1 shifted by 2j
+// at each term, weighted by a Poisson(lambda/2) mass function). ----
+
+function betaContinuedFraction(x, a, b) {
+  const MAXIT = 200, EPS = 3e-9, FPMIN = 1e-30;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1;
+  let d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= MAXIT; m++) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d; h *= d * c;
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return h;
+}
+
+function regularizedIncompleteBeta(x, a, b) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2)
+    ? (bt * betaContinuedFraction(x, a, b)) / a
+    : 1 - (bt * betaContinuedFraction(1 - x, b, a)) / b;
+}
+
+// Central F CDF via the standard incomplete-beta identity.
+export function centralFCDF(x, df1, df2) {
+  if (!(x > 0)) return 0;
+  const y = (df1 * x) / (df1 * x + df2);
+  return clamp01(regularizedIncompleteBeta(y, df1 / 2, df2 / 2));
+}
+
+// Upper-tail critical value: smallest x with centralFCDF(x, df1, df2) >= 1-alpha.
+export function fCriticalValue(alpha, df1, df2) {
+  let lo = 0, hi = 4;
+  while (centralFCDF(hi, df1, df2) < 1 - alpha && hi < 1e8) hi *= 2;
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo + hi) / 2;
+    if (centralFCDF(mid, df1, df2) < 1 - alpha) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// Noncentral F CDF: if W ~ central chi-square(df1 + 2j) (conditional on a
+// Poisson(lambda/2) draw j) and V ~ central chi-square(df2), then
+// (W/df1)/(V/df2) = [(df1+2j)/df1] * F(df1+2j, df2) — so each mixture term
+// is a central-F CDF evaluated at x rescaled by df1/(df1+2j), not a plain
+// central F at x with shifted df1.
+export function noncentralFCDF(x, df1, df2, lambda) {
+  if (!(lambda > 0)) return centralFCDF(x, df1, df2);
+  const halfLambda = lambda / 2;
+  let weight = Math.exp(-halfLambda);
+  let cdf = weight * centralFCDF(x, df1, df2);
+  for (let j = 1; j < 500; j++) {
+    weight *= halfLambda / j;
+    const df1j = df1 + 2 * j;
+    const term = weight * centralFCDF((x * df1) / df1j, df1j, df2);
+    cdf += term;
+    if (weight < 1e-14 && term < 1e-14) break;
+  }
+  return clamp01(cdf);
+}
+
+function powerFromNoncentralF(df1, df2, lambda, alpha) {
+  return clamp01(1 - noncentralFCDF(fCriticalValue(alpha, df1, df2), df1, df2, lambda));
+}
+
+// Cohen's (1988) general noncentrality formula for any F-test in the
+// general linear model, lambda = effectSize² * (df1 + df2 + 1) — the same
+// formula that (for one-way ANOVA specifically, where df1+df2+1 always
+// equals total N) collapses to the simpler f²×N shortcut used above; used
+// here in its general form since df1+df2+1 no longer equals N once a
+// second factor or extra predictors are involved.
+function searchNForFTestPower({ df1, extraDf2Baseline, effectSizeSq, alpha, power, minTotal }) {
+  // df2 as a function of "total units" N is design-specific (passed in via
+  // extraDf2Baseline = however much of N is *not* free residual df, e.g.
+  // number of cells in a factorial design or predictor count in a
+  // regression) — df2 = N - extraDf2Baseline.
+  const powerAtN = (N) => {
+    const df2 = N - extraDf2Baseline;
+    if (df2 < 1) return 0;
+    const lambda = effectSizeSq * (df1 + df2 + 1);
+    return powerFromNoncentralF(df1, df2, lambda, alpha);
+  };
+  let n = Math.max(minTotal + 2, 8);
+  while (powerAtN(n) < power && n < 1e7) n *= 1.7;
+  let lo = Math.max(minTotal + 1, n / 1.7), hi = n;
+  for (let i = 0; i < 70; i++) {
+    const mid = (lo + hi) / 2;
+    if (powerAtN(mid) < power) lo = mid; else hi = mid;
+  }
+  return Math.ceil(hi);
+}
+
+// ---- Factorial ANOVA, 2-way interaction (levelsA × levelsB), continuous
+// outcome — same Cohen's f convention as the one-way case above, applied to
+// the interaction-specific portion of variance (df1 = (a-1)(b-1)). Balanced
+// design assumed (equal n per cell), matching the one-way ANOVA function's
+// own assumption. Main effects of A/B are not computed here — only the
+// interaction term itself, since that's the thing a moderator/individual-
+// differences question is actually asking about. ----
+export function sampleSizeFactorialInteraction({ f, levelsA, levelsB, alpha = 0.05, power = 0.8 }) {
+  const a = Math.max(2, Math.round(Number(levelsA) || 2));
+  const b = Math.max(2, Math.round(Number(levelsB) || 2));
+  if (!(f > 0)) return null;
+  const df1 = (a - 1) * (b - 1);
+  const cells = a * b;
+  const total = searchNForFTestPower({ df1, extraDf2Baseline: cells, effectSizeSq: f * f, alpha, power, minTotal: cells });
+  const perCell = Math.ceil(total / cells);
+  return { perCell, total: perCell * cells, cells, df1 };
+}
+
+export function achievedPowerFactorialInteraction({ f, levelsA, levelsB, nPerCell, alpha = 0.05 }) {
+  const a = Math.max(2, Math.round(Number(levelsA) || 2));
+  const b = Math.max(2, Math.round(Number(levelsB) || 2));
+  if (!(f > 0) || !(nPerCell > 0)) return null;
+  const df1 = (a - 1) * (b - 1);
+  const cells = a * b;
+  const df2 = nPerCell * cells - cells;
+  if (df2 < 1) return null;
+  const lambda = f * f * (df1 + df2 + 1);
+  return powerFromNoncentralF(df1, df2, lambda, alpha);
+}
+
+export function minDetectableEffectFactorialInteraction({ levelsA, levelsB, nPerCell, alpha = 0.05, power = 0.8 }) {
+  if (!(nPerCell > 0)) return null;
+  return solveEffectSizeForPower(
+    (f) => achievedPowerFactorialInteraction({ f, levelsA, levelsB, nPerCell, alpha }),
+    power,
+    { lo: 1e-4, hi: 2 }
+  );
+}
+
+// ---- Interaction (or any added block) in moderated multiple regression —
+// Cohen's f² for the increase in R² from adding the interaction term(s) to
+// a model that already has the main effects in it. `interactionDf` is the
+// number of interaction terms being tested at once (e.g. 4, for a 5-level
+// factor's dummy codes each interacting with one continuous moderator);
+// `totalPredictors` is every predictor in the *full* model, including the
+// interaction terms (e.g. 4 condition dummies + 1 moderator + 4 interaction
+// terms = 9). This is the standard "R² increase" F-test (Cohen, 1988, ch.
+// 9; matches R's pwr.f2.test), which is why it needs the real noncentral F
+// above rather than the one-way-ANOVA chi-square shortcut — df2 here
+// depends on how many predictors are already "spent," not just N. ----
+export function sampleSizeRegressionInteraction({ f2, interactionDf, totalPredictors, alpha = 0.05, power = 0.8 }) {
+  const df1 = Math.max(1, Math.round(Number(interactionDf) || 1));
+  const k = Math.max(df1, Math.round(Number(totalPredictors) || df1));
+  if (!(f2 > 0)) return null;
+  const n = searchNForFTestPower({ df1, extraDf2Baseline: k + 1, effectSizeSq: f2, alpha, power, minTotal: k + 1 });
+  return { total: n, df1 };
+}
+
+export function achievedPowerRegressionInteraction({ f2, interactionDf, totalPredictors, n, alpha = 0.05 }) {
+  const df1 = Math.max(1, Math.round(Number(interactionDf) || 1));
+  const k = Math.max(df1, Math.round(Number(totalPredictors) || df1));
+  if (!(f2 > 0) || !(n > 0)) return null;
+  const df2 = n - k - 1;
+  if (df2 < 1) return null;
+  const lambda = f2 * (df1 + df2 + 1);
+  return powerFromNoncentralF(df1, df2, lambda, alpha);
+}
+
+export function minDetectableEffectRegressionInteraction({ interactionDf, totalPredictors, n, alpha = 0.05, power = 0.8 }) {
+  const df1 = Math.max(1, Math.round(Number(interactionDf) || 1));
+  const k = Math.max(df1, Math.round(Number(totalPredictors) || df1));
+  if (!(n > k + 1)) return null;
+  return solveEffectSizeForPower(
+    (f2) => achievedPowerRegressionInteraction({ f2, interactionDf: df1, totalPredictors: k, n, alpha }),
+    power,
+    { lo: 1e-4, hi: 3 }
+  );
 }
 
 // Labels a raw effect size as Cohen's small/medium/large when it's close
