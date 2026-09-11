@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -407,7 +407,7 @@ export function PostCard({
   const {
   id, author = "", avatarUrl = "", text = "", image, imageMode, images,
   video, videoMode, videoPosterUrl, reactions, metrics, time,
-  authorType, showTime, flags: postFlags = {}
+  showTime, flags: postFlags = {}
 } = post || {};
 
 // ✅ Add this line directly after:
@@ -466,6 +466,11 @@ if (isSponsored) {
     (feedId || ""),
     String(id ?? "")
   ];
+
+  // "random" Author Type (per-post gender randomization, distinct from the
+  // feed-wide randomize_avatars/randomize_names toggles) resolves here —
+  // see resolvePostAuthorType's own comment for the seeding rationale.
+  const authorType = resolvePostAuthorType(post, seedParts);
 
   // ---- Randomization flags (per-post) ----
   const forcedRand =

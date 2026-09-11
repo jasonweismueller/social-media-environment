@@ -8463,3 +8463,94 @@ wire was moved verbatim, no logic changes. Verified: all four touched files pars
 collapsible, in the correct order before "Profile Photo". Instagram/X were not independently
 live-mounted (same mechanical edit pattern, already covered by the parse check) — worth a quick
 look if either behaves unexpectedly.
+
+## New Author Type option: "Random (male or female)" — per-post gender randomization (2026-09-11)
+
+Direct request: "Randomize avatars/names" already picks a random name+avatar *within* whichever
+gender a post's Author Type is fixed to (female/male/company) — the user wanted a post whose gender
+itself varies per participant (some see a random male author, others a random female author),
+scoped to one specific post, not a feed-wide setting. Facebook, Instagram, and X only — Amazon has
+no avatar/gendered-name concept at all (reviewer names are one ungendered pool, confirmed via code
+read before starting), so it was never in scope there and its editor has no Author Type field.
+
+**New shared helper, one implementation instead of N near-identical ternaries.** Before writing any
+code, grepped every `post.authorType === "male" || post.authorType === "company" ? post.authorType
+: "female"`-shaped fallback in the repo — found it duplicated **12 times** across 8 files (Feed's
+own bucketing/PostCard fallback in `ui-posts-facebook.jsx`/`ui-posts-instagram.jsx`/`ui-posts-x.jsx`,
+each `App-*.jsx`'s post-reminder preload + asset-preload-gating, and `ui-survey.jsx`/
+`ui-survey-mobile.jsx`'s no-snapshot reminder-avatar fallback) — exactly the kind of "known
+duplicated logic" footgun this file already warns about elsewhere, just not one it had a name for
+yet. New `resolvePostAuthorType(post, seedParts)` (`utils-core.js`, exported) is now the single
+place this resolves: male/company pass through unchanged, anything else (including missing/legacy
+data) defaults to `"female"` exactly as every call site already did, and `"random"` deterministically
+picks `"female"`/`"male"` via the same `pickDeterministic` primitive `buildRailContacts`'s own
+gender pick already uses — seeded so **a given participant/session sees the same resolved gender
+for that post every time** (stable across reloads and across live-feed vs. a later post-reminder
+survey question), while different participants independently land on either gender. Callers pass
+seedParts already unique per post (the same convention every other per-post deterministic pick in
+this file already follows) — every one of the 12 call sites now routes through this function instead
+of its own copy of the ternary, with the exact same seed shape it always used (so nothing about
+*when*/*how* each spot resolves gender changed, only that "random" is now a real third case instead
+of silently falling to the "female" default).
+
+**Two of the 12 call sites are pool-cache warm-up only, not a specific pick** — the `assetPreload`
+effect in each `App-*.jsx` that decides which avatar pool JSON files to prefetch. These don't call
+the resolver at all (no `runSeed` needed at that point in the render, and no downstream correctness
+risk either way): if any post has `authorType === "random"`, both the female and male pools are
+added to the warm-up set unconditionally — safe over-fetching (a cached-but-unused pool list is
+harmless) rather than needing exact per-post resolution just to decide what to prefetch.
+
+**Consistency between the live feed and a post-reminder survey question, verified by tracing the
+seed values, not assumed.** When a participant has actually viewed a post live, `PostCard`'s
+"displayed post snapshot" mechanism already bakes the *resolved* `author`/`avatarUrl` into the
+stored snapshot (confirmed by reading `displayedSnapshot`'s construction — `snapshot.author =
+displayAuthor`, not `post.authorType`) — a later reminder just replays those concrete values, so
+`resolvePostAuthorType` never even runs a second time for that path, no consistency risk. When
+there's no snapshot (survey-only delivery, or a reminder targeting a feed the participant never
+saw), the reminder's own fallback and its preload counterpart both build seedParts from
+`runSeed`/`participantSeed` — confirmed these are literally the same value under two names
+(`preloadSurveyPostReminders`'s own `const runSeed = participantSeed || "survey-reminder-preview"`),
+so the two independently-computed resolutions are guaranteed to agree.
+
+**DB migration**: `posts.author_type`'s check constraint only allowed `('female', 'male',
+'company')` — same shape as the pre-existing `ad_type` gap this file already documents fixing once
+(`20260801000014_fix_ad_type_check.sql`) — new `20260801000038_add_random_author_type.sql` widens it
+to add `'random'`. `mapRawPostToRow`/`mapPostRowToRaw` (`utils-backend-supabase.js`) needed no
+changes — `authorType` already round-trips as a plain string with no allowlist. Applied directly via
+`supabase db query --linked -f` to **both** Supabase projects, production (`yrzqnlhbawzuzlrrocfd`)
+first then staging (`hgctbgunlsesygzglbdv`), confirmed via `pg_get_constraintdef` on each before
+relinking back to production (this repo's default) — no Edge Function involved, since posts are
+written directly via PostgREST, not through `save-survey`/`admin-users`.
+
+**Admin UI**: `components-admin-editor-{facebook,instagram,x}.jsx`'s existing "Author Type"
+`RadioGroup` gained a 4th option, `{ value: "random", label: "Random (male or female)" }`, plus a
+hint line explaining the per-post-not-per-feed distinction when selected. X's editor already offered
+"company" despite X's `Feed` never actually bucketing company posts (a separate, pre-existing gap
+noted but deliberately not fixed here — out of scope for this change) — "random" only ever resolves
+to female/male regardless, so it's unaffected by that gap.
+
+**Verified live**, dev server confirmed working in this environment: `resolvePostAuthorType` tested
+directly (male/company/female/missing pass through unchanged; "random" stable for a repeated
+identical seed, and produced both "female" and "male" across different seeds). Mounted the real
+`Feed` (`ui-posts-facebook.jsx`, via `../ui-posts` — not a reimplementation) with one `authorType:
+"random"` post and one `authorType: "male"` post, `randomize_names`/`randomize_avatars` both on: two
+different simulated participants (`runSeed` "participantA"/"participantB") got genuinely different,
+correctly-gendered names for the random post ("Adeline Phillips" — confirmed present in
+`FB_FEMALE_NAMES` — vs. "Ryder White" — confirmed present in `FB_MALE_NAMES`, `names.jsx`), and
+re-mounting "participantA" again reproduced the exact same name, confirming per-participant
+stability. Mounted the real `AdminPostEditor` (Facebook) and confirmed the new radio option renders,
+is selectable via a real click (`editing.authorType` correctly became `"random"`), and shows the
+new hint text. Regression-checked all three affected apps (`?app=fb/ig/x`) load with zero new
+console errors beyond the pre-existing, already-documented CORS limitation (avatar-pool fetches
+blocked from `localhost` — real participants on the deployed domains are unaffected). **Not
+verified**: an actual click-through by a real logged-in admin, or a real disposable-project insert
+against the live DB with `author_type = 'random'` (the constraint's own `pg_get_constraintdef` was
+checked directly on both projects instead, which is authoritative for whether the write would be
+accepted — a full disposable-row test would have been redundant with that).
+
+**Deploy status**: this session's working tree was on the `production` branch (not `main`) — per
+this file's own "Deployment" section, `production` is what GitHub Actions deploys straight to
+`studyfeed.org`, with no Netlify-staging soak in between. Nothing was committed/pushed by Claude
+(this repo's standing pattern); worth routing this through `main` → staging first before it reaches
+`production`, same recommendation this file has made before for other first-draft multi-file
+changes landing on this branch.

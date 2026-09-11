@@ -1788,6 +1788,32 @@ export function buildDeterministicAssignmentMap(items = [], pool = [], seedParts
   return out;
 }
 
+// Resolves a post's effective author type ("female" | "male" | "company"),
+// handling the "random" Author Type option: unlike the feed-wide
+// randomize_avatars/randomize_names flags (which only randomize *which*
+// name/avatar within a fixed gender), a post whose own authorType is
+// "random" has its gender itself randomized, per post — not per feed. Every
+// other value passes through unchanged (male/company as-is, anything else —
+// including "female", missing, or legacy data — defaults to "female",
+// matching every call site's existing fallback before this option existed).
+// Deterministic: seeded so a given participant/session sees the same
+// resolved gender for this post every time (stable across reloads and
+// across the live feed vs. a later post-reminder survey question), while
+// different participants can independently land on either gender — callers
+// must pass seedParts already unique per post (i.e. including the post id),
+// the same convention every other per-post deterministic pick in this file
+// already follows.
+export function resolvePostAuthorType(post, seedParts = []) {
+  const raw = post?.authorType;
+  if (raw === "male" || raw === "company") return raw;
+  if (raw === "random") {
+    return (
+      pickDeterministic(["female", "male"], [...seedParts, "author-gender"]) || "female"
+    );
+  }
+  return "female";
+}
+
 export function getStablePostOrderIndex(posts = [], postId) {
   const ids = (Array.isArray(posts) ? posts : [])
     .map((p) => String(p?.id ?? ""))

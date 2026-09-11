@@ -191,12 +191,24 @@ export function AdminPostEditor({
             </Field>
           </div>
 
-          <Group label="Author Type">
+          <Group
+            label="Author Type"
+            hint={
+              editing.authorType === "random"
+                ? "This post's gender is randomized independently for each participant — some will see a random male author, others a random female author."
+                : undefined
+            }
+          >
             <RadioGroup
               name={`authorType-${editing.id}`}
               value={editing.authorType || "female"}
               onChange={(v) => setEditing((ed) => ({ ...ed, authorType: v }))}
-              options={[{ value: "female" }, { value: "male" }, { value: "company" }]}
+              options={[
+                { value: "female" },
+                { value: "male" },
+                { value: "company" },
+                { value: "random", label: "Random (male or female)" },
+              ]}
             />
           </Group>
 

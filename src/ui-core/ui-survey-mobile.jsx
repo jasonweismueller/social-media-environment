@@ -25,6 +25,7 @@ import {
   findScreenerFailure,
   getOtherChoice,
   otherSpecifyResponseKey,
+  resolvePostAuthorType,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 
@@ -829,10 +830,16 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
       return;
     }
 
-    const kind =
-      nonSnapshotPost.authorType === "male" || nonSnapshotPost.authorType === "company"
-        ? nonSnapshotPost.authorType
-        : "female";
+    // "random" Author Type (per-post gender randomization) resolves here
+    // with the same seed shape as everywhere else it's preloaded/rendered —
+    // see resolvePostAuthorType's own comment for the rationale.
+    const kind = resolvePostAuthorType(nonSnapshotPost, [
+      participantSeed || "survey-reminder-preview",
+      app || "app",
+      resolvedProjectId || "proj",
+      reminderFeedId || "feed",
+      String(nonSnapshotPost.id ?? targetPostId),
+    ]);
 
     let cancelled = false;
 

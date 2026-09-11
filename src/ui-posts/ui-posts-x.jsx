@@ -17,6 +17,7 @@ import {
   pickUniqueDeterministic,
   buildDeterministicAssignmentMap,
   fallbackEngagementStats,
+  resolvePostAuthorType,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES } from "./names";
@@ -609,8 +610,28 @@ export function Feed({
 
   const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
 
-  const femalePosts = useMemo(() => posts.filter((p) => (p.authorType || "female") === "female"), [posts]);
-  const malePosts = useMemo(() => posts.filter((p) => p.authorType === "male"), [posts]);
+  // A post's own Author Type can be "random" (per-post gender
+  // randomization, distinct from the feed-wide randomize_names/_avatars
+  // toggles) — resolved once per post here (seeded, so stable per
+  // participant/session) and reused for bucketing below and the final
+  // per-post assignedAuthor/assignedAvatarUrl pick further down.
+  const resolvedAuthorTypeById = useMemo(() => {
+    const seedBase = [runSeed || "run", app || "x", projectId || "proj", feedId || "feed"];
+    const map = new Map();
+    for (const p of posts) {
+      map.set(p.id, resolvePostAuthorType(p, [...seedBase, String(p.id ?? "")]));
+    }
+    return map;
+  }, [posts, runSeed, app, projectId, feedId]);
+
+  const femalePosts = useMemo(
+    () => posts.filter((p) => (resolvedAuthorTypeById.get(p.id) || "female") === "female"),
+    [posts, resolvedAuthorTypeById]
+  );
+  const malePosts = useMemo(
+    () => posts.filter((p) => resolvedAuthorTypeById.get(p.id) === "male"),
+    [posts, resolvedAuthorTypeById]
+  );
 
   const femaleNameMap = useMemo(
     () => buildDeterministicAssignmentMap(femalePosts, FB_FEMALE_NAMES, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "female-names"], (p) => p.id),
@@ -674,8 +695,9 @@ export function Feed({
 
       <main className="container feed">
         {renderPosts.map((p, revealIndex) => {
-          const assignedAuthor = p.authorType === "male" ? maleNameMap.get(p.id) : femaleNameMap.get(p.id);
-          const assignedAvatarUrl = p.authorType === "male" ? avatarMaps.male.get(p.id) : avatarMaps.female.get(p.id);
+          const resolvedType = resolvedAuthorTypeById.get(p.id) || "female";
+          const assignedAuthor = resolvedType === "male" ? maleNameMap.get(p.id) : femaleNameMap.get(p.id);
+          const assignedAvatarUrl = resolvedType === "male" ? avatarMaps.male.get(p.id) : avatarMaps.female.get(p.id);
           return (
             <PostCard
               key={p.id}

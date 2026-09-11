@@ -49,6 +49,7 @@ import {
   useParticipantTheme,
   hasCompletedStudyLocally,
   markStudyCompletedLocally,
+  resolvePostAuthorType,
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
@@ -916,10 +917,17 @@ async function preloadSurveyPostReminders({
         // externally-assigned avatar prop and always computes its own).
         if (flags.randomize_avatars ?? flags.randomize_avatar) {
           try {
-            const kind =
-              post.authorType === "male" || post.authorType === "company"
-                ? post.authorType
-                : "female";
+            // Mirrors ui-posts-instagram.jsx's own PostCard seed shape
+            // exactly (runSeed/app/project/feed/post-id, no extra suffix
+            // before "avatar" is appended) so a "random" Author Type post
+            // preloads the same gender's pool the live card will pick from.
+            const kind = resolvePostAuthorType(post, [
+              runSeed || "run",
+              reminderApp || "ig",
+              resolvedProjectId || "global",
+              feedId || "",
+              String(post.id ?? postId),
+            ]);
             const pool = await getAvatarPool(kind);
             const pick = pickDeterministic(pool, [
               runSeed || "run",
@@ -2311,6 +2319,15 @@ export default function App() {
           : "female"
       )
     );
+    // A "random" Author Type post resolves to either gender per participant
+    // (resolvePostAuthorType) — warm both pools here rather than resolving
+    // the exact pick this early, since this effect only needs to know which
+    // pools to fetch, not the specific per-post assignment (PostCard itself
+    // computes that once it renders).
+    if (posts.some((p) => p?.authorType === "random")) {
+      types.add("female");
+      types.add("male");
+    }
 
     if (types.size === 0) {
       dbg("asset preload skipped: no author types");

@@ -49,6 +49,7 @@ import {
   useParticipantTheme,
   hasCompletedStudyLocally,
   markStudyCompletedLocally,
+  resolvePostAuthorType,
 } from "./utils";
 
 import { Feed as FBFeed } from "./ui-posts";
@@ -527,10 +528,17 @@ async function preloadSurveyPostReminders({
         // same seed used there so we preload the same image it will pick.
         if (flags.randomize_avatars ?? flags.randomize_avatar) {
           try {
-            const kind =
-              post.authorType === "male" || post.authorType === "company"
-                ? post.authorType
-                : "female";
+            // Mirrors ui-survey.jsx's own no-snapshot gender resolution
+            // exactly (same runSeed/app/project/feed/post-id seed shape) so
+            // a "random" Author Type post preloads the same gender's pool
+            // the reminder will actually end up assigned from.
+            const kind = resolvePostAuthorType(post, [
+              runSeed,
+              reminderApp || "app",
+              resolvedProjectId || "proj",
+              feedId || "feed",
+              String(post.id ?? postId),
+            ]);
             const pool = await getAvatarPool(kind);
             const pick = pickDeterministic(pool, [
               runSeed,
@@ -2522,6 +2530,15 @@ export default function App() {
           : "female"
       )
     );
+    // A "random" Author Type post resolves to either gender per participant
+    // (resolvePostAuthorType) — warm both pools here rather than resolving
+    // the exact pick this early, since this effect only needs to know which
+    // pools to fetch, not the specific per-post assignment (Feed itself
+    // computes that once posts render).
+    if (posts.some((p) => p?.authorType === "random")) {
+      types.add("female");
+      types.add("male");
+    }
 
     if (types.size === 0) {
       dbg("asset preload skipped: no author types");

@@ -16,6 +16,7 @@ import {
   buildDeterministicAssignmentMap,
   randomizeBioStats,
   fallbackEngagementStats,
+  resolvePostAuthorType,
 } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
@@ -1288,11 +1289,6 @@ export function PostCard({
   const [current, setCurrent] = useState(0);
   const [bufferedEnd, setBufferedEnd] = useState(0);
 
-  const authorType =
-    post.authorType === "male" || post.authorType === "company"
-      ? post.authorType
-      : "female";
-
   const seedParts = [
     runSeed || "run",
     app || "app",
@@ -1300,6 +1296,11 @@ export function PostCard({
     feedId || "feed",
     String(post.id ?? ""),
   ];
+
+  // "random" Author Type (per-post gender randomization, distinct from the
+  // feed-wide randomize_avatars/randomize_names toggles) resolves here —
+  // see resolvePostAuthorType's own comment for the seeding rationale.
+  const authorType = resolvePostAuthorType(post, seedParts);
 
   const displayAuthor = React.useMemo(() => {
     if (!randNamesOn && post.author) return post.author;
@@ -2770,19 +2771,35 @@ export function Feed({
 
   const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
 
+  // A post's own Author Type can be "random" (per-post gender
+  // randomization — see resolvePostAuthorType) rather than a fixed
+  // female/male/company — resolved once per post here (seeded, so it's
+  // stable for a given participant/session) and reused for both bucketing
+  // below and the final per-post assignedAuthor/assignedAvatarUrl pick
+  // further down, so a "random" post always lands in the same bucket it was
+  // actually assigned from.
+  const resolvedAuthorTypeById = useMemo(() => {
+    const seedBase = [runSeed || "run", app || "app", projectId || "proj", feedId || "feed"];
+    const map = new Map();
+    for (const p of posts) {
+      map.set(p.id, resolvePostAuthorType(p, [...seedBase, String(p.id ?? "")]));
+    }
+    return map;
+  }, [posts, runSeed, app, projectId, feedId]);
+
   const femalePosts = useMemo(
-    () => posts.filter((p) => (p.authorType || "female") === "female"),
-    [posts]
+    () => posts.filter((p) => (resolvedAuthorTypeById.get(p.id) || "female") === "female"),
+    [posts, resolvedAuthorTypeById]
   );
 
   const malePosts = useMemo(
-    () => posts.filter((p) => p.authorType === "male"),
-    [posts]
+    () => posts.filter((p) => resolvedAuthorTypeById.get(p.id) === "male"),
+    [posts, resolvedAuthorTypeById]
   );
 
   const companyPosts = useMemo(
-    () => posts.filter((p) => p.authorType === "company"),
-    [posts]
+    () => posts.filter((p) => resolvedAuthorTypeById.get(p.id) === "company"),
+    [posts, resolvedAuthorTypeById]
   );
 
   const femaleNameMap = useMemo(
@@ -2956,17 +2973,18 @@ export function Feed({
 
       <main className="container feed">
         {renderPosts.map((p, revealIndex) => {
+          const resolvedType = resolvedAuthorTypeById.get(p.id) || "female";
           const assignedAuthor =
-            p.authorType === "male"
+            resolvedType === "male"
               ? maleNameMap.get(p.id)
-              : p.authorType === "company"
+              : resolvedType === "company"
               ? companyNameMap.get(p.id)
               : femaleNameMap.get(p.id);
 
           const assignedAvatarUrl =
-            p.authorType === "male"
+            resolvedType === "male"
               ? avatarMaps.male.get(p.id)
-              : p.authorType === "company"
+              : resolvedType === "company"
               ? avatarMaps.company.get(p.id)
               : avatarMaps.female.get(p.id);
 
