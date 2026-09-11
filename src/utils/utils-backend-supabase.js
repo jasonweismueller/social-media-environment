@@ -240,6 +240,7 @@ function mapPostRowToRaw(row) {
     noteMetaEnabled: !!row.note_meta_enabled,
     noteReaderGroups: Array.isArray(row.note_reader_groups) ? row.note_reader_groups : [],
     noteReaderGroup2Enabled: !!row.note_reader_group2_enabled,
+    noteDiverseViewpoints: !!row.note_diverse_viewpoints,
 
     showReactions: row.show_reactions !== false,
     selectedReactions: Array.isArray(row.selected_reactions) ? row.selected_reactions : [],
@@ -576,6 +577,7 @@ function mapRawPostToRow(raw, composedFeedId, sortOrder) {
     note_meta_enabled: !!raw.noteMetaEnabled,
     note_reader_groups: Array.isArray(raw.noteReaderGroups) ? raw.noteReaderGroups : [],
     note_reader_group2_enabled: !!raw.noteReaderGroup2Enabled,
+    note_diverse_viewpoints: !!raw.noteDiverseViewpoints,
 
     show_reactions: raw.showReactions !== false,
     selected_reactions: Array.isArray(raw.selectedReactions) ? raw.selectedReactions : [],

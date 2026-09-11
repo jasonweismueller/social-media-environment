@@ -744,6 +744,13 @@ export function AdminPostEditor({
                         {renderSizeControl(1, g1)}
                       </div>
                     )}
+
+                    <CheckRow
+                      checked={!!editing.noteDiverseViewpoints}
+                      onChange={(e) => setEditing((ed) => ({ ...ed, noteDiverseViewpoints: e.target.checked }))}
+                    >
+                      Add "with diverse viewpoints" (e.g. "...helpful by 87 readers with diverse viewpoints.")
+                    </CheckRow>
                   </Group>
                 );
               })()}

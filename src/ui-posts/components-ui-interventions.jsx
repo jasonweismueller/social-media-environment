@@ -156,16 +156,25 @@ function renderGroup(g, key) {
   );
 }
 
+  // Optional, admin-configurable — mirrors real X Community Notes' own
+  // "rated helpful by people from different points of view" framing, as a
+  // toggle rather than requiring it to be hand-typed into the free-text
+  // group "type" field every time (see components-admin-editor-facebook.jsx's
+  // "Add 'with diverse viewpoints'" checkbox).
+  const diverseSuffix = post?.noteDiverseViewpoints ? " with diverse viewpoints" : "";
+
   return (
     <>
       {normalized.length === 1 ? (
         <>
-          The context was rated as helpful by {renderGroup(normalized[0], 0)}.
+          The context was rated as helpful by {renderGroup(normalized[0], 0)}
+          {diverseSuffix}.
         </>
       ) : (
         <>
           The context was rated as helpful by {renderGroup(normalized[0], 0)} and{" "}
-          {renderGroup(normalized[1], 1)}.
+          {renderGroup(normalized[1], 1)}
+          {diverseSuffix}.
         </>
       )}
     </>
