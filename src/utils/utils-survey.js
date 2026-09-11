@@ -846,6 +846,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     max_label: overrides.max_label || "",
     left_label: overrides.left_label ?? overrides.min_label ?? "",
     right_label: overrides.right_label ?? overrides.max_label ?? "",
+    hide_slider_value: !!overrides.hide_slider_value,
     visible_if: overrides.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -1002,6 +1003,10 @@ export function normalizeQuestion(raw = {}) {
     max_label: String(raw.max_label ?? raw.right_label ?? ""),
     left_label: String(raw.left_label ?? raw.min_label ?? ""),
     right_label: String(raw.right_label ?? raw.max_label ?? ""),
+    // SLIDER-only — hides the live numeric readout above the handle,
+    // leaving just the left/right labels. Stored unconditionally (like
+    // numeric_only below), meaningless for other types.
+    hide_slider_value: !!raw.hide_slider_value,
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -1168,6 +1173,7 @@ export function frontendQuestionToBackend(question = {}) {
         max: q.max,
         left_label: q.left_label ?? q.min_label ?? "",
         right_label: q.right_label ?? q.max_label ?? "",
+        hide_slider_value: !!q.hide_slider_value,
       };
 
     case SURVEY_QUESTION_TYPES.POST_REMINDER:

@@ -787,6 +787,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       max: 7,
       left_label: "",
       right_label: "",
+      hide_slider_value: false,
       placeholder: "",
       visible_if: null,
       visible_in_feeds: [],
@@ -822,6 +823,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     max: Number.isFinite(q?.max) ? q.max : 7,
     left_label: String(q?.left_label ?? ""),
     right_label: String(q?.right_label ?? ""),
+    hide_slider_value: !!q?.hide_slider_value,
     placeholder: String(q?.placeholder ?? ""),
     numeric_only: !!q?.numeric_only,
     numeric_min: Number.isFinite(q?.numeric_min) ? Number(q.numeric_min) : null,
@@ -2185,6 +2187,7 @@ export function buildSavedQuestion(q, index) {
     right_label: cleanQ.right_label || "",
     min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
     max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
+    hide_slider_value: cleanQ.type === SURVEY_QUESTION_TYPES.SLIDER ? !!cleanQ.hide_slider_value : false,
     placeholder: cleanQ.placeholder || "",
     numeric_only: cleanQ.type === SURVEY_QUESTION_TYPES.TEXT ? !!cleanQ.numeric_only : false,
     numeric_min:
@@ -5950,24 +5953,36 @@ function BipolarEditorBlock({ rows, questionId, min, max, onRowsChange, onMinCha
   );
 }
 
-function SliderEditorBlock({ min, max, leftLabel, rightLabel, onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange }) {
+function SliderEditorBlock({
+  min, max, leftLabel, rightLabel, hideValue,
+  onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange, onHideValueChange,
+}) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
-      <FieldBlock label="Min">
-        <NumberInput value={min} min={0} max={100} onChange={onMinChange} />
-      </FieldBlock>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
+        <FieldBlock label="Min">
+          <NumberInput value={min} min={0} max={100} onChange={onMinChange} />
+        </FieldBlock>
 
-      <FieldBlock label="Max">
-        <NumberInput value={max} min={1} max={100} onChange={onMaxChange} />
-      </FieldBlock>
+        <FieldBlock label="Max">
+          <NumberInput value={max} min={1} max={100} onChange={onMaxChange} />
+        </FieldBlock>
 
-      <FieldBlock label="Left label">
-        <TextInput value={leftLabel ?? ""} onChange={onLeftLabelChange} placeholder="e.g. Low" />
-      </FieldBlock>
+        <FieldBlock label="Left label">
+          <TextInput value={leftLabel ?? ""} onChange={onLeftLabelChange} placeholder="e.g. Low" />
+        </FieldBlock>
 
-      <FieldBlock label="Right label">
-        <TextInput value={rightLabel ?? ""} onChange={onRightLabelChange} placeholder="e.g. High" />
-      </FieldBlock>
+        <FieldBlock label="Right label">
+          <TextInput value={rightLabel ?? ""} onChange={onRightLabelChange} placeholder="e.g. High" />
+        </FieldBlock>
+      </div>
+
+      <Toggle
+        label="Hide numeric value"
+        hint="Show only the left/right labels above the slider — hides the live number readout."
+        checked={!!hideValue}
+        onChange={onHideValueChange}
+      />
     </div>
   );
 }
@@ -6215,10 +6230,12 @@ function renderTypeSpecificFields({
           max={q.max}
           leftLabel={q.left_label}
           rightLabel={q.right_label}
+          hideValue={q.hide_slider_value}
           onMinChange={(v) => updateQuestion(index, { min: clampInt(v, 0, 100, q.min ?? 1) })}
           onMaxChange={(v) => updateQuestion(index, { max: clampInt(v, 1, 100, q.max ?? 7) })}
           onLeftLabelChange={(v) => updateQuestion(index, { left_label: v })}
           onRightLabelChange={(v) => updateQuestion(index, { right_label: v })}
+          onHideValueChange={(v) => updateQuestion(index, { hide_slider_value: v })}
         />
       );
     case SURVEY_QUESTION_TYPES.TEXT:

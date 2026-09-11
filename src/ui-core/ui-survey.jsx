@@ -1709,7 +1709,9 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
             onChange={handleSliderChange}
             className="survey-range"
           />
-          <div className="survey-range-value">{value || question.min || 0}</div>
+          {!question.hide_slider_value && (
+            <div className="survey-range-value">{value || question.min || 0}</div>
+          )}
         </div>
       )}
 
