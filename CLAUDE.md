@@ -8554,3 +8554,107 @@ this file's own "Deployment" section, `production` is what GitHub Actions deploy
 (this repo's standing pattern); worth routing this through `main` → staging first before it reaches
 `production`, same recommendation this file has made before for other first-draft multi-file
 changes landing on this branch.
+
+## Two real bugs found and fixed: post-reminder names never actually randomized without a live feed view, and the Survey Preview froze names across experiment groups (2026-09-11)
+
+Direct report: "I went through the 15 groups [in Survey Preview] and in some of them the post
+reminder kept saying the same name 'Spencer Johnson' although the 15 feeds all have the random name
+feature on." Investigated live (dev server, cache-busted component mounts — no admin login
+available, same standing limitation as everywhere else in this file) and found two separate, real,
+pre-existing bugs, not one.
+
+**Bug 1 — Facebook/X's `PostCard` has no name-randomization fallback of its own; `ui-survey.jsx`/
+`ui-survey-mobile.jsx` never supplied one.** `PostCard`'s `displayAuthor` (`ui-posts-{facebook,x}.jsx`)
+is `assignedAuthor || post.author || ...` — it only ever shows a randomized name when something
+external computed and passed `assignedAuthor` (the real `Feed` component does this, building a
+deterministic per-bucket assignment map across all posts). `PostReminderCard`
+(`ui-survey.jsx`/`-mobile.jsx`) already had exactly this pattern for **avatars** — a no-snapshot
+fallback (`assignedAvatarUrl`, added when the "random" Author Type feature shipped earlier this
+session) that resolves a real pool avatar whenever the participant hasn't actually viewed the post
+live — but **no equivalent ever existed for names**. So any post-reminder question rendered without
+a "displayed post snapshot" (survey-only delivery, a reminder targeting a feed/post the participant
+never visited, or — as reported — every render inside the admin's Survey Preview, which has no live
+feed session at all) silently fell back to the raw, unrandomized `post.author` regardless of the
+feed's real `randomize_names` flag. "Spencer Johnson" was simply that literal stored value —
+appearing identically across every group whose post-reminder happened to reference a post carrying
+that raw author field (the well-documented "shared template post duplicated across Control/
+Treatment/PL/PS variants" pattern this file already has a name for). This is a real bug for actual
+participant delivery too, not just the preview — any survey-only study, or any reminder pointing at
+a feed/post the participant didn't personally walk through, has been showing unrandomized names this
+whole time regardless of the feed's own `randomize_names` setting.
+
+**Fix**: new `assignedAuthor` memo in `PostReminderCard`/`PostReminderCardMobile`, mirroring the
+existing `assignedAvatarUrl` effect's shape exactly — resolves the post's effective gender via
+`resolvePostAuthorType` (the helper from this same session's "random" Author Type feature, so this
+also correctly randomizes gender-random posts here for the first time) and picks a name from
+`FB_FEMALE_NAMES`/`FB_MALE_NAMES`/`FB_COMPANY_NAMES` via `pickDeterministic`, same seed shape
+(`participantSeed`/`app`/`projectId`/`feedId`/`post.id`) as the avatar fallback, with a
+`"reminder-name"` suffix instead of `"reminder-avatar"`. Unlike the avatar pick, name pools are
+plain in-memory arrays — no network fetch needed, so this is a synchronous `useMemo`, not an
+effect+state pair. Threaded through `ReminderPostInner`/`ReminderPostInnerMobile` and
+`RecallOptionCard`/`RecallOptionCardMobile` (both render call sites, plain reminder and the recall
+3-option picker) alongside the existing `assignedAvatarUrl` prop, including each component's custom
+`memo()` comparator. Instagram needed no change — its `PostCard` already computes its own name
+internally via `pickDeterministic` regardless of any `assignedAuthor` prop, which is exactly why the
+user's report said "in *some* of them," not all: whichever groups' reminders happened to be Instagram
+(or referenced genuinely distinct, non-template posts) were likely already fine.
+
+**Bug 2, found while verifying Bug 1 — the Survey Preview writes real participant-facing state into
+the browser's actual localStorage.** `PostReminderCard` reuses the real `PostCard`, which has a
+"displayed post snapshot" mechanism (`saveDisplayedPostSnapshot`/`getDisplayedPostSnapshot`) built
+for real participants — on every render it records "what this participant is currently seeing" so a
+later post-reminder question can show the *exact* version they actually viewed. `SurveyPreviewModal`
+never suppresses this (only the "recall" 3-option picker already did, via its existing
+`suppressDisplayedSnapshot` prop) — so previewing any ordinary post-reminder question writes a real
+snapshot to the admin's own browser, keyed by `(projectId, "preview" participantSeed, feedId,
+postId)`. Since `SurveyPreviewModal`'s `participantSeed` is fixed to `"preview"` (or
+`"preview-N"` after Reshuffle) **regardless of which experiment group is selected**, the *first*
+group previewed whose reminder references a given feed+post permanently freezes what every *other*
+group referencing that same feed+post shows for the rest of the browser's lifetime (until that
+`localStorage` key is manually cleared) — a second, independent explanation for "kept saying the
+same name," and one that would have kept masking Bug 1's fix during exactly the kind of
+group-by-group verification the report describes doing.
+
+**Fix**: new `disableReminderSnapshot` prop threaded through `SurveyScreen`/`SurveyScreenMobile` →
+`SurveyQuestionRenderer`/`-Mobile` → `PostReminderCard`/`-Mobile` (added to each memo's comparator
+where one exists) — when true, `storedSnapshot` always resolves to `null` (skips the
+`getDisplayedPostSnapshot` read entirely, so a *pre-existing* stale snapshot from an earlier preview
+session is also correctly ignored, not just future writes prevented) and `suppressDisplayedSnapshot`
+is passed through to the plain (non-recall) `ReminderPostInner` render, matching what the recall
+picker already did. `SurveyPreviewModal` now passes `disableReminderSnapshot` unconditionally — a
+preview has no real live feed session to "remember," so there's nothing worth freezing.
+
+**Verified live**, dev server confirmed working, via the established mount-with-fabricated-data
+technique (no admin login available): reproduced Bug 1 exactly — a fresh participant seed showed the
+raw `"Spencer Johnson"` before the fix, a real pool name after; confirmed determinism (same seed →
+same name across remounts) and variation (different seeds → different, correctly-gendered names,
+including for `authorType: "random"` posts). Reproduced Bug 2 directly: two "groups" referencing the
+same feed+post, same `"preview"` seed — without `disableReminderSnapshot`, the second silently
+inherited whatever name the first happened to render, and two real `localStorage` keys were created;
+with the fix, zero keys were written. Went further and proved the *read* suppression specifically —
+pre-seeded a deliberately fake stale snapshot (`"STALE FROZEN NAME"`, a value no real pool
+resolution could ever produce) directly into `localStorage`, confirmed the pre-fix code path
+faithfully displayed it, and confirmed `disableReminderSnapshot` correctly ignored it and resolved a
+real name instead. Confirmed Reshuffle still works correctly with the fix (`"preview"`/`"preview-1"`/
+`"preview-2"` each independently and repeatably resolve to different names). One real debugging
+detour worth recording: the very first several verification attempts appeared to show the fix doing
+nothing, traced to two compounding causes rather than one — (1) this sandbox's Vite dev server
+serves a *stale* cached module instance when a bare `import()` URL (no cache-busting query) is
+reused across script calls without a real page navigation in between, a gotcha this file already
+documents for a different pair of files; and (2) even after navigating fresh each time, reusing the
+*same* participant/feed/post identity tuple across successive test mounts kept tripping the exact
+snapshot-freezing behavior Bug 2 describes, purely as a side effect of the test harness itself —
+resolved by using a genuinely fresh participant seed per mount unless the test was specifically about
+snapshot behavior. Regression-checked `?app=fb`/`?app=ig` still load with zero new console errors
+beyond the pre-existing, already-documented CORS limitation (avatar-pool fetches blocked from
+`localhost`). **Not verified**: an actual click-through by a real logged-in admin — same standing
+limitation as everywhere else in this file. Worth confirming on staging that the Survey Preview's
+post-reminder names now genuinely vary across experiment groups referencing distinct posts, and stay
+appropriately consistent (not randomly reshuffling) within one group across repeated views.
+
+**Deploy status**: same as the entry above — this session's working tree is still on the
+`production` branch, nothing committed/pushed by Claude. Both fixes here are pure frontend changes
+(no schema/Edge Function involved), so — unlike the `posts.author_type` migration above, which is
+already live on both Supabase projects — there is nothing backend-side blocking these from shipping
+as soon as they're committed; still worth routing through `main` → staging first given neither has
+had a real click-through yet.

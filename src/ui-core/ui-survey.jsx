@@ -29,6 +29,7 @@ import {
 } from "../utils";
 
 import { PostCard } from "../ui-posts";
+import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "../ui-posts/names";
 
 const DISPLAYED_POST_SNAPSHOT_PREFIX = "studyfeed:displayed_post_snapshot";
 const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot_latest";
@@ -815,6 +816,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
   flags,
   participantSeed,
   assignedAvatarUrl,
+  assignedAuthor,
   interactive,
   value,
   onChange,
@@ -880,6 +882,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
       participantSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
       assignedAvatarUrl={assignedAvatarUrl || null}
+      assignedAuthor={assignedAuthor || null}
       suppressDisplayedSnapshot={suppressDisplayedSnapshot}
     />
   );
@@ -892,6 +895,7 @@ const ReminderPostInner = memo(function ReminderPostInner({
     prev.flags === next.flags &&
     prev.participantSeed === next.participantSeed &&
     prev.assignedAvatarUrl === next.assignedAvatarUrl &&
+    prev.assignedAuthor === next.assignedAuthor &&
     prev.interactive === next.interactive &&
     prev.value === next.value &&
     prev.suppressDisplayedSnapshot === next.suppressDisplayedSnapshot
@@ -911,6 +915,7 @@ function RecallOptionCard({
   flags,
   participantSeed,
   assignedAvatarUrl,
+  assignedAuthor,
   questionId,
   selected,
   onSelect,
@@ -939,6 +944,7 @@ function RecallOptionCard({
             flags={flags}
             participantSeed={participantSeed}
             assignedAvatarUrl={assignedAvatarUrl}
+            assignedAuthor={assignedAuthor}
             interactive={false}
             value={undefined}
             onChange={noopChange}
@@ -959,6 +965,19 @@ const PostReminderCard = memo(function PostReminderCard({
   participantSeed,
   value,
   onChange,
+  // Set only by SurveyPreviewModal (via SurveyScreen/-Mobile) — a preview
+  // has no real live feed a participant actually viewed, so there's no
+  // "what they saw" to freeze. Without this, PostCard's own "displayed post
+  // snapshot" localStorage write (real participants' actual mechanism,
+  // reused here since preview renders the real PostCard) would capture the
+  // *first* resolved name/avatar the preview ever showed for a given
+  // (project, "preview" participantSeed, feed, post) tuple and then keep
+  // replaying that frozen snapshot for every other experiment group whose
+  // reminder happens to reference the same underlying feed+post — exactly
+  // the "shared template post across Control/Treatment/PL/PS variants"
+  // shape this codebase already has a name for — making randomization look
+  // broken across groups in the preview even once it's genuinely fixed.
+  disableReminderSnapshot = false,
 }) {
   const reminderFeedId = getReminderPostFeedId(question, feedId);
   const targetPostId = String(question?.post_id || "").trim();
@@ -983,6 +1002,7 @@ const PostReminderCard = memo(function PostReminderCard({
   const applyFeedRandomization = question?.apply_feed_randomization !== false;
 
   const storedSnapshot = useMemo(() => {
+    if (disableReminderSnapshot) return null;
     if (!applyFeedRandomization) return null;
     if (!targetPostId || !reminderFeedId) return null;
     return getDisplayedPostSnapshot({
@@ -991,7 +1011,7 @@ const PostReminderCard = memo(function PostReminderCard({
       postId: targetPostId,
       participantSeed,
     });
-  }, [applyFeedRandomization, resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+  }, [disableReminderSnapshot, applyFeedRandomization, resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
 
   const reminderFlagsCacheKey = `${resolvedProjectId}::${reminderFeedId || ""}`;
   const [reminderFlags, setReminderFlags] = useState(() =>
@@ -1218,6 +1238,44 @@ const PostReminderCard = memo(function PostReminderCard({
     targetPostId,
   ]);
 
+  // Same idea as assignedAvatarUrl above, but for the author name.
+  // PostCard (Facebook/X) has no fallback of its own for this the way
+  // Instagram's does (which always picks its own name internally,
+  // regardless of any assignedAuthor prop) — without an externally-supplied
+  // assignedAuthor, Facebook/X's PostCard silently falls back to the post's
+  // raw stored `author` field even with randomize_names on, so every
+  // reminder without a live-feed snapshot (survey-only delivery, an admin
+  // preview, or a reminder targeting a feed/post the participant never
+  // actually visited) showed the same un-randomized name regardless of the
+  // feed's real flag. Name pools are plain in-memory arrays (unlike the
+  // avatar pool, no network fetch needed), so this is a synchronous memo.
+  const assignedAuthor = useMemo(() => {
+    const nonSnapshotPost = inlinePost || lazyPost;
+    if (!applyFeedRandomization || storedSnapshot || !nonSnapshotPost) return null;
+
+    const seedParts = [
+      participantSeed || "survey-reminder-preview",
+      app || "app",
+      resolvedProjectId || "proj",
+      reminderFeedId || "feed",
+      String(nonSnapshotPost.id ?? targetPostId),
+    ];
+    const kind = resolvePostAuthorType(nonSnapshotPost, seedParts);
+    const pool =
+      kind === "male" ? FB_MALE_NAMES : kind === "company" ? FB_COMPANY_NAMES : FB_FEMALE_NAMES;
+    return pickDeterministic(pool, [...seedParts, "reminder-name"]) || null;
+  }, [
+    applyFeedRandomization,
+    storedSnapshot,
+    inlinePost,
+    lazyPost,
+    participantSeed,
+    app,
+    resolvedProjectId,
+    reminderFeedId,
+    targetPostId,
+  ]);
+
   // Dwell time — how long this reminder card was actually visible in the
   // participant's viewport while the survey page was open, same
   // IntersectionObserver-based "vp_enter/vp_exit" concept the real feed
@@ -1314,6 +1372,7 @@ const PostReminderCard = memo(function PostReminderCard({
               flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
               participantSeed={participantSeed}
               assignedAvatarUrl={assignedAvatarUrl}
+              assignedAuthor={assignedAuthor}
               questionId={questionId}
               selected={value?.selected_option === option.key}
               onSelect={handleRecallSelect}
@@ -1333,9 +1392,11 @@ const PostReminderCard = memo(function PostReminderCard({
               flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
               participantSeed={participantSeed}
               assignedAvatarUrl={assignedAvatarUrl}
+              assignedAuthor={assignedAuthor}
               interactive={interactive}
               value={value}
               onChange={handleInteractiveChange}
+              suppressDisplayedSnapshot={disableReminderSnapshot}
             />
           </div>
         </div>
@@ -1368,6 +1429,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
   flags,
   participantSeed,
   otherText,
+  disableReminderSnapshot = false,
 }) {
   const qType = question?.type;
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
@@ -1507,6 +1569,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
           participantSeed={participantSeed}
           value={value}
           onChange={onChange}
+          disableReminderSnapshot={disableReminderSnapshot}
         />
       )}
 
@@ -1768,6 +1831,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
     prev.flags === next.flags &&
     prev.participantSeed === next.participantSeed &&
     prev.otherText === next.otherText &&
+    prev.disableReminderSnapshot === next.disableReminderSnapshot &&
     (prev.value === next.value ||
       shallowEqualArray(prev.value, next.value) ||
       shallowEqualObject(prev.value, next.value))
@@ -1799,6 +1863,13 @@ export function SurveyScreen({
   enforceRequired = true,
   allowPageJump = false,
   initialQuestionId = null,
+  // Preview-only: see PostReminderCard's own comment for the full
+  // rationale — stops a post-reminder question from reading/writing the
+  // real participant-facing "displayed post snapshot" localStorage, so
+  // previewing one experiment group's reminder can't freeze what a later
+  // group's reminder shows just because they happen to reference the same
+  // underlying feed+post.
+  disableReminderSnapshot = false,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [delayRemaining, setDelayRemaining] = useState(0);
@@ -2265,6 +2336,7 @@ const isNextDelayed =
                 flags={flags}
                 participantSeed={participantSeed}
                 otherText={otherText}
+                disableReminderSnapshot={disableReminderSnapshot}
               />
             );
           })}

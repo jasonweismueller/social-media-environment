@@ -378,6 +378,18 @@ export function SurveyPreviewModal({
           enforceRequired={forceResponse}
           allowPageJump
           initialQuestionId={initialQuestionId}
+          // This preview has no real live feed a participant ever viewed —
+          // without this, a post-reminder question's real PostCard (reused
+          // as-is here) would write its normal "displayed post snapshot" to
+          // the browser's actual localStorage, and every other experiment
+          // group whose own reminder happens to reference the same
+          // underlying feed+post (a shared template post duplicated across
+          // Control/Treatment/PL/PS variants, the exact pattern this repo's
+          // own posts.id design already anticipates) would then show that
+          // first-captured snapshot frozen, instead of freshly resolving —
+          // making randomization look broken across groups even once it
+          // isn't. See PostReminderCard's own comment (ui-survey.jsx).
+          disableReminderSnapshot
         />
         {survey?.allow_dark_mode && (
           <ParticipantThemeToggle

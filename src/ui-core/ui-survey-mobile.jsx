@@ -28,6 +28,7 @@ import {
   resolvePostAuthorType,
 } from "../utils";
 import { PostCard } from "../ui-posts";
+import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "../ui-posts/names";
 
 const DISPLAYED_POST_SNAPSHOT_PREFIX = "studyfeed:displayed_post_snapshot";
 const DISPLAYED_POST_SNAPSHOT_LATEST_PREFIX = "studyfeed:displayed_post_snapshot_latest";
@@ -481,6 +482,7 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
   flags,
   participantSeed,
   assignedAvatarUrl,
+  assignedAuthor,
   interactive,
   value,
   onChange,
@@ -535,6 +537,7 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
       participantSeed={participantSeed || "survey-reminder-preview"}
       flags={effectiveFlags}
       assignedAvatarUrl={assignedAvatarUrl || null}
+      assignedAuthor={assignedAuthor || null}
       suppressDisplayedSnapshot={suppressDisplayedSnapshot}
     />
   );
@@ -547,6 +550,7 @@ const ReminderPostInnerMobile = memo(function ReminderPostInnerMobile({
     prev.flags === next.flags &&
     prev.participantSeed === next.participantSeed &&
     prev.assignedAvatarUrl === next.assignedAvatarUrl &&
+    prev.assignedAuthor === next.assignedAuthor &&
     prev.interactive === next.interactive &&
     prev.value === next.value &&
     prev.suppressDisplayedSnapshot === next.suppressDisplayedSnapshot
@@ -563,6 +567,7 @@ function RecallOptionCardMobile({
   flags,
   participantSeed,
   assignedAvatarUrl,
+  assignedAuthor,
   questionId,
   selected,
   onSelect,
@@ -589,6 +594,7 @@ function RecallOptionCardMobile({
             flags={flags}
             participantSeed={participantSeed}
             assignedAvatarUrl={assignedAvatarUrl}
+            assignedAuthor={assignedAuthor}
             interactive={false}
             value={undefined}
             onChange={noopChange}
@@ -617,6 +623,9 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   participantSeed,
   value,
   onChange,
+  // Mobile mirror of the identical prop in ui-survey.jsx (desktop) — see
+  // that file's PostReminderCard comment for the full rationale.
+  disableReminderSnapshot = false,
 }) {
   const reminderFeedId = getReminderPostFeedId(question, feedId);
   const targetPostId = String(question?.post_id || "").trim();
@@ -641,6 +650,7 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   const applyFeedRandomization = question?.apply_feed_randomization !== false;
 
   const storedSnapshot = useMemo(() => {
+    if (disableReminderSnapshot) return null;
     if (!applyFeedRandomization) return null;
     if (!targetPostId || !reminderFeedId) return null;
     return getDisplayedPostSnapshot({
@@ -649,7 +659,7 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
       postId: targetPostId,
       participantSeed,
     });
-  }, [applyFeedRandomization, resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
+  }, [disableReminderSnapshot, applyFeedRandomization, resolvedProjectId, reminderFeedId, targetPostId, participantSeed]);
 
   const reminderFlagsCacheKey = `${resolvedProjectId}::${reminderFeedId || ""}`;
   const [reminderFlags, setReminderFlags] = useState(() =>
@@ -876,6 +886,35 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
     targetPostId,
   ]);
 
+  // Mobile mirror of the identical assignedAuthor memo in ui-survey.jsx
+  // (desktop) — see that file's comment for the full rationale.
+  const assignedAuthor = useMemo(() => {
+    const nonSnapshotPost = inlinePost || lazyPost;
+    if (!applyFeedRandomization || storedSnapshot || !nonSnapshotPost) return null;
+
+    const seedParts = [
+      participantSeed || "survey-reminder-preview",
+      app || "app",
+      resolvedProjectId || "proj",
+      reminderFeedId || "feed",
+      String(nonSnapshotPost.id ?? targetPostId),
+    ];
+    const kind = resolvePostAuthorType(nonSnapshotPost, seedParts);
+    const pool =
+      kind === "male" ? FB_MALE_NAMES : kind === "company" ? FB_COMPANY_NAMES : FB_FEMALE_NAMES;
+    return pickDeterministic(pool, [...seedParts, "reminder-name"]) || null;
+  }, [
+    applyFeedRandomization,
+    storedSnapshot,
+    inlinePost,
+    lazyPost,
+    participantSeed,
+    app,
+    resolvedProjectId,
+    reminderFeedId,
+    targetPostId,
+  ]);
+
   // Dwell time — see the identical comment in ui-survey.jsx's PostReminderCard
   // (desktop) for the full rationale; this is the same mechanism, applied to
   // the mobile-only near-duplicate component.
@@ -955,6 +994,7 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
                 flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
                 participantSeed={participantSeed}
                 assignedAvatarUrl={assignedAvatarUrl}
+                assignedAuthor={assignedAuthor}
                 questionId={questionId}
                 selected={value?.selected_option === option.key}
                 onSelect={handleRecallSelect}
@@ -974,9 +1014,11 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
                 flags={applyFeedRandomization ? (reminderFlags || flags) : {}}
                 participantSeed={participantSeed}
                 assignedAvatarUrl={assignedAvatarUrl}
+                assignedAuthor={assignedAuthor}
                 interactive={interactive}
                 value={value}
                 onChange={handleInteractiveChange}
+                suppressDisplayedSnapshot={disableReminderSnapshot}
               />
             </div>
           </div>
@@ -1316,6 +1358,7 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
   flags,
   participantSeed,
   otherText,
+  disableReminderSnapshot = false,
 }) {
   const qType = question?.type;
 
@@ -1344,6 +1387,7 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
           participantSeed={participantSeed}
           value={value}
           onChange={onChange}
+          disableReminderSnapshot={disableReminderSnapshot}
         />
       )}
 
@@ -1451,6 +1495,8 @@ export function SurveyScreenMobile({
   enforceRequired = true,
   allowPageJump = false,
   initialQuestionId = null,
+  // See ui-survey.jsx's SurveyScreen for the rationale — mirrored here.
+  disableReminderSnapshot = false,
 }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [delayRemaining, setDelayRemaining] = useState(0);
@@ -1890,6 +1936,7 @@ export function SurveyScreenMobile({
                 flags={flags}
                 participantSeed={participantSeed}
                 otherText={otherText}
+                disableReminderSnapshot={disableReminderSnapshot}
               />
             );
           })}
