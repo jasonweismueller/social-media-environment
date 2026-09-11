@@ -180,6 +180,13 @@ export function AdminPostEditor({
             checked={!!editing.badge}
             onChange={(v) => setEditing((ed) => ({ ...ed, badge: v }))}
           />
+
+          <Toggle
+            label="Misinformation content"
+            hint="When randomize avatars is on, this post draws its avatar from a dedicated misinformation-only avatar pool instead of the regular one (falls back to the regular pool if that pool is empty)."
+            checked={!!editing.isMisinformation}
+            onChange={(v) => setEditing((ed) => ({ ...ed, isMisinformation: v }))}
+          />
         </EditorSection>
 
         <EditorSection title="Post content" subtitle="Timestamp, topic &amp; caption">

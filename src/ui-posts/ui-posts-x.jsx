@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   displayTimeForPost,
   getAvatarPool,
+  getAvatarPoolForPost,
   pickDeterministic,
   pickUniqueDeterministic,
   buildDeterministicAssignmentMap,
@@ -633,6 +634,14 @@ export function Feed({
     [posts, resolvedAuthorTypeById]
   );
 
+  // Posts flagged "misinformation" draw their randomized avatar from a
+  // dedicated pool (see getAvatarPoolForPost) rather than the plain
+  // female/male pool everyone else uses.
+  const femaleMisinfoPosts = useMemo(() => femalePosts.filter((p) => !!p.isMisinformation), [femalePosts]);
+  const femaleNormalPosts = useMemo(() => femalePosts.filter((p) => !p.isMisinformation), [femalePosts]);
+  const maleMisinfoPosts = useMemo(() => malePosts.filter((p) => !!p.isMisinformation), [malePosts]);
+  const maleNormalPosts = useMemo(() => malePosts.filter((p) => !p.isMisinformation), [malePosts]);
+
   const femaleNameMap = useMemo(
     () => buildDeterministicAssignmentMap(femalePosts, FB_FEMALE_NAMES, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "female-names"], (p) => p.id),
     [femalePosts, runSeed, app, projectId, feedId]
@@ -642,17 +651,24 @@ export function Feed({
     [malePosts, runSeed, app, projectId, feedId]
   );
 
-  const [avatarMaps, setAvatarMaps] = useState({ female: new Map(), male: new Map() });
+  const [avatarMaps, setAvatarMaps] = useState({ female: new Map(), male: new Map(), femaleMisinfo: new Map(), maleMisinfo: new Map() });
   const [contacts, setContacts] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [femalePool, malePool] = await Promise.all([getAvatarPool("female"), getAvatarPool("male")]);
+      const [femalePool, malePool, femaleMisinfoPool, maleMisinfoPool] = await Promise.all([
+        getAvatarPool("female"),
+        getAvatarPool("male"),
+        getAvatarPoolForPost("female", true),
+        getAvatarPoolForPost("male", true),
+      ]);
       if (cancelled) return;
       setAvatarMaps({
-        female: buildDeterministicAssignmentMap(femalePosts, femalePool, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "female-avatars"], (p) => p.id),
-        male: buildDeterministicAssignmentMap(malePosts, malePool, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "male-avatars"], (p) => p.id),
+        female: buildDeterministicAssignmentMap(femaleNormalPosts, femalePool, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "female-avatars"], (p) => p.id),
+        male: buildDeterministicAssignmentMap(maleNormalPosts, malePool, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "male-avatars"], (p) => p.id),
+        femaleMisinfo: buildDeterministicAssignmentMap(femaleMisinfoPosts, femaleMisinfoPool, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "female-misinfo-avatars"], (p) => p.id),
+        maleMisinfo: buildDeterministicAssignmentMap(maleMisinfoPosts, maleMisinfoPool, [runSeed || "run", app || "x", projectId || "proj", feedId || "feed", "male-misinfo-avatars"], (p) => p.id),
       });
 
       const showAvatars = !!flags?.realistic_surroundings_avatars;
@@ -663,7 +679,7 @@ export function Feed({
       }));
     })();
     return () => { cancelled = true; };
-  }, [femalePosts, malePosts, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
+  }, [femaleNormalPosts, maleNormalPosts, femaleMisinfoPosts, maleMisinfoPosts, femalePosts, malePosts, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
 
   const realisticSurroundingsOn = !!flags?.realistic_surroundings;
 
@@ -697,7 +713,10 @@ export function Feed({
         {renderPosts.map((p, revealIndex) => {
           const resolvedType = resolvedAuthorTypeById.get(p.id) || "female";
           const assignedAuthor = resolvedType === "male" ? maleNameMap.get(p.id) : femaleNameMap.get(p.id);
-          const assignedAvatarUrl = resolvedType === "male" ? avatarMaps.male.get(p.id) : avatarMaps.female.get(p.id);
+          const isMisinfo = !!p.isMisinformation;
+          const assignedAvatarUrl = resolvedType === "male"
+            ? (isMisinfo ? avatarMaps.maleMisinfo.get(p.id) : avatarMaps.male.get(p.id))
+            : (isMisinfo ? avatarMaps.femaleMisinfo.get(p.id) : avatarMaps.female.get(p.id));
           return (
             <PostCard
               key={p.id}

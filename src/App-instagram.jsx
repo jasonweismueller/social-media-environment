@@ -2328,6 +2328,15 @@ export default function App() {
       types.add("female");
       types.add("male");
     }
+    // A misinformation-flagged post draws its avatar from a dedicated
+    // pool (getAvatarPoolForPost) — warm both misinformation-pool cache
+    // entries too whenever any post is flagged, same "don't bother
+    // resolving the exact gender this early" reasoning as the "random"
+    // case above.
+    if (posts.some((p) => !!p?.isMisinformation)) {
+      types.add("misinformation_female");
+      types.add("misinformation_male");
+    }
 
     if (types.size === 0) {
       dbg("asset preload skipped: no author types");

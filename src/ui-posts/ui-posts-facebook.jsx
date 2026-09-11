@@ -10,6 +10,7 @@ import {
   fakeNamesFor,
   displayTimeForPost,
   getAvatarPool,
+  getAvatarPoolForPost,
   pickDeterministic,
   pickUniqueDeterministic,
   getImagePool,
@@ -2802,6 +2803,28 @@ export function Feed({
     [posts, resolvedAuthorTypeById]
   );
 
+  // Posts flagged "misinformation" draw their randomized avatar from a
+  // dedicated pool (see getAvatarPoolForPost) rather than the plain
+  // female/male pool everyone else uses — split each gender bucket further
+  // so a separate assignment map can be built per sub-bucket below. Company
+  // posts have no misinformation-avatar concept, so they're left alone.
+  const femaleMisinfoPosts = useMemo(
+    () => femalePosts.filter((p) => !!p.isMisinformation),
+    [femalePosts]
+  );
+  const femaleNormalPosts = useMemo(
+    () => femalePosts.filter((p) => !p.isMisinformation),
+    [femalePosts]
+  );
+  const maleMisinfoPosts = useMemo(
+    () => malePosts.filter((p) => !!p.isMisinformation),
+    [malePosts]
+  );
+  const maleNormalPosts = useMemo(
+    () => malePosts.filter((p) => !p.isMisinformation),
+    [malePosts]
+  );
+
   const femaleNameMap = useMemo(
     () =>
       buildDeterministicAssignmentMap(
@@ -2839,6 +2862,8 @@ export function Feed({
     female: new Map(),
     male: new Map(),
     company: new Map(),
+    femaleMisinfo: new Map(),
+    maleMisinfo: new Map(),
   });
 
   // Decorative "Contacts" rail — real-looking, but purely cosmetic: reuses
@@ -2857,23 +2882,25 @@ export function Feed({
     let cancelled = false;
 
     (async () => {
-      const [femalePool, malePool, companyPool] = await Promise.all([
+      const [femalePool, malePool, companyPool, femaleMisinfoPool, maleMisinfoPool] = await Promise.all([
         getAvatarPool("female"),
         getAvatarPool("male"),
         getAvatarPool("company"),
+        getAvatarPoolForPost("female", true),
+        getAvatarPoolForPost("male", true),
       ]);
 
       if (cancelled) return;
 
       setAvatarMaps({
         female: buildDeterministicAssignmentMap(
-          femalePosts,
+          femaleNormalPosts,
           femalePool,
           [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "female-avatars"],
           (p) => p.id
         ),
         male: buildDeterministicAssignmentMap(
-          malePosts,
+          maleNormalPosts,
           malePool,
           [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "male-avatars"],
           (p) => p.id
@@ -2882,6 +2909,18 @@ export function Feed({
           companyPosts,
           companyPool,
           [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "company-avatars"],
+          (p) => p.id
+        ),
+        femaleMisinfo: buildDeterministicAssignmentMap(
+          femaleMisinfoPosts,
+          femaleMisinfoPool,
+          [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "female-misinfo-avatars"],
+          (p) => p.id
+        ),
+        maleMisinfo: buildDeterministicAssignmentMap(
+          maleMisinfoPosts,
+          maleMisinfoPool,
+          [runSeed || "run", app || "app", projectId || "proj", feedId || "feed", "male-misinfo-avatars"],
           (p) => p.id
         ),
       });
@@ -2903,7 +2942,7 @@ export function Feed({
     return () => {
       cancelled = true;
     };
-  }, [femalePosts, malePosts, companyPosts, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
+  }, [femaleNormalPosts, maleNormalPosts, companyPosts, femaleMisinfoPosts, maleMisinfoPosts, femalePosts, malePosts, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
 
   // Opt-in per feed ("Realistic surroundings", Feeds → Settings →
   // Behavior) — off by default, same as every other realism toggle in this
@@ -2981,12 +3020,13 @@ export function Feed({
               ? companyNameMap.get(p.id)
               : femaleNameMap.get(p.id);
 
+          const isMisinfo = !!p.isMisinformation;
           const assignedAvatarUrl =
             resolvedType === "male"
-              ? avatarMaps.male.get(p.id)
+              ? (isMisinfo ? avatarMaps.maleMisinfo.get(p.id) : avatarMaps.male.get(p.id))
               : resolvedType === "company"
               ? avatarMaps.company.get(p.id)
-              : avatarMaps.female.get(p.id);
+              : (isMisinfo ? avatarMaps.femaleMisinfo.get(p.id) : avatarMaps.female.get(p.id));
 
           return (
             <PostCard

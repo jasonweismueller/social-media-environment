@@ -8658,3 +8658,148 @@ appropriately consistent (not randomly reshuffling) within one group across repe
 already live on both Supabase projects — there is nothing backend-side blocking these from shipping
 as soon as they're committed; still worth routing through `main` → staging first given neither has
 had a real click-through yet.
+
+## Per-post "misinformation" avatar pool (male shipped, female pending) + a real CloudFront CORS regression found and fixed (2026-09-11)
+
+Direct request: the user supplied 42 AI-generated male headshots (organized in `Latino`/`White`/
+`Black`/`Asian` local folders, chosen specifically because they're synthetic — "no issue that those
+profile pics are in posts that spread misinformation," i.e. no real person's likeness is misattributed
+to a misinformation post) and asked for (1) these uploaded to S3, and (2) a way to mark a post as
+"misinformation" so avatar randomization draws from this set instead of the regular male pool for
+those posts specifically. Female images explicitly deferred to "tomorrow" — the whole design had to
+tolerate that gap cleanly, not just work once both genders exist.
+
+**New per-post field, `is_misinformation`** (`posts.is_misinformation boolean not null default
+false`, `20260801000039_add_is_misinformation_flag.sql`, applied to both Supabase projects — purely
+additive, every existing post defaults `false`). Mapped in `utils-backend-supabase.js`
+(`mapPostRowToRaw`/`mapRawPostToRow`, `isMisinformation` ↔ `is_misinformation`, same pattern as
+`badge`/`authorType` right next to it). Admin UI: a "Misinformation content" `Toggle` added to the
+**Author** section of all three post editors that have an avatar concept
+(`components-admin-editor-{facebook,instagram,x}.jsx`, right after the existing "Verification badge"
+toggle — Amazon excluded, no avatar/author-gender concept there at all).
+
+**Avatar-pool selection — one shared helper, not four copies of the same fallback logic.** New
+`AVATAR_POOLS_ENDPOINTS` entries (`utils-core.js`): `misinformation_female`/`misinformation_male`,
+pointing at `avatars/misinformation/{female,male}/index.json` on the same CloudFront/S3 bucket —
+`getAvatarPool(kind)` itself needed zero changes, since it already resolves any string key generically
+against this map. New exported `getAvatarPoolForPost(kind, isMisinformation)`: returns the plain pool
+unconditionally when not misinformation (or for `company`, which has no misinformation variant);
+otherwise tries the misinformation-specific pool for that gender and **falls back to the plain pool
+whenever it's empty** — this is the load-bearing piece that lets male ship today and female "tomorrow"
+with zero further code changes once the female images are uploaded and `avatars/misinformation/
+female/index.json` is repopulated. Before this, every consumer (`Feed` in `ui-posts-{facebook,x}.jsx`,
+`PostCard`'s own per-post effect in `ui-posts-instagram.jsx`, and the post-reminder-question no-live-
+snapshot fallback in `ui-survey.jsx`/`ui-survey-mobile.jsx`) called `getAvatarPool(kind)` directly —
+duplicating "does this post need the special pool, and what if it's empty" four times would have been
+exactly the kind of footgun this file already has a name for; instead all four now call the one shared
+helper.
+
+**Facebook/X's `Feed` needed real restructuring, not just a swapped function call**, since it builds
+one deterministic assignment map per gender bucket across *all* posts in that bucket at once
+(`buildDeterministicAssignmentMap`) — a post's misinformation flag can vary within a gender bucket, so
+each gender bucket was split further into `{gender}NormalPosts`/`{gender}MisinfoPosts`, each getting
+its own assignment map (`avatarMaps.female`/`.male`/`.femaleMisinfo`/`.maleMisinfo`), with the misinfo
+maps built from `getAvatarPoolForPost(gender, true)` (so they already reflect the fallback). The
+per-post render pick then branches on `post.isMisinformation` in addition to the existing resolved-
+gender branch. Instagram needed no such restructuring — its `PostCard` already resolves its own avatar
+independently per post in a local effect, so the fix there was a one-line swap of which function it
+calls. All three `App-*.jsx` files' asset-preload warm-up effect (which primes `getAvatarPool`'s
+internal cache before `Feed`/`PostCard` actually need it, mirroring the existing "random Author Type
+warms both genders" case right above it) now also warms both `misinformation_female`/
+`misinformation_male` cache entries whenever any post in the feed is flagged — a preload nicety, not a
+correctness requirement, since the real consumers fetch it themselves regardless.
+
+**Pipeline for the 42 male images**: resized locally with `sips` to the same 320px-max-dimension/
+quality-78 JPEG convention the 2026-08-02 avatar-compression pass established (2832×4064-style
+originals → ~320×308, ~86MB of PNGs → 1.3MB of JPEGs), renamed `{ethnicity}-{original-stem}.jpg` to
+avoid real filename collisions across ethnicity folders (`m20.png`/`m44.png`/`m55.png` each existed in
+more than one ethnicity folder), uploaded to `avatars/misinformation/male/{latino,white,black,asian}/`
+(ethnicity kept as both folder and filename prefix — the consuming code treats this as one flat pool
+today, but the folder structure keeps ethnicity visible in the bucket for any future ethnicity-aware
+balancing work). `index.json` built as a flat array of full CloudFront URLs across all four ethnicity
+subfolders, matching the exact absolute-URL format the real `avatars/male/index.json`/`avatars/female/
+index.json` already use (confirmed by fetching them directly rather than assumed). Also seeded
+`avatars/misinformation/female/index.json` as a literal `[]` — so `getAvatarPoolForPost("female",
+true)` resolves to a clean, fast empty-array fallback today instead of a 404, and tomorrow's upload
+just needs to overwrite that one file with the real list, no code or cache-key changes needed.
+
+### Real, live infrastructure bug found while verifying — and fixed, with explicit sign-off first
+
+Verifying the new `index.json` against the real CDN (the same `curl -H "Origin: ..."` battery this
+file's own 2026-08-08 CORS entry established) found the exact class of bug that entry documents as
+already fixed — but it had regressed. `avatars/misinformation/male/index.json` returned **zero**
+`Access-Control-Allow-Origin` header for *any* origin, including a deliberately bogus
+`evil-example.com` test origin, which should never get a CORS header at all — proving the response
+being served wasn't even doing per-origin matching, it was a single cached response shared across every
+requester regardless of `Origin`. This isn't specific to the new files — the exact same bogus-origin
+test against every path on this CDN would misbehave identically, since it's a distribution-wide setting.
+
+**Root cause, precisely diagnosed via `aws cloudfront get-distribution-config` rather than assumed**:
+the distribution's **origin request policy** was already correctly set to `Managed-CORS-S3Origin`
+(forwards `Origin` to S3 on a cache miss) — but its **cache policy** was `Managed-CachingOptimized`,
+whose `HeadersConfig` is `{"HeaderBehavior": "none"}`, meaning `Origin` plays no part in the cache
+*key*. Concretely: whichever origin's request happens to reach a given CloudFront edge first triggers
+an origin fetch (with `Origin` correctly forwarded, and S3 correctly returning a matching CORS header
+for that one origin) — but the **cached response** is then keyed only by URL, so every subsequent
+request to that same URL from *any* other origin gets served that exact same cached response,
+including its now-mismatched (or in this case, since the very first hit had no `Origin` header at all,
+completely absent) CORS header. This is the identical bug class the 2026-08-08 entry root-caused and
+fixed by (per that entry's own wording) "switching the `Default (*)` behavior's cache policy to
+`Managed-CORS-S3Origin`" — a slightly imprecise description in hindsight, since `Managed-CORS-S3Origin`
+is actually an *origin request* policy, not a cache policy, and no AWS-managed *cache* policy varies by
+`Origin` at all; the distribution's origin-request-policy half of that fix was still correctly in place
+today, but the cache-policy half had reverted to `Managed-CachingOptimized` (cause unknown — possibly a
+later, unrelated config push that only touched that one field) with nothing to actually vary the cache
+by origin, which is what let the poisoning symptom return.
+
+**Flagged to the user before touching anything, given the blast radius (a shared, production CDN
+setting affecting every image on every live study, not just today's new files) — user said yes, fix
+it.** New custom cache policy `CachingOptimized-VaryByOrigin`
+(`a43e5b11-bb95-4319-8d6e-0b49a791ff48`) — identical TTLs/gzip/brotli settings to
+`Managed-CachingOptimized`, with `HeadersConfig` whitelisting `Origin` so the cache key now genuinely
+varies per requesting origin. Attached as the distribution's `DefaultCacheBehavior.CachePolicyId` via
+`update-distribution` (existing `OriginRequestPolicyId` left untouched, since that half was already
+correct). No invalidation of existing cached objects was needed or attempted — a cache-policy change
+that adds a dimension to the cache key means old entries simply can't match the new key shape; they
+sit orphaned until their TTL expires, causing no harm, while every new request immediately gets a
+fresh, correctly-origin-scoped cache entry.
+
+**Verified after the distribution redeployed** (`Status: Deployed`, confirmed via polling
+`get-distribution`, ~40s): `studyfeed.org` and `staging.studyfeed.org` each now get their own
+correctly-matching `Access-Control-Allow-Origin` on a fresh `Miss from cloudfront`, a *repeated*
+request from the same origin now correctly gets `Hit from cloudfront` with the same correct header
+(proving it's now genuinely caching per-origin, not just always missing), and the bogus
+`evil-example.com` origin correctly gets **no** CORS header at all on either a miss or (implicitly) any
+future hit — S3's own `AllowedOrigins` list is still the real gate, this fix only stopped CloudFront
+from short-circuiting it. Re-confirmed the pre-existing `avatars/male/index.json` path is unaffected/
+still correct. This fix is distribution-wide, so it should also resolve any other CORS-flakiness reports
+on avatar/topic-image loading beyond just the new misinformation pool, if any surface later.
+
+**Frontend verification, separate from the CDN fix**: `getAvatarPoolForPost` tested directly with a
+mocked `fetch` (male-misinfo populated, female-misinfo empty, matching today's real real-world state
+exactly) — confirmed the male branch returns the misinfo-specific list and the female branch cleanly
+falls back to the plain female list. The real `Feed` (`ui-posts/index.js`, not a reimplementation) was
+mounted with three fabricated posts — plain male, misinformation-flagged male, plain female — and
+`randomize_avatars: true`; confirmed via the rendered `<img src>` on each card that the plain male post
+got a normal-pool avatar, the misinformation-flagged male post got a misinformation-pool avatar, and
+the female post (no misinfo pool populated) correctly fell back to the plain female pool. All ten
+touched files (`utils-core.js`, `utils-backend-supabase.js`, `ui-posts-{facebook,x,instagram}.jsx`,
+`ui-survey.jsx`/`-mobile.jsx`, `App-{facebook,x,instagram}.jsx`, the three post editors) parse clean
+(`@babel/parser`); reloading `?app=fb`/`?app=ig`/`?app=amz` fresh showed no new console errors beyond
+this sandbox's own already-documented `localhost`-not-on-CDN-allowlist CORS noise and a stale-buffered-
+console-history artifact (confirmed as such by reproducing the identical "error" on an untouched
+Amazon page — the same class of tooling false-positive this file's dark-mode entries already document
+hitting more than once). **Not verified**: an actual click-through by a real logged-in admin toggling
+the new "Misinformation content" switch, or a real participant loading a feed with a misinformation
+post and `randomize_avatars` on — same standing no-login limitation as everywhere else in this file.
+
+**Status**: schema migration live on both Supabase projects; all 42 male images live on the real S3
+bucket/CloudFront distribution (not staged — this was a direct infrastructure write, done with the
+user's live AWS session, not a hand-off script); the CloudFront cache-policy fix is live and deployed.
+Frontend code changes are uncommitted in the working tree (this session's branch was `production` at
+start — check `git status`/`git log` before assuming either way, per this file's own standing note
+that auto-commit can happen with zero Claude tool calls). **Still needed from the user**: the 20 female
+images ("tomorrow," per their own framing) — once uploaded to
+`avatars/misinformation/female/{ethnicity}/` and `avatars/misinformation/female/index.json` is
+regenerated to list them (same shape as the male one), the female fallback starts resolving to the
+real set with zero further code changes, exactly as designed.

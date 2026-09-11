@@ -15,6 +15,7 @@ import {
   loadPostByIdFromBackend,
   fetchFeedFlags,
   getAvatarPool,
+  getAvatarPoolForPost,
   pickDeterministic,
   applyPostInteractionEvent,
   makeEmptyPostInteractionAggregate,
@@ -855,7 +856,7 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
 
     (async () => {
       try {
-        const pool = await getAvatarPool(kind);
+        const pool = await getAvatarPoolForPost(kind, !!nonSnapshotPost?.isMisinformation);
         if (cancelled) return;
         const pick = pickDeterministic(pool, [
           participantSeed || "survey-reminder-preview",

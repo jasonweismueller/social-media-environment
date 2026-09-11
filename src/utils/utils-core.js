@@ -1716,6 +1716,14 @@ export const AVATAR_POOLS_ENDPOINTS = {
   female: `${CF_BASE.replace(/\/+$/,'')}/avatars/female/index.json`,
   male:   `${CF_BASE.replace(/\/+$/,'')}/avatars/male/index.json`,
   company:`${CF_BASE.replace(/\/+$/,'')}/avatars/company/index.json`,
+  // Dedicated pools for posts flagged "misinformation" — kept separate from
+  // the plain female/male pools so a researcher can use a deliberately
+  // distinct (or matched) set of faces for misinformation-labeled content
+  // without touching what every other post draws from. See
+  // getAvatarPoolForPost below for the fallback behavior when one of these
+  // is still empty (e.g. one gender's set hasn't been added yet).
+  misinformation_female: `${CF_BASE.replace(/\/+$/,'')}/avatars/misinformation/female/index.json`,
+  misinformation_male:   `${CF_BASE.replace(/\/+$/,'')}/avatars/misinformation/male/index.json`,
 };
 
 const __avatarPoolCache = new Map();
@@ -1737,6 +1745,23 @@ export async function getAvatarPool(kind = "female") {
   })();
   __avatarPoolCache.set(k, p);
   return p;
+}
+
+// Resolves which avatar pool a post should actually draw from. A post
+// flagged is_misinformation draws from a dedicated misinformation-specific
+// pool for its gender (kept separate from the plain female/male pool every
+// other post uses), but falls back to the plain gender pool whenever the
+// misinformation-specific pool for that gender is still empty — e.g. male
+// images added today, female images added tomorrow — so filling in the
+// missing gender later needs no further code change, and a "company"
+// author (no misinformation variant) is unaffected either way.
+export async function getAvatarPoolForPost(kind, isMisinformation) {
+  const plain = await getAvatarPool(kind);
+  if (!isMisinformation) return plain;
+  const misinfoKind = kind === "male" ? "misinformation_male" : kind === "female" ? "misinformation_female" : null;
+  if (!misinfoKind) return plain;
+  const misinfoPool = await getAvatarPool(misinfoKind);
+  return misinfoPool.length ? misinfoPool : plain;
 }
 
 export function pickDeterministic(array, seedParts = []) {

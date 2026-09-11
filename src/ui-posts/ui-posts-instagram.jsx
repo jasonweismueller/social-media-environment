@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getAvatarPoolForPost, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -520,7 +520,7 @@ const poolNames =
     if (!randAvatarOn) { setRandAvatarUrl(null); return; }
     (async () => {
       try {
-        const list = await getAvatarPool(inferredAuthorType); // absolute URLs
+        const list = await getAvatarPoolForPost(inferredAuthorType, !!post?.isMisinformation); // absolute URLs
         if (cancelled) return;
         const pick = pickDeterministic(list, [...seedParts, "avatar"]);
         setRandAvatarUrl(pick || null);
