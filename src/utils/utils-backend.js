@@ -66,6 +66,8 @@ import {
   supabaseGetAiReportJob,
   supabaseListAiReportJobHistory,
   supabaseGetAiReportUsage,
+  supabaseGetAiReportContext,
+  supabaseSetAiReportContext,
 } from "./utils-backend-supabase";
 
 /* --------------------- App + endpoints ------------------------ */
@@ -4369,11 +4371,11 @@ export async function saveCustomMeasureGroups(surveyId, groups, { projectId = ge
  * no Supabase execution-time ceiling involved at all. Poll
  * pollAiReportJob(job_id) for the actual result.
  */
-export async function generateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount } = {}) {
+export async function generateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount, extraContext } = {}) {
   if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
   if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
   try {
-    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount });
+    return await supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount, extraContext });
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }
@@ -4415,6 +4417,40 @@ export async function getAiReportUsage() {
   if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
   try {
     return await supabaseGetAiReportUsage();
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+/**
+ * Optional per-survey researcher-provided context (hypotheses, specific
+ * comparisons/DVs to test, anything else) for the AI-generated study
+ * report — see ai-study-report/index.ts's own "extra_context" comment for
+ * why this exists. Reusable across generations for the same survey until
+ * edited; a given report's own past prompt is snapshotted separately on
+ * its ai_report_jobs row (see listAiReportJobHistory/pollAiReportJob).
+ * Supabase-only, same posture as loadCustomMeasureGroups — no GAS
+ * counterpart, this feature postdates the cutover.
+ */
+export async function getAiReportContext(surveyId) {
+  if (!surveyId) return { ok: false, err: "survey_id required" };
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!isSupabaseBackend()) return { ok: true, context: "" };
+  try {
+    const context = await supabaseGetAiReportContext(surveyId);
+    return { ok: true, context };
+  } catch (e) {
+    return { ok: false, err: String(e?.message || e) };
+  }
+}
+
+export async function setAiReportContext(surveyId, context) {
+  if (!surveyId) return { ok: false, err: "survey_id required" };
+  if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
+  if (!isSupabaseBackend()) return { ok: false, err: "AI reports require the Supabase backend" };
+  try {
+    await supabaseSetAiReportContext(surveyId, context);
+    return { ok: true };
   } catch (e) {
     return { ok: false, err: String(e?.message || e) };
   }

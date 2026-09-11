@@ -45,6 +45,8 @@ import {
   pollAiReportJob,
   listAiReportJobHistory,
   getAiReportUsage,
+  getAiReportContext,
+  setAiReportContext,
 } from "../utils";
 import { PageHeader, Card, Button, Badge, EmptyState, RoleGate, useToast, useConfirm, IconSparkle, Table, Th, Td, Tr } from "./ui";
 import {
@@ -150,6 +152,19 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
   const [report, setReport] = useState(null);
   const [generatingElapsedMs, setGeneratingElapsedMs] = useState(0);
   const [progressNote, setProgressNote] = useState("");
+
+  // Optional researcher-provided hypotheses/specific comparisons — see
+  // ai-study-report/index.ts's own "extra_context" comment for why this
+  // exists (a real report ran generic pooled comparisons instead of the
+  // researcher's actual by-condition hypothesis, purely because nothing
+  // told it which comparisons mattered). Persisted server-side per survey
+  // (ai_report_context table) so it's reusable across generations and
+  // synced across admins/browsers, not a per-tab scratch note.
+  const [additionalContext, setAdditionalContext] = useState("");
+  const [contextLoaded, setContextLoaded] = useState(false);
+  const [savedContext, setSavedContext] = useState("");
+  const [savingContext, setSavingContext] = useState(false);
+  const contextDirty = contextLoaded && additionalContext !== savedContext;
   const pollTimerRef = useRef(null);
   const pollDeadlineRef = useRef(0);
   const pollTickRef = useRef(null);
@@ -343,21 +358,30 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
       setSurvey(null);
       setResponseRows([]);
       setCustomGroups([]);
+      setAdditionalContext("");
+      setSavedContext("");
+      setContextLoaded(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setReport(null);
+    setContextLoaded(false);
     Promise.all([
       loadSurveyFromBackend(surveyId, { projectId, force: true }),
       loadSurveyResponsesBySurveyRoster(surveyId, { projectId }),
       loadCustomMeasureGroups({ surveyId, projectId }),
+      getAiReportContext(surveyId),
     ])
-      .then(([def, rows, groups]) => {
+      .then(([def, rows, groups, contextRes]) => {
         if (cancelled) return;
         setSurvey(def);
         setResponseRows(Array.isArray(rows) ? rows : []);
         setCustomGroups(Array.isArray(groups) ? groups : []);
+        const ctx = contextRes?.ok ? contextRes.context || "" : "";
+        setAdditionalContext(ctx);
+        setSavedContext(ctx);
+        setContextLoaded(true);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -400,6 +424,26 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
   const responseCount = dataset?.rows?.length || 0;
   const estimatedCostUsd = estimateReportCost(responseCount, model, historicalPerResponseUsd);
 
+  // Explicit save (blur/button) — also called, best-effort, right before a
+  // generation starts, so what's actually sent always matches what's shown
+  // as saved (no "I edited this, forgot to click Save, then generated the
+  // old version" gap).
+  const saveContext = async (value = additionalContext) => {
+    if (!surveyId || value === savedContext) return true;
+    setSavingContext(true);
+    try {
+      const res = await setAiReportContext(surveyId, value);
+      if (!res.ok) {
+        toast.error(`Failed to save context${res.err ? `: ${res.err}` : "."}`);
+        return false;
+      }
+      setSavedContext(value);
+      return true;
+    } finally {
+      setSavingContext(false);
+    }
+  };
+
   const generateReport = async () => {
     if (!surveyId || !survey) return;
     const ok = await confirm({
@@ -413,6 +457,7 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
     try {
       setGenerating(true);
       setReport(null);
+      await saveContext();
 
       // Same context-gathering shape components-admin-participants-survey.jsx's
       // own (now-removed) "Generate AI report" button used — see this file's
@@ -492,7 +537,15 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
       // comment for the "EarlyDrop" incident this replaced). The Edge
       // Function itself keeps generating in the background via
       // EdgeRuntime.waitUntil() regardless of what this call returns.
-      const res = await generateAiStudyReport({ markdown, csv: responseCsv, csvFilename, model, surveyId, responseCount });
+      const res = await generateAiStudyReport({
+        markdown,
+        csv: responseCsv,
+        csvFilename,
+        model,
+        surveyId,
+        responseCount,
+        extraContext: additionalContext,
+      });
 
       // Present on the hard-cap-rejection case (job never started) — the
       // success case's real total is only known once the job finishes, and
@@ -655,6 +708,53 @@ export function AiAnalysisHubPage({ projectId: projectIdProp }) {
                   >
                     Generate AI report
                   </Button>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+                    <label htmlFor="ai-report-extra-context" style={{ fontSize: 12, fontWeight: 700, color: "var(--admin-muted)" }}>
+                      Additional context for the AI (optional)
+                      <span title="Hypotheses, specific comparisons/DVs you want tested by name, or anything else worth knowing. Without this, the model can only guess which comparisons matter from the raw questions and responses — it may run different (still real, just less relevant) analyses than the ones you actually care about.">
+                        {" "}
+                        ⓘ
+                      </span>
+                    </label>
+                    {contextDirty && (
+                      <Button size="sm" variant="secondary" busy={savingContext} onClick={() => saveContext()}>
+                        Save
+                      </Button>
+                    )}
+                  </div>
+                  <textarea
+                    id="ai-report-extra-context"
+                    value={additionalContext}
+                    onChange={(e) => setAdditionalContext(e.target.value)}
+                    onBlur={() => saveContext()}
+                    disabled={!surveyId || !contextLoaded}
+                    placeholder={
+                      'e.g. "Our main hypothesis (H1) is that the elaborated prebunk condition reduces believability of ' +
+                      "emotionally-framed misinformation more than the concise prebunk or control condition — please run " +
+                      "that specific 3-condition comparison on emotionally-framed MI items first, before any other " +
+                      'breakdowns. We also want to test whether persuasion knowledge (PK) mediates that effect."'
+                    }
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: "1px solid var(--admin-border)",
+                      background: "var(--admin-surface)",
+                      color: "var(--admin-text)",
+                      fontSize: 13,
+                      fontFamily: "inherit",
+                      resize: "vertical",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--admin-muted)" }}>
+                    Saved per survey and reused every time you generate a report for it, until you change it. Sent as
+                    part of the same billed prompt — it isn't free-standing.
+                  </div>
                 </div>
                 {responseCount === 0 && !loading && (
                   <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--admin-muted)" }}>

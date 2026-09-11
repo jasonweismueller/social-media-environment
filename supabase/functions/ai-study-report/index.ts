@@ -234,17 +234,27 @@ fabricate a statistic you did not actually compute in code. Do not generate
 image/chart files — describe patterns in words instead, this report is read
 as plain text. Keep the whole report under roughly 1200 words.`;
 
-function buildPrompt(markdown: string, hasCsv: boolean, csvFilename: string): string {
+function buildPrompt(markdown: string, hasCsv: boolean, csvFilename: string, extraContext: string): string {
   const header =
     "Here is the design, content, and aggregate statistics for a research study, exported from the platform's own admin dashboard:";
   const csvNote = hasCsv
     ? `\n\nA CSV of every individual (de-identified) survey response has been attached to this conversation as an uploaded file named "${csvFilename}". Use the code_execution tool to load it (e.g. with pandas) and compute every statistic in your report directly from it — the aggregate numbers in the context above are for orientation only, not a substitute for recomputing from the real data.`
     : `\n\nNo response-level CSV was attached (there may be too few responses yet, or none) — write the report from the aggregate context above only, and say plainly that no per-response computation was possible.`;
-  return `${header}\n\n${markdown}${csvNote}`;
+  // Researcher-provided hypotheses/specific comparisons, when given, are
+  // placed prominently and *before* the raw design context — built after a
+  // real report ran generic pooled comparisons instead of the researcher's
+  // actual by-condition hypothesis test, purely because nothing told it
+  // which comparisons were the ones that mattered. Framed as something to
+  // prioritize testing explicitly, not something to assume the answer to —
+  // SYSTEM_PROMPT's own honesty instructions still apply on top of this.
+  const extraContextBlock = extraContext.trim()
+    ? `IMPORTANT — the researcher who ran this study has provided the following context, specific hypotheses, and/or comparisons they want tested. Treat this as the primary guide for what "Key results" should cover — run these specific comparisons explicitly, by name, in addition to (not instead of) anything else in the data worth reporting. Do not assume the outcome; compute each one for real and report the true result even if it doesn't match what the researcher expected:\n\n"""\n${extraContext.trim()}\n"""\n\n`
+    : "";
+  return `${extraContextBlock}${header}\n\n${markdown}${csvNote}`;
 }
 
-function buildBatchParams(markdown: string, hasCsv: boolean, csvFilename: string, fileId: string | null, model: string) {
-  const userContent: any[] = [{ type: "text", text: buildPrompt(markdown, hasCsv, csvFilename) }];
+function buildBatchParams(markdown: string, hasCsv: boolean, csvFilename: string, fileId: string | null, model: string, extraContext: string) {
+  const userContent: any[] = [{ type: "text", text: buildPrompt(markdown, hasCsv, csvFilename, extraContext) }];
   if (fileId) userContent.push({ type: "container_upload", file_id: fileId });
   return {
     model,
@@ -274,8 +284,9 @@ async function submitReportBatch(opts: {
   csv: string;
   csvFilename: string;
   model: string;
+  extraContext: string;
 }): Promise<void> {
-  const { admin, apiKey, jobId, markdown, csv, csvFilename, model } = opts;
+  const { admin, apiKey, jobId, markdown, csv, csvFilename, model, extraContext } = opts;
   let fileId: string | null = null;
   let batchSubmitted = false;
   try {
@@ -302,7 +313,7 @@ async function submitReportBatch(opts: {
         method: "POST",
         headers: anthropicHeaders(apiKey, { "content-type": "application/json" }),
         body: JSON.stringify({
-          requests: [{ custom_id: "report", params: buildBatchParams(markdown, !!fileId, csvFilename, fileId, model) }],
+          requests: [{ custom_id: "report", params: buildBatchParams(markdown, !!fileId, csvFilename, fileId, model, extraContext) }],
         }),
       },
       SUBMIT_TIMEOUT_MS,
@@ -589,7 +600,7 @@ Deno.serve(async (req: Request) => {
     const { data: jobRow, error: jobErr } = await admin
       .from("ai_report_jobs")
       .select(
-        "id, user_id, model, status, report_markdown, progress_note, usage, estimated_cost_usd, execution_trace, error, anthropic_batch_id, anthropic_file_id, created_at"
+        "id, user_id, model, status, report_markdown, progress_note, usage, estimated_cost_usd, execution_trace, error, anthropic_batch_id, anthropic_file_id, extra_context, created_at"
       )
       .eq("id", jobId)
       .maybeSingle();
@@ -629,6 +640,7 @@ Deno.serve(async (req: Request) => {
         execution_trace: resultRow.execution_trace,
         error: resultRow.error,
         model: resultRow.model,
+        extra_context: resultRow.extra_context,
         created_at: resultRow.created_at,
       },
     });
@@ -654,6 +666,11 @@ Deno.serve(async (req: Request) => {
   // future cost estimates (see the Analysis Hub page's estimateReportCost),
   // never trusted for anything security/billing-relevant.
   const responseCount = Number.isFinite(Number(body?.response_count)) ? Math.max(0, Math.round(Number(body.response_count))) : null;
+  // Optional researcher-provided hypotheses/specific comparisons (see
+  // ai_report_context, 20260801000036_ai_report_context.sql) — capped well
+  // under the markdown/CSV limits above since this is meant to be a short
+  // steer, not another data dump.
+  const extraContext = typeof body?.extra_context === "string" ? body.extra_context.slice(0, 8000) : "";
 
   if (!markdown) {
     return jsonResponse({ ok: false, err: "markdown study context is required" }, { status: 400 });
@@ -720,7 +737,15 @@ Deno.serve(async (req: Request) => {
 
   const { data: job, error: jobErr } = await admin
     .from("ai_report_jobs")
-    .insert({ user_id: userData.user.id, survey_id: surveyId, model, status: "running", response_count: responseCount, progress_note: "Preparing…" })
+    .insert({
+      user_id: userData.user.id,
+      survey_id: surveyId,
+      model,
+      status: "running",
+      response_count: responseCount,
+      progress_note: "Preparing…",
+      extra_context: extraContext || null,
+    })
     .select("id")
     .single();
   if (jobErr || !job) {
@@ -735,6 +760,7 @@ Deno.serve(async (req: Request) => {
     csv,
     csvFilename,
     model,
+    extraContext,
   });
 
   // Keep the isolate alive long enough to finish uploading the CSV and

@@ -1500,7 +1500,7 @@ export async function supabaseSetUserProjectAccess(userId, entries) {
 // returns {ok:true, job_id} immediately, then keeps generating in the
 // background regardless of whether this call's own connection survives.
 // Callers must poll supabasePollAiReportJob(job_id) for the real result.
-export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount }) {
+export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount, extraContext }) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.functions.invoke("ai-study-report", {
     body: {
@@ -1510,6 +1510,7 @@ export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename
       model,
       survey_id: surveyId || null,
       response_count: Number.isFinite(responseCount) ? responseCount : null,
+      extra_context: extraContext || "",
     },
   });
 
@@ -1598,4 +1599,37 @@ export async function supabaseGetAiReportUsage() {
   }
   if (!data?.ok) return { ok: false, err: data?.err || "Failed to load AI analysis usage" };
   return data;
+}
+
+// Optional per-survey researcher-provided context (hypotheses, specific
+// comparisons/DVs to test) for the AI-generated study report — see
+// ai-study-report/index.ts's own "extra_context" comment and
+// 20260801000036_ai_report_context.sql for why this exists: a real report
+// on a live study ran generic pooled comparisons instead of the
+// researcher's actual by-condition hypothesis, purely because nothing told
+// it which comparisons mattered. Plain RLS-gated table, same admin-only/
+// project_access-scoped shape as custom_measure_groups. A survey with none
+// set simply has no row here — the frontend treats a missing row as "".
+export async function supabaseGetAiReportContext(surveyId) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.from("ai_report_context").select("context").eq("survey_id", surveyId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.context || "";
+}
+
+export async function supabaseSetAiReportContext(surveyId, context) {
+  const supabase = getSupabaseClient();
+  const trimmed = String(context || "").trim();
+  if (!trimmed) {
+    // Nothing to keep — delete the row rather than leaving an empty one
+    // around, so "no context set" always means "no row", consistently.
+    const { error } = await supabase.from("ai_report_context").delete().eq("survey_id", surveyId);
+    if (error) throw new Error(error.message);
+    return true;
+  }
+  const { error } = await supabase
+    .from("ai_report_context")
+    .upsert({ survey_id: surveyId, context: trimmed }, { onConflict: "survey_id" });
+  if (error) throw new Error(error.message);
+  return true;
 }
