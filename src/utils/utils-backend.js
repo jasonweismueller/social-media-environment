@@ -709,6 +709,716 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
   return questions;
 }
 
+/* ======================= survey codebook / data dictionary ====================== */
+
+const SURVEY_CODEBOOK_TYPE_LABELS = {
+  text: "Short text",
+  textarea: "Long text",
+  single_choice: "Single choice",
+  multi_choice: "Multiple choice",
+  dropdown: "Dropdown",
+  matrix_single: "Matrix (one answer per row)",
+  matrix_multi: "Matrix (multiple per row)",
+  bipolar: "Bipolar scale",
+  slider: "Slider",
+  post_reminder: "Post reminder",
+};
+
+function surveyCodebookStripHtml(html) {
+  return String(html || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function surveyCodebookChoiceCoding(choices, options) {
+  const list =
+    Array.isArray(choices) && choices.length
+      ? choices.map((c) => ({ value: c?.value, label: c?.label ?? c?.value, is_other: !!c?.is_other }))
+      : Array.isArray(options)
+        ? options.map((label, i) => ({ value: `opt_${i + 1}`, label, is_other: false }))
+        : [];
+  if (!list.length) return "";
+  return list
+    .map((c) => `${c.value} = ${c.label}${c.is_other ? " (free text captured in a separate column)" : ""}`)
+    .join("; ");
+}
+
+function surveyCodebookScaleCoding(min, max, leftLabel, rightLabel) {
+  const lo = Number.isFinite(min) ? min : 1;
+  const hi = Number.isFinite(max) ? max : 7;
+  const left = String(leftLabel || "").trim();
+  const right = String(rightLabel || "").trim();
+  const range = `Numeric, ${lo}–${hi}`;
+  return left || right ? `${range} (${lo} = ${left || "low end"}; ${hi} = ${right || "high end"})` : range;
+}
+
+// Curated per-field descriptions for an interactive post_reminder's own
+// columns (REMINDER_INTERACTION_FIELDS above) — keyed by the same `value`
+// strings that list already uses, so this can't silently drift out of sync
+// with which fields actually get exported.
+const SURVEY_CODEBOOK_REMINDER_INTERACTION_CODING = {
+  reaction_type: "The reaction given (e.g. like/love/haha/wow/sad/angry/care), blank if none.",
+  commented: "1 = left a comment, 0 = did not.",
+  comment_texts: 'The comment text(s) entered, joined by " | " if more than one.',
+  shared: "1 = shared the post, 0 = did not.",
+  share_target: "Where the post was shared to, when applicable.",
+  reposted: "1 = reposted the post, 0 = did not (Instagram/X only).",
+  reported_misinfo: "1 = flagged the post as misinformation, 0 = did not.",
+  review_helpful: "1 = marked the review as helpful (Amazon only), 0 = did not.",
+};
+
+// Mirrors POST_METRIC_SUFFIXES_FOR_LABELS below (the single authoritative
+// list of every per-post metric column this app can emit) so this section
+// can't quietly go stale relative to what a real feed+survey CSV actually
+// contains — described once, generically, rather than enumerated per real
+// post (which would need a live feed/post fetch just to generate a codebook).
+const SURVEY_CODEBOOK_POST_METRIC_CODING = [
+  { suffix: "_reacted", desc: "1 if the participant reacted to this post, 0 otherwise." },
+  { suffix: "_reaction_type", desc: "Which reaction was given (e.g. like/love/haha), blank if none." },
+  { suffix: "_expandable", desc: '1 if the post\'s text was long enough to show a "See more" link, 0 otherwise.' },
+  { suffix: "_expanded", desc: '1 if the participant clicked "See more" to expand the text, 0 otherwise.' },
+  { suffix: "_commented", desc: "1 if the participant left a comment on this post, 0 otherwise." },
+  { suffix: "_comment_texts", desc: 'The comment text(s) left, joined by " | " if more than one.' },
+  { suffix: "_reported_misinfo", desc: "1 if the participant flagged this post as misinformation, 0 otherwise." },
+  { suffix: "_dwell_s", desc: "Seconds this post was visible in the participant's viewport." },
+  { suffix: "_dwell_ms", desc: "Same as _dwell_s, in milliseconds." },
+  { suffix: "_saved", desc: "1 if the participant saved/bookmarked this post, 0 otherwise (Instagram/X)." },
+  { suffix: "_shared", desc: "1 if the participant shared this post, 0 otherwise." },
+  { suffix: "_share_target", desc: "Where the post was shared to, when applicable." },
+  { suffix: "_share_text", desc: "Any text the participant added when sharing." },
+  { suffix: "_reposted", desc: "1 if the participant reposted this post, 0 otherwise (Instagram/X)." },
+  { suffix: "_cta_clicked", desc: "1 if the participant clicked the post's call-to-action / ad link, 0 otherwise." },
+  { suffix: "_news_clicked", desc: "1 if the participant clicked through a news-link preview, 0 otherwise." },
+  { suffix: "_bio_opened", desc: "1 if the participant opened the author's bio/profile preview, 0 otherwise." },
+  { suffix: "_bio_url_clicked", desc: "1 if the participant clicked a link inside the author's bio, 0 otherwise." },
+  { suffix: "_mention_clicked", desc: "1 if the participant clicked an @mention in the post, 0 otherwise." },
+  { suffix: "_note_opened", desc: "1 if the participant opened the community-note/context-note panel, 0 otherwise." },
+  { suffix: "_note_view_details", desc: "1 if the participant expanded the note's full details, 0 otherwise." },
+  { suffix: "_note_link_clicked", desc: "1 if the participant clicked a source link inside the note, 0 otherwise." },
+  { suffix: "_note_helpful_rated", desc: "1 if the participant rated the note as helpful/not helpful, 0 otherwise." },
+  { suffix: "_note_helpful_value", desc: "The helpfulness rating given, when applicable." },
+  { suffix: "_note_group1_size_shown", desc: "Displayed reader-count shown for the note's first group, when applicable." },
+  { suffix: "_note_group2_size_shown", desc: "Displayed reader-count shown for the note's second group, when applicable." },
+  { suffix: "_review_helpful", desc: "1 if the participant marked this Amazon review as helpful, 0 otherwise." },
+  { suffix: "_review_helpful_removed", desc: '1 if the participant undid a "helpful" mark, 0 otherwise.' },
+  { suffix: "_review_reported", desc: "1 if the participant reported this review, 0 otherwise." },
+  { suffix: "_review_read_more", desc: '1 if the participant clicked "Read more" on this review, 0 otherwise.' },
+  { suffix: "_review_read_more_ms", desc: 'Milliseconds between the review appearing and "Read more" being clicked.' },
+  { suffix: "_review_rating", desc: "The star rating shown on this review (1–5)." },
+];
+
+// Builds a flat, human-readable "data dictionary" describing every column a
+// CSV export of this survey can produce — one row per variable, grouped into
+// sections. Deliberately built on top of flattenSurveyQuestions (the exact
+// same function every real CSV builder in this file already goes through)
+// so a codebook variable name can never drift out of sync with what the
+// actual downloaded CSV calls that column — the one thing that would make a
+// codebook actively misleading rather than merely incomplete.
+export function buildSurveyCodebookRows(survey) {
+  const def = survey && typeof survey === "object" ? survey : {};
+  const pages = Array.isArray(def.pages) ? def.pages : [];
+  const rows = [];
+
+  // `page_index`/`flags` are additive — buildSurveyCodebookCsv only ever
+  // reads the five plain-text fields below, so this doesn't change the CSV
+  // output at all. They exist for buildSurveyCodebookHtmlDocument, which
+  // groups survey-question rows by page and renders flags (Attention check /
+  // Screener) as real badges instead of text appended into response_coding.
+  const push = (section, variable, description, type, coding, { pageIndex = -1, flags = [] } = {}) => {
+    rows.push({ section, variable, description, type, response_coding: coding || "", page_index: pageIndex, flags });
+  };
+
+  push("Participant & session", "session_id", "Unique id for this participant's browser session.", "Identifier", "");
+  push("Participant & session", "participant_id", "Participant identifier (from the launch link, e.g. a Prolific PID passed through).", "Identifier", "");
+  push("Participant & session", "ip_address", "Participant's IP address at the time of participation.", "Identifier", "");
+  push("Participant & session", "prolific_pid", "Prolific participant id, when recruited via Prolific.", "Identifier", "");
+  push("Participant & session", "entered_at_iso", "Timestamp the participant started the study.", "Timestamp (ISO 8601)", "");
+  push("Participant & session", "submitted_at_iso", "Timestamp the participant submitted the survey.", "Timestamp (ISO 8601)", "");
+  push("Participant & session", "duration_s", "Time in seconds from entering to submitting.", "Numeric (seconds)", "");
+  push("Participant & session", "feed_id", "Which feed this participant was routed to (feed-linked studies only).", "Identifier", "");
+
+  if (Array.isArray(def.experiment_groups) && def.experiment_groups.length) {
+    push("Experiment", "experiment_group_id", "Internal id of the experiment/condition this participant was randomized into.", "Identifier", "");
+    const groupList = def.experiment_groups.map((g) => `${g?.id} = ${g?.name || g?.id}`).join("; ");
+    push("Experiment", "experiment_group_name", "Human-readable name of that condition.", "Categorical", groupList);
+  }
+
+  const attentionCheckItems = getSurveyAttentionCheckItems(def);
+  if (attentionCheckItems.length) {
+    push(
+      "Data quality",
+      "attention_checks_passed",
+      `Number of this survey's ${attentionCheckItems.length} attention-check item(s) the participant answered correctly.`,
+      `Numeric, 0–${attentionCheckItems.length}`,
+      ""
+    );
+  }
+
+  const columns = flattenSurveyQuestions(def, { labelMode: SURVEY_COLUMN_LABEL_MODE.VARIABLE });
+
+  columns.forEach((entry) => {
+    const q = pages[entry.page_index]?.questions?.[entry.question_index] || null;
+    const variable = stripSurveyExportPrefix(entry.column_key);
+    const typeLabel = SURVEY_CODEBOOK_TYPE_LABELS[entry.question_type] || entry.question_type || "";
+    let description = surveyCodebookStripHtml(entry.question_text);
+    let coding = "";
+
+    if (entry.kind === "other_text") {
+      push(
+        "Survey questions",
+        variable,
+        `${description} — "Other, please specify" free text.`,
+        "Free text",
+        'Blank unless "Other" was selected.',
+        { pageIndex: entry.page_index }
+      );
+      return;
+    }
+
+    switch (entry.question_type) {
+      case "text":
+      case "textarea":
+        coding = q?.numeric_only
+          ? `Numeric only${
+              Number.isFinite(q?.numeric_min) || Number.isFinite(q?.numeric_max)
+                ? `, ${q?.numeric_min ?? "-"}–${q?.numeric_max ?? "-"}`
+                : ""
+            }`
+          : "Free text";
+        break;
+
+      case "single_choice":
+      case "dropdown":
+        coding = surveyCodebookChoiceCoding(q?.choices, q?.options);
+        break;
+
+      case "multi_choice": {
+        const choiceCoding = surveyCodebookChoiceCoding(q?.choices, q?.options);
+        coding = `Selected option label(s), joined by " | " if more than one.${
+          choiceCoding ? ` Options: ${choiceCoding}` : ""
+        }`;
+        break;
+      }
+
+      case "matrix_single":
+        description = `${description} — [${entry.row_label}]`;
+        coding = surveyCodebookChoiceCoding(q?.columns);
+        break;
+
+      case "matrix_multi": {
+        description = `${description} — [${entry.row_label}]`;
+        const choiceCoding = surveyCodebookChoiceCoding(q?.columns);
+        coding = `Selected column label(s) for this row, joined by " | " if more than one.${
+          choiceCoding ? ` Columns: ${choiceCoding}` : ""
+        }`;
+        break;
+      }
+
+      case "bipolar": {
+        const row = Array.isArray(q?.rows) ? q.rows.find((r) => String(r?.value) === entry.row_value) : null;
+        description = `${description} — [${entry.row_label}]`;
+        coding = surveyCodebookScaleCoding(q?.min, q?.max, row?.left_label, row?.right_label);
+        break;
+      }
+
+      case "slider":
+        coding = surveyCodebookScaleCoding(q?.min, q?.max, q?.left_label, q?.right_label);
+        break;
+
+      case "post_reminder":
+        if (entry.row_value === "RECALL") {
+          // The only field a recall reminder ever emits — appending its own
+          // row_label ("RECALL") to the question text would just repeat
+          // itself, unlike the multi-field interactive/dwell cases below
+          // where the suffix is what disambiguates one column from another.
+          coding = "1 = correctly identified the real post among the decoys shown; 0 = selected a decoy.";
+        } else {
+          if (SURVEY_CODEBOOK_REMINDER_INTERACTION_CODING[entry.row_value]) {
+            coding = SURVEY_CODEBOOK_REMINDER_INTERACTION_CODING[entry.row_value];
+          } else if (entry.row_value === "dwell_s") {
+            coding = "Seconds this reminder was visible in the participant's viewport.";
+          } else if (entry.row_value === "note_group1_size_shown" || entry.row_value === "note_group2_size_shown") {
+            coding = "Displayed reader-count for the referenced post's context-note intervention, when applicable; blank otherwise.";
+          }
+          description = `${description}${entry.row_label ? ` — ${entry.row_label}` : ""}`;
+        }
+        break;
+
+      default:
+        break;
+    }
+
+    // Attention-check / screener annotations layer on top of the base
+    // coding above, for whichever level (question, or matrix/bipolar row)
+    // actually carries the flag — the same two levels the admin editor lets
+    // an admin mark (utils-survey.js's ATTENTION_CHECK_ELIGIBLE_TYPES).
+    const rowForFlags =
+      (entry.question_type === "matrix_single" || entry.question_type === "bipolar") && Array.isArray(q?.rows)
+        ? q.rows.find((r) => String(r?.value) === entry.row_value)
+        : null;
+    const isAttentionCheck = rowForFlags ? !!rowForFlags.is_attention_check : !!q?.is_attention_check;
+    const attentionCheckValue = rowForFlags ? rowForFlags.attention_check_value : q?.attention_check_value;
+    const flags = [];
+    if (isAttentionCheck && attentionCheckValue) {
+      coding = `${coding ? `${coding} ` : ""}ATTENTION CHECK — correct answer: ${attentionCheckValue}.`;
+      flags.push("Attention check");
+    }
+    if (q?.is_screener && Array.isArray(q?.screener_pass_values) && q.screener_pass_values.length) {
+      coding = `${coding ? `${coding} ` : ""}SCREENER — participant continues only if answer is one of: ${q.screener_pass_values.join(", ")}.`;
+      flags.push("Screener");
+    }
+
+    push("Survey questions", variable, description, typeLabel, coding, { pageIndex: entry.page_index, flags });
+  });
+
+  SURVEY_CODEBOOK_POST_METRIC_CODING.forEach(({ suffix, desc }) => {
+    push(
+      "Per-post engagement columns (one full set per real post shown, named <post_name>SUFFIX)",
+      `<post_name>${suffix}`,
+      desc,
+      "",
+      ""
+    );
+  });
+
+  return rows;
+}
+
+function surveyCodebookCsvEscape(value) {
+  const s = value == null ? "" : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Standalone CSV string builder (not the shared `buildCsv` helper duplicated
+// across the admin files — this one is self-contained in utils so both admin
+// call sites can use it without importing from each other).
+export function buildSurveyCodebookCsv(survey) {
+  const rows = buildSurveyCodebookRows(survey);
+  const header = ["section", "variable", "description", "type", "response_coding"];
+  const labels = ["Section", "Variable", "Description", "Type", "Response coding"];
+  const lines = [labels.map(surveyCodebookCsvEscape).join(",")];
+  rows.forEach((row) => {
+    lines.push(header.map((key) => surveyCodebookCsvEscape(row[key])).join(","));
+  });
+  return lines.join("\n");
+}
+
+function surveyCodebookEscapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Color family per question-type badge — purely cosmetic grouping so a
+// reader can visually cluster "choice-shaped" vs "scale-shaped" vs
+// "text-shaped" variables at a glance without reading every cell.
+function surveyCodebookTypeBadgeClass(typeLabel) {
+  const t = String(typeLabel || "");
+  if (/choice|dropdown/i.test(t)) return "cb-badge-choice";
+  if (/matrix|bipolar|slider/i.test(t)) return "cb-badge-scale";
+  if (/text/i.test(t)) return "cb-badge-text";
+  if (/reminder/i.test(t)) return "cb-badge-reminder";
+  return "cb-badge-neutral";
+}
+
+function surveyCodebookFlagClass(flag) {
+  return /screener/i.test(flag) ? "cb-flag-screener" : "cb-flag-attn";
+}
+
+// Renders one section's rows as a table — used both for the flat sections
+// (Participant & session, Experiment, Data quality, Per-post columns) and,
+// per-page, for the Survey questions section below.
+function surveyCodebookTableHtml(rows) {
+  const body = rows
+    .map((row) => {
+      const typeBadge = row.type
+        ? `<span class="cb-badge ${surveyCodebookTypeBadgeClass(row.type)}">${surveyCodebookEscapeHtml(row.type)}</span>`
+        : "";
+      const flags = (Array.isArray(row.flags) ? row.flags : [])
+        .map((f) => `<span class="cb-flag ${surveyCodebookFlagClass(f)}">${surveyCodebookEscapeHtml(f)}</span>`)
+        .join(" ");
+      return `
+        <tr>
+          <td class="cb-var">${surveyCodebookEscapeHtml(row.variable)}</td>
+          <td>${surveyCodebookEscapeHtml(row.description)}${flags ? `<div class="cb-flags">${flags}</div>` : ""}</td>
+          <td>${typeBadge}</td>
+          <td class="cb-coding">${surveyCodebookEscapeHtml(row.response_coding)}</td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <table class="cb-table">
+      <colgroup>
+        <col class="cb-col-var" /><col class="cb-col-desc" /><col class="cb-col-type" /><col class="cb-col-coding" />
+      </colgroup>
+      <thead>
+        <tr><th>Variable</th><th>Description</th><th>Type</th><th>Response coding</th></tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+// Builds a polished, print/Word-ready "industry report" style HTML document
+// for the same data buildSurveyCodebookRows/buildSurveyCodebookCsv already
+// produce — a masthead with key stats, a table of contents, and one
+// nicely-badged table per section (survey questions further split one table
+// per page, so a long survey doesn't read as one undifferentiated wall).
+// Every color below is a literal hex, deliberately not var(--admin-*) — this
+// document is opened standalone (a print dialog, a downloaded .doc/.html
+// file), with no access to the admin app's own CSS custom properties.
+export function buildSurveyCodebookHtmlDocument({ survey, projectId = "" } = {}) {
+  const def = survey && typeof survey === "object" ? survey : {};
+  const rows = buildSurveyCodebookRows(def);
+  const pageCount = Array.isArray(def.pages) ? def.pages.length : 0;
+  const groupCount = Array.isArray(def.experiment_groups) ? def.experiment_groups.length : 0;
+  const generatedAt = new Date();
+
+  const sectionOrder = [
+    "Participant & session",
+    "Experiment",
+    "Data quality",
+    "Survey questions",
+    "Per-post engagement columns (one full set per real post shown, named <post_name>SUFFIX)",
+  ];
+  const bySection = new Map();
+  rows.forEach((row) => {
+    if (!bySection.has(row.section)) bySection.set(row.section, []);
+    bySection.get(row.section).push(row);
+  });
+
+  const sectionMeta = {
+    "Participant & session": {
+      id: "participant-session",
+      title: "Participant & session",
+      intro: "Present in every export of this survey, regardless of delivery mode.",
+    },
+    Experiment: {
+      id: "experiment",
+      title: "Experiment design",
+      intro: "This survey randomizes participants into experimental conditions.",
+    },
+    "Data quality": {
+      id: "data-quality",
+      title: "Data quality",
+      intro: "Summary measure(s) derived from this survey's own attention-check items.",
+    },
+    "Survey questions": {
+      id: "survey-questions",
+      title: "Survey questions",
+      intro: "One row per column a response to this survey can produce, in the order participants see them.",
+    },
+    "Per-post engagement columns (one full set per real post shown, named <post_name>SUFFIX)": {
+      id: "per-post-columns",
+      title: "Per-post engagement columns",
+      intro:
+        "Feed + survey exports add one full set of these columns for every real post a participant could see, named " +
+        "<code>&lt;post_name&gt;</code> followed by the suffix below (e.g. <code>welcome_post_reacted</code>).",
+    },
+  };
+
+  const sectionsPresent = sectionOrder.filter((s) => bySection.has(s));
+
+  const tocHtml = sectionsPresent
+    .map((s) => {
+      const meta = sectionMeta[s];
+      const count = bySection.get(s).length;
+      return `<li><a href="#${meta.id}">${surveyCodebookEscapeHtml(meta.title)}</a><span class="cb-toc-count">${count}</span></li>`;
+    })
+    .join("");
+
+  const sectionsHtml = sectionsPresent
+    .map((s) => {
+      const meta = sectionMeta[s];
+      const sectionRows = bySection.get(s);
+
+      // Survey questions get split into one table per page (a divider +
+      // mini-heading per page) rather than one undifferentiated table —
+      // everything else renders as a single table, unchanged.
+      let bodyHtml;
+      if (s === "Survey questions" && pageCount > 1) {
+        const byPage = new Map();
+        sectionRows.forEach((row) => {
+          const idx = Number.isFinite(row.page_index) ? row.page_index : -1;
+          if (!byPage.has(idx)) byPage.set(idx, []);
+          byPage.get(idx).push(row);
+        });
+        bodyHtml = Array.from(byPage.keys())
+          .sort((a, b) => a - b)
+          .map((idx) => {
+            const page = def.pages?.[idx];
+            const label = page?.title ? `Page ${idx + 1}: ${page.title}` : `Page ${idx + 1}`;
+            return `<h3 class="cb-page-heading">${surveyCodebookEscapeHtml(label)}</h3>${surveyCodebookTableHtml(byPage.get(idx))}`;
+          })
+          .join("");
+      } else {
+        bodyHtml = surveyCodebookTableHtml(sectionRows);
+      }
+
+      return `
+        <section class="cb-section" id="${meta.id}">
+          <div class="cb-section-head">
+            <span class="cb-section-kicker">Section</span>
+            <h2>${surveyCodebookEscapeHtml(meta.title)}</h2>
+          </div>
+          <p class="cb-section-intro">${meta.intro}</p>
+          ${bodyHtml}
+        </section>`;
+    })
+    .join("");
+
+  const groupBadges = groupCount
+    ? `<div class="cb-groups">${(def.experiment_groups || [])
+        .map((g) => `<span class="cb-group-pill">${surveyCodebookEscapeHtml(g?.name || g?.id || "")}</span>`)
+        .join("")}</div>`
+    : "";
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${surveyCodebookEscapeHtml(def.name || "Survey codebook")} — Data dictionary</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: #111827;
+      line-height: 1.5;
+      margin: 0;
+      background: #ffffff;
+      font-size: 14px;
+    }
+    .cb-page { max-width: 900px; margin: 0 auto; padding: 40px 44px 64px; }
+    .cb-masthead {
+      background: linear-gradient(135deg, #312e81 0%, #4338ca 55%, #4f46e5 100%);
+      color: #ffffff;
+      border-radius: 16px;
+      padding: 36px 40px;
+      margin-bottom: 28px;
+    }
+    .cb-kicker {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 11px;
+      font-weight: 700;
+      color: #c7d2fe;
+      margin-bottom: 10px;
+    }
+    .cb-masthead h1 { font-size: 28px; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.01em; }
+    .cb-masthead p.cb-sub { margin: 0 0 22px; color: #e0e7ff; font-size: 14px; max-width: 640px; }
+    .cb-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+    .cb-stat { min-width: 90px; }
+    .cb-stat-num { display: block; font-size: 22px; font-weight: 800; }
+    .cb-stat-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #c7d2fe; margin-top: 2px; }
+    .cb-groups { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 18px; }
+    .cb-group-pill { background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.3); border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
+    .cb-meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin-bottom: 28px;
+      background: #f8fafc;
+    }
+    .cb-meta-row { font-size: 13px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .cb-meta-label { color: #6b7280; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .cb-meta-value { color: #111827; font-weight: 700; word-break: break-word; }
+    .cb-toc {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin-bottom: 32px;
+    }
+    .cb-toc-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; font-weight: 700; margin-bottom: 10px; }
+    .cb-toc ul { list-style: none; margin: 0; padding: 0; }
+    .cb-toc li { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+    .cb-toc li:last-child { border-bottom: none; }
+    .cb-toc a { color: #4338ca; text-decoration: none; font-weight: 600; }
+    .cb-toc-count { color: #9ca3af; font-variant-numeric: tabular-nums; }
+    .cb-section { margin-bottom: 36px; break-inside: avoid; page-break-inside: avoid; }
+    .cb-section-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid #4338ca; padding-bottom: 8px; margin-bottom: 6px; }
+    .cb-section-kicker { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #4338ca; }
+    .cb-section-head h2 { font-size: 19px; font-weight: 800; margin: 0; color: #111827; }
+    .cb-section-intro { color: #6b7280; font-size: 13px; margin: 8px 0 16px; }
+    .cb-page-heading { font-size: 14px; font-weight: 700; color: #312e81; margin: 18px 0 8px; }
+    .cb-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 8px; font-size: 12.5px; }
+    .cb-table col.cb-col-var { width: 18%; }
+    .cb-table col.cb-col-desc { width: 30%; }
+    .cb-table col.cb-col-type { width: 18%; }
+    .cb-table col.cb-col-coding { width: 34%; }
+    .cb-table th {
+      text-align: left;
+      background: #f1f5f9;
+      color: #374151;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      font-weight: 700;
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .cb-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .cb-table tr:nth-child(even) td { background: #fafbfc; }
+    .cb-var { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11px; font-weight: 600; color: #312e81; word-break: break-word; line-height: 1.4; }
+    .cb-coding { color: #374151; word-break: break-word; }
+    .cb-table td { word-wrap: break-word; overflow-wrap: break-word; }
+    .cb-badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 12px;
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 1.4;
+      max-width: 100%;
+      /* Reset the table cell's own word-break/overflow-wrap inheritance —
+         combined with inline-block's shrink-to-fit width, that inherited
+         aggressive breaking was splitting short words like "Identifier"
+         one character per line instead of leaving them on one line. */
+      white-space: normal;
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+    .cb-badge-choice { background: #dbeafe; color: #1d4ed8; }
+    .cb-badge-scale { background: #ede9fe; color: #6d28d9; }
+    .cb-badge-text { background: #f1f5f9; color: #475569; }
+    .cb-badge-reminder { background: #ccfbf1; color: #0f766e; }
+    .cb-badge-neutral { background: #f1f5f9; color: #475569; }
+    .cb-flags { margin-top: 5px; }
+    .cb-flag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.02em; }
+    .cb-flag-attn { background: #fee2e2; color: #b91c1c; }
+    .cb-flag-screener { background: #fef3c7; color: #92400e; }
+    .cb-footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 11px; display: flex; justify-content: space-between; }
+    code { background: #f1f5f9; border-radius: 4px; padding: 1px 5px; font-size: 0.92em; }
+    @media print {
+      body { font-size: 12px; }
+      .cb-page { padding: 0; max-width: none; }
+      .cb-masthead { border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .cb-badge, .cb-flag, .cb-group-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .cb-table tr:nth-child(even) td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .cb-section { page-break-inside: avoid; }
+      .cb-table tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="cb-page">
+    <div class="cb-masthead">
+      <div class="cb-kicker">Data dictionary</div>
+      <h1>${surveyCodebookEscapeHtml(def.name || "Untitled survey")}</h1>
+      <p class="cb-sub">Every variable this survey's CSV exports can contain — response coding, scale endpoints, and data-quality flags — generated straight from the live survey definition.</p>
+      <div class="cb-stats">
+        <div class="cb-stat"><span class="cb-stat-num">${rows.length}</span><span class="cb-stat-label">Variables</span></div>
+        <div class="cb-stat"><span class="cb-stat-num">${pageCount}</span><span class="cb-stat-label">Pages</span></div>
+        <div class="cb-stat"><span class="cb-stat-num">${groupCount || "—"}</span><span class="cb-stat-label">Conditions</span></div>
+        <div class="cb-stat"><span class="cb-stat-num">${generatedAt.toLocaleDateString()}</span><span class="cb-stat-label">Generated</span></div>
+      </div>
+      ${groupBadges}
+    </div>
+
+    <div class="cb-meta">
+      <div class="cb-meta-row"><span class="cb-meta-label">Survey ID</span><span class="cb-meta-value">${surveyCodebookEscapeHtml(def.survey_id || "Unsaved survey")}</span></div>
+      <div class="cb-meta-row"><span class="cb-meta-label">Project</span><span class="cb-meta-value">${surveyCodebookEscapeHtml(projectId || def.linked_project_id || "—")}</span></div>
+      <div class="cb-meta-row"><span class="cb-meta-label">Generated</span><span class="cb-meta-value">${surveyCodebookEscapeHtml(generatedAt.toLocaleString())}</span></div>
+      <div class="cb-meta-row"><span class="cb-meta-label">Total variables</span><span class="cb-meta-value">${rows.length}</span></div>
+    </div>
+
+    <div class="cb-toc">
+      <div class="cb-toc-title">Contents</div>
+      <ul>${tocHtml}</ul>
+    </div>
+
+    ${sectionsHtml}
+
+    <div class="cb-footer">
+      <span>Data dictionary — ${surveyCodebookEscapeHtml(def.name || "Untitled survey")}</span>
+      <span>Generated ${surveyCodebookEscapeHtml(generatedAt.toLocaleString())}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Opens the browser's native print dialog against an arbitrary HTML
+// document, from a hidden iframe (avoids popup-blocker issues that
+// window.open can trigger, especially right after a React state update) —
+// generic enough to back any "export as PDF" button, not just the codebook.
+export function triggerHtmlPrintDialog(html) {
+  if (typeof document === "undefined") return;
+
+  const existing = document.getElementById("studyfeed-print-frame");
+  if (existing) existing.remove();
+
+  const frame = document.createElement("iframe");
+  frame.id = "studyfeed-print-frame";
+  frame.title = "Printable document";
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "1px";
+  frame.style.height = "1px";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  frame.setAttribute("aria-hidden", "true");
+
+  document.body.appendChild(frame);
+
+  const cleanup = () => {
+    setTimeout(() => {
+      try { frame.remove(); } catch (_) {}
+    }, 1500);
+  };
+
+  try {
+    const doc = frame.contentWindow?.document || frame.contentDocument;
+    if (!doc) throw new Error("Printable iframe document unavailable");
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    const printNow = () => {
+      try {
+        frame.contentWindow?.focus?.();
+        frame.contentWindow?.print?.();
+      } finally {
+        cleanup();
+      }
+    };
+
+    if (doc.readyState === "complete") {
+      setTimeout(printNow, 50);
+    } else {
+      frame.onload = () => setTimeout(printNow, 50);
+    }
+  } catch (e) {
+    cleanup();
+    throw e;
+  }
+}
+
+// Downloads an HTML string as a .doc file Word will open directly — the
+// UTF-8 BOM + application/msword MIME type is what makes Word treat it as
+// a real document instead of raw HTML source.
+export function triggerWordCompatibleDocumentDownload(filename, html) {
+  const wordHtml = `﻿${html}`;
+  const blob = new Blob([wordHtml], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function buildSurveyExportColumns(
   definition,
   surveyRows = [],

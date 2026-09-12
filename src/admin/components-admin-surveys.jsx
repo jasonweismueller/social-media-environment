@@ -34,6 +34,10 @@ import {
   orderedLinkedFeedIdsFromSurvey,
   buildMultiFeedCsvHeaderLabels,
   orderMultiFeedCsvHeader,
+  buildSurveyCodebookCsv,
+  buildSurveyCodebookHtmlDocument,
+  triggerHtmlPrintDialog,
+  triggerWordCompatibleDocumentDownload,
   fetchFeedFlags,
 } from "../utils";
 
@@ -2664,6 +2668,56 @@ export function AdminSurveysPanel({
     }
   }
 
+  // Pure function of the survey definition already in state — unlike the
+  // response CSVs above, this needs no backend round trip and works even
+  // before the first real response comes in (or the survey is ever linked
+  // to a feed), since it's documenting the survey's own shape, not its data.
+  // PDF/Word share the same generated HTML report; CSV stays available as a
+  // plain machine-readable option alongside the designed document.
+  function handleDownloadCodebookPdf() {
+    if (!survey?.survey_id) {
+      toast.error("Save the survey first.");
+      return;
+    }
+    try {
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      triggerHtmlPrintDialog(html);
+    } catch (e) {
+      console.warn("Failed to build codebook:", e);
+      toast.error("Failed to build codebook.");
+    }
+  }
+
+  function handleDownloadCodebookWord() {
+    if (!survey?.survey_id) {
+      toast.error("Save the survey first.");
+      return;
+    }
+    try {
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      const filename = `${safeFileStem(survey.name || survey.survey_id)}_codebook_${todayStamp()}.doc`;
+      triggerWordCompatibleDocumentDownload(filename, html);
+    } catch (e) {
+      console.warn("Failed to build codebook:", e);
+      toast.error("Failed to build codebook.");
+    }
+  }
+
+  function handleDownloadCodebookCsv() {
+    if (!survey?.survey_id) {
+      toast.error("Save the survey first.");
+      return;
+    }
+    try {
+      const csv = buildSurveyCodebookCsv(survey);
+      const filename = `${safeFileStem(survey.name || survey.survey_id)}_codebook_${todayStamp()}.csv`;
+      triggerCsvDownload(filename, csv);
+    } catch (e) {
+      console.warn("Failed to build codebook:", e);
+      toast.error("Failed to build codebook.");
+    }
+  }
+
   const linkedFeedCount = useMemo(
     () => normalizeLinkedFeedIds(survey?.linked_feed_ids).length,
     [survey]
@@ -3285,6 +3339,28 @@ export function AdminSurveysPanel({
                     title="Open a printable version that can be saved as PDF from the print dialog."
                   >
                     Ethics PDF
+                  </Button>
+                </div>
+              </FieldBlock>
+
+              <FieldBlock
+                label="Codebook / data dictionary"
+                hint="Every variable this survey's CSV exports can contain — response coding, scale endpoints, and data-quality flags — as a designed document or a plain CSV."
+              >
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Button size="sm" variant="secondary" onClick={handleDownloadCodebookWord}>
+                    Codebook Word
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleDownloadCodebookPdf}
+                    title="Open a printable version that can be saved as PDF from the print dialog."
+                  >
+                    Codebook PDF
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleDownloadCodebookCsv}>
+                    Codebook CSV
                   </Button>
                 </div>
               </FieldBlock>

@@ -41,6 +41,10 @@ import {
   flattenSurveyResponseRecord,
   SURVEY_COLUMN_LABEL_MODE,
   stripSurveyExportPrefix,
+  buildSurveyCodebookCsv,
+  buildSurveyCodebookHtmlDocument,
+  triggerHtmlPrintDialog,
+  triggerWordCompatibleDocumentDownload,
   getSurveyAttentionCheckItems,
   countAttentionChecksPassed,
   isSurveyColumnEditableViaCsv,
@@ -2387,6 +2391,47 @@ export function SurveyParticipantsPage({
     }
   };
 
+  // Pure function of the survey definition already in state (same object
+  // buildSimulatedCsvRows already uses above) — no backend round trip, and
+  // works even with zero real or simulated responses yet, since it
+  // documents the survey's shape rather than its data. PDF/Word share the
+  // same generated HTML report; CSV stays available as a plain
+  // machine-readable option alongside the designed document.
+  const downloadCodebookPdf = () => {
+    if (!surveyId) return;
+    try {
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      triggerHtmlPrintDialog(html);
+    } catch (e) {
+      console.error("Codebook download failed:", e);
+      toast.error("Failed to build codebook.");
+    }
+  };
+
+  const downloadCodebookWord = () => {
+    if (!surveyId) return;
+    try {
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      const filename = `${safeFileStem(survey?.name || surveyId)}_codebook_${todayStamp()}.doc`;
+      triggerWordCompatibleDocumentDownload(filename, html);
+    } catch (e) {
+      console.error("Codebook download failed:", e);
+      toast.error("Failed to build codebook.");
+    }
+  };
+
+  const downloadCodebookCsv = () => {
+    if (!surveyId) return;
+    try {
+      const csv = buildSurveyCodebookCsv(survey);
+      const filename = `${safeFileStem(survey?.name || surveyId)}_codebook_${todayStamp()}.csv`;
+      triggerCsvDownload(filename, csv);
+    } catch (e) {
+      console.error("Codebook download failed:", e);
+      toast.error("Failed to build codebook.");
+    }
+  };
+
   // For feed_then_survey / multi_feed_then_survey studies: "Download Survey
   // CSV" above only ever produces survey-response columns, via
   // loadSurveyOnlyRoster — it never had a merged option here, only the
@@ -2687,6 +2732,33 @@ export function SurveyParticipantsPage({
               <Button
                 size="sm"
                 variant="secondary"
+                onClick={downloadCodebookWord}
+                disabled={!surveyId}
+                title="A designed data-dictionary document, ready for Word."
+              >
+                Codebook Word
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={downloadCodebookPdf}
+                disabled={!surveyId}
+                title="Open a printable version that can be saved as PDF from the print dialog."
+              >
+                Codebook PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={downloadCodebookCsv}
+                disabled={!surveyId}
+                title="Plain CSV version of the same data dictionary."
+              >
+                Codebook CSV
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
                 onClick={exportStudyContext}
                 busy={exportingContext}
                 disabled={!surveyId}
@@ -2727,6 +2799,33 @@ export function SurveyParticipantsPage({
               Download feed + survey CSV
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={downloadCodebookWord}
+            disabled={!surveyId}
+            title="A designed data-dictionary document, ready for Word."
+          >
+            Codebook Word
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={downloadCodebookPdf}
+            disabled={!surveyId}
+            title="Open a printable version that can be saved as PDF from the print dialog."
+          >
+            Codebook PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={downloadCodebookCsv}
+            disabled={!surveyId}
+            title="Plain CSV version of the same data dictionary."
+          >
+            Codebook CSV
+          </Button>
           <Button
             size="sm"
             variant="secondary"
