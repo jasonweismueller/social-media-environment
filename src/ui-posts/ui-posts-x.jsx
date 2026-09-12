@@ -275,7 +275,12 @@ export function PostCard({
   const engagementRandomizeOn = !!flags?.realistic_engagement_randomize;
 
   const author = randNamesOn && assignedAuthor ? assignedAuthor : (post?.author || post?.name || "Anonymous");
-  const avatarUrl = randAvatarOn && assignedAvatarUrl ? assignedAvatarUrl : (post?.avatarUrl || post?.avatar || "");
+  // Same reasoning as ui-posts-facebook.jsx's displayAvatar: while
+  // randomization is on but assignedAvatarUrl hasn't resolved yet (only
+  // possible via PostReminderCard's async no-snapshot fallback — the real
+  // feed always computes it up front), show blank instead of the post's
+  // raw stored avatar, so participants never see one photo swap to another.
+  const avatarUrl = randAvatarOn ? (assignedAvatarUrl || "") : (post?.avatarUrl || post?.avatar || "");
   const verified = post?.verified !== false && post?.verified !== undefined ? !!post.verified : false;
   const handle = post?.handle ? (post.handle.startsWith("@") ? post.handle : `@${post.handle}`) : makeHandleFromName(author, id);
   const isAd = String(post?.adType || "none") === "ad";
@@ -393,17 +398,23 @@ export function PostCard({
   // Facebook/Instagram/Amazon already use.
   const displayedSnapshot = useMemo(() => {
     if (!post) return null;
-    return {
+    const snapshot = {
       ...post,
       id,
       author,
-      avatarUrl,
       handle,
       time: timeLabel,
       verified,
       __snapshot_feed_id: String(feedId || ""),
       __snapshot_post_id: id,
     };
+    // Only overwrite the snapshot's avatar once a real URL is known — while
+    // it's still blank (randomization on, assignment not resolved yet, see
+    // the displayAvatar/avatarUrl fix above), leave the post's own existing
+    // avatarUrl in place rather than persisting a blank one that a later
+    // reminder could recover as "what was actually shown."
+    if (avatarUrl) snapshot.avatarUrl = avatarUrl;
+    return snapshot;
   }, [post, id, author, avatarUrl, handle, timeLabel, verified, feedId]);
 
   useEffect(() => {

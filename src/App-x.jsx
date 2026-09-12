@@ -32,6 +32,7 @@ import {
   GS_ENDPOINT,
   fetchFeedFlags,
   getAvatarPool,
+  getAvatarPoolForPost,
   pickDeterministic,
   getImagePool,
   getSurveyForFeedFromBackend,
@@ -539,7 +540,12 @@ async function preloadSurveyPostReminders({
               feedId || "feed",
               String(post.id ?? postId),
             ]);
-            const pool = await getAvatarPool(kind);
+            // Must match PostReminderCard's own render-time pool choice
+            // exactly (getAvatarPoolForPost, ui-survey.jsx) — preloading the
+            // plain pool for a misinformation-flagged post would warm the
+            // wrong image entirely, leaving the real (misinformation-pool)
+            // pick to load cold once the reminder actually renders.
+            const pool = await getAvatarPoolForPost(kind, !!post?.isMisinformation);
             const pick = pickDeterministic(pool, [
               runSeed,
               reminderApp || "app",

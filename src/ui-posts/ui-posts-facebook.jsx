@@ -1308,8 +1308,16 @@ export function PostCard({
     return assignedAuthor || post.author || (authorType === "company" ? "Sponsored" : "User");
   }, [randNamesOn, assignedAuthor, post.author, authorType]);
 
+  // While randomization is on but no assignedAvatarUrl has been supplied
+  // yet (the real feed always computes it before ever mounting PostCard —
+  // see Feed's own avatarMaps effect — so this window only exists for
+  // PostReminderCard's async no-snapshot fallback, ui-survey.jsx), render
+  // blank rather than falling back to the post's raw stored avatar: a
+  // participant briefly seeing a blank circle reads as normal loading, a
+  // participant seeing one specific photo swap to a different person's
+  // photo a moment later does not.
   const displayAvatar = randAvatarOn
-    ? assignedAvatarUrl || post.avatarUrl || null
+    ? assignedAvatarUrl || null
     : post.avatarUrl || null;
 
   React.useEffect(() => {

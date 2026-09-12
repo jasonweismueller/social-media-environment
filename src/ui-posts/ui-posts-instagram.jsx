@@ -531,7 +531,11 @@ const poolNames =
     return () => { cancelled = true; };
   }, [randAvatarOn, inferredAuthorType, runSeed, app, projectId, feedId, id]);
 
-  const effectiveAvatarUrl = randAvatarOn ? (randAvatarUrl || avatarUrl || "") : (avatarUrl || "");
+  // Same reasoning as ui-posts-facebook.jsx's displayAvatar: while
+  // randomization is on but this post's own pool pick hasn't resolved yet,
+  // show blank instead of the raw stored avatar, so a participant never
+  // sees one photo swap to a different person's photo a moment later.
+  const effectiveAvatarUrl = randAvatarOn ? (randAvatarUrl || "") : (avatarUrl || "");
 
   // ---- Image randomization (topic-based; when available) ----
   const [randImageUrl, setRandImageUrl] = useState(null);
