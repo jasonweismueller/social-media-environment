@@ -2267,10 +2267,13 @@ export function SurveyParticipantsPage({
       // Real posts for whichever feed(s) this survey links — feeds a
       // simulated participant might actually be routed to (see
       // simulateSurveyResponseRows' own feedId round-robin). A survey_only
-      // survey has none, in which case postsByFeed stays {} and
-      // simulateFeedEngagement never runs — same as it already does for
-      // real survey_only data (no feed to merge).
-      const feedIds = orderedLinkedFeedIdsFromSurvey(survey);
+      // survey's linked feeds are never actually visited by a real
+      // participant (they can be entirely post_reminder content sources —
+      // see simulateSurveyResponseRows' own isSurveyOnly guard), so skip the
+      // fetch entirely rather than loading posts that'll just be unused.
+      const isSurveyOnlyDeliveryForSim =
+        String(survey?.delivery_mode || "").trim().toLowerCase() === "survey_only";
+      const feedIds = isSurveyOnlyDeliveryForSim ? [] : orderedLinkedFeedIdsFromSurvey(survey);
       const pairs = await Promise.all(
         feedIds.map(async (fid) => {
           try {
@@ -2442,9 +2445,18 @@ export function SurveyParticipantsPage({
   // pipeline that button already uses — it already handles a single-feed
   // feedIds array correctly, nothing multi-feed-specific being relied on.
   const feedIdsForSurvey = useMemo(() => orderedLinkedFeedIdsFromSurvey(survey), [survey]);
+  // A survey_only study's linked feed(s) can be entirely post_reminder
+  // content sources — no participant ever visits them directly in that
+  // delivery mode, so merging them into a "feed + survey" CSV would produce
+  // per-post engagement columns that don't correspond to anything a real
+  // participant actually did. components-admin-surveys.jsx's own "Launch"
+  // tab equivalent already gates this button the same way (delivery mode
+  // feed_then_survey/multi_feed_then_survey only) — this page never did.
+  const isSurveyOnlyDelivery =
+    String(survey?.delivery_mode || "").trim().toLowerCase() === "survey_only";
 
   const downloadFeedSurveyCsv = async () => {
-    if (!surveyId || !feedIdsForSurvey.length) return;
+    if (!surveyId || !feedIdsForSurvey.length || isSurveyOnlyDelivery) return;
     try {
       setDownloadingFeedCsv(true);
 
@@ -2713,7 +2725,7 @@ export function SurveyParticipantsPage({
               <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
                 Download Survey CSV
               </Button>
-              {feedIdsForSurvey.length > 0 && (
+              {feedIdsForSurvey.length > 0 && !isSurveyOnlyDelivery && (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -2783,7 +2795,7 @@ export function SurveyParticipantsPage({
           <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
             Download Survey CSV
           </Button>
-          {feedIdsForSurvey.length > 0 && (
+          {feedIdsForSurvey.length > 0 && !isSurveyOnlyDelivery && (
             <Button
               size="sm"
               variant="secondary"

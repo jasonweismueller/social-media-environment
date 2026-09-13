@@ -576,7 +576,10 @@ const REMINDER_NOTE_GROUP_FIELDS = [
   { value: "note_group2_size_shown", label: "Note group 2 size shown" },
 ];
 
-export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}) {
+export function flattenSurveyQuestions(
+  definition,
+  { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE, resolvePost } = {}
+) {
   const survey = definition && typeof definition === "object" ? definition : {};
   const pages = Array.isArray(survey.pages) ? survey.pages : [];
   const questions = [];
@@ -598,15 +601,45 @@ export function flattenSurveyQuestions(definition, { labelMode = SURVEY_COLUMN_L
       // dwell-time column, plus interactive's own curated fields on top, via
       // the exact same "row" mechanism matrix/bipolar questions already use
       // (a fixed field list stands in for q.rows).
+      //
+      // REMINDER_INTERACTION_FIELDS/REMINDER_NOTE_GROUP_FIELDS both used to
+      // be included completely unconditionally — e.g. Amazon's
+      // "review_helpful" on every interactive reminder regardless of the
+      // referenced post's platform, and both community-note group-size
+      // columns on every plain reminder regardless of whether that post is a
+      // note intervention at all. When a caller can supply `resolvePost`
+      // (the post this specific reminder targets, looked up by
+      // post_feed_id/post_id — see loadSurveyOnlyRoster/
+      // loadMultiFeedParticipantSurveyRoster), reuse the exact same
+      // per-post-metric relevance check the real per-post CSV columns
+      // already go through (isRelevantPostMetricForExport, further down
+      // this file) instead of a second, looser "always include" rule — so a
+      // Facebook-only survey doesn't carry Amazon fields, and a reminder
+      // whose post was never configured with a "Random range" contributor
+      // note doesn't carry two always-blank group-size columns. Callers that
+      // don't supply resolvePost (the Codebook builder, which describes
+      // every conceivably-possible column rather than this specific
+      // survey's actual data) keep the previous unconditional behavior —
+      // isRelevantPostMetricForExport's own `!post` fallback already returns
+      // "relevant" for everything, so this is a no-op without a resolver.
+      const reminderPost =
+        questionType === "post_reminder" && typeof resolvePost === "function"
+          ? resolvePost(String(q?.post_feed_id || "").trim(), String(q?.post_id || "").trim())
+          : null;
+      const reminderFieldIsRelevant = (field) =>
+        isRelevantPostMetricForExport(reminderPost, `_${field.value}`);
+
       const questionText = String(q?.text || questionId).trim() || questionId;
       const rows =
         questionType === "post_reminder"
           ? (q?.recall_enabled
               ? RECALL_FIELDS
               : [
-                  ...(q?.reminder_interactive ? REMINDER_INTERACTION_FIELDS : []),
+                  ...(q?.reminder_interactive
+                    ? REMINDER_INTERACTION_FIELDS.filter(reminderFieldIsRelevant)
+                    : []),
                   ...REMINDER_DWELL_FIELDS,
-                  ...REMINDER_NOTE_GROUP_FIELDS,
+                  ...REMINDER_NOTE_GROUP_FIELDS.filter(reminderFieldIsRelevant),
                 ])
           : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
@@ -1422,9 +1455,9 @@ export function triggerWordCompatibleDocumentDownload(filename, html) {
 function buildSurveyExportColumns(
   definition,
   surveyRows = [],
-  { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE } = {}
+  { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE, resolvePost } = {}
 ) {
-  const fromDefinition = flattenSurveyQuestions(definition, { labelMode });
+  const fromDefinition = flattenSurveyQuestions(definition, { labelMode, resolvePost });
   if (fromDefinition.length) return fromDefinition;
 
   const seen = new Map();
@@ -1844,15 +1877,61 @@ export function countAttentionChecksPassed(attentionCheckItems, responses) {
   return passed;
 }
 
+// Collects the exact (post_feed_id, post_id) pairs referenced by this
+// survey's post_reminder questions and resolves each to its real post
+// object, so flattenSurveyQuestions can correctly gate platform/feature-
+// specific reminder columns (Amazon's review_helpful, Facebook's community-
+// note group-size fields — see flattenSurveyQuestions's own comment) instead
+// of including every possible field unconditionally "just in case". Only
+// fetches the specific posts actually referenced, not a whole feed's worth —
+// deliberately re-walks survey.pages directly (mirroring
+// flattenSurveyQuestions/getSurveyAttentionCheckItems just above) rather
+// than importing utils-survey.js's own collectSurveyPostReminderTargets —
+// this file's header comment states it depends on utils-core only, no
+// circulars. loadPostByIdFromBackend (further down this file) already
+// caches per (project, feed, post), so repeat exports of the same survey are
+// cheap after the first.
+async function resolveReminderPostLookup(surveyDefinition, { projectId, signal } = {}) {
+  const pages = Array.isArray(surveyDefinition?.pages) ? surveyDefinition.pages : [];
+  const targets = new Map();
+  pages.forEach((page) => {
+    (Array.isArray(page?.questions) ? page.questions : []).forEach((q) => {
+      if (q?.type !== "post_reminder") return;
+      const postId = String(q?.post_id || "").trim();
+      const feedId = String(q?.post_feed_id || "").trim();
+      if (!postId || !feedId) return;
+      targets.set(`${feedId}::${postId}`, { feedId, postId });
+    });
+  });
+
+  if (!targets.size) return () => null;
+
+  const entries = await Promise.all(
+    Array.from(targets.values()).map(async ({ feedId, postId }) => {
+      try {
+        const post = await loadPostByIdFromBackend({ feedId, postId, projectId, signal });
+        return [`${feedId}::${postId}`, post || null];
+      } catch (_) {
+        return [`${feedId}::${postId}`, null];
+      }
+    })
+  );
+
+  const byKey = new Map(entries);
+  return (feedId, postId) =>
+    byKey.get(`${String(feedId || "").trim()}::${String(postId || "").trim()}`) || null;
+}
+
 function mergeParticipantRowsWithSurveyRows({
   participantRows = [],
   surveyRows = [],
   surveyDefinition = null,
   fillValue = "NA",
   labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE,
+  resolvePost,
 } = {}) {
   const participants = Array.isArray(participantRows) ? participantRows : [];
-  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyRows, { labelMode });
+  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyRows, { labelMode, resolvePost });
   const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
   const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
   const lookup = makeSurveyResponseLookup(surveyRows, surveyColumns);
@@ -2136,7 +2215,8 @@ export async function loadMultiFeedParticipantSurveyRoster({
   // the live study this was found on.
   const surveyResponses = Array.isArray(allSurveyResponses) ? allSurveyResponses : [];
 
-  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyResponses, { labelMode });
+  const resolvePost = await resolveReminderPostLookup(surveyDefinition, { projectId, signal });
+  const surveyColumns = buildSurveyExportColumns(surveyDefinition, surveyResponses, { labelMode, resolvePost });
   const surveyColumnKeys = surveyColumns.map((c) => c.column_key);
   const surveyColumnLabels = surveyColumns.map((c) => c.label || c.column_key);
   const surveyLookup = makeSurveyResponseLookup(surveyResponses, surveyColumns);
@@ -2692,12 +2772,15 @@ const participantRows = surveyResponses.map((row) => ({
   experiment_group_id: row?.experiment_group_id ?? "",
 }));
 
+  const resolvePost = await resolveReminderPostLookup(surveyDefinition, { projectId, signal });
+
   const merged = mergeParticipantRowsWithSurveyRows({
     participantRows,
     surveyRows: surveyResponses,
     surveyDefinition,
     fillValue,
     labelMode,
+    resolvePost,
   });
 
   return {

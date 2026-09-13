@@ -538,10 +538,15 @@ export function simulateFeedEngagement(posts, { rng, theta = 0, groupShift = 0, 
  *   participant's fabricated engagement with the posts on *every* feed in
  *   their own effective sequence (see simulateFeedEngagement above), so a
  *   feed_then_survey/multi_feed_then_survey study's simulated data can drive
- *   the merged "feed + survey" CSV, not just the survey-only one. Omitted
- *   (default `{}`) for a survey_only study, which has no feeds to engage
- *   with.
+ *   the merged "feed + survey" CSV, not just the survey-only one. This
+ *   function itself never fabricates a feed sequence/engagement for a
+ *   survey_only study regardless of what postsByFeed the caller passes —
+ *   survey_only's own linked_feed_ids/feed_sequence_ids can be entirely
+ *   post_reminder content sources (no participant ever visits them
+ *   directly), so treating them as a real visited sequence would fabricate
+ *   per-post engagement columns that make no sense for that delivery mode.
  *
+
  *   A participant's own effective sequence is their assigned experiment
  *   group's `feed_sequence_ids` override when it's non-empty, otherwise the
  *   survey's own default `feed_sequence_ids`/`linked_feed_ids` — mirroring
@@ -570,13 +575,27 @@ export function simulateSurveyResponseRows({
   const groups = normalizeExperimentGroups(normalized.experiment_groups);
   const hasGroups = groups.length > 0;
   const groupById = new Map(groups.map((g) => [g.id, g]));
+  // A survey_only study's linked_feed_ids/feed_sequence_ids can be entirely
+  // reminder-content sources (post_reminder questions referencing a post from
+  // a feed no participant ever actually visits) — the doc comment above this
+  // function already claimed that case produces no feed engagement, but
+  // nothing here actually enforced it: defaultFeedIds/feedSequenceIds below
+  // used to read directly off those same linked-feed fields regardless of
+  // delivery_mode, so a survey_only study with reminder-linked feeds got a
+  // fully fabricated feed_id/feed_sequence_ids/feed_engagement_by_feed for
+  // every simulated participant, indistinguishable from a real feed visit in
+  // the resulting CSV. See CLAUDE.md.
+  const isSurveyOnly = normalized.delivery_mode === "survey_only";
 
   // The survey's own default feed sequence — used as-is for a survey with no
   // experiment groups, and as the fallback for any group that doesn't define
-  // its own feed_sequence_ids override.
-  const defaultFeedIds = normalizeFeedIdList(
-    normalized.feed_sequence_ids?.length ? normalized.feed_sequence_ids : normalized.linked_feed_ids
-  );
+  // its own feed_sequence_ids override. Empty for survey_only (see above) —
+  // no feed is ever actually "visited" in that delivery mode.
+  const defaultFeedIds = isSurveyOnly
+    ? []
+    : normalizeFeedIdList(
+        normalized.feed_sequence_ids?.length ? normalized.feed_sequence_ids : normalized.linked_feed_ids
+      );
 
   const seedBase = `${seed || "sim"}::${normalized.survey_id || normalized.name || "survey"}`;
 
@@ -608,12 +627,17 @@ export function simulateSurveyResponseRows({
     // multi_feed_then_survey study walks the whole sequence before reaching
     // the survey.
     const assignedGroup = p.groupId ? groupById.get(p.groupId) : null;
-    const groupFeedIds = normalizeFeedIdList(assignedGroup?.feed_sequence_ids);
+    const groupFeedIds = isSurveyOnly ? [] : normalizeFeedIdList(assignedGroup?.feed_sequence_ids);
     const feedSequenceIds = groupFeedIds.length ? groupFeedIds : defaultFeedIds;
     // The survey is rendered after the final feed in the sequence — matches
     // isQuestionVisible's own "active feed" contract (utils-survey.js) and
-    // App-facebook.jsx's effectiveFeedSequenceIds-derived feed_id.
-    const feedId = feedSequenceIds.length ? feedSequenceIds[feedSequenceIds.length - 1] : "";
+    // App-facebook.jsx's effectiveFeedSequenceIds-derived feed_id. A
+    // survey_only participant never visits a feed at all — "SURVEY_ONLY"
+    // mirrors the sentinel loadSurveyOnlyRoster stamps on real survey_only
+    // participant rows, so simulated data has the same shape as real data.
+    const feedId = isSurveyOnly
+      ? "SURVEY_ONLY"
+      : (feedSequenceIds.length ? feedSequenceIds[feedSequenceIds.length - 1] : "");
 
     const groupNorm = groups.length > 1 ? p.groupIndex / (groups.length - 1) : 0;
     const compositeThetaCache = new Map();
