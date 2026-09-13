@@ -849,7 +849,7 @@ const SURVEY_CODEBOOK_POST_METRIC_CODING = [
 // so a codebook variable name can never drift out of sync with what the
 // actual downloaded CSV calls that column — the one thing that would make a
 // codebook actively misleading rather than merely incomplete.
-export function buildSurveyCodebookRows(survey) {
+export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
   const def = survey && typeof survey === "object" ? survey : {};
   const pages = Array.isArray(def.pages) ? def.pages : [];
   const rows = [];
@@ -889,7 +889,7 @@ export function buildSurveyCodebookRows(survey) {
     );
   }
 
-  const columns = flattenSurveyQuestions(def, { labelMode: SURVEY_COLUMN_LABEL_MODE.VARIABLE });
+  const columns = flattenSurveyQuestions(def, { labelMode: SURVEY_COLUMN_LABEL_MODE.VARIABLE, resolvePost });
 
   columns.forEach((entry) => {
     const q = pages[entry.page_index]?.questions?.[entry.question_index] || null;
@@ -1006,7 +1006,15 @@ export function buildSurveyCodebookRows(survey) {
     push("Survey questions", variable, description, typeLabel, coding, { pageIndex: entry.page_index, flags });
   });
 
-  SURVEY_CODEBOOK_POST_METRIC_CODING.forEach(({ suffix, desc }) => {
+  // Platform-only filter (no specific post to check feature-based relevance
+  // against here — this section describes the schema in the abstract, not
+  // any one real post) — drops columns this app could never produce at all,
+  // e.g. Amazon's review_* fields on a Facebook/Instagram/X-linked survey,
+  // or Instagram/X's saved/reposted on Facebook. See
+  // isPlatformRelevantPostMetricSuffix's own comment.
+  SURVEY_CODEBOOK_POST_METRIC_CODING.filter(({ suffix }) =>
+    isPlatformRelevantPostMetricSuffix(suffix)
+  ).forEach(({ suffix, desc }) => {
     push(
       "Per-post engagement columns (one full set per real post shown, named <post_name>SUFFIX)",
       `<post_name>${suffix}`,
@@ -1027,8 +1035,8 @@ function surveyCodebookCsvEscape(value) {
 // Standalone CSV string builder (not the shared `buildCsv` helper duplicated
 // across the admin files — this one is self-contained in utils so both admin
 // call sites can use it without importing from each other).
-export function buildSurveyCodebookCsv(survey) {
-  const rows = buildSurveyCodebookRows(survey);
+export function buildSurveyCodebookCsv(survey, { resolvePost } = {}) {
+  const rows = buildSurveyCodebookRows(survey, { resolvePost });
   const header = ["section", "variable", "description", "type", "response_coding"];
   const labels = ["Section", "Variable", "Description", "Type", "Response coding"];
   const lines = [labels.map(surveyCodebookCsvEscape).join(",")];
@@ -1105,9 +1113,9 @@ function surveyCodebookTableHtml(rows) {
 // Every color below is a literal hex, deliberately not var(--admin-*) — this
 // document is opened standalone (a print dialog, a downloaded .doc/.html
 // file), with no access to the admin app's own CSS custom properties.
-export function buildSurveyCodebookHtmlDocument({ survey, projectId = "" } = {}) {
+export function buildSurveyCodebookHtmlDocument({ survey, projectId = "", resolvePost } = {}) {
   const def = survey && typeof survey === "object" ? survey : {};
-  const rows = buildSurveyCodebookRows(def);
+  const rows = buildSurveyCodebookRows(def, { resolvePost });
   const pageCount = Array.isArray(def.pages) ? def.pages.length : 0;
   const groupCount = Array.isArray(def.experiment_groups) ? def.experiment_groups.length : 0;
   const generatedAt = new Date();
@@ -1891,7 +1899,7 @@ export function countAttentionChecksPassed(attentionCheckItems, responses) {
 // circulars. loadPostByIdFromBackend (further down this file) already
 // caches per (project, feed, post), so repeat exports of the same survey are
 // cheap after the first.
-async function resolveReminderPostLookup(surveyDefinition, { projectId, signal } = {}) {
+export async function resolveReminderPostLookup(surveyDefinition, { projectId, signal } = {}) {
   const pages = Array.isArray(surveyDefinition?.pages) ? surveyDefinition.pages : [];
   const targets = new Map();
   pages.forEach((page) => {
@@ -2433,6 +2441,26 @@ export function hasNote(post) {
   );
 }
 
+// Precise "does this post actually have contributor group N configured"
+// check for the note_group1_size_shown/note_group2_size_shown columns
+// specifically — mirrors buildParticipantRow's (utils-core.js) own real
+// gating exactly (interventionType === "note" && noteMetaEnabled &&
+// noteReaderGroups[N]), not hasNote()'s broader "any note-ish signal"
+// check the other note_* interaction columns use. A note intervention can
+// have just ONE contributor group configured — a single group whose size
+// is itself the manipulated variable (e.g. a study varying "shown to N
+// people" from 0/10/100/1000) — in that shape note_group2_size_shown is
+// permanently blank for every participant, and hasNote(post) alone can't
+// tell the two group slots apart, so it kept both columns listed
+// regardless. This checks each slot independently instead.
+function hasNoteGroupSize(post, groupIndex) {
+  if (!post) return false;
+  if (post.interventionType !== "note") return false;
+  if (!post.noteMetaEnabled) return false;
+  const groups = Array.isArray(post.noteReaderGroups) ? post.noteReaderGroups : [];
+  return !!groups[groupIndex];
+}
+
 export function hasBio(post) {
   if (!post) return false;
   return !!(
@@ -2489,6 +2517,45 @@ const AMZ_ONLY_POST_METRIC_SUFFIXES = [
   "_review_rating",
 ];
 
+// The platform-only half of isRelevantPostMetricForExport below — every
+// check that depends purely on which app is currently loaded (APP), never
+// on a specific post's own fields. Split out so a caller with no post to
+// resolve (the Codebook's generic "Per-post engagement columns" reference
+// section, which describes the schema in the abstract rather than for one
+// real post) can still drop columns that could never apply on this
+// platform at all — e.g. Amazon's review_* fields on a Facebook-only
+// study — instead of the "no post → assume everything's relevant" fallback
+// isRelevantPostMetricForExport uses for backward compatibility.
+export function isPlatformRelevantPostMetricSuffix(suffix) {
+  if (!suffix) return true;
+
+  const isAmz = APP === "amz";
+  const isIg = APP === "ig";
+  const isX = APP === "x";
+
+  if (isAmz) {
+    if (AMZ_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return true;
+    if (
+      [
+        "_reacted", "_reaction_type", "_commented", "_comment_texts",
+        "_saved", "_shared", "_share_target", "_share_text",
+        "_cta_clicked", "_news_clicked", "_bio_opened", "_bio_url_clicked",
+        "_mention_clicked", "_note_opened", "_note_view_details",
+        "_note_link_clicked", "_note_helpful_rated", "_note_helpful_value",
+        "_note_group1_size_shown", "_note_group2_size_shown",
+      ].includes(suffix)
+    ) return false;
+    return true;
+  }
+
+  if (AMZ_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if ((isIg || isX) && FB_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if (!isIg && !isX && IG_ONLY_POST_METRIC_SUFFIXES.includes(suffix)) return false;
+  if (suffix === "_saved" || suffix === "_reposted") return isIg || isX;
+
+  return true;
+}
+
 export function isRelevantPostMetricForExport(post, suffix) {
   if (!post || !suffix) return true;
 
@@ -2536,14 +2603,20 @@ export function isRelevantPostMetricForExport(post, suffix) {
   // previously defined but never wired in here, so every Facebook post got
   // note_opened/note_helpful_rated/etc. columns regardless of whether it
   // was ever a community-note intervention post.
+  //
+  // The two group-size columns get their own, more precise check
+  // (hasNoteGroupSize) rather than the broader hasNote() every other
+  // note_* column uses — a note can have just one contributor group
+  // configured, in which case the other group's column is permanently
+  // blank and shouldn't be listed as if it might ever have a value.
+  if (suffix === "_note_group1_size_shown") return hasNoteGroupSize(post, 0);
+  if (suffix === "_note_group2_size_shown") return hasNoteGroupSize(post, 1);
   if (
     suffix === "_note_opened" ||
     suffix === "_note_view_details" ||
     suffix === "_note_link_clicked" ||
     suffix === "_note_helpful_rated" ||
-    suffix === "_note_helpful_value" ||
-    suffix === "_note_group1_size_shown" ||
-    suffix === "_note_group2_size_shown"
+    suffix === "_note_helpful_value"
   ) return hasNote(post);
 
   if (suffix === "_bio_opened" || suffix === "_bio_url_clicked") return hasBio(post);

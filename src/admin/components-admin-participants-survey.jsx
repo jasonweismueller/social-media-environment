@@ -43,6 +43,7 @@ import {
   stripSurveyExportPrefix,
   buildSurveyCodebookCsv,
   buildSurveyCodebookHtmlDocument,
+  resolveReminderPostLookup,
   triggerHtmlPrintDialog,
   triggerWordCompatibleDocumentDownload,
   getSurveyAttentionCheckItems,
@@ -2160,6 +2161,7 @@ export function SurveyParticipantsPage({
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [downloadingFeedCsv, setDownloadingFeedCsv] = useState(false);
+  const [buildingCodebook, setBuildingCodebook] = useState(false);
   const [exportingContext, setExportingContext] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [customGroups, setCustomGroups] = useState([]);
@@ -2416,44 +2418,63 @@ export function SurveyParticipantsPage({
     }
   };
 
-  // Pure function of the survey definition already in state (same object
-  // buildSimulatedCsvRows already uses above) — no backend round trip, and
-  // works even with zero real or simulated responses yet, since it
-  // documents the survey's shape rather than its data. PDF/Word share the
-  // same generated HTML report; CSV stays available as a plain
-  // machine-readable option alongside the designed document.
-  const downloadCodebookPdf = () => {
+  // Mostly a pure function of the survey definition already in state (same
+  // object buildSimulatedCsvRows already uses above) — still works with
+  // zero real or simulated responses, since it documents the survey's shape
+  // rather than its data. The one real backend dependency: resolving each
+  // post_reminder question's actual target post (resolveReminderPostLookup)
+  // so the codebook only lists reminder columns that specific post can
+  // really produce (e.g. a note's "group 2" column when that note only has
+  // one contributor group configured — see isRelevantPostMetricForExport's
+  // own comment) instead of every field a post_reminder COULD ever carry
+  // regardless of what this survey's own reminders reference. Small,
+  // cached, scoped to just the referenced posts — not a full feed fetch.
+  // PDF/Word share the same generated HTML report; CSV stays available as a
+  // plain machine-readable option alongside the designed document.
+  const downloadCodebookPdf = async () => {
     if (!surveyId) return;
     try {
-      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      setBuildingCodebook(true);
+      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
       triggerHtmlPrintDialog(html);
     } catch (e) {
       console.error("Codebook download failed:", e);
       toast.error("Failed to build codebook.");
+    } finally {
+      setBuildingCodebook(false);
     }
   };
 
-  const downloadCodebookWord = () => {
+  const downloadCodebookWord = async () => {
     if (!surveyId) return;
     try {
-      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      setBuildingCodebook(true);
+      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
       const filename = `${safeFileStem(survey?.name || surveyId)}_codebook_${todayStamp()}.doc`;
       triggerWordCompatibleDocumentDownload(filename, html);
     } catch (e) {
       console.error("Codebook download failed:", e);
       toast.error("Failed to build codebook.");
+    } finally {
+      setBuildingCodebook(false);
     }
   };
 
-  const downloadCodebookCsv = () => {
+  const downloadCodebookCsv = async () => {
     if (!surveyId) return;
     try {
-      const csv = buildSurveyCodebookCsv(survey);
+      setBuildingCodebook(true);
+      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
+      const csv = buildSurveyCodebookCsv(survey, { resolvePost });
       const filename = `${safeFileStem(survey?.name || surveyId)}_codebook_${todayStamp()}.csv`;
       triggerCsvDownload(filename, csv);
     } catch (e) {
       console.error("Codebook download failed:", e);
       toast.error("Failed to build codebook.");
+    } finally {
+      setBuildingCodebook(false);
     }
   };
 
@@ -2767,7 +2788,8 @@ export function SurveyParticipantsPage({
                 size="sm"
                 variant="secondary"
                 onClick={downloadCodebookWord}
-                disabled={!surveyId}
+                busy={buildingCodebook}
+                disabled={!surveyId || buildingCodebook}
                 title="A designed data-dictionary document, ready for Word."
               >
                 Codebook Word
@@ -2776,7 +2798,8 @@ export function SurveyParticipantsPage({
                 size="sm"
                 variant="secondary"
                 onClick={downloadCodebookPdf}
-                disabled={!surveyId}
+                busy={buildingCodebook}
+                disabled={!surveyId || buildingCodebook}
                 title="Open a printable version that can be saved as PDF from the print dialog."
               >
                 Codebook PDF
@@ -2785,7 +2808,8 @@ export function SurveyParticipantsPage({
                 size="sm"
                 variant="ghost"
                 onClick={downloadCodebookCsv}
-                disabled={!surveyId}
+                busy={buildingCodebook}
+                disabled={!surveyId || buildingCodebook}
                 title="Plain CSV version of the same data dictionary."
               >
                 Codebook CSV
@@ -2837,7 +2861,8 @@ export function SurveyParticipantsPage({
             size="sm"
             variant="secondary"
             onClick={downloadCodebookWord}
-            disabled={!surveyId}
+            busy={buildingCodebook}
+            disabled={!surveyId || buildingCodebook}
             title="A designed data-dictionary document, ready for Word."
           >
             Codebook Word
@@ -2846,7 +2871,8 @@ export function SurveyParticipantsPage({
             size="sm"
             variant="secondary"
             onClick={downloadCodebookPdf}
-            disabled={!surveyId}
+            busy={buildingCodebook}
+            disabled={!surveyId || buildingCodebook}
             title="Open a printable version that can be saved as PDF from the print dialog."
           >
             Codebook PDF
@@ -2855,7 +2881,8 @@ export function SurveyParticipantsPage({
             size="sm"
             variant="ghost"
             onClick={downloadCodebookCsv}
-            disabled={!surveyId}
+            busy={buildingCodebook}
+            disabled={!surveyId || buildingCodebook}
             title="Plain CSV version of the same data dictionary."
           >
             Codebook CSV

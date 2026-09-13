@@ -36,6 +36,7 @@ import {
   orderMultiFeedCsvHeader,
   buildSurveyCodebookCsv,
   buildSurveyCodebookHtmlDocument,
+  resolveReminderPostLookup,
   triggerHtmlPrintDialog,
   triggerWordCompatibleDocumentDownload,
   fetchFeedFlags,
@@ -1825,6 +1826,7 @@ export function AdminSurveysPanel({
   const [loading, setLoading] = useState(false);
   const [savingSurvey, setSavingSurvey] = useState(false);
   const [savingLinks, setSavingLinks] = useState(false);
+  const [buildingCodebook, setBuildingCodebook] = useState(false);
   const [linkedFeedPostsMap, setLinkedFeedPostsMap] = useState({});
   const [loadingReminderPosts, setLoadingReminderPosts] = useState(false);
   const [copiedLinkState, setCopiedLinkState] = useState("");
@@ -2668,53 +2670,72 @@ export function AdminSurveysPanel({
     }
   }
 
-  // Pure function of the survey definition already in state — unlike the
-  // response CSVs above, this needs no backend round trip and works even
-  // before the first real response comes in (or the survey is ever linked
-  // to a feed), since it's documenting the survey's own shape, not its data.
+  // Mostly a pure function of the survey definition already in state —
+  // unlike the response CSVs above, this works even before the first real
+  // response comes in, since it's documenting the survey's own shape, not
+  // its data. The one real backend dependency: resolving each post_reminder
+  // question's actual target post (resolveReminderPostLookup) so the
+  // codebook only lists reminder columns that specific post can really
+  // produce (e.g. a note's "group 2" column when that note only has one
+  // contributor group configured — see isRelevantPostMetricForExport's own
+  // comment) instead of every field a post_reminder COULD ever carry
+  // regardless of what this survey's own reminders reference. Small,
+  // cached, scoped to just the referenced posts — not a full feed fetch.
   // PDF/Word share the same generated HTML report; CSV stays available as a
   // plain machine-readable option alongside the designed document.
-  function handleDownloadCodebookPdf() {
+  async function handleDownloadCodebookPdf() {
     if (!survey?.survey_id) {
       toast.error("Save the survey first.");
       return;
     }
     try {
-      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      setBuildingCodebook(true);
+      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
       triggerHtmlPrintDialog(html);
     } catch (e) {
       console.warn("Failed to build codebook:", e);
       toast.error("Failed to build codebook.");
+    } finally {
+      setBuildingCodebook(false);
     }
   }
 
-  function handleDownloadCodebookWord() {
+  async function handleDownloadCodebookWord() {
     if (!survey?.survey_id) {
       toast.error("Save the survey first.");
       return;
     }
     try {
-      const html = buildSurveyCodebookHtmlDocument({ survey, projectId });
+      setBuildingCodebook(true);
+      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
+      const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
       const filename = `${safeFileStem(survey.name || survey.survey_id)}_codebook_${todayStamp()}.doc`;
       triggerWordCompatibleDocumentDownload(filename, html);
     } catch (e) {
       console.warn("Failed to build codebook:", e);
       toast.error("Failed to build codebook.");
+    } finally {
+      setBuildingCodebook(false);
     }
   }
 
-  function handleDownloadCodebookCsv() {
+  async function handleDownloadCodebookCsv() {
     if (!survey?.survey_id) {
       toast.error("Save the survey first.");
       return;
     }
     try {
-      const csv = buildSurveyCodebookCsv(survey);
+      setBuildingCodebook(true);
+      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
+      const csv = buildSurveyCodebookCsv(survey, { resolvePost });
       const filename = `${safeFileStem(survey.name || survey.survey_id)}_codebook_${todayStamp()}.csv`;
       triggerCsvDownload(filename, csv);
     } catch (e) {
       console.warn("Failed to build codebook:", e);
       toast.error("Failed to build codebook.");
+    } finally {
+      setBuildingCodebook(false);
     }
   }
 
@@ -3348,18 +3369,32 @@ export function AdminSurveysPanel({
                 hint="Every variable this survey's CSV exports can contain — response coding, scale endpoints, and data-quality flags — as a designed document or a plain CSV."
               >
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Button size="sm" variant="secondary" onClick={handleDownloadCodebookWord}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleDownloadCodebookWord}
+                    busy={buildingCodebook}
+                    disabled={buildingCodebook}
+                  >
                     Codebook Word
                   </Button>
                   <Button
                     size="sm"
                     variant="secondary"
                     onClick={handleDownloadCodebookPdf}
+                    busy={buildingCodebook}
+                    disabled={buildingCodebook}
                     title="Open a printable version that can be saved as PDF from the print dialog."
                   >
                     Codebook PDF
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={handleDownloadCodebookCsv}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDownloadCodebookCsv}
+                    busy={buildingCodebook}
+                    disabled={buildingCodebook}
+                  >
                     Codebook CSV
                   </Button>
                 </div>
