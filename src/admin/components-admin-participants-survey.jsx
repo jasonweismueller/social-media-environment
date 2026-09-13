@@ -442,10 +442,27 @@ export function buildStudyContextMarkdown({ survey, dataset, demographics, measu
 // many feeds this participant actually visited, laid out back-to-back from
 // entered_at_iso, purely for plausible-looking feedN_*_at_iso/duration_s
 // values, not a claim about real timing.
-function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
+// Resolves a post_reminder question's target post from an already-loaded
+// { feedId: posts[] } map (simPostsByFeed) — the same shape
+// flattenSurveyQuestions's own `resolvePost` option expects (see
+// utils-backend.js), so simulated-data CSV column generation can gate
+// platform/feature-specific reminder columns (Amazon's review_helpful,
+// Facebook's community-note group-size fields) exactly like a real download
+// does, instead of listing every possible field unconditionally.
+function makeReminderPostResolver(postsByFeed = {}) {
+  return (feedId, postId) => {
+    const posts = Array.isArray(postsByFeed?.[feedId]) ? postsByFeed[feedId] : [];
+    return posts.find((p) => String(p?.id || "") === String(postId || "")) || null;
+  };
+}
+
+function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds, postsByFeed = {}) {
   const hasGroups = Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
   const groupNameById = new Map((survey?.experiment_groups || []).map((g) => [g.id, g.name]));
-  const surveyColumns = flattenSurveyQuestions(survey, { labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT });
+  const surveyColumns = flattenSurveyQuestions(survey, {
+    labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT,
+    resolvePost: makeReminderPostResolver(postsByFeed),
+  });
   const attentionCheckItems = getSurveyAttentionCheckItems(survey);
 
   const safeRows = Array.isArray(simRows) ? simRows : [];
@@ -525,10 +542,13 @@ function buildSimulatedFeedSurveyCsvRows(survey, simRows, orderedFeedIds) {
 // "NA" fill for unanswered/not-shown-to-this-participant cells (matters
 // since typical R workflows against this app's exports rely on read.csv's
 // default na.strings picking that up).
-function buildSimulatedCsvRows(survey, simRows, fillValue = "NA") {
+function buildSimulatedCsvRows(survey, simRows, fillValue = "NA", postsByFeed = {}) {
   const hasGroups = Array.isArray(survey?.experiment_groups) && survey.experiment_groups.length > 0;
   const groupNameById = new Map((survey?.experiment_groups || []).map((g) => [g.id, g.name]));
-  const surveyColumns = flattenSurveyQuestions(survey, { labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT });
+  const surveyColumns = flattenSurveyQuestions(survey, {
+    labelMode: SURVEY_COLUMN_LABEL_MODE.TEXT,
+    resolvePost: makeReminderPostResolver(postsByFeed),
+  });
   const attentionCheckItems = getSurveyAttentionCheckItems(survey);
 
   return (simRows || []).map((row) => {
@@ -2264,16 +2284,18 @@ export function SurveyParticipantsPage({
     if (!survey) return;
     setSimulating(true);
     try {
-      // Real posts for whichever feed(s) this survey links — feeds a
-      // simulated participant might actually be routed to (see
-      // simulateSurveyResponseRows' own feedId round-robin). A survey_only
-      // survey's linked feeds are never actually visited by a real
-      // participant (they can be entirely post_reminder content sources —
-      // see simulateSurveyResponseRows' own isSurveyOnly guard), so skip the
-      // fetch entirely rather than loading posts that'll just be unused.
-      const isSurveyOnlyDeliveryForSim =
-        String(survey?.delivery_mode || "").trim().toLowerCase() === "survey_only";
-      const feedIds = isSurveyOnlyDeliveryForSim ? [] : orderedLinkedFeedIdsFromSurvey(survey);
+      // Real posts for whichever feed(s) this survey links. Fetched
+      // unconditionally regardless of delivery_mode — even for a
+      // survey_only survey (whose linked feeds can be entirely
+      // post_reminder content sources, never actually visited by a real
+      // participant), these posts are still needed to correctly resolve/
+      // filter that survey's own post_reminder question columns (see
+      // buildSimulatedCsvRows/buildSimulatedFeedSurveyCsvRows's resolvePost
+      // below). simulateSurveyResponseRows itself already refuses to turn
+      // this into fabricated feed-visit/engagement data for a survey_only
+      // survey (see its own isSurveyOnly guard), so passing postsByFeed here
+      // is safe either way.
+      const feedIds = orderedLinkedFeedIdsFromSurvey(survey);
       const pairs = await Promise.all(
         feedIds.map(async (fid) => {
           try {
@@ -2360,7 +2382,7 @@ export function SurveyParticipantsPage({
       setDownloading(true);
 
       const safeRows = usingSimulated
-        ? buildSimulatedCsvRows(survey, simRows)
+        ? buildSimulatedCsvRows(survey, simRows, "NA", simPostsByFeed)
         : (await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" })).rows || [];
 
       if (!safeRows.length) {
@@ -2466,7 +2488,7 @@ export function SurveyParticipantsPage({
       let feedNames = {};
 
       if (usingSimulated) {
-        const built = buildSimulatedFeedSurveyCsvRows(survey, simRows, feedIdsForSurvey);
+        const built = buildSimulatedFeedSurveyCsvRows(survey, simRows, feedIdsForSurvey, simPostsByFeed);
         safeRows = built.rows;
         realFeedIds = built.feedIds;
         // Reuse the exact posts the simulation was generated against —
@@ -2631,7 +2653,7 @@ export function SurveyParticipantsPage({
       let responseCsv = "";
       try {
         const safeRows = usingSimulated
-          ? buildSimulatedCsvRows(survey, simRows)
+          ? buildSimulatedCsvRows(survey, simRows, "NA", feedPostsByFeedId)
           : (await loadSurveyOnlyRoster({ surveyId, projectId, labelMode: "text" })).rows || [];
         if (safeRows.length) {
           const header = Array.from(
