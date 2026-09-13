@@ -854,13 +854,39 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
   const pages = Array.isArray(def.pages) ? def.pages : [];
   const rows = [];
 
-  // `page_index`/`flags` are additive — buildSurveyCodebookCsv only ever
-  // reads the five plain-text fields below, so this doesn't change the CSV
-  // output at all. They exist for buildSurveyCodebookHtmlDocument, which
-  // groups survey-question rows by page and renders flags (Attention check /
-  // Screener) as real badges instead of text appended into response_coding.
-  const push = (section, variable, description, type, coding, { pageIndex = -1, flags = [] } = {}) => {
-    rows.push({ section, variable, description, type, response_coding: coding || "", page_index: pageIndex, flags });
+  // `page_index`/`flags`/`group_key`/`stem_text`/`item_label` are all
+  // additive — buildSurveyCodebookCsv only ever reads the five plain-text
+  // fields below, so this doesn't change the CSV output (still one flat row
+  // per variable, as a CSV has to be) at all. They exist for
+  // buildSurveyCodebookHtmlDocument, which groups survey-question rows by
+  // page, renders flags (Attention check / Screener) as real badges instead
+  // of text appended into response_coding, AND — group_key/stem_text/
+  // item_label specifically — collapses a run of rows that share the exact
+  // same descriptive stem (every row of one matrix/bipolar question, or
+  // every post_reminder "condition" question using identical instruction
+  // text) into one shared stem line plus a compact per-item table, instead
+  // of repeating the full stem text verbatim on every single row. See
+  // buildCodebookDisplayBlocks below.
+  const push = (
+    section,
+    variable,
+    description,
+    type,
+    coding,
+    { pageIndex = -1, flags = [], groupKey = null, stemText = "", itemLabel = "" } = {}
+  ) => {
+    rows.push({
+      section,
+      variable,
+      description,
+      type,
+      response_coding: coding || "",
+      page_index: pageIndex,
+      flags,
+      group_key: groupKey,
+      stem_text: stemText,
+      item_label: itemLabel,
+    });
   };
 
   push("Participant & session", "session_id", "Unique id for this participant's browser session.", "Identifier", "");
@@ -896,6 +922,10 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
     const variable = stripSurveyExportPrefix(entry.column_key);
     const typeLabel = SURVEY_CODEBOOK_TYPE_LABELS[entry.question_type] || entry.question_type || "";
     let description = surveyCodebookStripHtml(entry.question_text);
+    // Captured before the switch below appends any row/condition-specific
+    // suffix to `description` — this is the plain shared stem text, used to
+    // decide whether this row can collapse into a group with its siblings.
+    const stemText = description;
     let coding = "";
 
     if (entry.kind === "other_text") {
@@ -983,6 +1013,37 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
         break;
     }
 
+    // Which rows can collapse into a shared-stem group in the HTML/Word
+    // document (see buildCodebookDisplayBlocks): matrix/bipolar rows group
+    // by their own question_id (every item of ONE matrix question shares
+    // its stem, and only that question's own rows), while post_reminder
+    // rows group by the stem TEXT itself (different question_ids —
+    // different experimental conditions — that happen to use byte-identical
+    // instruction text, e.g. 15 conditions all reading "Please look at this
+    // post before answering..." while pointing at a different post each).
+    // Recall reminders are deliberately excluded — their own coding/shape is
+    // different enough (a single fixed RECALL column) that grouping them
+    // with plain reminders would mix unlike things under one stem.
+    let groupKey = null;
+    let itemLabel = "";
+    if (
+      (entry.question_type === "matrix_single" ||
+        entry.question_type === "matrix_multi" ||
+        entry.question_type === "bipolar") &&
+      entry.kind === "row"
+    ) {
+      groupKey = `row::${entry.question_id}`;
+      itemLabel = entry.row_label || "";
+    } else if (
+      entry.question_type === "post_reminder" &&
+      entry.kind === "row" &&
+      entry.row_value !== "RECALL" &&
+      stemText
+    ) {
+      groupKey = `post_reminder::${stemText}`;
+      itemLabel = `${entry.question_id}${entry.row_label ? ` — ${entry.row_label}` : ""}`;
+    }
+
     // Attention-check / screener annotations layer on top of the base
     // coding above, for whichever level (question, or matrix/bipolar row)
     // actually carries the flag — the same two levels the admin editor lets
@@ -1003,7 +1064,13 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
       flags.push("Screener");
     }
 
-    push("Survey questions", variable, description, typeLabel, coding, { pageIndex: entry.page_index, flags });
+    push("Survey questions", variable, description, typeLabel, coding, {
+      pageIndex: entry.page_index,
+      flags,
+      groupKey,
+      stemText,
+      itemLabel,
+    });
   });
 
   // Platform-only filter (no specific post to check feature-based relevance
@@ -1071,26 +1138,124 @@ function surveyCodebookFlagClass(flag) {
   return /screener/i.test(flag) ? "cb-flag-screener" : "cb-flag-attn";
 }
 
-// Renders one section's rows as a table — used both for the flat sections
-// (Participant & session, Experiment, Data quality, Per-post columns) and,
-// per-page, for the Survey questions section below.
-function surveyCodebookTableHtml(rows) {
-  const body = rows
-    .map((row) => {
-      const typeBadge = row.type
-        ? `<span class="cb-badge ${surveyCodebookTypeBadgeClass(row.type)}">${surveyCodebookEscapeHtml(row.type)}</span>`
-        : "";
-      const flags = (Array.isArray(row.flags) ? row.flags : [])
+// Collapses a run of codebook rows that share the same group_key (set by
+// buildSurveyCodebookRows above) into display "blocks" — a shared-stem
+// block (rendered once, with a compact per-item sub-table) for every
+// group_key that actually has more than one member, and a plain "single"
+// passthrough for everything else (every row in a section with no
+// group_key at all, e.g. Participant & session/Per-post engagement, plus
+// any matrix question/post_reminder condition-set that happens to have
+// only one row — nothing to collapse there, so it renders exactly as
+// before). Order preserved by each group's first member's position, not
+// by when the group was "completed" — a matrix question's 5 rows are
+// already contiguous in flattenSurveyQuestions's own output, but
+// post_reminder conditions sharing identical text are matched by TEXT
+// across different question_ids, so this doesn't assume adjacency.
+function buildCodebookDisplayBlocks(rows) {
+  const order = [];
+  const membersByKey = new Map();
+
+  rows.forEach((row) => {
+    if (!row.group_key) {
+      order.push({ kind: "single-slot", row });
+      return;
+    }
+    if (!membersByKey.has(row.group_key)) {
+      membersByKey.set(row.group_key, []);
+      order.push({ kind: "group-slot", key: row.group_key });
+    }
+    membersByKey.get(row.group_key).push(row);
+  });
+
+  return order.map((slot) => {
+    if (slot.kind === "single-slot") return { kind: "single", row: slot.row };
+
+    const members = membersByKey.get(slot.key);
+    if (members.length === 1) return { kind: "single", row: members[0] };
+
+    const first = members[0];
+    const codings = new Set(members.map((m) => m.response_coding || ""));
+    return {
+      kind: "group",
+      type: first.type,
+      stemText: first.stem_text || first.description,
+      // Only worth stating once, above the sub-table, when every member
+      // genuinely shares it (true for a matrix question's rows, which all
+      // use the same scale) — a post_reminder condition group's members
+      // have genuinely different codings per field (dwell time vs. a
+      // reader-count), so those keep their own per-row coding column.
+      sharedCoding: codings.size === 1 ? first.response_coding : null,
+      members,
+    };
+  });
+}
+
+function surveyCodebookSingleRowHtml(row) {
+  const typeBadge = row.type
+    ? `<span class="cb-badge ${surveyCodebookTypeBadgeClass(row.type)}">${surveyCodebookEscapeHtml(row.type)}</span>`
+    : "";
+  const flags = (Array.isArray(row.flags) ? row.flags : [])
+    .map((f) => `<span class="cb-flag ${surveyCodebookFlagClass(f)}">${surveyCodebookEscapeHtml(f)}</span>`)
+    .join(" ");
+  return `
+    <tr>
+      <td class="cb-var">${surveyCodebookEscapeHtml(row.variable)}</td>
+      <td>${surveyCodebookEscapeHtml(row.description)}${flags ? `<div class="cb-flags">${flags}</div>` : ""}</td>
+      <td>${typeBadge}</td>
+      <td class="cb-coding">${surveyCodebookEscapeHtml(row.response_coding)}</td>
+    </tr>`;
+}
+
+function surveyCodebookGroupBlockHtml(block) {
+  const typeBadge = block.type
+    ? `<span class="cb-badge ${surveyCodebookTypeBadgeClass(block.type)}">${surveyCodebookEscapeHtml(block.type)}</span>`
+    : "";
+  const sharedCodingHtml = block.sharedCoding
+    ? `<div class="cb-group-shared-coding"><strong>Response coding (every item below):</strong> ${surveyCodebookEscapeHtml(block.sharedCoding)}</div>`
+    : "";
+  const memberRows = block.members
+    .map((m) => {
+      const flags = (Array.isArray(m.flags) ? m.flags : [])
         .map((f) => `<span class="cb-flag ${surveyCodebookFlagClass(f)}">${surveyCodebookEscapeHtml(f)}</span>`)
         .join(" ");
       return `
         <tr>
-          <td class="cb-var">${surveyCodebookEscapeHtml(row.variable)}</td>
-          <td>${surveyCodebookEscapeHtml(row.description)}${flags ? `<div class="cb-flags">${flags}</div>` : ""}</td>
-          <td>${typeBadge}</td>
-          <td class="cb-coding">${surveyCodebookEscapeHtml(row.response_coding)}</td>
+          <td class="cb-var">${surveyCodebookEscapeHtml(m.variable)}</td>
+          <td>${surveyCodebookEscapeHtml(m.item_label || m.description)}${flags ? `<div class="cb-flags">${flags}</div>` : ""}</td>
+          ${block.sharedCoding ? "" : `<td class="cb-coding">${surveyCodebookEscapeHtml(m.response_coding)}</td>`}
         </tr>`;
     })
+    .join("");
+
+  return `
+    <tr class="cb-group-row">
+      <td colspan="4" class="cb-group-cell">
+        <div class="cb-group-stem">
+          ${typeBadge}
+          <span class="cb-group-stem-text">${surveyCodebookEscapeHtml(block.stemText)}</span>
+        </div>
+        ${sharedCodingHtml}
+        <table class="cb-subtable">
+          <thead>
+            <tr><th>Variable</th><th>Item</th>${block.sharedCoding ? "" : "<th>Response coding</th>"}</tr>
+          </thead>
+          <tbody>${memberRows}</tbody>
+        </table>
+      </td>
+    </tr>`;
+}
+
+// Renders one section's rows as a table — used both for the flat sections
+// (Participant & session, Experiment, Data quality, Per-post columns) and,
+// per-page, for the Survey questions section below. Rows that share a
+// group_key (see buildSurveyCodebookRows/buildCodebookDisplayBlocks above)
+// collapse into one shared-stem block instead of repeating the same
+// question text on every row — sections that never set group_key (every
+// row lacks it) render byte-identical to before.
+function surveyCodebookTableHtml(rows) {
+  const blocks = buildCodebookDisplayBlocks(rows);
+  const body = blocks
+    .map((b) => (b.kind === "group" ? surveyCodebookGroupBlockHtml(b) : surveyCodebookSingleRowHtml(b.row)))
     .join("");
 
   return `
@@ -1335,6 +1500,15 @@ export function buildSurveyCodebookHtmlDocument({ survey, projectId = "", resolv
     .cb-flag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.02em; }
     .cb-flag-attn { background: #fee2e2; color: #b91c1c; }
     .cb-flag-screener { background: #fef3c7; color: #92400e; }
+    .cb-group-row td.cb-group-cell { background: #f8fafc; padding: 12px 14px; }
+    .cb-group-stem { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .cb-group-stem-text { color: #111827; font-size: 12.5px; }
+    .cb-group-shared-coding { color: #374151; font-size: 12px; margin: 0 0 10px; }
+    .cb-group-shared-coding strong { color: #111827; }
+    .cb-subtable { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    .cb-subtable th { text-align: left; background: #eef2ff; color: #4338ca; font-size: 10px; text-transform: uppercase; letter-spacing: 0.02em; font-weight: 700; padding: 6px 9px; border-bottom: 1px solid #e2e8f0; }
+    .cb-subtable td { padding: 7px 9px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .cb-subtable tr:last-child td { border-bottom: none; }
     .cb-footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 11px; display: flex; justify-content: space-between; }
     code { background: #f1f5f9; border-radius: 4px; padding: 1px 5px; font-size: 0.92em; }
     @media print {
