@@ -41,11 +41,9 @@ import {
   flattenSurveyResponseRecord,
   SURVEY_COLUMN_LABEL_MODE,
   stripSurveyExportPrefix,
-  buildSurveyCodebookCsv,
   buildSurveyCodebookHtmlDocument,
   resolveReminderPostLookup,
   triggerHtmlPrintDialog,
-  triggerWordCompatibleDocumentDownload,
   getSurveyAttentionCheckItems,
   countAttentionChecksPassed,
   isSurveyColumnEditableViaCsv,
@@ -2429,8 +2427,8 @@ export function SurveyParticipantsPage({
   // own comment) instead of every field a post_reminder COULD ever carry
   // regardless of what this survey's own reminders reference. Small,
   // cached, scoped to just the referenced posts — not a full feed fetch.
-  // PDF/Word share the same generated HTML report; CSV stays available as a
-  // plain machine-readable option alongside the designed document.
+  // Word/CSV variants were removed per direct request — PDF (via the
+  // browser's own print dialog) is the only codebook format offered here now.
   const downloadCodebookPdf = async () => {
     if (!surveyId) return;
     try {
@@ -2438,38 +2436,6 @@ export function SurveyParticipantsPage({
       const resolvePost = await resolveReminderPostLookup(survey, { projectId });
       const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
       triggerHtmlPrintDialog(html);
-    } catch (e) {
-      console.error("Codebook download failed:", e);
-      toast.error("Failed to build codebook.");
-    } finally {
-      setBuildingCodebook(false);
-    }
-  };
-
-  const downloadCodebookWord = async () => {
-    if (!surveyId) return;
-    try {
-      setBuildingCodebook(true);
-      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
-      const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
-      const filename = `${safeFileStem(survey?.name || surveyId)}_codebook_${todayStamp()}.doc`;
-      triggerWordCompatibleDocumentDownload(filename, html);
-    } catch (e) {
-      console.error("Codebook download failed:", e);
-      toast.error("Failed to build codebook.");
-    } finally {
-      setBuildingCodebook(false);
-    }
-  };
-
-  const downloadCodebookCsv = async () => {
-    if (!surveyId) return;
-    try {
-      setBuildingCodebook(true);
-      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
-      const csv = buildSurveyCodebookCsv(survey, { resolvePost });
-      const filename = `${safeFileStem(survey?.name || surveyId)}_codebook_${todayStamp()}.csv`;
-      triggerCsvDownload(filename, csv);
     } catch (e) {
       console.error("Codebook download failed:", e);
       toast.error("Failed to build codebook.");
@@ -2787,32 +2753,12 @@ export function SurveyParticipantsPage({
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={downloadCodebookWord}
-                busy={buildingCodebook}
-                disabled={!surveyId || buildingCodebook}
-                title="A designed data-dictionary document, ready for Word."
-              >
-                Codebook Word
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
                 onClick={downloadCodebookPdf}
                 busy={buildingCodebook}
                 disabled={!surveyId || buildingCodebook}
                 title="Open a printable version that can be saved as PDF from the print dialog."
               >
                 Codebook PDF
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={downloadCodebookCsv}
-                busy={buildingCodebook}
-                disabled={!surveyId || buildingCodebook}
-                title="Plain CSV version of the same data dictionary."
-              >
-                Codebook CSV
               </Button>
               <Button
                 size="sm"
@@ -2860,32 +2806,12 @@ export function SurveyParticipantsPage({
           <Button
             size="sm"
             variant="secondary"
-            onClick={downloadCodebookWord}
-            busy={buildingCodebook}
-            disabled={!surveyId || buildingCodebook}
-            title="A designed data-dictionary document, ready for Word."
-          >
-            Codebook Word
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
             onClick={downloadCodebookPdf}
             busy={buildingCodebook}
             disabled={!surveyId || buildingCodebook}
             title="Open a printable version that can be saved as PDF from the print dialog."
           >
             Codebook PDF
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={downloadCodebookCsv}
-            busy={buildingCodebook}
-            disabled={!surveyId || buildingCodebook}
-            title="Plain CSV version of the same data dictionary."
-          >
-            Codebook CSV
           </Button>
           <Button
             size="sm"

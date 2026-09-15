@@ -855,10 +855,9 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
   const rows = [];
 
   // `page_index`/`flags`/`group_key`/`stem_text`/`item_label` are all
-  // additive — buildSurveyCodebookCsv only ever reads the five plain-text
-  // fields below, so this doesn't change the CSV output (still one flat row
-  // per variable, as a CSV has to be) at all. They exist for
-  // buildSurveyCodebookHtmlDocument, which groups survey-question rows by
+  // additive, layered on top of the same five plain-text fields every row
+  // always carries. They exist for buildSurveyCodebookHtmlDocument, which
+  // groups survey-question rows by
   // page, renders flags (Attention check / Screener) as real badges instead
   // of text appended into response_coding, AND — group_key/stem_text/
   // item_label specifically — collapses a run of rows that share the exact
@@ -1094,25 +1093,6 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
   return rows;
 }
 
-function surveyCodebookCsvEscape(value) {
-  const s = value == null ? "" : String(value);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-// Standalone CSV string builder (not the shared `buildCsv` helper duplicated
-// across the admin files — this one is self-contained in utils so both admin
-// call sites can use it without importing from each other).
-export function buildSurveyCodebookCsv(survey, { resolvePost } = {}) {
-  const rows = buildSurveyCodebookRows(survey, { resolvePost });
-  const header = ["section", "variable", "description", "type", "response_coding"];
-  const labels = ["Section", "Variable", "Description", "Type", "Response coding"];
-  const lines = [labels.map(surveyCodebookCsvEscape).join(",")];
-  rows.forEach((row) => {
-    lines.push(header.map((key) => surveyCodebookCsvEscape(row[key])).join(","));
-  });
-  return lines.join("\n");
-}
-
 function surveyCodebookEscapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1270,11 +1250,12 @@ function surveyCodebookTableHtml(rows) {
     </table>`;
 }
 
-// Builds a polished, print/Word-ready "industry report" style HTML document
-// for the same data buildSurveyCodebookRows/buildSurveyCodebookCsv already
-// produce — a masthead with key stats, a table of contents, and one
-// nicely-badged table per section (survey questions further split one table
-// per page, so a long survey doesn't read as one undifferentiated wall).
+// Builds a polished, print-ready "industry report" style HTML document for
+// buildSurveyCodebookRows' data — opened via triggerHtmlPrintDialog (the
+// "Codebook PDF" button, save-as-PDF from the browser's own print dialog) —
+// a masthead with key stats, a table of contents, and one nicely-badged
+// table per section (survey questions further split one table per page, so
+// a long survey doesn't read as one undifferentiated wall).
 // Every color below is a literal hex, deliberately not var(--admin-*) — this
 // document is opened standalone (a print dialog, a downloaded .doc/.html
 // file), with no access to the admin app's own CSS custom properties.
@@ -1616,22 +1597,6 @@ export function triggerHtmlPrintDialog(html) {
     cleanup();
     throw e;
   }
-}
-
-// Downloads an HTML string as a .doc file Word will open directly — the
-// UTF-8 BOM + application/msword MIME type is what makes Word treat it as
-// a real document instead of raw HTML source.
-export function triggerWordCompatibleDocumentDownload(filename, html) {
-  const wordHtml = `﻿${html}`;
-  const blob = new Blob([wordHtml], { type: "application/msword;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 function buildSurveyExportColumns(

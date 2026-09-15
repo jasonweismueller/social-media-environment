@@ -34,11 +34,9 @@ import {
   orderedLinkedFeedIdsFromSurvey,
   buildMultiFeedCsvHeaderLabels,
   orderMultiFeedCsvHeader,
-  buildSurveyCodebookCsv,
   buildSurveyCodebookHtmlDocument,
   resolveReminderPostLookup,
   triggerHtmlPrintDialog,
-  triggerWordCompatibleDocumentDownload,
   fetchFeedFlags,
 } from "../utils";
 
@@ -2681,8 +2679,8 @@ export function AdminSurveysPanel({
   // comment) instead of every field a post_reminder COULD ever carry
   // regardless of what this survey's own reminders reference. Small,
   // cached, scoped to just the referenced posts — not a full feed fetch.
-  // PDF/Word share the same generated HTML report; CSV stays available as a
-  // plain machine-readable option alongside the designed document.
+  // Word/CSV variants were removed per direct request — PDF (via the
+  // browser's own print dialog) is the only codebook format offered here now.
   async function handleDownloadCodebookPdf() {
     if (!survey?.survey_id) {
       toast.error("Save the survey first.");
@@ -2693,44 +2691,6 @@ export function AdminSurveysPanel({
       const resolvePost = await resolveReminderPostLookup(survey, { projectId });
       const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
       triggerHtmlPrintDialog(html);
-    } catch (e) {
-      console.warn("Failed to build codebook:", e);
-      toast.error("Failed to build codebook.");
-    } finally {
-      setBuildingCodebook(false);
-    }
-  }
-
-  async function handleDownloadCodebookWord() {
-    if (!survey?.survey_id) {
-      toast.error("Save the survey first.");
-      return;
-    }
-    try {
-      setBuildingCodebook(true);
-      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
-      const html = buildSurveyCodebookHtmlDocument({ survey, projectId, resolvePost });
-      const filename = `${safeFileStem(survey.name || survey.survey_id)}_codebook_${todayStamp()}.doc`;
-      triggerWordCompatibleDocumentDownload(filename, html);
-    } catch (e) {
-      console.warn("Failed to build codebook:", e);
-      toast.error("Failed to build codebook.");
-    } finally {
-      setBuildingCodebook(false);
-    }
-  }
-
-  async function handleDownloadCodebookCsv() {
-    if (!survey?.survey_id) {
-      toast.error("Save the survey first.");
-      return;
-    }
-    try {
-      setBuildingCodebook(true);
-      const resolvePost = await resolveReminderPostLookup(survey, { projectId });
-      const csv = buildSurveyCodebookCsv(survey, { resolvePost });
-      const filename = `${safeFileStem(survey.name || survey.survey_id)}_codebook_${todayStamp()}.csv`;
-      triggerCsvDownload(filename, csv);
     } catch (e) {
       console.warn("Failed to build codebook:", e);
       toast.error("Failed to build codebook.");
@@ -3366,18 +3326,9 @@ export function AdminSurveysPanel({
 
               <FieldBlock
                 label="Codebook / data dictionary"
-                hint="Every variable this survey's CSV exports can contain — response coding, scale endpoints, and data-quality flags — as a designed document or a plain CSV."
+                hint="Every variable this survey's CSV exports can contain — response coding, scale endpoints, and data-quality flags — as a designed, printable document."
               >
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleDownloadCodebookWord}
-                    busy={buildingCodebook}
-                    disabled={buildingCodebook}
-                  >
-                    Codebook Word
-                  </Button>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -3387,15 +3338,6 @@ export function AdminSurveysPanel({
                     title="Open a printable version that can be saved as PDF from the print dialog."
                   >
                     Codebook PDF
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleDownloadCodebookCsv}
-                    busy={buildingCodebook}
-                    disabled={buildingCodebook}
-                  >
-                    Codebook CSV
                   </Button>
                 </div>
               </FieldBlock>
