@@ -5,6 +5,47 @@ export const now = () => Date.now();
 export const fmtTime = (ms) => new Date(ms).toISOString();
 export const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
+/* Min/max zoom for the Instagram focal-point image cropper (admin editor)
+   and every place a cropped image actually renders — kept as one shared
+   pair of constants so the editor's slider bounds and the render clamp can
+   never drift apart. zoom is deliberately floored at 1 (never < 1): with
+   object-fit:cover already guaranteeing full-bleed coverage at zoom=1 for
+   any focal point, a zoom below 1 would mean "zoom out past the cover fit",
+   which can only be rendered by revealing empty space around the image —
+   real Instagram's own crop tool doesn't allow that either. */
+export const IMAGE_CROP_MIN_ZOOM = 1;
+export const IMAGE_CROP_MAX_ZOOM = 4;
+
+/* Single source of truth for turning a post/carousel-image's stored
+   {focalX, focalY, zoom} into the CSS that actually crops it — used by the
+   admin editor's live cropper AND every place a cropped image renders to a
+   real participant (main feed card, carousel slides, the comment-modal
+   media pane), so "what the admin sees while cropping" and "what a
+   participant actually sees" can never silently diverge.
+     - object-fit:cover + object-position already guarantee full coverage
+       (no letterboxing) for ANY focalX/focalY at zoom=1, regardless of the
+       image's own aspect ratio — the browser computes this for free.
+     - transform:scale() anchored at that same focal point (via
+       transform-origin) then magnifies the already-covering content around
+       that exact point. Scaling by z>=1 around a point that lies inside the
+       container can only push every edge of the (already covering) image
+       further outward, never inward — so this combination is guaranteed to
+       stay fully covered at every zoom/focal-point combination, with no
+       extra bounds-checking needed at render time.
+   `transform` is only set when actually zoomed in, so an unzoomed image's
+   inline style is byte-identical to before this helper existed. */
+export function getImageCropStyle({ focalX = 50, focalY = 50, zoom = 1 } = {}) {
+  const x = clamp(Number.isFinite(+focalX) ? +focalX : 50, 0, 100);
+  const y = clamp(Number.isFinite(+focalY) ? +focalY : 50, 0, 100);
+  const z = clamp(Number.isFinite(+zoom) ? +zoom : 1, IMAGE_CROP_MIN_ZOOM, IMAGE_CROP_MAX_ZOOM);
+  const style = { objectFit: "cover", objectPosition: `${x}% ${y}%` };
+  if (z > 1) {
+    style.transform = `scale(${z})`;
+    style.transformOrigin = `${x}% ${y}%`;
+  }
+  return style;
+}
+
 export const abbr =
   (n) =>
     n >= 1e6 ? (n / 1e6).toFixed(1) + "M"

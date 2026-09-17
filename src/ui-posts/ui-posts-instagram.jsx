@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getAvatarPoolForPost, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getAvatarPoolForPost, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType, getImageCropStyle } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -579,6 +579,13 @@ const zoom = displayImageObj?.zoom ?? 1;
 
   const imgs = Array.isArray(images) ? images : [];
   const hasCarousel = imageMode === "multi" && imgs.length > 1;
+  // Each carousel slide carries its own focal point/zoom (set per-image in
+  // the admin's CarouselEditor) — precompute the same crop CSS the single-
+  // image path uses below, per slide, so IGCarousel just renders it.
+  const carouselItems = useMemo(
+    () => imgs.map((it) => ({ ...it, cropStyle: getImageCropStyle({ focalX: it?.focalX, focalY: it?.focalY, zoom: it?.zoom }) })),
+    [imgs]
+  );
   const isMobile = useIsMobile(700);
 
   // Which carousel slide is currently shown — drives per-image captions
@@ -1127,7 +1134,7 @@ const displayBio = useMemo(() => {
   }}
 />
             ) : hasCarousel ? (
-              <IGCarousel items={imgs} onIndexChange={setCarouselIdx} />
+              <IGCarousel items={carouselItems} onIndexChange={setCarouselIdx} />
             ) : imageMode === "multi" && imgs.length === 1 ? (
               <img
                 src={imgs[0].url}
@@ -1161,9 +1168,8 @@ const displayBio = useMemo(() => {
                   inset: 0,
                   width: "100%",
                   height: "100%",
-                  objectFit: "cover",
                   display: "block",
-                  objectPosition: `${fx}% ${fy}%`,
+                  ...getImageCropStyle({ focalX: fx, focalY: fy, zoom }),
                 }}
                 loading="lazy"
                 decoding="async"
@@ -1704,9 +1710,8 @@ marginTop: "auto",
         inset: 0,
         width: "100%",
         height: "100%",
-        objectFit: "cover",
-        objectPosition: `${fx}% ${fy}%`,
         display: "block",
+        ...getImageCropStyle({ focalX: fx, focalY: fy, zoom }),
       }}
     />
   ) : (

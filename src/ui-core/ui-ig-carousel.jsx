@@ -123,6 +123,7 @@ export function IGCarousel({ items = [], onIndexChange }) {
               alt={it.alt || ""}
               loading={i <= 1 ? "eager" : "lazy"}
               decoding="async"
+              style={it.cropStyle || undefined}
             />
           </div>
         ))}
