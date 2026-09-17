@@ -1653,7 +1653,20 @@ export default function App() {
         Array.isArray(normalizedSurveyBase?.linked_feed_ids) &&
         normalizedSurveyBase.linked_feed_ids.length
       ) {
-        setActiveFeedId(String(normalizedSurveyBase.linked_feed_ids[0] || ""));
+        const resolvedFirstFeedId = String(normalizedSurveyBase.linked_feed_ids[0] || "");
+        setActiveFeedId(resolvedFirstFeedId);
+        // Keep the URL's own feed_id in sync with this resolution — without
+        // this, the "onUrlChange" effect (which re-derives activeFeedId from
+        // the URL on every activeFeedId change) sees the URL and state
+        // disagree, resets activeFeedId back to null, and calls startBoot()
+        // again, which lands right back here: an infinite
+        // "Loading study…" <-> preface loop for any direct survey link whose
+        // survey has linked feeds. Facebook/Amazon/X already pair every
+        // setActiveFeedId(...) during boot with setFeedIdInUrl(...) for
+        // exactly this reason — this was the one spot in this file missing it.
+        try {
+          setFeedIdInUrl(resolvedFirstFeedId, { replace: true });
+        } catch {}
       }
 
       const surveyParticipantSeed =
