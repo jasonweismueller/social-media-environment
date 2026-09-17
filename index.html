@@ -62,7 +62,6 @@
 </script>
 <script type="module">
   const params = new URLSearchParams(window.location.search);
-  const app = (params.get("app") || "facebook").toLowerCase();
 
   // Only load the app bundle for a recognized entry: a real participant
   // launch link (?feed=/?feed_id=/?survey=/?survey_id=) or the admin route
@@ -78,6 +77,32 @@
     getParam("feed") || getParam("feed_id") ||
     getParam("survey") || getParam("survey_id")
   );
+
+  // Which platform bundle to load. A real participant launch link should
+  // always carry its own explicit `?app=` — never guessed — so that half is
+  // untouched. But the admin dashboard is one continuous browsing session
+  // across many client-side route changes (sidebar nav links, the platform
+  // picker's "already on this platform" shortcut), several of which
+  // navigate to a bare path like `/admin/dashboard/feeds` with no query
+  // string at all, silently dropping `?app=` from the address bar — it
+  // doesn't matter while the SPA stays mounted (the loaded bundle already
+  // knows what it is), but a hard reload re-runs this script from scratch
+  // with only the now-`app`-less URL to go on, and always fell back to
+  // Facebook. `getProjectId()` (utils-core.js) already avoids the identical
+  // problem for `?project=` via a localStorage fallback — this mirrors that
+  // same "URL wins, localStorage remembers the last real value" pattern,
+  // scoped to admin routes only so a participant's own launch link (which
+  // never touches this key) can never be affected by a previous admin
+  // session on the same browser/device.
+  const ADMIN_APP_KEY = "admin_app_v1";
+  let app = (params.get("app") || "").toLowerCase();
+  if (!app && isAdminRoute) {
+    try { app = (localStorage.getItem(ADMIN_APP_KEY) || "").toLowerCase(); } catch {}
+  }
+  if (!app) app = "facebook";
+  if (isAdminRoute) {
+    try { localStorage.setItem(ADMIN_APP_KEY, app); } catch {}
+  }
 
   if (isAdminRoute || hasLaunchParams) {
     const entryMap = {
