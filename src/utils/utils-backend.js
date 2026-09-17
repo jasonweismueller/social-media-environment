@@ -5478,7 +5478,7 @@ export async function listQuestionLibraryFromBackend() {
   }
 }
 
-export async function saveQuestionLibraryItemToBackend({ id, name, description = "", questions }) {
+export async function saveQuestionLibraryItemToBackend({ id, name, description = "", category = "other", questions }) {
   if (!hasAdminSession()) return { ok: false, err: "admin auth required" };
   const cleanId = String(id || "").trim();
   if (!cleanId) return { ok: false, err: "id required" };
@@ -5489,6 +5489,7 @@ export async function saveQuestionLibraryItemToBackend({ id, name, description =
       id: cleanId,
       name: String(name || "").trim() || "Untitled item",
       description,
+      category: String(category || "other").trim() || "other",
       questions: Array.isArray(questions) ? questions : [],
     });
     return { ok: true };

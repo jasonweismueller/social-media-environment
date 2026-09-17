@@ -17,7 +17,6 @@ import {
   EmptyState,
   useConfirm,
   useToast,
-  usePrompt,
   IconBookmark,
   Popover,
   IconAlignLeft,
@@ -27,7 +26,7 @@ import {
   IconHighlighter,
 } from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
-import { QuestionLibraryPickerModal } from "./components-admin-question-library";
+import { QuestionLibraryPickerModal, SaveToLibraryModal } from "./components-admin-question-library";
 
 /* =========================
    Small helpers
@@ -8251,7 +8250,6 @@ export function SurveyEditor({
   }
 
   const libraryToast = useToast();
-  const libraryPrompt = usePrompt();
   const bulkConfirm = useConfirm();
   // null = closed. "append" = insert at the very end (the empty-survey
   // "+ Add question" / "From library" path). {index, position} = insert
@@ -8280,6 +8278,11 @@ export function SurveyEditor({
   // "insert or just manage" branching already keys off of — see its own
   // header comment — so this needed no change there, just a way to reach it.
   const [libraryManageOpen, setLibraryManageOpen] = useState(false);
+
+  // Set by saveQuestionsToLibrary while the SaveToLibraryModal (name +
+  // category) is open, waiting on the admin's input before the actual
+  // backend save happens — { questions, skippedPostReminders } or null.
+  const [pendingLibrarySave, setPendingLibrarySave] = useState(null);
 
   // Same null / "append" / {index, position} contract as libraryInsertTarget
   // just above — the two pickers (type gallery, library) share one target
@@ -8374,27 +8377,25 @@ export function SurveyEditor({
     );
   }
 
-  async function saveQuestionsToLibrary(questionsToSave) {
+  function saveQuestionsToLibrary(questionsToSave) {
     const { questions, skippedPostReminders } = buildLibraryQuestionsFromEditorQuestions(questionsToSave);
     if (!questions.length) {
       libraryToast.error("Nothing to save — post-reminder questions can't be added to the library.");
       return;
     }
+    setPendingLibrarySave({ questions, skippedPostReminders });
+  }
 
-    const name = await libraryPrompt({
-      title: "Save to library",
-      message:
-        questions.length === 1
-          ? "Name shown when browsing the library."
-          : `Name for this ${questions.length}-question group.`,
-      defaultValue: questions.length === 1 ? questions[0].id || "Question" : `${questions.length} questions`,
-    });
-    if (!name) return;
+  async function handleConfirmLibrarySave({ name, category, description }) {
+    const pending = pendingLibrarySave;
+    if (!pending) return;
 
     const res = await saveQuestionLibraryItemToBackend({
       id: makeLibraryItemId(),
       name,
-      questions,
+      category,
+      description,
+      questions: pending.questions,
     });
 
     if (!res.ok) {
@@ -8402,9 +8403,10 @@ export function SurveyEditor({
       return;
     }
 
+    setPendingLibrarySave(null);
     libraryToast.success(
-      skippedPostReminders
-        ? `Saved to library (skipped ${skippedPostReminders} post-reminder question${skippedPostReminders === 1 ? "" : "s"} — they can't be reused across surveys).`
+      pending.skippedPostReminders
+        ? `Saved to library (skipped ${pending.skippedPostReminders} post-reminder question${pending.skippedPostReminders === 1 ? "" : "s"} — they can't be reused across surveys).`
         : "Saved to library."
     );
   }
@@ -9258,6 +9260,19 @@ export function SurveyEditor({
 
       {libraryManageOpen && (
         <QuestionLibraryPickerModal onClose={() => setLibraryManageOpen(false)} />
+      )}
+
+      {pendingLibrarySave && (
+        <SaveToLibraryModal
+          questionCount={pendingLibrarySave.questions.length}
+          defaultName={
+            pendingLibrarySave.questions.length === 1
+              ? pendingLibrarySave.questions[0].id || "Question"
+              : `${pendingLibrarySave.questions.length} questions`
+          }
+          onSave={handleConfirmLibrarySave}
+          onClose={() => setPendingLibrarySave(null)}
+        />
       )}
 
       {outlineOpen && (

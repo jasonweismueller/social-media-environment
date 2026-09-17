@@ -4,7 +4,42 @@ import {
   saveQuestionLibraryItemToBackend,
   deleteQuestionLibraryItemFromBackend,
 } from "../utils";
-import { Modal, Button, Toggle, EmptyState, useToast, useConfirm, IconBookmark, IconPencil, IconTrash } from "./ui";
+import { Modal, Button, Badge, Toggle, EmptyState, useToast, useConfirm, IconBookmark, IconPencil, IconTrash } from "./ui";
+
+// Organizational categories for library items — lets the picker group a
+// growing library into clearly-labeled sections instead of one flat list,
+// per direct admin feedback. Deliberately a small fixed set with a select
+// control (not freeform text) so grouping stays consistent; the DB column
+// itself is unconstrained free text (see the migration's own comment) so a
+// 5th category can be added here later with no schema change. "other" is
+// also the default every legacy (pre-category) item falls back to.
+export const LIBRARY_ITEM_CATEGORIES = [
+  { value: "mediator", label: "Mediator", tone: "warning" },
+  { value: "dependent_variable", label: "Dependent Variable", tone: "success" },
+  { value: "demographic", label: "Demographic", tone: "info" },
+  { value: "other", label: "Other", tone: "neutral" },
+];
+
+const LIBRARY_CATEGORY_BY_VALUE = new Map(LIBRARY_ITEM_CATEGORIES.map((c) => [c.value, c]));
+
+function libraryCategoryInfo(value) {
+  return LIBRARY_CATEGORY_BY_VALUE.get(value) || LIBRARY_CATEGORY_BY_VALUE.get("other");
+}
+
+// Groups items by category, in LIBRARY_ITEM_CATEGORIES' own fixed order
+// (not alphabetically / not by first-seen) so the sections always appear in
+// the same, predictable order regardless of what's actually in the library.
+// A category with zero items in it is omitted entirely.
+function groupItemsByCategory(items) {
+  const buckets = new Map(LIBRARY_ITEM_CATEGORIES.map((c) => [c.value, []]));
+  items.forEach((item) => {
+    const key = LIBRARY_CATEGORY_BY_VALUE.has(item.category) ? item.category : "other";
+    buckets.get(key).push(item);
+  });
+  return LIBRARY_ITEM_CATEGORIES.map((c) => ({ ...c, items: buckets.get(c.value) })).filter(
+    (g) => g.items.length > 0
+  );
+}
 
 // Which fields a question's type actually has to edit — matches the same
 // type-family split components-admin-surveys-editor.jsx's own
@@ -87,12 +122,19 @@ export function QuestionLibraryPickerModal({ onInsert, onClose }) {
     const q = filter.trim().toLowerCase();
     if (!q) return items;
     return items.filter((item) => {
-      const haystack = [item.name, item.description, summarizeQuestions(item.questions)]
+      const haystack = [
+        item.name,
+        item.description,
+        summarizeQuestions(item.questions),
+        libraryCategoryInfo(item.category).label,
+      ]
         .join(" ")
         .toLowerCase();
       return haystack.includes(q);
     });
   }, [items, filter]);
+
+  const groupedItems = useMemo(() => groupItemsByCategory(filteredItems), [filteredItems]);
 
   const handleDelete = async (item) => {
     const ok = await confirm({
@@ -117,7 +159,7 @@ export function QuestionLibraryPickerModal({ onInsert, onClose }) {
   };
 
   return (
-    <Modal title="Question library" subtitle="Reusable questions and measures saved from any survey." onClose={onClose} width={560}>
+    <Modal title="Question library" subtitle="Reusable questions and measures saved from any survey." onClose={onClose} width={880}>
       <input
         type="text"
         value={filter}
@@ -150,73 +192,87 @@ export function QuestionLibraryPickerModal({ onInsert, onClose }) {
         <div style={{ fontSize: 12, color: "var(--admin-muted)", padding: "8px 4px" }}>No matches.</div>
       )}
 
-      <div style={{ display: "grid", gap: 10, maxHeight: "50vh", overflowY: "auto" }}>
-        {filteredItems.map((item) => {
-          const busy = busyId === item.id;
-          const preview = firstQuestionPreview(item.questions);
-          return (
-            <div
-              key={item.id}
-              style={{
-                border: "1px solid var(--admin-border)",
-                borderRadius: 10,
-                padding: 12,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                minWidth: 0,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--admin-text)" }}>{item.name}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--admin-muted)", marginTop: 2 }}>
-                    {summarizeQuestions(item.questions)}
-                  </div>
-                  {item.description && (
-                    <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 4 }}>{item.description}</div>
-                  )}
-                  {!item.description && preview && (
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--admin-muted)",
-                        marginTop: 4,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {preview}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                  <IconOnlyButtonLocal title="Edit" onClick={() => setEditingItem(item)} disabled={busy}>
-                    <IconPencil size={14} />
-                  </IconOnlyButtonLocal>
-                  <IconOnlyButtonLocal title="Delete" danger onClick={() => handleDelete(item)} disabled={busy}>
-                    <IconTrash size={14} />
-                  </IconOnlyButtonLocal>
-                </div>
-              </div>
-
-              {onInsert && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  busy={busy}
-                  onClick={() => {
-                    onInsert(item.questions);
-                    onClose();
-                  }}
-                >
-                  Insert
-                </Button>
-              )}
+      <div style={{ display: "grid", gap: 20, maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>
+        {groupedItems.map((group) => (
+          <div key={group.value} style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, position: "sticky", top: 0, background: "var(--admin-surface)", paddingBottom: 2 }}>
+              <Badge tone={group.tone}>{group.label}</Badge>
+              <span style={{ fontSize: 11, color: "var(--admin-muted)" }}>
+                {group.items.length} {group.items.length === 1 ? "item" : "items"}
+              </span>
+              <div style={{ flex: 1, height: 1, background: "var(--admin-border-subtle)" }} />
             </div>
-          );
-        })}
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
+              {group.items.map((item) => {
+                const busy = busyId === item.id;
+                const preview = firstQuestionPreview(item.questions);
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      border: "1px solid var(--admin-border)",
+                      borderRadius: 10,
+                      padding: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--admin-text)" }}>{item.name}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--admin-muted)", marginTop: 2 }}>
+                          {summarizeQuestions(item.questions)}
+                        </div>
+                        {item.description && (
+                          <div style={{ fontSize: 12, color: "var(--admin-muted)", marginTop: 4 }}>{item.description}</div>
+                        )}
+                        {!item.description && preview && (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "var(--admin-muted)",
+                              marginTop: 4,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {preview}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                        <IconOnlyButtonLocal title="Edit" onClick={() => setEditingItem(item)} disabled={busy}>
+                          <IconPencil size={14} />
+                        </IconOnlyButtonLocal>
+                        <IconOnlyButtonLocal title="Delete" danger onClick={() => handleDelete(item)} disabled={busy}>
+                          <IconTrash size={14} />
+                        </IconOnlyButtonLocal>
+                      </div>
+                    </div>
+
+                    {onInsert && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        busy={busy}
+                        onClick={() => {
+                          onInsert(item.questions);
+                          onClose();
+                        }}
+                      >
+                        Insert
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {editingItem && (
@@ -246,6 +302,7 @@ function EditLibraryItemModal({ item, onClose, onSaved }) {
   const toast = useToast();
   const [name, setName] = useState(item.name || "");
   const [description, setDescription] = useState(item.description || "");
+  const [category, setCategory] = useState(item.category || "other");
   const [questions, setQuestions] = useState(() =>
     (Array.isArray(item.questions) ? item.questions : []).map((q) => ({
       ...q,
@@ -353,6 +410,7 @@ function EditLibraryItemModal({ item, onClose, onSaved }) {
         id: item.id,
         name: finalName,
         description,
+        category,
         questions,
       });
       if (!res.ok) {
@@ -360,7 +418,7 @@ function EditLibraryItemModal({ item, onClose, onSaved }) {
         return;
       }
       toast.success("Saved.");
-      onSaved({ ...item, name: finalName, description, questions });
+      onSaved({ ...item, name: finalName, description, category, questions });
     } finally {
       setSaving(false);
     }
@@ -396,6 +454,17 @@ function EditLibraryItemModal({ item, onClose, onSaved }) {
         <label style={{ display: "grid", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--admin-muted)" }}>
           Name
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+        </label>
+
+        <label style={{ display: "grid", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--admin-muted)" }}>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+            {LIBRARY_ITEM_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label style={{ display: "grid", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--admin-muted)" }}>
@@ -573,6 +642,103 @@ function EditLibraryItemModal({ item, onClose, onSaved }) {
             </div>
           );
         })}
+      </div>
+    </Modal>
+  );
+}
+
+// Small dedicated dialog for the "Save to library" action — name +
+// category (+ optional description) in one step, replacing a plain
+// name-only text prompt so a saved item is born already categorized
+// instead of always landing in "Other" until someone edits it later.
+// A dedicated component rather than extending the shared PromptDialog:
+// PromptDialog's contract (resolve to a single string or null) doesn't fit
+// a multi-field form, and this dialog is only ever used from the survey
+// editor's library-save flow, so it belongs with the rest of this file's
+// library-specific UI rather than in the shared ui/ primitives.
+export function SaveToLibraryModal({ questionCount, defaultName, onSave, onClose }) {
+  const [name, setName] = useState(defaultName || "");
+  const [category, setCategory] = useState("other");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const inputStyle = {
+    width: "100%",
+    boxSizing: "border-box",
+    height: 32,
+    padding: "0 8px",
+    border: "1px solid var(--admin-border)",
+    borderRadius: 6,
+    fontSize: 12.5,
+  };
+
+  async function handleSave() {
+    const finalName = name.trim();
+    if (!finalName) return;
+    setSaving(true);
+    try {
+      await onSave({ name: finalName, category, description: description.trim() });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Save to library"
+      subtitle={
+        questionCount === 1
+          ? "Name and categorize this question for reuse across surveys."
+          : `Name and categorize this ${questionCount}-question group for reuse across surveys.`
+      }
+      onClose={onClose}
+      width={440}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" busy={saving} disabled={!name.trim()} onClick={handleSave}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: "grid", gap: 12 }}>
+        <label style={{ display: "grid", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--admin-muted)" }}>
+          Name
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            style={inputStyle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) handleSave();
+            }}
+          />
+        </label>
+
+        <label style={{ display: "grid", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--admin-muted)" }}>
+          Category
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+            {LIBRARY_ITEM_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label style={{ display: "grid", gap: 4, fontSize: 11.5, fontWeight: 600, color: "var(--admin-muted)" }}>
+          Description (optional)
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            style={{ ...inputStyle, height: "auto", padding: 8, resize: "vertical", fontFamily: "inherit" }}
+          />
+        </label>
       </div>
     </Modal>
   );

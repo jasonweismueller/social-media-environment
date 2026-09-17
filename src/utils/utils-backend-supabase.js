@@ -1046,7 +1046,7 @@ export async function supabaseListQuestionLibraryItems() {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from("question_library_items")
-    .select("id, name, description, questions, updated_at")
+    .select("id, name, description, category, questions, updated_at")
     .order("name", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -1055,18 +1055,20 @@ export async function supabaseListQuestionLibraryItems() {
     id: row.id,
     name: row.name || "",
     description: row.description || "",
+    category: row.category || "other",
     questions: Array.isArray(row.questions) ? row.questions : [],
     updatedAt: row.updated_at || null,
   }));
 }
 
-export async function supabaseSaveQuestionLibraryItem({ id, name, description, questions }) {
+export async function supabaseSaveQuestionLibraryItem({ id, name, description, category, questions }) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("question_library_items").upsert(
     {
       id,
       name: name || "",
       description: description || "",
+      category: category || "other",
       questions: Array.isArray(questions) ? questions : [],
     },
     { onConflict: "id" }
