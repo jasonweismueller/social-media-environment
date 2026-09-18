@@ -8464,6 +8464,48 @@ collapsible, in the correct order before "Profile Photo". Instagram/X were not i
 live-mounted (same mechanical edit pattern, already covered by the parse check) — worth a quick
 look if either behaves unexpectedly.
 
+## New: "with diverse viewpoints" toggle for the Facebook Community Note intervention (2026-09-11)
+
+New admin-configurable checkbox on the Facebook post editor's Context Note intervention type
+(`components-admin-editor-facebook.jsx`) — appends "with diverse viewpoints" to the existing "The
+context was rated as helpful by \<group(s)\>" sentence (`RatedByLine`,
+`components-ui-interventions.jsx`), mirroring real X Community Notes' own "rated helpful by people
+from different points of view" framing, as a toggle rather than requiring it to be hand-typed into
+the free-text contributor-group "type" field every time. New `posts.note_diverse_viewpoints boolean
+not null default false` column (`20260801000037_note_diverse_viewpoints.sql`), purely additive —
+every existing post's rendered sentence is unchanged until an admin explicitly turns it on.
+
+**Not independently verified by this session** — reconstructed from the commit diff (`8b87b1e`),
+not live-tested here; picked up while catching this file up on a run of undocumented commits (see
+"CLAUDE.md catch-up" near the end of this file for the full list and context).
+
+## Power analysis: factorial-ANOVA interaction and moderated-regression interaction added (2026-09-11)
+
+Extended the power-analysis tool (`utils-power-analysis.js`/`components-admin-power-analysis.jsx`)
+with two new families beyond the existing one-way-ANOVA/t-test/correlation calculators, both
+genuinely needing real noncentral-F machinery rather than the simpler chi-square stand-in the
+one-way-ANOVA function gets away with (since both depend on residual/error df, not just the number
+of groups):
+- **Factorial ANOVA, 2-way interaction** (`sampleSizeFactorialInteraction`/
+  `achievedPowerFactorialInteraction`/`minDetectableEffectFactorialInteraction`) — Cohen's f applied
+  to the interaction-specific portion of variance for a balanced `levelsA × levelsB` design,
+  df1 = (a−1)(b−1).
+- **Interaction/added-block in moderated multiple regression**
+  (`sampleSizeRegressionInteraction`/etc.) — the standard "R² increase" F-test (Cohen, 1988, ch. 9;
+  matches R's `pwr.f2.test`), using Cohen's f² (a genuinely different scale from the existing f —
+  new `COHEN_F2 = {small:.02, medium:.15, large:.35}` benchmarks added alongside the pre-existing
+  `COHEN_F`/`COHEN_W`/`COHEN_R`).
+
+Both are built on a from-scratch noncentral-F CDF (`noncentralFCDF`, a Poisson-mixture over
+central-F terms — the same pattern `noncentralChiSquareCDF` already uses elsewhere in this file —
+plus a from-scratch central-F CDF via the regularized incomplete beta function, reimplemented
+locally per this file's own "deliberately self-contained" header comment rather than imported from
+`utils-survey-analysis.js`, which already has an equivalent for real p-values).
+
+**Not independently verified by this session** — reconstructed from the commit diff (`53039bb`) and
+its own detailed code comments (which read as mathematically careful, citing the specific Cohen
+1988 formulas used), not live-tested or numerically spot-checked here.
+
 ## New Author Type option: "Random (male or female)" — per-post gender randomization (2026-09-11)
 
 Direct request: "Randomize avatars/names" already picks a random name+avatar *within* whichever
@@ -8803,3 +8845,267 @@ images ("tomorrow," per their own framing) — once uploaded to
 `avatars/misinformation/female/{ethnicity}/` and `avatars/misinformation/female/index.json` is
 regenerated to list them (same shape as the male one), the female fallback starts resolving to the
 real set with zero further code changes, exactly as designed.
+
+**Update, resolved**: the female pool is live — `avatars/misinformation/female/index.json` now lists
+26 real images across all four ethnicity subfolders (confirmed by fetching it directly), not the
+placeholder `[]` it shipped with. Not done by the session that wrote this note; picked up while
+catching this file up (see "CLAUDE.md catch-up" near the end of this file).
+
+# CLAUDE.md catch-up (2026-09-18) — a run of undocumented commits found and written up
+
+This file went 8 days (2026-09-11 → 2026-09-17) without an update despite 12 real commits landing in
+that window — the gap was only noticed when the user asked directly whether CLAUDE.md was stale. The
+sections immediately below (through "Instagram: real focal-point/zoom image cropper") cover that
+backlog, reconstructed from each commit's own diff and code comments rather than from live sessions —
+**none of them carry this file's usual "Verified: ..." paragraph**, since nothing here was actually
+re-tested by the session writing this catch-up; each one says so explicitly. Two sections above this
+one (the "diverse viewpoints" toggle and the power-analysis extension) were inserted earlier in the
+file, in their correct chronological position, for the same reason and with the same caveat. The two
+sections *after* this catch-up run (the image-compression fix and its retroactive S3 pass) are this
+session's own work and carry full "Verified" detail as usual, since that part was actually done and
+tested here, not reconstructed.
+
+**Lesson for whoever next finds a stale-CLAUDE.md gap like this one**: `git log --since=<last CLAUDE.md
+commit date>` is the fastest way to find exactly what's missing — this session ran that once, got a
+clean list of every undocumented commit, and worked through it in chronological order rather than
+guessing which areas of the app might have drifted. Cross-check against the file's own last-updated
+date (`git log -1 -- CLAUDE.md`) before assuming recent work is already captured.
+
+## Slider questions: "Hide numeric value" option (2026-09-12)
+
+New per-question `hide_slider_value` boolean on SLIDER-type survey questions — when set, the slider
+still renders (drag handle, left/right labels) but the live numeric readout above the handle is
+suppressed, useful when a study wants a slider's visual/haptic feel without cueing the participant
+to a specific number. Threaded through the same set of places this file's own "known duplicated
+logic" section already flags for every other slider/question field: `SliderEditorBlock`
+(`components-admin-surveys-editor.jsx`, a new `Toggle` next to Min/Max/Left label/Right label),
+`makeQuestion`/`normalizeQuestion`/`frontendQuestionToBackend` (`utils-survey.js`) and its
+independent TypeScript mirror (`survey-sanitize.ts`, used by the `save-survey` Edge Function), and
+the render logic in both `SurveyQuestionRenderer`/`SurveyQuestionRendererMobile`
+(`ui-survey.jsx`/`-mobile.jsx`) — the numeric readout `<div>` is now conditionally rendered instead
+of always shown.
+
+**Not independently verified by this session** — reconstructed from the commit diff (`e17fe5f`), not
+live-tested here (see "CLAUDE.md catch-up" above).
+
+## Avatar randomization: no more flash-then-swap while the assignment is still resolving (2026-09-12)
+
+Two related fixes, both in service of the same problem: when avatar randomization is on but the
+actual randomized pick hasn't resolved yet, `PostCard`/`PostReminderCard` used to fall back to the
+post's *raw stored* avatar for that first render, then swap to the real randomized photo once it
+resolved — meaning a participant could briefly see one person's photo before it changed to a
+different person's. Fixed across Facebook/Instagram/X (`ui-posts-{facebook,instagram,x}.jsx`) by
+rendering blank (no avatar) instead of the raw fallback during that window — a blank circle reads as
+"still loading," a photo swap does not. The real feed itself never hits this window (`Feed`'s own
+`avatarMaps` effect resolves every post's assignment before `PostCard` ever mounts); it's
+specifically `PostReminderCard`'s async no-snapshot fallback path (a reminder targeting a feed/post
+the participant never actually visited live) that can render before the pick is ready.
+
+Second, related fix: `preloadSurveyPostReminders` (all three `App-*.jsx`) was still calling the
+plain `getAvatarPool(kind)` to warm the cache ahead of a reminder rendering, instead of
+`getAvatarPoolForPost(kind, isMisinformation)` — the function the 2026-09-11 misinformation-avatar-
+pool work made the real render-time source of truth. For a misinformation-flagged post this warmed
+the *wrong* pool entirely, leaving the real pick to load cold once the reminder actually rendered —
+undoing part of the point of preloading. Fixed identically in all three files.
+
+X's `PostCard` also got one more piece: its `displayedSnapshot` (the "what did this participant
+actually see" mechanism reminders read back later) used to always overwrite `avatarUrl` with
+whatever `avatarUrl` currently was — including blank, during the same resolving window above — so a
+reminder recovering that snapshot could get stuck with a permanently blank avatar even after the
+real pick resolved moments later. Fixed to only overwrite the snapshot's avatar once a real URL is
+known, leaving the post's own existing `avatarUrl` in place otherwise.
+
+**Not independently verified by this session** — reconstructed from the commit diff (`365be2d`) and
+its own code comments, not live-tested here (see "CLAUDE.md catch-up" above).
+
+## Survey codebook / data dictionary (2026-09-12 – 2026-09-15)
+
+New "codebook" feature on the Survey Participants page and the Surveys admin panel's own editor:
+given a survey, generates a full data dictionary — one row per column any real CSV export of that
+survey could produce — grouped into sections (Participant & session, Experiment, Data quality,
+Survey questions, Per-post engagement columns), with response coding spelled out (choice
+value→label mappings, scale endpoints, attention-check/screener annotations). Deliberately built
+**on top of `flattenSurveyQuestions`** (`utils-backend.js`) — the exact same function every real CSV
+builder in this file already goes through — specifically so a codebook variable name can never drift
+out of sync with what a real downloaded CSV actually calls that column.
+
+Shipped in three passes over four days:
+1. **Built** (`85ed573`, 2026-09-12): `buildSurveyCodebookRows`/`buildSurveyCodebookCsv`/
+   `buildSurveyCodebookHtmlDocument` in `utils-backend.js`, offered as three download formats —
+   Word (`triggerWordCompatibleDocumentDownload`, a `.doc`-extension HTML blob with a UTF-8 BOM so
+   Word opens it as a real document), PDF (`triggerHtmlPrintDialog`, save-as-PDF via the browser's
+   own print dialog), and plain CSV.
+2. **Refined** (`44476df`/`9ec95f1`/`a3a4881`/`c3d98e2`, 2026-09-13): gated the "feed + survey"
+   CSV/codebook buttons away from `survey_only` delivery mode (a survey_only study's linked feeds
+   can be pure post_reminder content sources a participant never actually visits, so merging them
+   in never made sense); added a `resolvePost` option to `flattenSurveyQuestions` so a specific
+   post_reminder question's CSV/codebook columns only list fields that post can actually produce
+   (Amazon's `review_helpful` only for an Amazon post, a note's `note_group2_size_shown` only when
+   that note genuinely has a second contributor group configured) instead of every conceivable field
+   unconditionally; added a platform-only relevance filter for the codebook's generic "Per-post
+   engagement columns" reference section (no specific post to check against there, so this drops
+   columns the *current platform* could never produce at all — Amazon's `review_*` fields on a
+   Facebook-linked survey, etc.); and added shared-stem grouping to the HTML/Word document — a
+   matrix question's rows, or several post_reminder "conditions" that happen to share identical
+   instruction text pointing at different posts, collapse into one stem line plus a compact per-item
+   sub-table instead of repeating the same question text on every row.
+3. **Word and CSV variants removed, PDF kept** (`a199b8e`, 2026-09-15) — per direct request.
+   `buildSurveyCodebookCsv` and `triggerWordCompatibleDocumentDownload` were deleted outright (not
+   just hidden from the UI), along with every "Codebook Word"/"Codebook CSV" button on both admin
+   pages. The PDF format (`buildSurveyCodebookHtmlDocument` + `triggerHtmlPrintDialog`) is the only
+   codebook export offered today.
+
+**Not independently verified by this session** — reconstructed from the four commits' diffs and
+their own code comments, not live-tested here (see "CLAUDE.md catch-up" above). Worth a real
+click-through of "Codebook PDF" on a survey with a mix of matrix/slider/post_reminder/attention-check
+questions before trusting the current (post-removal) state beyond the code read.
+
+## Question library: organizational categories (2026-09-17)
+
+Library items (reusable saved questions/measures, `components-admin-question-library.jsx`) gained a
+`category` field — Mediator / Dependent Variable / Demographic / Other, a small fixed set via a
+`<select>`, not freeform — so the picker modal groups a growing library into labeled sections
+(color-coded `Badge`s, three new tone variants — `success`/`warning`/`info` — added to the shared
+`Badge` component for this) instead of one flat list. New `question_library_items.category` column
+(`20260801000040_add_question_library_category.sql`), plain unconstrained text at the DB level (the
+fixed four-value set is enforced client-side only, so a fifth category can be added later with no
+migration) defaulting to `'other'` — additive, no backfill needed since `'other'` is already the
+right bucket for anything saved before this shipped. The picker modal also widened (560px → 880px)
+and its per-item cards moved into a responsive grid within each category section.
+
+**Not independently verified by this session** — reconstructed from the commit diff (`072dc3d`), not
+live-tested here (see "CLAUDE.md catch-up" above).
+
+## Real bug found and fixed: Instagram survey-only launch links with linked feeds stuck in an infinite loading loop (2026-09-17)
+
+`App-instagram.jsx`'s boot sequence, on resolving a direct survey link whose survey has linked feeds,
+set `activeFeedId` to the first linked feed but never called `setFeedIdInUrl` to keep the URL in
+sync — Facebook/Amazon/X's equivalent boot code already pairs every `setActiveFeedId(...)` during
+boot with a matching `setFeedIdInUrl(...)` for exactly this reason (a comment on the fix names it
+directly) — this was the one spot in this file missing it. Without it, the "URL changed" effect —
+which re-derives `activeFeedId` from the URL on every change — saw the URL and component state
+disagree, reset `activeFeedId` back to null, and re-ran `startBoot()`, landing right back at the same
+unsynced state: a genuine infinite "Loading study…"/preface loop for any Instagram survey-only launch
+link whose survey links at least one feed. Fixed by calling
+`setFeedIdInUrl(resolvedFirstFeedId, { replace: true })` alongside the existing `setActiveFeedId`
+call, matching the other three apps.
+
+**Not independently verified by this session** — reconstructed from the commit diff (`b200887`) and
+its own code comment (detailed enough to be confident in the root-cause explanation), not live-tested
+here (see "CLAUDE.md catch-up" above).
+
+## Instagram: real focal-point/zoom image cropper, replacing the old X/Y-slider one (2026-09-17)
+
+`ImageCropper` (`components-admin-media-instagram.jsx`, used by the single-image field, the video
+poster field, and each slide of the carousel editor) was rebuilt from three plain 0–100 range-input
+sliders (X position / Y position / Zoom, driving a CSS `background-position`/`background-size` div)
+into a real drag-to-reposition, scroll/pinch/double-click-to-zoom tool — drag the photo directly,
+mouse wheel or pinch to zoom (anchored to the pointer/pinch midpoint, not just the existing focal
+point, so zooming feels like it zooms "into" wherever you're pointing), double-click/double-tap to
+toggle between 100%/220% zoom, arrow keys to nudge, a rule-of-thirds guide shown only while actively
+dragging/pinching, and a zoom slider + +/−/Reset controls for precision. The underlying stored shape
+is unchanged (`{focalX, focalY, zoom}` per image), and zoom range widened from 0.5–3 (the old slider
+allowed zooming *out* past full coverage, which could reveal empty space around the image) to a new
+shared `IMAGE_CROP_MIN_ZOOM`/`IMAGE_CROP_MAX_ZOOM` (1–4, `utils-core.js`) — 1 is the floor specifically
+because `object-fit:cover` already guarantees full coverage at zoom 1 for any focal point, so anything
+below that can only under-cover.
+
+New shared `getImageCropStyle({focalX, focalY, zoom})` (`utils-core.js`) is the single source of
+truth for turning that stored shape into actual crop CSS (`object-fit:cover` + `object-position`,
+plus a `transform:scale()` anchored via `transform-origin` once zoomed past 1×) — used by both the
+admin cropper's own live preview *and* every place a cropped image actually renders to a real
+participant (`ui-posts-instagram.jsx`'s main feed card, the carousel via `IGCarousel`'s new
+`cropStyle` prop, and the comment-modal media pane), so "what the admin sees while cropping" and
+"what a participant sees" can't drift apart.
+
+**Verified only to the extent of confirming this doesn't touch upload/compression logic** — this
+session read the full diff while investigating a separate image-compression report (see the next
+section) specifically to rule out this commit as the cause, and confirmed it's purely a
+display/interaction change (plus one CSS `key` prop addition on the carousel's cropper instance).
+No live click-through of the drag/zoom/pinch interactions themselves was done here (see "CLAUDE.md
+catch-up" above).
+
+## Real bug found and fixed: a hard reload of a non-Facebook admin session always reloaded the Facebook bundle (2026-09-17)
+
+Direct continuation of the `getApp()`-has-no-fallback bug documented earlier in this file
+(2026-08-23) — that fix addressed the *runtime* symptom (React code calling `getApp()` after the URL
+lost `?app=`), but `index.html`'s own inline bootstrap script — which decides which platform *bundle*
+to `import()` in the first place, before any React code runs at all — had the identical gap one layer
+earlier: `const app = (params.get("app") || "facebook").toLowerCase();`, unconditionally. Since
+several admin navigation actions (the platform picker's "already on this platform" shortcut, sidebar
+nav links) route to a bare path with no query string, a hard reload of an Instagram or X admin
+session could silently reload the *Facebook* bundle entirely — not just misreport the platform
+internally, but load the wrong app's code.
+
+Fixed with the same pattern `getProjectId()` (`utils-core.js`) already uses for `?project=` — a
+`localStorage` fallback (`admin_app_v1`) that remembers the last real `?app=` value seen on an admin
+route, read only when the URL itself has none *and* the route is `/admin/*`, and written every time
+an admin route does have one. Deliberately scoped to admin routes only — a real participant launch
+link must always carry its own explicit `?app=` and never falls back to a remembered value, so a
+previous admin session on the same browser/device can't affect a participant's launch link.
+
+**Not independently verified by this session** — reconstructed from the commit (`d230727`) itself,
+which carries an unusually detailed code comment explaining the exact reasoning (quoted above almost
+verbatim), not live-tested here (see "CLAUDE.md catch-up" above).
+
+## Image compression: fixed quality wasn't adaptive, plus a retroactive S3 pass (2026-09-17/18)
+
+Direct report: newly-uploaded Instagram images were "bigger than needed for the form factor" and
+slow to load. Investigated by downloading the actual reported images directly from CloudFront and
+checking them — the upload-time compressor (`utils-image-compress.js`, built 2026-08-04, see
+"Button consistency sweep, image compression, and two bugs found from real user reports" above)
+*was* running correctly (all four were downscaled to exactly 1400px on the long edge, the "feed"
+preset's dimension cap) — the bug was that it only ever tried one fixed JPEG quality (0.8), and for
+busy/high-detail real-world photos (dense foliage, textured stock photography) that still landed
+anywhere from ~300KB to ~950KB even after the dimension cap. Confirmed directly (re-encoding the
+same images via `sips` at progressively lower quality) that dropping quality meaningfully further —
+65%, then 50% — cut size by 35–55% for exactly this kind of content, with no dimension change.
+
+**Fixed** (`src/utils/utils-image-compress.js`): both presets (`feed`/`avatar`) now try a quality
+ladder — `[0.8, 0.65, 0.5]` for feed, `[0.78, 0.65, 0.5]` for avatar — stopping at the first step
+that lands under a byte budget (350KB feed / 100KB avatar), or keeping the lowest-quality (smallest)
+attempt if even 50% doesn't get there, rather than looping forever. PNG is unaffected (canvas ignores
+`quality` for PNG per spec, so only the existing single downscale-and-re-encode applies there, same
+as before). This is the one shared function every image upload already goes through across Facebook,
+Instagram, *and* X, so the fix applies to all three with no per-platform wiring.
+
+**Verified live** against the real dev server (`npm run dev`, confirmed working in this environment):
+a synthetic worst-case (random-noise JPEG, effectively incompressible) correctly ran through all
+three quality steps and still landed meaningfully smaller than the old fixed-quality-0.8 result; a
+synthetic easy case (smooth gradient) correctly stopped after one `canvas.toBlob` call once already
+under budget — confirmed via a monkey-patched `HTMLCanvasElement.prototype.toBlob` call counter, not
+just the output size. Regression-checked PNG (still exactly one encode, no wasted quality-ladder
+attempts), GIF (still passed through completely untouched), and the "already small enough" fast path
+(still skipped entirely, byte-identical output, same object reference) — all three preserved from
+before the fix.
+
+**Retroactive pass over what was already on S3**: wrote a Python script (scratchpad-only, matching
+this repo's established pattern for AWS write scripts — see "Oversized per-post images" 2026-08-08/09
+above) mirroring the new client-side logic exactly — same 1400px cap, same `[80,65,50]` quality
+ladder, same 350KB budget — with a dry run first. Scanned `s3://my-video-feed/images/` (excluding the
+20 real topic-image pool folders already handled by earlier passes): 87 candidate per-post images, 45
+initially flagged as oversized. Before running for real, spot-checked a couple of the flagged PNGs
+directly and found `sips` re-saving an already-right-sized PNG can make it **bigger**, not smaller
+(PNG has no real quality lever available here) — added a "never make it worse" safety check (skip
+the write entirely if the re-encoded result isn't actually smaller, mirroring `compressImageFile`'s
+own identical guard) and a separate skip for any already-≤1400px PNG/webp (nothing productive to do
+there without a real PNG optimizer, which isn't available). Also added a retry-with-backoff wrapper
+around every `aws` CLI call after hitting one transient failure mid-run (the identical command
+succeeded immediately on retry — matches this bucket/region's already-documented occasional
+flakiness, see the 2026-08-02 avatar/topic-image entry) and a per-file try/except so one failure
+can't abort the whole batch.
+
+**Real run result**: 26 images genuinely shrunk (up to 58% smaller), originals backed up first to
+`images_originals_backup_2026-09-17/` (bucket has no versioning, so this is the real undo path),
+CloudFront invalidated for exactly the touched paths. 3 large PNGs were correctly left untouched by
+the new safety check (would have gotten bigger). 3 `.webp` files failed — this Mac's `sips` can write
+JPEG/PNG but not webp output at all (a real, permanent tool limitation, confirmed non-transient —
+retries didn't help); those are still >1400px in one dimension but not large in bytes (89–209KB),
+flagged to the user as a known, lower-priority gap rather than silently left unmentioned. Verified
+against the live CDN with a cache-busting query that the new (smaller) bytes are actually being
+served for the four originally-reported images specifically.
+
+**Not done**: the 3 failed `.webp` files (would need converting to JPEG instead of resizing in place,
+not attempted); the 3 skipped large PNGs (would need JPEG conversion or a real PNG optimizer neither
+Claude nor this Mac's tools have — flagged to the user rather than decided unilaterally, no response
+yet as of this note).
