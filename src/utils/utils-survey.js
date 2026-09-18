@@ -847,6 +847,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     left_label: overrides.left_label ?? overrides.min_label ?? "",
     right_label: overrides.right_label ?? overrides.max_label ?? "",
     hide_slider_value: !!overrides.hide_slider_value,
+    slider_start_midpoint: !!overrides.slider_start_midpoint,
     visible_if: overrides.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -1007,6 +1008,16 @@ export function normalizeQuestion(raw = {}) {
     // leaving just the left/right labels. Stored unconditionally (like
     // numeric_only below), meaningless for other types.
     hide_slider_value: !!raw.hide_slider_value,
+    // SLIDER-only — starts the handle at the midpoint of min/max instead of
+    // at min, a neutral anchor rather than one that visually pre-favors the
+    // low end. Purely a render-time starting position, same as the existing
+    // min-default it replaces — see getSliderDefaultValue below, the single
+    // place this is actually applied. Never writes anything into
+    // `responses` on its own: a participant who never touches the slider
+    // still reads as unanswered (isQuestionAnswered's SLIDER case checks the
+    // real stored value, not the visual default), so this can't silently
+    // manufacture a "midpoint" answer nobody actually chose.
+    slider_start_midpoint: !!raw.slider_start_midpoint,
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -1174,6 +1185,7 @@ export function frontendQuestionToBackend(question = {}) {
         left_label: q.left_label ?? q.min_label ?? "",
         right_label: q.right_label ?? q.max_label ?? "",
         hide_slider_value: !!q.hide_slider_value,
+        slider_start_midpoint: !!q.slider_start_midpoint,
       };
 
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
@@ -1982,6 +1994,22 @@ function isBipolarAnswered(q, value) {
     const key = String(row?.value ?? makeMatrixRowValue(q?.id, i));
     return String(value[key] ?? "").trim() !== "";
   });
+}
+
+// The slider handle's starting position before a participant has touched it
+// — purely a render-time visual default, never written into `responses` on
+// its own (both ui-survey.jsx/ui-survey-mobile.jsx only ever call this to
+// compute what to *show*, never to seed real answer state), so a slider left
+// untouched still correctly reads as unanswered via isQuestionAnswered above
+// (which checks the real stored value, not this). Single source of truth
+// for the two survey renderers so their midpoint math can't drift apart —
+// rounds toward the nearer end on an odd min/max span, matching a plain
+// visual center rather than picking a side arbitrarily.
+export function getSliderDefaultValue(q) {
+  const min = Number.isFinite(q?.min) ? q.min : 0;
+  if (!q?.slider_start_midpoint) return min;
+  const max = Number.isFinite(q?.max) ? q.max : 100;
+  return Math.round((min + max) / 2);
 }
 
 export function isQuestionAnswered(q, value, responses) {

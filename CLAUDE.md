@@ -9109,3 +9109,67 @@ served for the four originally-reported images specifically.
 not attempted); the 3 skipped large PNGs (would need JPEG conversion or a real PNG optimizer neither
 Claude nor this Mac's tools have — flagged to the user rather than decided unilaterally, no response
 yet as of this note).
+
+## Real bug found and fixed: deleting a survey with any real participants blocked by a missing FK rule (2026-09-18)
+
+Direct report: deleting a survey failed with `update or delete on table "surveys" violates foreign
+key constraint "participants_survey_id_fkey" on table "participants"`. Checked every table that
+references `surveys(id)` — `feed_surveys`/`survey_responses`/`experiment_assignments`/
+`experiment_group_counters`/`experiment_groups`/`custom_measure_groups`/`ai_report_context` are all
+`on delete cascade`. `participants.survey_id` (`20260801000006_participants.sql`) was the one
+outlier, declared with no `on delete` clause at all — defaults to `NO ACTION`, blocking the delete
+outright. Confirmed live: 4 real surveys currently have participant rows attached, one with 1,452.
+
+**Fixed with `on delete set null`, deliberately not cascade** like its siblings above
+(`20260801000041_fix_participants_survey_id_fkey_on_delete.sql`) — a `participants` row is real
+feed-visit/engagement data whose primary link is `feed_id` (a separate FK on the same row, already
+cascading); `survey_id` is just a "which survey this participant was en route to" stamp (see the
+2026-08-11 "feed + survey CSV leaked another survey's participants" entry for how that stamp is
+used). Cascading would have silently destroyed 1,452 real participant records the moment someone
+deleted that one survey — `set null` detaches the now-dangling reference and keeps the row. Mirrors
+the identical pattern `survey_responses.feed_id`/`project_id` already use for the same shape of
+problem. Applied directly via `supabase db query --linked -f` to both Supabase projects, production
+first then staging (relinked back to production after, this repo's default); verified via
+`pg_get_constraintdef` on both before and after.
+
+## Slider questions: "Start at midpoint" option (2026-09-18)
+
+Direct request. Companion to the existing "Hide numeric value" toggle (2026-09-12 above) — a new
+`slider_start_midpoint` boolean starts the handle at the midpoint of min/max instead of at min, a
+neutral starting position rather than one that visually pre-favors the low end. Threaded through
+every place `hide_slider_value` already lives (same "known duplicated logic" set this file already
+flags): `makeQuestion`/`normalizeQuestion`/`frontendQuestionToBackend` (`utils-survey.js`), the TS
+mirror (`survey-sanitize.ts`, redeployed to both Supabase projects), and `normalizeQuestionForEditor`/
+`buildSavedQuestion`/`SliderEditorBlock` (`components-admin-surveys-editor.jsx`, a new "Start at
+midpoint" `Toggle` next to the existing one, with a hint that live-computes the actual midpoint
+number from the question's own min/max).
+
+**Deliberately render-time only, never written into `responses` on its own** — new shared
+`getSliderDefaultValue(q)` (`utils-survey.js`, exported) is the single place this is computed, used
+by both `ui-survey.jsx`/`ui-survey-mobile.jsx` in place of the old inline `question.min ?? 0`
+fallback. `isQuestionAnswered`'s SLIDER case already checked the real stored value, not the visual
+default, so a participant who never touches the slider still correctly reads as unanswered — the
+midpoint option can't silently manufacture an answer nobody actually gave. Fixed a small adjacent
+bug while touching these exact lines: the numeric readout used `value || question.min || 0`, which
+would have shown the wrong number if a participant's real answer was legitimately `0` (falsy in JS,
+so it fell through to `question.min` instead) — both the handle's `value` and the readout now use
+the identical `value === "" || value == null ? getSliderDefaultValue(question) : value` check.
+
+**Verified live**: `getSliderDefaultValue` tested directly (plain range unaffected — still returns
+`min`; midpoint on for 0–100 → 50; odd span 1–6 → 4, i.e. rounds 3.5 up; negative range −10–10 → 0;
+missing min/max falls back to the same 0/100 defaults every other slider default already uses).
+Mounted the real `SurveyScreen` (not a reimplementation) with one plain and one midpoint-enabled
+slider — confirmed the midpoint slider's handle and readout both show 50, the plain one both show 0,
+and `responses` stayed `{}` for both until a real `input`/`change` event was dispatched, after which
+the moved slider correctly read 73 in both places. Mounted the real `SurveyEditor`, expanded the
+question, found and clicked the actual "Start at midpoint" toggle — confirmed it set
+`slider_start_midpoint: true` on the right question without touching the sibling `hide_slider_value`
+field, the hint text showed the correct live-computed midpoint, and toggling back off reverted
+cleanly. (One real test-harness gotcha hit along the way, not an app bug: `SurveyEditor` calls
+`onSurveyChange` with React's functional-updater form, `(prev) => next`, throughout — a plain
+non-`useState` test callback needs to resolve that itself, `typeof next === "function" ? next(prev)
+: next`, or it silently stores the updater function instead of the resolved survey.) All four
+touched files parse clean (`@babel/parser`); `survey-sanitize.ts` type-checks (`deno check`) and was
+deployed to both Supabase projects. Regression-checked `?app=fb`/`?app=ig` admin routes load with
+zero console errors. **Not verified**: an actual click-through by a real logged-in admin — same
+standing no-login limitation as everywhere else in this file.

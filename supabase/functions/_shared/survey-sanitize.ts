@@ -608,6 +608,7 @@ export function normalizeQuestion(raw: any = {}): any {
     left_label: String(raw.left_label ?? raw.min_label ?? ""),
     right_label: String(raw.right_label ?? raw.max_label ?? ""),
     hide_slider_value: !!raw.hide_slider_value,
+    slider_start_midpoint: !!raw.slider_start_midpoint,
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -753,6 +754,7 @@ export function frontendQuestionToBackend(question: any = {}): any {
         left_label: q.left_label ?? q.min_label ?? "",
         right_label: q.right_label ?? q.max_label ?? "",
         hide_slider_value: !!q.hide_slider_value,
+        slider_start_midpoint: !!q.slider_start_midpoint,
       };
 
     case SURVEY_QUESTION_TYPES.POST_REMINDER:

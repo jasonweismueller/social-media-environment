@@ -11,6 +11,7 @@ import {
   SURVEY_QUESTION_TYPES,
   isQuestionVisible,
   getRenderedQuestion,
+  getSliderDefaultValue,
   getProjectId,
   loadPostByIdFromBackend,
   fetchFeedFlags,
@@ -1705,12 +1706,14 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
             min={question.min ?? 0}
             max={question.max ?? 100}
             step={1}
-            value={value === "" || value == null ? question.min ?? 0 : value}
+            value={value === "" || value == null ? getSliderDefaultValue(question) : value}
             onChange={handleSliderChange}
             className="survey-range"
           />
           {!question.hide_slider_value && (
-            <div className="survey-range-value">{value || question.min || 0}</div>
+            <div className="survey-range-value">
+              {value === "" || value == null ? getSliderDefaultValue(question) : value}
+            </div>
           )}
         </div>
       )}

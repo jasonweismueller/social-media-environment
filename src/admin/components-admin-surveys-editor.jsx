@@ -787,6 +787,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       left_label: "",
       right_label: "",
       hide_slider_value: false,
+      slider_start_midpoint: false,
       placeholder: "",
       visible_if: null,
       visible_in_feeds: [],
@@ -823,6 +824,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     left_label: String(q?.left_label ?? ""),
     right_label: String(q?.right_label ?? ""),
     hide_slider_value: !!q?.hide_slider_value,
+    slider_start_midpoint: !!q?.slider_start_midpoint,
     placeholder: String(q?.placeholder ?? ""),
     numeric_only: !!q?.numeric_only,
     numeric_min: Number.isFinite(q?.numeric_min) ? Number(q.numeric_min) : null,
@@ -2187,6 +2189,7 @@ export function buildSavedQuestion(q, index) {
     min: Number.isFinite(cleanQ.min) ? cleanQ.min : 1,
     max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
     hide_slider_value: cleanQ.type === SURVEY_QUESTION_TYPES.SLIDER ? !!cleanQ.hide_slider_value : false,
+    slider_start_midpoint: cleanQ.type === SURVEY_QUESTION_TYPES.SLIDER ? !!cleanQ.slider_start_midpoint : false,
     placeholder: cleanQ.placeholder || "",
     numeric_only: cleanQ.type === SURVEY_QUESTION_TYPES.TEXT ? !!cleanQ.numeric_only : false,
     numeric_min:
@@ -5953,9 +5956,10 @@ function BipolarEditorBlock({ rows, questionId, min, max, onRowsChange, onMinCha
 }
 
 function SliderEditorBlock({
-  min, max, leftLabel, rightLabel, hideValue,
-  onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange, onHideValueChange,
+  min, max, leftLabel, rightLabel, hideValue, startMidpoint,
+  onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange, onHideValueChange, onStartMidpointChange,
 }) {
+  const midpoint = Math.round(((Number.isFinite(min) ? min : 0) + (Number.isFinite(max) ? max : 100)) / 2);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
@@ -5981,6 +5985,13 @@ function SliderEditorBlock({
         hint="Show only the left/right labels above the slider — hides the live number readout."
         checked={!!hideValue}
         onChange={onHideValueChange}
+      />
+
+      <Toggle
+        label="Start at midpoint"
+        hint={`Handle starts at ${midpoint} (the midpoint of min/max) instead of at min — a neutral starting position rather than one that visually favors the low end. Only recorded as an answer once the participant actually moves it.`}
+        checked={!!startMidpoint}
+        onChange={onStartMidpointChange}
       />
     </div>
   );
@@ -6230,11 +6241,13 @@ function renderTypeSpecificFields({
           leftLabel={q.left_label}
           rightLabel={q.right_label}
           hideValue={q.hide_slider_value}
+          startMidpoint={q.slider_start_midpoint}
           onMinChange={(v) => updateQuestion(index, { min: clampInt(v, 0, 100, q.min ?? 1) })}
           onMaxChange={(v) => updateQuestion(index, { max: clampInt(v, 1, 100, q.max ?? 7) })}
           onLeftLabelChange={(v) => updateQuestion(index, { left_label: v })}
           onRightLabelChange={(v) => updateQuestion(index, { right_label: v })}
           onHideValueChange={(v) => updateQuestion(index, { hide_slider_value: v })}
+          onStartMidpointChange={(v) => updateQuestion(index, { slider_start_midpoint: v })}
         />
       );
     case SURVEY_QUESTION_TYPES.TEXT:
