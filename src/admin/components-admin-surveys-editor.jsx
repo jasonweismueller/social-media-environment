@@ -8680,6 +8680,10 @@ export function SurveyEditor({
     });
   }
 
+  // "Collapse all" / "Expand all" cover every level of the list — question
+  // cards, page cards, and blocks — not just question cards. pageGroups and
+  // pageBlocks are declared further down in this component; that's fine since
+  // these only run on click, long after every const has been initialized.
   function collapseAllQuestions() {
     setCollapsedQuestionIds(
       new Set(
@@ -8688,10 +8692,20 @@ export function SurveyEditor({
           .map((item) => item._editorId)
       )
     );
+    setCollapsedPageIds(new Set(pageGroups.map((group) => group.pageId)));
+    // Blocks only render a collapsible divider when the survey has more than
+    // one (computeBlockBoundariesForQuestions short-circuits to no boundaries
+    // otherwise) — collapsing the lone block of a single-block survey would
+    // hide every page with no divider left to bring them back.
+    setCollapsedBlockIds(
+      pageBlocks.length > 1 ? new Set(pageBlocks.map((_, blockIndex) => blockIndex)) : new Set()
+    );
   }
 
   function expandAllQuestions() {
     setCollapsedQuestionIds(new Set());
+    setCollapsedPageIds(new Set());
+    setCollapsedBlockIds(new Set());
   }
   const overviewQuestionCount = currentQuestions.filter(
     (item) => item?.type !== EDITOR_PAGE_BREAK_TYPE
@@ -9102,7 +9116,7 @@ export function SurveyEditor({
             variant="secondary"
             onClick={collapseAllQuestions}
             disabled={currentQuestions.length === 0}
-            title="Collapse every question to just its header row"
+            title="Collapse every question, page, and block to just its header row"
           >
             Collapse all
           </Button>
@@ -9111,7 +9125,7 @@ export function SurveyEditor({
             variant="secondary"
             onClick={expandAllQuestions}
             disabled={currentQuestions.length === 0}
-            title="Expand every question"
+            title="Expand every question, page, and block"
           >
             Expand all
           </Button>
