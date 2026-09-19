@@ -3124,14 +3124,19 @@ export function AdminSurveysPanel({
                 </FieldBlock>
 
                 <FieldBlock
-                  label="Participant appearance"
-                  hint="Opt-in. Shows participants a light/dark toggle."
+                  label="Participant experience"
+                  hint="Opt-in controls for how participants can interact with the survey UI."
                 >
-                  <div style={{ height: 42, display: "flex", alignItems: "center" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 4 }}>
                     <Toggle
                       label="Allow dark mode for participants"
                       checked={!!survey.allow_dark_mode}
                       onChange={(v) => setSurvey({ ...survey, allow_dark_mode: v })}
+                    />
+                    <Toggle
+                      label="Allow going back to previous pages"
+                      checked={survey.allow_back_navigation !== false}
+                      onChange={(v) => setSurvey({ ...survey, allow_back_navigation: v })}
                     />
                   </div>
                 </FieldBlock>

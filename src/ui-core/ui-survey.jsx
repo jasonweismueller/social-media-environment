@@ -12,6 +12,7 @@ import {
   isQuestionVisible,
   getRenderedQuestion,
   getSliderDefaultValue,
+  getSliderFillPercent,
   getProjectId,
   loadPostByIdFromBackend,
   fetchFeedFlags,
@@ -1701,15 +1702,30 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
             <span>{question.left_label || question.min_label || ""}</span>
             <span>{question.right_label || question.max_label || ""}</span>
           </div>
-          <input
-            type="range"
-            min={question.min ?? 0}
-            max={question.max ?? 100}
-            step={1}
-            value={value === "" || value == null ? getSliderDefaultValue(question) : value}
-            onChange={handleSliderChange}
-            className="survey-range"
-          />
+          <div className="survey-range-wrap">
+            <input
+              type="range"
+              min={question.min ?? 0}
+              max={question.max ?? 100}
+              step={1}
+              value={value === "" || value == null ? getSliderDefaultValue(question) : value}
+              onChange={handleSliderChange}
+              className="survey-range"
+              style={{
+                "--survey-range-fill": `${getSliderFillPercent(question, value)}%`,
+              }}
+            />
+            {/* Purely decorative reference lines — the slider itself stays
+                freely continuous (step={1} across the full range, no
+                snapping), these never constrain or highlight a value. */}
+            <div className="survey-range-ticks" aria-hidden="true">
+              <span />
+              <span />
+              <span className="survey-range-tick-mid" />
+              <span />
+              <span />
+            </div>
+          </div>
           {!question.hide_slider_value && (
             <div className="survey-range-value">
               {value === "" || value == null ? getSliderDefaultValue(question) : value}
@@ -2001,6 +2017,10 @@ export function SurveyScreen({
   const currentPage = visiblePages[currentPageIndex] || null;
   const isLastPage = currentPageIndex === visiblePages.length - 1;
   const isFirstPage = currentPageIndex === 0;
+  // Opt-out per survey (default true) — see allow_back_navigation in
+  // utils-survey.js. False hides the Back button entirely between question
+  // pages; there's no other in-app way to move backward once it's off.
+  const allowBackNavigation = survey?.allow_back_navigation !== false;
 
   const currentPageDelaySeconds = normalizePageDelaySeconds(
   currentPage?.next_delay_seconds
@@ -2356,7 +2376,7 @@ const isNextDelayed =
           {visiblePages.length > 1 ? (
             <div className="survey-nav">
               <div className="survey-nav-left">
-                {!isFirstPage ? (
+                {!isFirstPage && allowBackNavigation ? (
                   <button
                     type="button"
                     className="survey-nav-btn"

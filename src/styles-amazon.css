@@ -2633,9 +2633,99 @@ body.survey-mode .rail-right{
   color:var(--survey-muted);
 }
 
+.survey-range-wrap{
+  position:relative;
+}
+
 .survey-range{
+  -webkit-appearance:none;
+  appearance:none;
   width:100%;
-  accent-color:var(--survey-blue);
+  height:6px;
+  border-radius:999px;
+  background:linear-gradient(to right, var(--survey-blue) var(--survey-range-fill, 0%), var(--survey-line) var(--survey-range-fill, 0%));
+  outline:none;
+  cursor:pointer;
+  margin:6px 0 2px;
+}
+
+.survey-range::-webkit-slider-runnable-track{
+  height:6px;
+  border-radius:999px;
+  background:transparent;
+}
+
+.survey-range::-moz-range-track{
+  height:6px;
+  border-radius:999px;
+  background:transparent;
+  border:none;
+}
+
+.survey-range::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  background:var(--survey-card);
+  border:3px solid var(--survey-blue);
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+  margin-top:-7px;
+  cursor:grab;
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+
+.survey-range::-webkit-slider-thumb:hover{
+  transform:scale(1.08);
+}
+
+.survey-range::-webkit-slider-thumb:active{
+  cursor:grabbing;
+  transform:scale(1.15);
+  box-shadow:0 2px 6px rgba(0,0,0,.32);
+}
+
+.survey-range::-moz-range-thumb{
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  background:var(--survey-card);
+  border:3px solid var(--survey-blue);
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+  cursor:grab;
+}
+
+.survey-range::-moz-range-thumb:active{
+  cursor:grabbing;
+}
+
+.survey-range:focus-visible::-webkit-slider-thumb{
+  box-shadow:0 0 0 4px var(--survey-blue-soft);
+}
+
+.survey-range:focus-visible::-moz-range-thumb{
+  box-shadow:0 0 0 4px var(--survey-blue-soft);
+}
+
+.survey-range-ticks{
+  display:flex;
+  justify-content:space-between;
+  padding:0 2px;
+  margin-top:8px;
+  pointer-events:none;
+}
+
+.survey-range-ticks span{
+  width:2px;
+  height:6px;
+  border-radius:1px;
+  background:var(--survey-line);
+}
+
+.survey-range-ticks .survey-range-tick-mid{
+  height:9px;
+  background:var(--survey-blue);
+  opacity:.45;
 }
 
 .survey-range-value{

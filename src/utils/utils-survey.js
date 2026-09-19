@@ -1584,6 +1584,12 @@ export function makeEmptySurvey(overrides = {}) {
     // Opt-in per survey, whether participants get a dark-mode toggle on
     // survey pages at all — same posture as feeds' allow_dark_mode flag.
     allow_dark_mode: !!safeOverrides.allow_dark_mode,
+
+    // Opt-out (defaults true), whether the "Back" button between question
+    // pages shows at all — every survey created before this field existed
+    // already behaved as if it were true, so an absent/undefined value must
+    // keep meaning "allowed," not silently flip to "blocked."
+    allow_back_navigation: safeOverrides.allow_back_navigation !== false,
   };
 }
 
@@ -1719,6 +1725,8 @@ export function normalizeSurvey(raw = {}) {
     ),
 
     allow_dark_mode: !!safeRaw.allow_dark_mode,
+
+    allow_back_navigation: safeRaw.allow_back_navigation !== false,
   };
 }
 
@@ -1780,6 +1788,7 @@ export function frontendSurveyToBackend(survey = {}) {
         : s.linked_feed_ids,
 
     allow_dark_mode: s.allow_dark_mode,
+    allow_back_navigation: s.allow_back_navigation,
   };
 }
 
@@ -2075,6 +2084,21 @@ export function getSliderDefaultValue(q) {
   if (!q?.slider_start_midpoint) return min;
   const max = Number.isFinite(q?.max) ? q.max : 100;
   return Math.round((min + max) / 2);
+}
+
+// The 0-100 fill percentage the slider's own custom track-fill gradient
+// (ui-survey.jsx/ui-survey-mobile.jsx) paints up to — single source so both
+// renderers compute the same number from the same effective value, using
+// getSliderDefaultValue above whenever there's no real answer yet.
+export function getSliderFillPercent(q, value) {
+  const min = Number.isFinite(q?.min) ? q.min : 0;
+  const max = Number.isFinite(q?.max) ? q.max : 100;
+  const span = max - min;
+  if (!span) return 0;
+  const effective =
+    value === "" || value == null ? getSliderDefaultValue(q) : Number(value);
+  if (!Number.isFinite(effective)) return 0;
+  return Math.min(100, Math.max(0, ((effective - min) / span) * 100));
 }
 
 export function isQuestionAnswered(q, value, responses) {
