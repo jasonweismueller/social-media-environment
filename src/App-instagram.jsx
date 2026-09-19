@@ -175,6 +175,21 @@ function normalizeFlags(raw) {
   };
 }
 
+function normalizeFeedSequenceIds(value, fallback = []) {
+  const source = Array.isArray(value) && value.length ? value : fallback;
+  return Array.from(
+    new Set(
+      (Array.isArray(source) ? source : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function isSurveyOnlyDeliveryMode(value) {
+  return String(value || "").trim().toLowerCase() === "survey_only";
+}
+
 function getSurveyIdFromUrl() {
   try {
     const q = new URLSearchParams(window.location.search);
@@ -1023,6 +1038,10 @@ export default function App() {
     !onAdmin ? getFeedIdFromUrl() : null
   );
 
+  const [feedSequenceIds, setFeedSequenceIds] = useState(() =>
+    !onAdmin && getFeedIdFromUrl() ? [getFeedIdFromUrl()] : []
+  );
+
   const [activeSurveyId, setActiveSurveyId] = useState(
     !onAdmin ? getSurveyIdFromUrl() : ""
   );
@@ -1087,6 +1106,42 @@ export default function App() {
 
   const requiresFeedStage = !isSurveyOnlyMode;
   const effectiveSurveyId = String(activeSurveyId || surveyBoot?.survey_id || "").trim();
+
+  // Multi-feed sequences (ported from App-facebook.jsx — Instagram never had
+  // this before, so a study with several feeds before its survey jumped to
+  // the survey after the first feed). effectiveFeedSequenceIds is the one
+  // list everything downstream keys off: the loaded survey's (possibly
+  // group-specific) sequence wins, then the boot payload's, then local state.
+  const effectiveFeedSequenceIds = useMemo(() => {
+    const fromSurvey = normalizeFeedSequenceIds(
+      linkedSurvey?.feed_sequence_ids,
+      linkedSurvey?.linked_feed_ids
+    );
+    const fromBoot = normalizeFeedSequenceIds(
+      surveyBoot?.feed_sequence_ids,
+      surveyBoot?.linked_feed_ids
+    );
+    const fromState = normalizeFeedSequenceIds(feedSequenceIds);
+    const source = fromSurvey.length ? fromSurvey : fromBoot.length ? fromBoot : fromState;
+    if (source.length) return source;
+    return activeFeedId ? [String(activeFeedId)] : [];
+  }, [linkedSurvey, surveyBoot, feedSequenceIds, activeFeedId]);
+
+  const activeFeedIndex = useMemo(() => {
+    const idx = effectiveFeedSequenceIds.findIndex(
+      (fid) => String(fid) === String(activeFeedId || "")
+    );
+    return idx < 0 ? 0 : idx;
+  }, [effectiveFeedSequenceIds, activeFeedId]);
+
+  const hasNextFeedStage =
+    requiresFeedStage &&
+    effectiveFeedSequenceIds.length > 1 &&
+    activeFeedIndex < effectiveFeedSequenceIds.length - 1;
+
+  const nextFeedIdInSequence = hasNextFeedStage
+    ? effectiveFeedSequenceIds[activeFeedIndex + 1]
+    : "";
 
   const completionConfig = useMemo(
     () => getSurveyCompletionConfig(linkedSurvey),
@@ -1408,6 +1463,7 @@ export default function App() {
     setFeedNotFound(false);
 
     setSurveyBoot(null);
+    setFeedSequenceIds([]);
     setLinkedSurvey(null);
     setSurveyPhase("idle");
     setSurveyResponses({});
@@ -1447,12 +1503,35 @@ export default function App() {
           throw new Error("Failed to load the survey.");
         }
 
+        const deliveryMode = String(boot.delivery_mode || "survey_only");
+        const rawSequence = normalizeFeedSequenceIds(
+          boot.feed_sequence_ids,
+          boot.linked_feed_ids
+        );
+        const sequence = isSurveyOnlyDeliveryMode(deliveryMode) ? [] : rawSequence;
+        const firstFeedId = !isSurveyOnlyDeliveryMode(deliveryMode)
+          ? (sequence[0] || boot.preferred_feed_id || "")
+          : "";
+
+        setFeedSequenceIds(sequence);
+        if (firstFeedId) {
+          setActiveFeedId(firstFeedId);
+          try {
+            setFeedIdInUrl(firstFeedId, { replace: true });
+          } catch {}
+        }
+
         setSurveyBoot({
           ...boot,
           has_survey: true,
           survey_id: String(boot.survey_id || activeSurveyId || ""),
-          trigger: String(boot.trigger || "after_feed_submit"),
-          delivery_mode: String(boot.delivery_mode || "survey_only"),
+          trigger: isSurveyOnlyDeliveryMode(deliveryMode)
+            ? ""
+            : String(boot.trigger || "after_feed_submit"),
+          delivery_mode: deliveryMode,
+          linked_feed_ids: sequence,
+          feed_sequence_ids: sequence,
+          preferred_feed_id: firstFeedId || "",
         });
         setBootPhase("ready");
         t.end({ surveyLaunch: true, survey_id: boot.survey_id || activeSurveyId });
@@ -1475,6 +1554,7 @@ export default function App() {
 
       const chosenFeedId = chosen.feed_id;
       setActiveFeedId(chosenFeedId);
+      setFeedSequenceIds([chosenFeedId]);
 
       try {
         setFeedIdInUrl(chosenFeedId, { replace: true });
@@ -1559,7 +1639,17 @@ export default function App() {
             delivery_mode: String(
               freshBoot.delivery_mode || "feed_then_survey"
             ),
+            linked_feed_ids: normalizeFeedSequenceIds(
+              freshBoot.linked_feed_ids,
+              [chosenFeedId]
+            ),
+            feed_sequence_ids: normalizeFeedSequenceIds(
+              freshBoot.feed_sequence_ids,
+              freshBoot.linked_feed_ids || [chosenFeedId]
+            ),
+            preferred_feed_id: String(freshBoot.preferred_feed_id || chosenFeedId),
           };
+          setFeedSequenceIds(nextBoot.feed_sequence_ids || nextBoot.linked_feed_ids || [chosenFeedId]);
           writeSurveyBootCache(projectId, chosenFeedId, nextBoot);
         }
       } catch (e) {
@@ -1708,11 +1798,38 @@ export default function App() {
         }
       }
 
+      // A group can define its own feed_sequence_ids, overriding the
+      // survey's default sequence for whichever group a participant lands
+      // in — but only for participants who arrived via the plain survey link
+      // (an explicit feed URL always wins). Baked into the survey object
+      // itself because effectiveFeedSequenceIds reads linkedSurvey.
+      // feed_sequence_ids/linked_feed_ids ahead of any local state. Ported
+      // from App-facebook.jsx.
+      const loadedIsSurveyOnly = isSurveyOnlyDeliveryMode(
+        normalizedSurveyBase?.delivery_mode || surveyBoot?.delivery_mode
+      );
+      const assignedGroupForFeeds = assignedGroupId
+        ? experimentGroups.find((g) => String(g?.id) === assignedGroupId)
+        : null;
+      const groupFeedSequence =
+        !loadedIsSurveyOnly && isDirectSurveyLaunch
+          ? normalizeFeedSequenceIds(assignedGroupForFeeds?.feed_sequence_ids, [])
+          : [];
+
+      const normalizedSurveyForGroup =
+        groupFeedSequence.length && normalizedSurveyBase
+          ? {
+              ...normalizedSurveyBase,
+              linked_feed_ids: groupFeedSequence,
+              feed_sequence_ids: groupFeedSequence,
+            }
+          : normalizedSurveyBase;
+
       let materializedSurveyPages = null;
-      if (normalizedSurveyBase) {
+      if (normalizedSurveyForGroup) {
         materializedSurveyPages = materializePagesFromBlocks(
-          normalizedSurveyBase,
-          normalizedSurveyBase.page_blocks,
+          normalizedSurveyForGroup,
+          normalizedSurveyForGroup.page_blocks,
           {
             participantSeed: surveyParticipantSeed,
             randomize: true,
@@ -1729,21 +1846,45 @@ export default function App() {
       // this — see resolveSurveyOnlyOverrideFeedId's own comment for the
       // full reasoning.
       const surveyOnlyOverrideFeedId =
-        isSurveyOnlyMode && normalizedSurveyBase
+        isSurveyOnlyMode && normalizedSurveyForGroup
           ? resolveSurveyOnlyOverrideFeedId(
-              { ...normalizedSurveyBase, pages: materializedSurveyPages },
+              { ...normalizedSurveyForGroup, pages: materializedSurveyPages },
               assignedGroupId
             )
           : "";
 
-      const normalizedSurvey = normalizedSurveyBase
+      const normalizedSurvey = normalizedSurveyForGroup
         ? {
-            ...normalizedSurveyBase,
+            ...normalizedSurveyForGroup,
             experiment_assigned_group_id: assignedGroupId,
             survey_only_override_feed_id: surveyOnlyOverrideFeedId,
             pages: materializedSurveyPages,
           }
         : null;
+
+      const normalizedSequence = loadedIsSurveyOnly
+        ? []
+        : normalizeFeedSequenceIds(
+            normalizedSurvey?.feed_sequence_ids,
+            normalizedSurvey?.linked_feed_ids
+          );
+      if (normalizedSequence.length) {
+        setFeedSequenceIds(normalizedSequence);
+      }
+
+      if (!loadedIsSurveyOnly && isDirectSurveyLaunch && normalizedSequence.length) {
+        const nextFirstFeedId = String(normalizedSequence[0] || "");
+        // startBoot already guessed a first feed from the survey's default
+        // sequence (before the group was known) and rewrote the URL to
+        // match; correct both here if the group's sequence starts elsewhere.
+        // Harmless no-op otherwise (including the no-groups case).
+        if (nextFirstFeedId && nextFirstFeedId !== activeFeedId) {
+          setActiveFeedId(nextFirstFeedId);
+          try {
+            setFeedIdInUrl(nextFirstFeedId, { replace: true });
+          } catch {}
+        }
+      }
 
       if (normalizedSurvey) {
         await preloadSurveyPostReminders({
@@ -1842,13 +1983,14 @@ export default function App() {
     }
   }, [projectId, activeFeedId, isDirectSurveyLaunch]);
 
-  const loadStudyContent = useCallback(async () => {
-    if (onAdmin || !activeFeedId) return;
+  const loadStudyContent = useCallback(async (feedIdOverride = null) => {
+    const targetFeedId = String(feedIdOverride || activeFeedId || "").trim();
+    if (onAdmin || !targetFeedId) return;
     if (contentPhase === "loading") return;
 
     const t = timerStart("loadStudyContent", {
       projectId,
-      activeFeedId,
+      activeFeedId: targetFeedId,
       hasSurvey: !!surveyBoot?.has_survey,
       hasLinkedSurveyAlready: !!linkedSurvey,
     });
@@ -1866,11 +2008,11 @@ export default function App() {
     try {
       const postsPromise = (async () => {
         const tp = timerStart("content.posts", {
-          activeFeedId,
+          activeFeedId: targetFeedId,
           source: "backend_only",
         });
         try {
-          const result = await loadPostsFromBackend(activeFeedId, {
+          const result = await loadPostsFromBackend(targetFeedId, {
             force: true,
             signal: ctrl.signal,
             projectId,
@@ -1885,16 +2027,16 @@ export default function App() {
 
       const flagsPromise = (async () => {
         const tf = timerStart("content.flags", {
-          activeFeedId,
+          activeFeedId: targetFeedId,
           projectId,
         });
         try {
           const result = await fetchFeedFlags({
             app: APP,
             projectId: projectId || undefined,
-            feedId: activeFeedId || undefined,
+            feedId: targetFeedId || undefined,
             project_id: projectId || undefined,
-            feed_id: activeFeedId || undefined,
+            feed_id: targetFeedId || undefined,
             endpoint: GS_ENDPOINT,
             signal: ctrl.signal,
           }).catch(() => ({}));
@@ -2580,7 +2722,7 @@ export default function App() {
 
       const ok = await sendSurveyResponseToBackend({
         survey_id: linkedSurvey.survey_id,
-        feed_id: activeFeedId || "",
+        feed_id: (effectiveFeedSequenceIds[effectiveFeedSequenceIds.length - 1] || activeFeedId || ""),
         project_id: projectId || "",
         session_id: sessionIdRef.current,
         participant_id: participantId || "",
@@ -2611,10 +2753,47 @@ export default function App() {
     linkedSurvey,
     surveyResponses,
     activeFeedId,
+    effectiveFeedSequenceIds,
     projectId,
     participantId,
     finalizeStudyCompletion,
   ]);
+
+  // Moves the participant to the next feed of a multi-feed sequence:
+  // resets per-feed state (events, posts, timers, view tracking), points the
+  // app + URL at the next feed, and loads its content. Ported from
+  // App-facebook.jsx.
+  const advanceToNextFeed = useCallback(async (nextFeedId) => {
+    const fid = String(nextFeedId || "").trim();
+    if (!fid) return false;
+
+    setEvents([]);
+    setPosts([]);
+    setFeedPhase("loading");
+    setContentPhase("loading");
+    setFeedError("");
+    setFlagsReady(false);
+    setAssetsReady(false);
+    setMinDelayDone(true);
+    minDelayStartedRef.current = false;
+    clearTimeout(minDelayTimerRef.current);
+
+    setActiveFeedId(fid);
+    try {
+      setFeedIdInUrl(fid, { replace: true });
+    } catch {}
+
+    submitTsRef.current = null;
+    lastNonScrollTsRef.current = null;
+    viewRefs.current?.clear?.();
+
+    await loadStudyContent(fid);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      window.dispatchEvent(new Event("resize"));
+    });
+    return true;
+  }, [loadStudyContent]);
 
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
@@ -3104,7 +3283,9 @@ export default function App() {
                           app={APP}
                           projectId={projectId}
                           submitButtonLabel={
-                            surveyBoot?.has_survey ? "Continue" : "Submit"
+                            hasNextFeedStage || surveyBoot?.has_survey
+                              ? "Continue"
+                              : "Submit"
                           }
                           feedId={activeFeedId}
                           avatarPools={avatarPools}
@@ -3121,11 +3302,17 @@ export default function App() {
                             setDisabled(true);
 
                             // Known synchronously, independent of the
-                            // network write below — Instagram has no
-                            // multi-feed-sequence support (see CLAUDE.md),
-                            // so any linked survey is always the next step.
-                            const willAdvanceToSurvey = !!surveyBoot?.has_survey;
-                            if (willAdvanceToSurvey) setSubmittingToSurvey(true);
+                            // network write below — covers BOTH forward
+                            // transitions (next feed in a multi-feed
+                            // sequence, or on to the survey), same as
+                            // App-facebook.jsx.
+                            const willAdvanceToNextFeed =
+                              hasNextFeedStage && !!nextFeedIdInSequence;
+                            const willAdvanceToSurvey =
+                              !willAdvanceToNextFeed && !!surveyBoot?.has_survey;
+                            if (willAdvanceToNextFeed || willAdvanceToSurvey) {
+                              setSubmittingToSurvey(true);
+                            }
 
                             const ENTER_FRAC = Number.isFinite(
                               Number(VIEWPORT_ENTER_FRACTION)
@@ -3209,6 +3396,10 @@ export default function App() {
                             if (!ok) {
                               showToast("Sync failed. Please try again.");
                               setSubmittingToSurvey(false);
+                            } else if (hasNextFeedStage && nextFeedIdInSequence) {
+                              // No toast — the loading overlay already
+                              // communicates progress (see App-facebook.jsx).
+                              await advanceToNextFeed(nextFeedIdInSequence);
                             } else if (surveyBoot?.has_survey) {
                               // No "Submitted ✔︎" toast here — see
                               // App-facebook.jsx's identical branch for why.
