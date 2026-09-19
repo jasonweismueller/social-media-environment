@@ -902,6 +902,7 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     right_label: overrides.right_label ?? overrides.max_label ?? "",
     hide_slider_value: !!overrides.hide_slider_value,
     slider_start_midpoint: !!overrides.slider_start_midpoint,
+    slider_step: normalizeSliderStep(overrides.slider_step),
     visible_if: overrides.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -1079,6 +1080,10 @@ export function normalizeQuestion(raw = {}) {
     // real stored value, not the visual default), so this can't silently
     // manufacture a "midpoint" answer nobody actually chose.
     slider_start_midpoint: !!raw.slider_start_midpoint,
+    // SLIDER-only — snap increment (e.g. 0-100 with step 5 → 0, 5, 10, ...).
+    // 1 (the old fully-continuous behavior) whenever unset/invalid, so every
+    // existing slider question is unchanged. See normalizeSliderStep below.
+    slider_step: normalizeSliderStep(raw.slider_step),
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
@@ -1251,6 +1256,7 @@ export function frontendQuestionToBackend(question = {}) {
         right_label: q.right_label ?? q.max_label ?? "",
         hide_slider_value: !!q.hide_slider_value,
         slider_start_midpoint: !!q.slider_start_midpoint,
+        slider_step: normalizeSliderStep(q.slider_step),
       };
 
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
@@ -2083,7 +2089,40 @@ export function getSliderDefaultValue(q) {
   const min = Number.isFinite(q?.min) ? q.min : 0;
   if (!q?.slider_start_midpoint) return min;
   const max = Number.isFinite(q?.max) ? q.max : 100;
-  return Math.round((min + max) / 2);
+  const step = normalizeSliderStep(q?.slider_step);
+  if (step === 1) return Math.round((min + max) / 2);
+  // With a step > 1 the handle can only rest on min + k*step — snap the
+  // midpoint to the nearest such position so the starting handle sits on a
+  // real, selectable value (the browser would otherwise silently round it
+  // itself, and the fill/tick maths below would then disagree with it).
+  const snapped = min + Math.round((max - min) / 2 / step) * step;
+  return Math.min(snapped, min + Math.floor((max - min) / step) * step);
+}
+
+// The slider's snap increment — a positive integer, 1 (fully continuous,
+// the original behavior) for anything missing/invalid/non-positive so a
+// hand-edited or legacy question can never end up with step 0 (which the
+// browser treats as "any", i.e. unsnapped and ticks impossible to place).
+export function normalizeSliderStep(step) {
+  const n = Math.round(Number(step));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+// Positions (each a 0-1 fraction along the track) of one tick per reachable
+// slider value when step > 1 — the same points the native range input snaps
+// to. Empty for step 1 (nothing to mark: every integer is reachable, the
+// renderers keep their original 5 decorative ticks) and for a step so fine
+// that ticks would just blur into a solid line (over 50 marks).
+export function getSliderStepTickFractions(q) {
+  const step = normalizeSliderStep(q?.slider_step);
+  if (step <= 1) return [];
+  const min = Number.isFinite(q?.min) ? q.min : 0;
+  const max = Number.isFinite(q?.max) ? q.max : 100;
+  const span = max - min;
+  if (span <= 0) return [];
+  const count = Math.floor(span / step) + 1;
+  if (count > 50 || count < 2) return [];
+  return Array.from({ length: count }, (_, i) => (i * step) / span);
 }
 
 // The 0-100 fill percentage the slider's own custom track-fill gradient

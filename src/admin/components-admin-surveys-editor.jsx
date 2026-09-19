@@ -7,6 +7,8 @@ import {
   ATTENTION_CHECK_ELIGIBLE_TYPES,
   SCREENER_ELIGIBLE_TYPES,
   saveQuestionLibraryItemToBackend,
+  getSliderDefaultValue,
+  normalizeSliderStep,
 } from "../utils";
 import {
   Button,
@@ -829,6 +831,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
       right_label: "",
       hide_slider_value: false,
       slider_start_midpoint: false,
+      slider_step: 1,
       placeholder: "",
       visible_if: null,
       visible_in_feeds: [],
@@ -868,6 +871,7 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     right_label: String(q?.right_label ?? ""),
     hide_slider_value: !!q?.hide_slider_value,
     slider_start_midpoint: !!q?.slider_start_midpoint,
+    slider_step: normalizeSliderStep(q?.slider_step),
     placeholder: String(q?.placeholder ?? ""),
     numeric_only: !!q?.numeric_only,
     numeric_min: Number.isFinite(q?.numeric_min) ? Number(q.numeric_min) : null,
@@ -2256,6 +2260,7 @@ export function buildSavedQuestion(q, index) {
     max: Number.isFinite(cleanQ.max) ? cleanQ.max : 7,
     hide_slider_value: cleanQ.type === SURVEY_QUESTION_TYPES.SLIDER ? !!cleanQ.hide_slider_value : false,
     slider_start_midpoint: cleanQ.type === SURVEY_QUESTION_TYPES.SLIDER ? !!cleanQ.slider_start_midpoint : false,
+    slider_step: cleanQ.type === SURVEY_QUESTION_TYPES.SLIDER ? normalizeSliderStep(cleanQ.slider_step) : 1,
     placeholder: cleanQ.placeholder || "",
     numeric_only: cleanQ.type === SURVEY_QUESTION_TYPES.TEXT ? !!cleanQ.numeric_only : false,
     numeric_min:
@@ -6116,10 +6121,17 @@ function BipolarEditorBlock({ rows, questionId, min, max, onRowsChange, onMinCha
 }
 
 function SliderEditorBlock({
-  min, max, leftLabel, rightLabel, hideValue, startMidpoint,
-  onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange, onHideValueChange, onStartMidpointChange,
+  min, max, leftLabel, rightLabel, hideValue, startMidpoint, step,
+  onMinChange, onMaxChange, onLeftLabelChange, onRightLabelChange, onHideValueChange, onStartMidpointChange, onStepChange,
 }) {
-  const midpoint = Math.round(((Number.isFinite(min) ? min : 0) + (Number.isFinite(max) ? max : 100)) / 2);
+  const midpoint = getSliderDefaultValue({
+    min, max, slider_start_midpoint: true, slider_step: step,
+  });
+  const safeStep = normalizeSliderStep(step);
+  const safeMin = Number.isFinite(min) ? min : 0;
+  const safeMax = Number.isFinite(max) ? max : 100;
+  const reachableCount = Math.floor((safeMax - safeMin) / safeStep) + 1;
+  const stepDoesNotFit = safeStep > 1 && (safeMax - safeMin) % safeStep !== 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
@@ -6138,6 +6150,17 @@ function SliderEditorBlock({
         <FieldBlock label="Right label">
           <TextInput value={rightLabel ?? ""} onChange={onRightLabelChange} placeholder="e.g. High" />
         </FieldBlock>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "end" }}>
+        <FieldBlock label="Step">
+          <NumberInput value={safeStep} min={1} max={100} onChange={onStepChange} />
+        </FieldBlock>
+        <div style={{ fontSize: "var(--admin-text-xs, 12px)", color: "var(--admin-muted)", paddingBottom: 8 }}>
+          {safeStep === 1
+            ? "1 = smooth, any whole number. Raise it to make the handle snap (e.g. 0–100 with step 5 gives 0, 5, 10 … 100) and show a tick mark at each stop."
+            : `The handle snaps to ${reachableCount} positions (${safeMin}, ${safeMin + safeStep}, ${safeMin + 2 * safeStep} …) with a tick mark at each.${stepDoesNotFit ? ` Note: ${safeMax} can't be reached from ${safeMin} in steps of ${safeStep}, so the highest stop is ${safeMin + Math.floor((safeMax - safeMin) / safeStep) * safeStep}.` : ""}`}
+        </div>
       </div>
 
       <Toggle
@@ -6404,12 +6427,14 @@ function renderTypeSpecificFields({
           rightLabel={q.right_label}
           hideValue={q.hide_slider_value}
           startMidpoint={q.slider_start_midpoint}
+          step={q.slider_step}
           onMinChange={(v) => updateQuestion(index, { min: clampInt(v, 0, 100, q.min ?? 1) })}
           onMaxChange={(v) => updateQuestion(index, { max: clampInt(v, 1, 100, q.max ?? 7) })}
           onLeftLabelChange={(v) => updateQuestion(index, { left_label: v })}
           onRightLabelChange={(v) => updateQuestion(index, { right_label: v })}
           onHideValueChange={(v) => updateQuestion(index, { hide_slider_value: v })}
           onStartMidpointChange={(v) => updateQuestion(index, { slider_start_midpoint: v })}
+          onStepChange={(v) => updateQuestion(index, { slider_step: clampInt(v, 1, 100, 1) })}
         />
       );
     case SURVEY_QUESTION_TYPES.TEXT:

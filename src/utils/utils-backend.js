@@ -985,9 +985,14 @@ export function buildSurveyCodebookRows(survey, { resolvePost } = {}) {
         break;
       }
 
-      case "slider":
+      case "slider": {
         coding = surveyCodebookScaleCoding(q?.min, q?.max, q?.left_label, q?.right_label);
+        // A stepped slider only records min + k*step — worth stating so a
+        // reader of the codebook knows values between stops can't occur.
+        const sliderStep = Math.round(Number(q?.slider_step));
+        if (Number.isFinite(sliderStep) && sliderStep > 1) coding = `${coding}; in steps of ${sliderStep}`;
         break;
+      }
 
       case "post_reminder":
         if (entry.row_value === "RECALL") {

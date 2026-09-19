@@ -13,6 +13,8 @@ import {
   getRenderedQuestion,
   getSliderDefaultValue,
   getSliderFillPercent,
+  getSliderStepTickFractions,
+  normalizeSliderStep,
   getProjectId,
   loadPostByIdFromBackend,
   fetchFeedFlags,
@@ -1364,6 +1366,8 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
   disableReminderSnapshot = false,
 }) {
   const qType = question?.type;
+  const stepTickFractions =
+    qType === SURVEY_QUESTION_TYPES.SLIDER ? getSliderStepTickFractions(question) : [];
 
   const emitChange = useCallback(
     (nextValue) => onChange(questionId, nextValue),
@@ -1449,7 +1453,7 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
               type="range"
               min={question.min ?? 0}
               max={question.max ?? 100}
-              step={1}
+              step={normalizeSliderStep(question.slider_step)}
               value={value === "" || value == null ? getSliderDefaultValue(question) : value}
               onChange={(e) => emitChange(String(e.target.value))}
               className="survey-range"
@@ -1457,16 +1461,31 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
                 "--survey-range-fill": `${getSliderFillPercent(question, value)}%`,
               }}
             />
-            {/* Purely decorative reference lines — the slider itself stays
-                freely continuous (step={1} across the full range, no
-                snapping), these never constrain or highlight a value. */}
-            <div className="survey-range-ticks" aria-hidden="true">
-              <span />
-              <span />
-              <span className="survey-range-tick-mid" />
-              <span />
-              <span />
-            </div>
+            {/* With a step > 1 (getSliderStepTickFractions non-empty) one tick
+                marks every position the handle can actually snap to, placed
+                on the same track the thumb travels (inset by half the 20px
+                thumb width). Otherwise these stay the original purely
+                decorative reference lines — the slider is then freely
+                continuous (step 1), and they never constrain or highlight
+                a value. */}
+            {stepTickFractions.length > 0 ? (
+              <div className="survey-range-ticks survey-range-ticks--steps" aria-hidden="true">
+                {stepTickFractions.map((fraction, i) => (
+                  <span
+                    key={i}
+                    style={{ left: `calc(10px + (100% - 20px) * ${fraction})` }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="survey-range-ticks" aria-hidden="true">
+                <span />
+                <span />
+                <span className="survey-range-tick-mid" />
+                <span />
+                <span />
+              </div>
+            )}
           </div>
           {!question.hide_slider_value && (
             <div className="survey-range-value">

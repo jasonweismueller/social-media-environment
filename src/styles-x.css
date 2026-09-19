@@ -2941,6 +2941,23 @@ body.survey-mode .rail-right{
   opacity:.45;
 }
 
+/* Stepped slider (slider_step > 1): one tick per position the handle snaps
+   to, absolutely placed (inline `left`) on the same track the thumb travels
+   — 10px in from each edge, half the 20px thumb — so ticks line up with the
+   handle even when the last stop isn't the slider's max. */
+.survey-range-ticks--steps{
+  display:block;
+  position:relative;
+  height:8px;
+  padding:0;
+}
+.survey-range-ticks--steps span{
+  position:absolute;
+  top:0;
+  height:8px;
+  transform:translateX(-1px);
+}
+
 .survey-range-value{
   justify-self:center;
   min-width:44px;

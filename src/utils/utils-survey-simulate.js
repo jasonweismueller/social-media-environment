@@ -30,6 +30,7 @@ import {
   isQuestionVisible,
   getOtherChoice,
   otherSpecifyResponseKey,
+  normalizeSliderStep,
 } from "./utils-survey";
 import {
   hasBio,
@@ -217,7 +218,16 @@ function generateAnswer(q, ctx) {
   switch (q.type) {
     case SURVEY_QUESTION_TYPES.SLIDER: {
       const z = theta + groupShift + randNormal(rng) * 0.5;
-      return zToRange(z, q.min, q.max);
+      const raw = zToRange(z, q.min, q.max);
+      // A stepped slider can only ever record min + k*step — snap to that
+      // grid (and stay at or below the highest reachable stop) so simulated
+      // data matches what a real participant could actually submit.
+      const step = normalizeSliderStep(q.slider_step);
+      if (step <= 1) return raw;
+      const min = Number.isFinite(q.min) ? q.min : 0;
+      const max = Number.isFinite(q.max) ? q.max : raw;
+      const topStop = min + Math.floor((max - min) / step) * step;
+      return Math.min(topStop, min + Math.round((raw - min) / step) * step);
     }
 
     case SURVEY_QUESTION_TYPES.SINGLE:
