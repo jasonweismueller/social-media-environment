@@ -306,6 +306,55 @@ function pruneFeedOverridesByVisibleFeeds(feedOverrides = {}, visibleInFeeds = [
   return out;
 }
 
+// A question's alternative text can vary either by feed (feed_overrides,
+// keyed on activeFeedId — the feed a participant actually visited, or its
+// survey_only stand-in, see resolveSurveyOnlyOverrideFeedId below) or by
+// experiment group (group_overrides, keyed on the participant's assigned
+// group — always unambiguous, exactly one group per participant, regardless
+// of how many feeds/post_reminder questions are linked to that group).
+// text_variation_scope picks which one a question actually uses; defaults
+// to "feed" so every already-configured question (feed_overrides only)
+// keeps behaving exactly as before with zero migration needed.
+function normalizeTextVariationScope(value) {
+  return String(value ?? "").trim().toLowerCase() === "group" ? "group" : "feed";
+}
+
+function normalizeGroupOverrides(value = {}) {
+  const source = asObject(value);
+  const out = {};
+
+  Object.entries(source).forEach(([groupId, override]) => {
+    const cleanGroupId = String(groupId ?? "").trim();
+    if (!cleanGroupId) return;
+
+    const safeOverride = asObject(override);
+    out[cleanGroupId] = {
+      text: String(safeOverride.text ?? ""),
+    };
+  });
+
+  return out;
+}
+
+function pruneGroupOverridesByVisibleGroups(groupOverrides = {}, visibleToGroupIds = []) {
+  const allowedGroupIds = uniqueStringArray(visibleToGroupIds);
+  const allowed = new Set(allowedGroupIds);
+  const normalized = normalizeGroupOverrides(groupOverrides);
+  const out = {};
+
+  Object.entries(normalized).forEach(([groupId, override]) => {
+    if (allowed.size > 0 && !allowed.has(groupId)) return;
+
+    if (String(override?.text ?? "").trim()) {
+      out[groupId] = {
+        text: String(override.text ?? ""),
+      };
+    }
+  });
+
+  return out;
+}
+
 function isPageBreakQuestion(question) {
   return question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK;
 }
@@ -817,6 +866,11 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     overrides.feed_overrides,
     visibleInFeeds
   );
+  const visibleToGroupIds = uniqueStringArray(overrides.visible_to_group_ids);
+  const groupOverrides = pruneGroupOverridesByVisibleGroups(
+    overrides.group_overrides,
+    visibleToGroupIds
+  );
 
   return {
     id: questionId,
@@ -851,7 +905,9 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     visible_if: overrides.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
-    visible_to_group_ids: uniqueStringArray(overrides.visible_to_group_ids),
+    text_variation_scope: normalizeTextVariationScope(overrides.text_variation_scope),
+    group_overrides: groupOverrides,
+    visible_to_group_ids: visibleToGroupIds,
     placeholder: String(overrides.placeholder || ""),
     // Numeric-only mode for TEXT questions (e.g. "age") — a plain free-text
     // field otherwise accepts any typo/unrealistic value with no feedback.
@@ -905,6 +961,11 @@ export function normalizeQuestion(raw = {}) {
   const feedOverrides = pruneFeedOverridesByVisibleFeeds(
     raw.feed_overrides,
     visibleInFeeds
+  );
+  const visibleToGroupIds = uniqueStringArray(raw.visible_to_group_ids);
+  const groupOverrides = pruneGroupOverridesByVisibleGroups(
+    raw.group_overrides,
+    visibleToGroupIds
   );
 
   const postId =
@@ -1021,7 +1082,9 @@ export function normalizeQuestion(raw = {}) {
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
-    visible_to_group_ids: uniqueStringArray(raw.visible_to_group_ids),
+    text_variation_scope: normalizeTextVariationScope(raw.text_variation_scope),
+    group_overrides: groupOverrides,
+    visible_to_group_ids: visibleToGroupIds,
     placeholder: String(raw.placeholder || ""),
     numeric_only: !!raw.numeric_only,
     numeric_min: Number.isFinite(raw.numeric_min) ? Number(raw.numeric_min) : null,
@@ -1062,6 +1125,8 @@ export function frontendQuestionToBackend(question = {}) {
     required: isDisplayOnlyQuestion(q) ? false : !!q.required,
     visible_in_feeds: q.visible_in_feeds,
     feed_overrides: q.feed_overrides,
+    text_variation_scope: q.text_variation_scope,
+    group_overrides: q.group_overrides,
     visible_to_group_ids: q.visible_to_group_ids,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(q.type) && !!q.is_attention_check,
     attention_check_value: String(q.attention_check_value ?? ""),
@@ -2167,19 +2232,37 @@ function seededShuffle(items = [], seed = "") {
 
 export function getRenderedQuestion(
   question,
-  { participantSeed = "", feedId = "" } = {}
+  { participantSeed = "", feedId = "", assignedGroupId = "" } = {}
 ) {
   const q = normalizeQuestion(question);
-  const activeFeedId = String(feedId ?? "").trim();
-  const reminderSourceFeedId =
-    q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
-      ? String(q.post_feed_id ?? q.meta?.post_feed_id ?? "").trim()
-      : "";
-  const overrideFeedId = reminderSourceFeedId || activeFeedId;
-  const activeOverride =
-    overrideFeedId && q.feed_overrides && typeof q.feed_overrides === "object"
-      ? q.feed_overrides[overrideFeedId]
-      : null;
+
+  // "feed" (default) keys off activeFeedId — ambiguous whenever a group is
+  // linked to more than one feed/post_reminder (nothing distinguishes which
+  // one "the" feed is). "group" keys off the participant's assigned
+  // experiment group instead — always exactly one per participant, so it
+  // can't have that ambiguity. Applies uniformly to every question type,
+  // including post_reminder (whose own post_feed_id otherwise always wins
+  // in "feed" scope) — an admin may want a reminder's instructional text to
+  // vary by group even though the underlying post itself is fixed.
+  let activeOverride = null;
+  if (q.text_variation_scope === "group") {
+    const groupId = String(assignedGroupId ?? "").trim();
+    activeOverride =
+      groupId && q.group_overrides && typeof q.group_overrides === "object"
+        ? q.group_overrides[groupId]
+        : null;
+  } else {
+    const activeFeedId = String(feedId ?? "").trim();
+    const reminderSourceFeedId =
+      q.type === SURVEY_QUESTION_TYPES.POST_REMINDER
+        ? String(q.post_feed_id ?? q.meta?.post_feed_id ?? "").trim()
+        : "";
+    const overrideFeedId = reminderSourceFeedId || activeFeedId;
+    activeOverride =
+      overrideFeedId && q.feed_overrides && typeof q.feed_overrides === "object"
+        ? q.feed_overrides[overrideFeedId]
+        : null;
+  }
 
   if (activeOverride && String(activeOverride.text ?? "").trim()) {
     q.text = String(activeOverride.text ?? "");
@@ -2201,6 +2284,55 @@ export function getRenderedQuestion(
   }
 
   return q;
+}
+
+// In survey_only delivery, a participant never visits a real feed page, so
+// activeFeedId (the signal getRenderedQuestion/isQuestionVisible use to
+// match feed_overrides/visible_in_feeds) is always empty — meaning a
+// question's per-feed text override can never resolve, regardless of which
+// experiment group the participant lands in. Since the usual reason a
+// survey_only study links feeds at all is to give each group its own
+// post_reminder content, this derives a stand-in "effective feed" for the
+// participant's assigned group so feed_overrides/visible_in_feeds still work
+// on ordinary (non-reminder) questions too. Never used to pick which post a
+// reminder itself shows — that stays driven entirely by each reminder's own
+// post_feed_id, unaffected either way.
+//
+// Resolution order: (1) the assigned group's own feed_sequence_ids[0], if an
+// admin has explicitly set one (the same field groups already use to route
+// feed_then_survey participants — the admin editor's "Feed sequence" row is
+// shown for any survey with linked feeds, survey_only included, just never
+// consumed there before this); (2) failing that, the post_feed_id of this
+// group's own post_reminder question(s) — a zero-configuration fallback,
+// since that mapping already has to exist for reminders to work at all.
+export function resolveSurveyOnlyOverrideFeedId(survey, assignedGroupId) {
+  const groupId = String(assignedGroupId ?? "").trim();
+  if (!survey || !groupId) return "";
+
+  const groups = Array.isArray(survey.experiment_groups)
+    ? survey.experiment_groups
+    : [];
+  const group = groups.find((g) => String(g?.id ?? "").trim() === groupId);
+  const groupSeq = Array.isArray(group?.feed_sequence_ids)
+    ? group.feed_sequence_ids.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
+  if (groupSeq.length) return groupSeq[0];
+
+  const pages = Array.isArray(survey.pages) ? survey.pages : [];
+  for (const page of pages) {
+    const questions = Array.isArray(page?.questions) ? page.questions : [];
+    for (const q of questions) {
+      if (q?.type !== SURVEY_QUESTION_TYPES.POST_REMINDER) continue;
+      const postFeedId = String(q?.post_feed_id ?? q?.meta?.post_feed_id ?? "").trim();
+      if (!postFeedId) continue;
+      const visibleTo = Array.isArray(q?.visible_to_group_ids)
+        ? q.visible_to_group_ids.map((x) => String(x ?? "").trim())
+        : [];
+      if (visibleTo.includes(groupId)) return postFeedId;
+    }
+  }
+
+  return "";
 }
 
 // Builds the 3 candidate posts a "recall" post-reminder question shows: the

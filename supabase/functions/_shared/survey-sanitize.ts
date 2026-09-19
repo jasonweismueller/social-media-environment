@@ -288,6 +288,49 @@ function pruneFeedOverridesByVisibleFeeds(
   return out;
 }
 
+// Mirrors utils-survey.js's identically-named/-shaped functions exactly —
+// text_variation_scope picks whether a question's alternative text is keyed
+// by feed (feed_overrides) or by experiment group (group_overrides, always
+// unambiguous — exactly one assigned group per participant). Defaults to
+// "feed" so every already-saved question keeps its current behavior.
+function normalizeTextVariationScope(value: unknown): "feed" | "group" {
+  return String(value ?? "").trim().toLowerCase() === "group" ? "group" : "feed";
+}
+
+function normalizeGroupOverrides(value: unknown = {}): Record<string, { text: string }> {
+  const source = asObject(value);
+  const out: Record<string, { text: string }> = {};
+
+  Object.entries(source).forEach(([groupId, override]) => {
+    const cleanGroupId = String(groupId ?? "").trim();
+    if (!cleanGroupId) return;
+
+    const safeOverride = asObject(override);
+    out[cleanGroupId] = { text: String(safeOverride.text ?? "") };
+  });
+
+  return out;
+}
+
+function pruneGroupOverridesByVisibleGroups(
+  groupOverrides: unknown = {},
+  visibleToGroupIds: unknown = []
+): Record<string, { text: string }> {
+  const allowedGroupIds = uniqueStringArray(visibleToGroupIds);
+  const allowed = new Set(allowedGroupIds);
+  const normalized = normalizeGroupOverrides(groupOverrides);
+  const out: Record<string, { text: string }> = {};
+
+  Object.entries(normalized).forEach(([groupId, override]) => {
+    if (allowed.size > 0 && !allowed.has(groupId)) return;
+    if (String(override?.text ?? "").trim()) {
+      out[groupId] = { text: String(override.text ?? "") };
+    }
+  });
+
+  return out;
+}
+
 function isPageBreakQuestion(question: any): boolean {
   return question?.type === SURVEY_QUESTION_TYPES.PAGE_BREAK;
 }
@@ -531,6 +574,8 @@ export function normalizeQuestion(raw: any = {}): any {
 
   const visibleInFeeds = normalizeVisibleInFeeds(raw.visible_in_feeds);
   const feedOverrides = pruneFeedOverridesByVisibleFeeds(raw.feed_overrides, visibleInFeeds);
+  const visibleToGroupIds = uniqueStringArray(raw.visible_to_group_ids);
+  const groupOverrides = pruneGroupOverridesByVisibleGroups(raw.group_overrides, visibleToGroupIds);
 
   const postId = type === SURVEY_QUESTION_TYPES.POST_REMINDER ? String(raw.post_id ?? meta.post_id ?? "") : "";
   const postLabel =
@@ -612,7 +657,9 @@ export function normalizeQuestion(raw: any = {}): any {
     visible_if: raw.visible_if || null,
     visible_in_feeds: visibleInFeeds,
     feed_overrides: feedOverrides,
-    visible_to_group_ids: uniqueStringArray(raw.visible_to_group_ids),
+    text_variation_scope: normalizeTextVariationScope(raw.text_variation_scope),
+    group_overrides: groupOverrides,
+    visible_to_group_ids: visibleToGroupIds,
     placeholder: String(raw.placeholder || ""),
     numeric_only: !!raw.numeric_only,
     numeric_min: Number.isFinite(raw.numeric_min) ? Number(raw.numeric_min) : null,
@@ -653,6 +700,8 @@ export function frontendQuestionToBackend(question: any = {}): any {
     required: isDisplayOnlyQuestion(q) ? false : !!q.required,
     visible_in_feeds: q.visible_in_feeds,
     feed_overrides: q.feed_overrides,
+    text_variation_scope: q.text_variation_scope,
+    group_overrides: q.group_overrides,
     visible_to_group_ids: q.visible_to_group_ids,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(q.type) && !!q.is_attention_check,
     attention_check_value: String(q.attention_check_value ?? ""),

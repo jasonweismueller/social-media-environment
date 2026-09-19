@@ -51,6 +51,7 @@ import {
   hasCompletedStudyLocally,
   markStudyCompletedLocally,
   resolvePostAuthorType,
+  resolveSurveyOnlyOverrideFeedId,
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
@@ -1707,26 +1708,49 @@ export default function App() {
         }
       }
 
+      let materializedSurveyPages = null;
+      if (normalizedSurveyBase) {
+        materializedSurveyPages = materializePagesFromBlocks(
+          normalizedSurveyBase,
+          normalizedSurveyBase.page_blocks,
+          {
+            participantSeed: surveyParticipantSeed,
+            randomize: true,
+            assignedGroupId,
+          }
+        );
+      }
+
+      // survey_only delivery doesn't visit a real feed page — activeFeedId
+      // here always resolves to the survey's first linked feed regardless
+      // of which experiment group the participant landed in (see the
+      // "infinite loading loop" fix above), so feed_overrides/
+      // visible_in_feeds on ordinary questions can't vary by group without
+      // this — see resolveSurveyOnlyOverrideFeedId's own comment for the
+      // full reasoning.
+      const surveyOnlyOverrideFeedId =
+        isSurveyOnlyMode && normalizedSurveyBase
+          ? resolveSurveyOnlyOverrideFeedId(
+              { ...normalizedSurveyBase, pages: materializedSurveyPages },
+              assignedGroupId
+            )
+          : "";
+
       const normalizedSurvey = normalizedSurveyBase
         ? {
             ...normalizedSurveyBase,
             experiment_assigned_group_id: assignedGroupId,
-            pages: materializePagesFromBlocks(
-              normalizedSurveyBase,
-              normalizedSurveyBase.page_blocks,
-              {
-                participantSeed: surveyParticipantSeed,
-                randomize: true,
-                assignedGroupId,
-              }
-            ),
+            survey_only_override_feed_id: surveyOnlyOverrideFeedId,
+            pages: materializedSurveyPages,
           }
         : null;
 
       if (normalizedSurvey) {
         await preloadSurveyPostReminders({
           survey: normalizedSurvey,
-          fallbackFeedId: activeFeedId || "",
+          fallbackFeedId: isSurveyOnlyMode
+            ? surveyOnlyOverrideFeedId || activeFeedId || ""
+            : activeFeedId || "",
           projectId: projectId || undefined,
           participantSeed: surveyParticipantSeed,
           signal: ctrl.signal,
@@ -2527,7 +2551,9 @@ export default function App() {
       projectId,
     });
 
-    const validation = validateSurveyResponses(linkedSurvey, surveyResponses, { feedId: activeFeedId });
+    const validation = validateSurveyResponses(linkedSurvey, surveyResponses, {
+      feedId: isSurveyOnlyMode ? (linkedSurvey?.survey_only_override_feed_id || activeFeedId) : activeFeedId,
+    });
 
     if (!validation.ok) {
       setSurveyErrors(validation.errors || {});
@@ -2990,7 +3016,7 @@ export default function App() {
                       errors={surveyErrors}
                       errorMsg={surveyErrorMsg}
                       participantSeed={participantId || sessionIdRef.current}
-                      feedId={activeFeedId}
+                      feedId={isSurveyOnlyMode ? (linkedSurvey?.survey_only_override_feed_id || activeFeedId) : activeFeedId}
                       projectId={projectId}
                       flags={flags}
                       onChange={handleSurveyResponseChange}
@@ -3007,7 +3033,7 @@ export default function App() {
                       errors={surveyErrors}
                       errorMsg={surveyErrorMsg}
                       participantSeed={participantId || sessionIdRef.current}
-                      feedId={activeFeedId}
+                      feedId={isSurveyOnlyMode ? (linkedSurvey?.survey_only_override_feed_id || activeFeedId) : activeFeedId}
                       projectId={projectId}
                       flags={flags}
                       onChange={handleSurveyResponseChange}

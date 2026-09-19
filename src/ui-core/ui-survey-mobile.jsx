@@ -1521,6 +1521,7 @@ export function SurveyScreenMobile({
   const renderedPages = useMemo(() => {
     const pages = Array.isArray(survey?.pages) ? survey.pages : [];
     const activeFeedId = String(feedId ?? "").trim();
+    const assignedGroupId = String(survey?.experiment_assigned_group_id ?? "").trim();
 
     return pages.map((page, pageIdx) => {
       const renderedQuestions = (page?.questions || [])
@@ -1529,6 +1530,7 @@ export function SurveyScreenMobile({
           getRenderedQuestion(question, {
             participantSeed: participantSeed || "",
             feedId: activeFeedId,
+            assignedGroupId,
           })
         );
 
