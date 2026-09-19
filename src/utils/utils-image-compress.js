@@ -22,8 +22,18 @@
 // (smallest) attempt is used anyway rather than looping forever — a
 // best-effort floor, not a hard guarantee, so this never spends unbounded
 // time on a single upload.
+//
+// 2026-09-19 tightening (direct report: a 2.3MB, 1122x1402 *PNG* photo in an
+// Instagram post rendered black for ~3s before loading): "feed" moved from
+// 1400px / 350KB to 1080px (Instagram's own upload cap — the feed card is
+// ~470px wide, so 1080 is still >2x retina) / 150KB with a lower quality
+// floor. The bigger bug was PNG handling, not the numbers: a PNG was never
+// re-encoded at all (no quality knob) and only downscaled when over the
+// dimension cap, so any PNG photo at or under 1400px went through completely
+// untouched. PNGs/WebPs with no transparent pixels are now treated as photos
+// and re-encoded as JPEG — see hasTransparency() below.
 const PRESETS = {
-  feed: { maxDimension: 1400, qualitySteps: [0.8, 0.65, 0.5], maxBytes: 350 * 1024, skipIfUnderBytes: 300 * 1024 },
+  feed: { maxDimension: 1080, qualitySteps: [0.72, 0.6, 0.5, 0.4], maxBytes: 150 * 1024, skipIfUnderBytes: 100 * 1024 },
   avatar: { maxDimension: 320, qualitySteps: [0.78, 0.65, 0.5], maxBytes: 100 * 1024, skipIfUnderBytes: 80 * 1024 },
 };
 
@@ -32,9 +42,10 @@ const PRESETS = {
  *
  * Downscales to the preset's max dimension (never upscales), then re-encodes
  * as JPEG at progressively lower quality until the result is under the
- * preset's byte budget (or leaves PNG as PNG, to not silently drop
- * transparency — PNG has no quality knob to step down, so only the
- * downscale applies there). Passes the original file through unchanged —
+ * preset's byte budget. A PNG/WebP that actually has transparent pixels stays
+ * PNG (JPEG would turn transparency black; PNG has no quality knob, so only
+ * the downscale applies there) — but one that is fully opaque (i.e. a photo
+ * saved as PNG) is converted to JPEG like any other photo. Passes the original file through unchanged —
  * never throws — for anything it shouldn't touch or can't safely handle:
  * non-images, GIFs (would destroy animation), SVGs (already tiny/vector),
  * decode failures, or a source that's already small enough that re-encoding
@@ -71,7 +82,9 @@ export async function compressImageFile(file, preset = "feed") {
     const ctx = canvas.getContext("2d");
     ctx.drawImage(bitmap, 0, 0, targetW, targetH);
 
-    const outType = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const canHaveAlpha = file.type === "image/png" || file.type === "image/webp";
+    const keepAlpha = canHaveAlpha && hasTransparency(ctx, targetW, targetH);
+    const outType = keepAlpha ? "image/png" : "image/jpeg";
     const toBlob = (q) => new Promise((resolve) => canvas.toBlob(resolve, outType, q));
 
     let blob = null;
@@ -83,8 +96,9 @@ export async function compressImageFile(file, preset = "feed") {
         if (attempt.size <= cfg.maxBytes) break;
       }
     } else {
-      // PNG: canvas.toBlob's quality argument is ignored per spec, so only
-      // one encode is worth doing — the earlier downscale is what shrinks it.
+      // PNG with real transparency: canvas.toBlob's quality argument is
+      // ignored per spec, so only one encode is worth doing — the earlier
+      // downscale is what shrinks it.
       blob = await toBlob(undefined);
     }
     if (!blob || blob.size >= file.size) return file;
@@ -94,5 +108,21 @@ export async function compressImageFile(file, preset = "feed") {
     return new File([blob], `${baseName}.${ext}`, { type: outType, lastModified: Date.now() });
   } finally {
     bitmap.close?.();
+  }
+}
+
+// True if any pixel is not fully opaque. Scans the already-downscaled canvas
+// (at most maxDimension^2 pixels), so it's cheap. Any failure to read pixels
+// is treated as "has transparency" — the safe direction, since it just keeps
+// the original PNG behavior instead of risking a black-background JPEG.
+function hasTransparency(ctx, width, height) {
+  try {
+    const { data } = ctx.getImageData(0, 0, width, height);
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 255) return true;
+    }
+    return false;
+  } catch {
+    return true;
   }
 }

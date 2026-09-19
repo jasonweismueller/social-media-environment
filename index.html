@@ -120,6 +120,22 @@
       twitter: () => import("./src/main-x.jsx"),
     };
 
+    // Publish the resolved platform on `window.APP` BEFORE the bundle is
+    // imported. The `window.APP = "ig"` line inside each main-*.jsx runs too
+    // late to help: ES imports are hoisted, so every module those files
+    // import (utils-backend's `APP`, ui-posts/ui-core's per-app dispatch,
+    // components-admin-dashboard's editor/label picks) evaluates first, and
+    // with no `?app=` in the URL (the normal state after an in-admin
+    // navigation + reload) they all silently fell back to Facebook — an
+    // Instagram bundle with a Facebook-flavored dashboard/preview.
+    const canonicalApp = {
+      facebook: "fb", fb: "fb",
+      instagram: "ig", ig: "ig",
+      amazon: "amz", amz: "amz", reviews: "amz",
+      x: "x", twitter: "x",
+    };
+    window.APP = canonicalApp[app] || "fb";
+
     (entryMap[app] || entryMap.facebook)();
   } else {
     document.title = "404 Not Found";
