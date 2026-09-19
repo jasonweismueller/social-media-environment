@@ -1092,7 +1092,7 @@ const displayBio = useMemo(() => {
 
       {/* Media */}
       {(hasVideo || hasCarousel || hasImage) && (
-        <div className="insta-media" style={{ position: "relative", background: "#000" }}>
+        <div className="insta-media" style={{ position: "relative", background: hasVideo ? "#000" : "var(--ig-media-placeholder)" }}>
         <div
   onClick={handleMediaTap}
   style={{

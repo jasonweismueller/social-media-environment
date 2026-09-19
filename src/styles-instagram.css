@@ -12,6 +12,7 @@
   --ig-text: #111827;
   --ig-muted: #6b7280;
   --ig-line: #e5e5e5;
+  --ig-media-placeholder: #efefef; /* shown behind a post image/carousel while it loads (video keeps #000) */
   --ig-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.06);
 
   /* IG accents */
@@ -53,7 +54,7 @@
    page, or on a wrapper div for the admin's Feed/Survey preview. Real
    Instagram's own dark mode is pure black, not dark grey. */
 .dark-mode{
-  --ig-bg:#000000; --ig-card:#000000; --ig-text:#f5f5f5; --ig-muted:#a8a8a8; --ig-line:#262626;
+  --ig-bg:#000000; --ig-card:#000000; --ig-text:#f5f5f5; --ig-muted:#a8a8a8; --ig-line:#262626; --ig-media-placeholder:#262626;
   --ig-shadow:0 1px 2px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.5);
   --ig-like-bg:#3a1f22;
   /* See the matching comment in styles-facebook.css — `color` is inherited
@@ -876,7 +877,7 @@ body.admin-mode .ig-topbar { display:none !important; }
 
 /* ---------------- IG Carousel ---------------- */
 .igcar-wrap{
-  position:relative; width:100%; border-radius:8px; overflow:hidden; background:#000;
+  position:relative; width:100%; border-radius:8px; overflow:hidden; background:var(--ig-media-placeholder);
   aspect-ratio: 1 / 1;
   touch-action: pan-x;
   overscroll-behavior: contain;
