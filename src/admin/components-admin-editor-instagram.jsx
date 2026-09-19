@@ -187,6 +187,13 @@ export function AdminPostEditor({
             checked={!!editing.isMisinformation}
             onChange={(v) => setEditing((ed) => ({ ...ed, isMisinformation: v }))}
           />
+
+          <Toggle
+            label="AI-generated profile"
+            hint={'Marks this author as an AI account: shows an "AI-generated profile" label under the name on the post, and above the bio text in the author\'s bio card (when "Show Bio" is on).'}
+            checked={!!editing.aiGenerated}
+            onChange={(v) => setEditing((ed) => ({ ...ed, aiGenerated: v }))}
+          />
         </EditorSection>
 
         <EditorSection title="Post content" subtitle="Timestamp, topic &amp; caption">

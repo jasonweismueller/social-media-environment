@@ -140,6 +140,12 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
               {bio.badge && VerifiedBadge}
             </div>
 
+            {bio.aiGenerated && (
+              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4, lineHeight: 1.4 }}>
+                AI-generated profile
+              </div>
+            )}
+
             {hasBioText && (
               <div
                 style={{ fontSize: 13, color: "#4b5563", marginTop: 6, lineHeight: 1.4 }}

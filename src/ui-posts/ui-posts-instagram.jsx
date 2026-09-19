@@ -955,6 +955,7 @@ const displayBio = useMemo(() => {
     author: displayAuthor,       // NEW
     avatarUrl: effectiveAvatarUrl, // NEW
     badge: post.badge,             // NEW
+    aiGenerated: !!post.aiGenerated,
     bio_posts: post.bio_posts,
     bio_followers: post.bio_followers,
     bio_following: post.bio_following,
@@ -1018,6 +1019,20 @@ const displayBio = useMemo(() => {
   {displayAuthor}
   {post.badge && VerifiedBadge}
 </span>
+{/* AI-generated profile label — sits directly under the name, same
+    position and treatment as real Instagram's AI-account label. */}
+{post.aiGenerated && (
+  <span
+    style={{
+      fontSize: 12,
+      color: "var(--ig-muted)",
+      marginTop: 1,
+      lineHeight: 1.1,
+    }}
+  >
+    AI-generated profile
+  </span>
+)}
 {/* Sponsored Ad (CTA type) */}
 {post.adType === "ad" && (
   <span

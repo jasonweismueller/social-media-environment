@@ -134,6 +134,12 @@ export function BioHoverCard({
             {verified && VerifiedBadge}
           </div>
 
+          {bio.aiGenerated && (
+            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4, lineHeight: 1.35 }}>
+              AI-generated profile
+            </div>
+          )}
+
           {hasBioText ? (
             <>
               <div

@@ -211,6 +211,7 @@ function mapPostRowToRaw(row) {
     badge: !!row.badge,
     authorType: row.author_type ?? "",
     isMisinformation: !!row.is_misinformation,
+    aiGenerated: !!row.ai_generated,
     topic: row.topic ?? "",
 
     showBio: !!row.show_bio,
@@ -549,6 +550,7 @@ function mapRawPostToRow(raw, composedFeedId, sortOrder) {
     badge: !!raw.badge,
     author_type: raw.authorType ?? null,
     is_misinformation: !!raw.isMisinformation,
+    ai_generated: !!raw.aiGenerated,
     topic: raw.topic ?? null,
 
     show_bio: !!raw.showBio,
