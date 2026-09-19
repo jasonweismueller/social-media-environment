@@ -946,6 +946,13 @@ body.admin-mode .ig-topbar { display:none !important; }
   background:linear-gradient(90deg, rgba(255,255,255,0), var(--ig-card));
 }
 
+/* Inline "… more" that PostText (ui-core-instagram.jsx) places directly after
+   the last visible word of a truncated caption. nowrap keeps the ellipsis and
+   "more" together on one line instead of splitting across a wrap. */
+.ig-caption-row .ig-more-inline{
+  white-space:nowrap;
+}
+
 /* --- Expand/Collapse Chevron & Section Animation (from Facebook) --- */
 
 /* Smooth expand/collapse for section bodies */

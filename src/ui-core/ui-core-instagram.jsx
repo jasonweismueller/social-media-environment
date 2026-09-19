@@ -180,10 +180,35 @@ export function SkeletonFeed() {
 }
 
 /* --------------------------- Caption clamping ------------------------------ */
+// Collapsed captions behave like real Instagram: the visible text stops at the
+// first paragraph break (a blank line) or after CAPTION_MAX_LINES lines,
+// whichever comes first, and "… more" sits inline directly after the last
+// visible word — not pinned to the right edge of the block, which left a big
+// gap after a short first sentence (and put "… more" on the blank line below
+// it when the caption had a paragraph break).
+//
+// The cut point is found by measuring, not guessed: a hidden probe element
+// (same width/font as the real caption) is filled with candidate text +
+// "… more", and a binary search finds the longest prefix that still fits in
+// CAPTION_MAX_LINES lines. The old CSS line-clamp path (with its absolutely
+// positioned .fade-more) stays as the fallback until the first measurement
+// lands, and for any environment where measuring isn't possible.
+const CAPTION_MAX_LINES = 2;
+
 export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, postId }) {
   const pRef = React.useRef(null);
+  const wrapRef = React.useRef(null);
+  const probeRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
+  // { src, value }: `value` is the truncated caption for the exact `text` it
+  // was measured against (null = caption fits, no truncation). Keyed by src so
+  // a stale cut can never render against a different caption (carousel slides).
+  const [cutState, setCutState] = React.useState({ src: null, value: null });
+  const [, setLayoutTick] = React.useState(0);
   const sentClampRef = React.useRef(false);
+  const lastSigRef = React.useRef("");
+  const lastWidthRef = React.useRef(0);
+  const cut = cutState.src === text ? cutState.value : null;
 
   function linkifyMentions(str = "") {
     return str.replace(/(^|\s)(@\w+)/g, (m, space, handle) => {
@@ -191,6 +216,7 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
     });
   }
 
+  // Legacy CSS-clamp overflow check — only relevant while `cut` is null.
   React.useEffect(() => {
     const el = pRef.current;
     if (!el) return;
@@ -215,6 +241,89 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
     };
   }, [text, expanded, onClamp]);
 
+  // Re-measure when the caption's width changes or webfonts finish loading.
+  React.useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const bump = () => setLayoutTick((t) => t + 1);
+    const ro = new ResizeObserver(() => {
+      if (wrap.clientWidth !== lastWidthRef.current) bump();
+    });
+    ro.observe(wrap);
+    if (document.fonts?.ready) document.fonts.ready.then(bump).catch(() => {});
+    return () => ro.disconnect();
+  }, []);
+
+  // Measure + decide the cut, before paint. No dependency array on purpose:
+  // the signature check below makes re-runs on an unchanged caption a no-op,
+  // and it also catches the username (rendered via `prefix`) changing.
+  React.useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const probe = probeRef.current;
+    const textEl = pRef.current;
+    if (expanded || !wrap || !probe || !textEl || typeof getComputedStyle !== "function") return;
+
+    const width = wrap.clientWidth;
+    lastWidthRef.current = width;
+    const usernameEl =
+      textEl.firstElementChild && textEl.firstElementChild.classList.contains("ig-username")
+        ? textEl.firstElementChild
+        : null;
+    const fontsReady = document.fonts?.status === "loaded" ? "1" : "0";
+    const sig = JSON.stringify([text, width, usernameEl ? usernameEl.textContent : "", fontsReady]);
+    if (sig === lastSigRef.current && cutState.src === text) return;
+    lastSigRef.current = sig;
+    if (!width) return;
+
+    const norm = String(text ?? "").replace(/\r\n?/g, "\n").replace(/^\s+/, "");
+    const blank = norm.search(/\n[ \t]*\n/);
+    const para = (blank === -1 ? norm : norm.slice(0, blank)).replace(/\s+$/, "");
+    const hasRest = blank !== -1 && norm.slice(blank).trim().length > 0;
+
+    const cs = getComputedStyle(probe);
+    const lineH = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+    const limit = lineH * CAPTION_MAX_LINES + 1;
+    const userHtml = usernameEl ? usernameEl.outerHTML : "";
+    const moreHtml =
+      '<span class="ig-more-inline">… <span class="see-more">more</span></span>';
+    const fits = (n, withMore) => {
+      probe.innerHTML =
+        userHtml + linkifyMentions(para.slice(0, n)) + (withMore ? moreHtml : "");
+      return probe.scrollHeight <= limit;
+    };
+
+    let next = null; // null = whole caption fits, show it as-is
+    if (hasRest || !fits(para.length, false)) {
+      // Largest prefix length that still fits on CAPTION_MAX_LINES lines
+      // together with the inline "… more".
+      let lo = 0;
+      let hi = para.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (fits(mid, true)) lo = mid;
+        else hi = mid - 1;
+      }
+      let n = lo;
+      // Prefer ending on a word boundary over slicing a word in half.
+      if (n < para.length && n > 0 && !/\s/.test(para[n]) && !/\s/.test(para[n - 1])) {
+        const ws = Math.max(para.lastIndexOf(" ", n - 1), para.lastIndexOf("\n", n - 1));
+        if (ws > 0 && n - ws <= 24) n = ws;
+      }
+      // Never split a surrogate pair (emoji).
+      if (n > 0 && /[\uD800-\uDBFF]/.test(para[n - 1])) n -= 1;
+      next = para.slice(0, n).replace(/\s+$/, "");
+    }
+    probe.innerHTML = "";
+
+    setCutState((prev) =>
+      prev.src === text && prev.value === next ? prev : { src: text, value: next }
+    );
+    if (next != null && !sentClampRef.current) {
+      sentClampRef.current = true;
+      onClamp?.();
+    }
+  });
+
   // --- CLICK HANDLER for mention ---
   const handleClick = (e) => {
   let node = e.target;
@@ -237,13 +346,18 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
   e.stopPropagation();
 };
 
-
+  const showInlineMore = !expanded && cut != null;
+  const expand = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onExpand?.();
+  };
 
   return (
-    <span className="text-wrap">
+    <span className="text-wrap" ref={wrapRef}>
       <span
         ref={pRef}
-        className={`text ${!expanded ? "clamp" : ""} ${needsClamp ? "needs" : ""}`}
+        className={`text ${!expanded && cut == null ? "clamp" : ""} ${needsClamp && cut == null ? "needs" : ""}`}
         onClick={handleClick}
       >
         {prefix && (
@@ -257,27 +371,48 @@ export function PostText({ text, expanded, onExpand, onClamp, onAction, prefix, 
 
         <span
           dangerouslySetInnerHTML={{
-            __html: linkifyMentions(text),
+            __html: linkifyMentions(showInlineMore ? cut : text),
           }}
         />
+
+        {showInlineMore && (
+          <span className="ig-more-inline">
+            <span aria-hidden="true">… </span>
+            <button type="button" className="see-more" onClick={expand}>
+              more
+            </button>
+          </span>
+        )}
       </span>
 
-      {!expanded && needsClamp && (
+      {!expanded && cut == null && needsClamp && (
         <span className="fade-more">
           <span className="dots" aria-hidden="true">…</span>
-          <button
-            type="button"
-            className="see-more"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onExpand?.();
-            }}
-          >
+          <button type="button" className="see-more" onClick={expand}>
             more
           </button>
         </span>
       )}
+
+      {/* Off-screen measuring copy — see the comment above PostText. */}
+      <span
+        ref={probeRef}
+        aria-hidden="true"
+        className="text"
+        style={{
+          margin: 0,
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          visibility: "hidden",
+          pointerEvents: "none",
+          display: "block",
+          whiteSpace: "pre-wrap",
+          overflow: "hidden",
+          height: "auto",
+        }}
+      />
     </span>
   );
 }
