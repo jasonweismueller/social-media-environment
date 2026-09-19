@@ -11,6 +11,7 @@
 // setAdminSession itself, so this file has no dependency on
 // utils-backend.js (avoids a circular import between the two).
 import { getSupabaseClient } from "./utils-supabase-client";
+import { normalizeRandomizeExclude } from "./utils-core";
 
 async function fetchAdminProfile(supabase, userId) {
   const { data, error } = await supabase
@@ -212,6 +213,7 @@ function mapPostRowToRaw(row) {
     authorType: row.author_type ?? "",
     isMisinformation: !!row.is_misinformation,
     aiGenerated: !!row.ai_generated,
+    randomizeExclude: normalizeRandomizeExclude(row.randomize_exclude),
     topic: row.topic ?? "",
 
     showBio: !!row.show_bio,
@@ -551,6 +553,7 @@ function mapRawPostToRow(raw, composedFeedId, sortOrder) {
     author_type: raw.authorType ?? null,
     is_misinformation: !!raw.isMisinformation,
     ai_generated: !!raw.aiGenerated,
+    randomize_exclude: normalizeRandomizeExclude(raw.randomizeExclude),
     topic: raw.topic ?? null,
 
     show_bio: !!raw.showBio,

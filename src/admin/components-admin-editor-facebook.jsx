@@ -13,7 +13,8 @@ import {
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-facebook";
 import { randomAvatarByKind } from "../avatar-utils";
-import { EditorSection, Field, Group, RadioGroup, CheckRow, PreviewPane, Toggle } from "./components-admin-editor-ui";
+import { EditorSection, Field, Group, RadioGroup, CheckRow, PreviewPane, Toggle, RandomizeExcludeField } from "./components-admin-editor-ui";
+import { normalizeRandomizeExclude } from "../utils";
 import { useToast } from "./ui";
 
 /* ---------- gender-neutral comic avatar (64px) ---------------- */
@@ -303,6 +304,18 @@ export function AdminPostEditor({
           <Field label="Post text">
             <textarea className="textarea" rows={5} value={editing.text} onChange={(e) => setEditing({ ...editing, text: e.target.value })} />
           </Field>
+        </EditorSection>
+
+        <EditorSection
+          title="Randomization"
+          subtitle="Opt this post out of feed-wide randomization"
+          badge={normalizeRandomizeExclude(editing.randomizeExclude).length ? `${normalizeRandomizeExclude(editing.randomizeExclude).length} excluded` : null}
+        >
+          <RandomizeExcludeField
+            kinds={["time", "avatar", "name", "image", "bio"]}
+            value={editing.randomizeExclude}
+            onChange={(v) => setEditing((ed) => ({ ...ed, randomizeExclude: v }))}
+          />
         </EditorSection>
 
         <EditorSection title="Profile Photo" subtitle="Avatar shown next to the author name" badge={customAvatar ? "Custom" : null}>

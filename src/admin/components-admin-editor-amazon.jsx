@@ -3,7 +3,8 @@ import React from "react";
 import { uid } from "../utils";
 import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-amazon";
-import { EditorSection, Field, Toggle, PreviewPane } from "./components-admin-editor-ui";
+import { EditorSection, Field, Toggle, PreviewPane, RandomizeExcludeField } from "./components-admin-editor-ui";
+import { normalizeRandomizeExclude } from "../utils";
 
 /* ----------------------------------------------------------------------------
    Amazon Reviews admin editor
@@ -249,6 +250,18 @@ export function AdminPostEditor({
               onChange={(e) => setField(setEditing, "topic", e.target.value)}
             />
           </Field>
+        </EditorSection>
+
+        <EditorSection
+          title="Randomization"
+          subtitle="Opt this post out of feed-wide randomization"
+          badge={normalizeRandomizeExclude(editing.randomizeExclude).length ? `${normalizeRandomizeExclude(editing.randomizeExclude).length} excluded` : null}
+        >
+          <RandomizeExcludeField
+            kinds={["time", "name"]}
+            value={editing.randomizeExclude}
+            onChange={(v) => setEditing((ed) => ({ ...ed, randomizeExclude: v }))}
+          />
         </EditorSection>
 
         <EditorSection title="Participant actions" subtitle="Helpful/report buttons &amp; read-more truncation">

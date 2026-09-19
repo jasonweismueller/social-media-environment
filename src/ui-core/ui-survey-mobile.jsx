@@ -31,6 +31,7 @@ import {
   getOtherChoice,
   otherSpecifyResponseKey,
   resolvePostAuthorType,
+  normalizeRandomizeExclude,
 } from "../utils";
 import { PostCard } from "../ui-posts";
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "../ui-posts/names";
@@ -840,7 +841,14 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   useEffect(() => {
     const nonSnapshotPost = inlinePost || lazyPost;
 
-    if (!applyFeedRandomization || storedSnapshot || !nonSnapshotPost) {
+    // A post that opted out of avatar randomization (posts.randomize_exclude)
+    // keeps its own stored avatar — no pool pick here.
+    if (
+      !applyFeedRandomization ||
+      storedSnapshot ||
+      !nonSnapshotPost ||
+      normalizeRandomizeExclude(nonSnapshotPost.randomizeExclude).includes("avatar")
+    ) {
       setAssignedAvatarUrl(null);
       return;
     }
@@ -896,6 +904,9 @@ const PostReminderCardMobile = memo(function PostReminderCardMobile({
   const assignedAuthor = useMemo(() => {
     const nonSnapshotPost = inlinePost || lazyPost;
     if (!applyFeedRandomization || storedSnapshot || !nonSnapshotPost) return null;
+    // Opted out of name randomization (posts.randomize_exclude) — keep the
+    // post's own stored author.
+    if (normalizeRandomizeExclude(nonSnapshotPost.randomizeExclude).includes("name")) return null;
 
     const seedParts = [
       participantSeed || "survey-reminder-preview",

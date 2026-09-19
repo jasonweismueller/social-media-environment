@@ -1854,6 +1854,54 @@ export function buildDeterministicAssignmentMap(items = [], pool = [], seedParts
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Per-post exclusions from feed-wide randomization.
+//
+// A feed's "Randomize time/avatars/names/images/bios" switches apply to every
+// post in it. `post.randomizeExclude` (stored in posts.randomize_exclude) lists
+// which of those a specific post should opt OUT of, so e.g. one anchor post can
+// keep its fixed timestamp/avatar/bio while the rest of the feed is randomized.
+// The feed-level flag itself is never modified — only the flags object handed
+// to that one post's card.
+// ---------------------------------------------------------------------------
+export const RANDOMIZE_EXCLUDE_KINDS = ["time", "avatar", "name", "image", "bio"];
+
+// kind -> every flag spelling the app has used for it (see each App-*.jsx's
+// normalizeFlags, which still emits all of these).
+const RANDOMIZE_EXCLUDE_FLAG_KEYS = {
+  time: ["randomize_times", "randomize_time", "random_time"],
+  avatar: ["randomize_avatars", "randomize_avatar", "random_avatar"],
+  name: ["randomize_names", "randomize_name", "random_name"],
+  image: ["randomize_images", "randomize_image", "random_image"],
+  bio: ["randomize_bios", "randomize_bio", "random_bio"],
+};
+
+// Accepts an array (or a JSON string of one) and returns only known kinds,
+// de-duplicated, in canonical order — safe for any stored/legacy value.
+export function normalizeRandomizeExclude(value) {
+  let arr = value;
+  if (typeof arr === "string") {
+    try { arr = JSON.parse(arr); } catch { arr = []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  const set = new Set(arr.map((v) => String(v || "").toLowerCase()));
+  return RANDOMIZE_EXCLUDE_KINDS.filter((k) => set.has(k));
+}
+
+// Returns `flags` with the post's excluded randomizations forced off. Returns
+// the SAME object when nothing is excluded, so callers that put `flags` in a
+// dependency array see no identity change for the (overwhelmingly common)
+// no-exclusions case.
+export function applyPostRandomizationExclusions(flags, post) {
+  const excluded = normalizeRandomizeExclude(post?.randomizeExclude);
+  if (!excluded.length) return flags;
+  const out = { ...(flags || {}) };
+  for (const kind of excluded) {
+    for (const key of RANDOMIZE_EXCLUDE_FLAG_KEYS[kind]) out[key] = false;
+  }
+  return out;
+}
+
 // Resolves a post's effective author type ("female" | "male" | "company"),
 // handling the "random" Author Type option: unlike the feed-wide
 // randomize_avatars/randomize_names flags (which only randomize *which*

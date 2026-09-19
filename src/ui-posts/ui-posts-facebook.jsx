@@ -19,6 +19,7 @@ import {
   fallbackEngagementStats,
   resolvePostAuthorType,
 } from "../utils";
+import { applyPostRandomizationExclusions } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES, FB_COMPANY_NAMES } from "./names";
 import { InterventionBlock } from "./components-ui-interventions";
@@ -709,7 +710,7 @@ export function PostCard({
   disabled,
   registerViewRef,
   respectShowReactions = false,
-  flags = { randomize_times: false },
+  flags: flagsProp = { randomize_times: false },
   app,
   projectId,
   feedId,
@@ -762,6 +763,12 @@ export function PostCard({
   // animation was never applied in the first place (revealIndex null, or
   // prefers-reduced-motion, where the animation is `none` and this class
   // staying attached forever is harmless either way).
+  // Per-post opt-outs from feed-wide randomization (posts.randomize_exclude) —
+  // every randomize_* read below goes through this, never the raw prop.
+  const flags = useMemo(
+    () => applyPostRandomizationExclusions(flagsProp, post),
+    [flagsProp, post?.randomizeExclude]
+  );
   const [revealDone, setRevealDone] = useState(revealIndex == null);
   const [reportAck, setReportAck] = useState(false);
   const [linkAck, setLinkAck] = useState(false);

@@ -12,6 +12,7 @@
 // so the `--admin-*` tokens from src/admin/ui/tokens.css are available here.
 import React, { useEffect, useState } from "react";
 import { Toggle, useAdminTheme } from "./ui";
+import { normalizeRandomizeExclude } from "../utils";
 
 function ChevronIcon() {
   return (
@@ -138,6 +139,41 @@ export function CheckRow({ checked, onChange, children }) {
       <input type="checkbox" checked={checked} onChange={onChange} />
       <span>{children}</span>
     </label>
+  );
+}
+
+const RANDOMIZE_EXCLUDE_LABELS = {
+  time: "Time",
+  avatar: "Avatar",
+  name: "Name",
+  image: "Image",
+  bio: "Bio",
+};
+
+/* Per-post opt-out from the feed-wide "Randomize …" switches (Feeds → Settings).
+   `kinds` is the subset a given platform actually randomizes, so an editor never
+   offers a checkbox that would do nothing (e.g. Amazon has no avatar/bio).
+   Value shape: array of kind strings, stored as post.randomizeExclude. */
+export function RandomizeExcludeField({ value, onChange, kinds }) {
+  const selected = normalizeRandomizeExclude(value);
+  const toggle = (kind, on) => {
+    const next = new Set(selected);
+    if (on) next.add(kind); else next.delete(kind);
+    onChange(Array.from(next));
+  };
+  return (
+    <Group
+      label="Keep this post's own values for"
+      hint="Ticked items are NOT randomized for this post, even when the feed-wide switch is on. Every other post in the feed is unaffected. Has no effect on items whose feed-wide randomization is off."
+    >
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+        {kinds.map((kind) => (
+          <CheckRow key={kind} checked={selected.includes(kind)} onChange={(e) => toggle(kind, e.target.checked)}>
+            {RANDOMIZE_EXCLUDE_LABELS[kind] || kind}
+          </CheckRow>
+        ))}
+      </div>
+    </Group>
   );
 }
 

@@ -4,6 +4,7 @@ import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
 import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getAvatarPoolForPost, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType, getImageCropStyle } from "../utils";
+import { applyPostRandomizationExclusions } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
@@ -411,7 +412,10 @@ export function PostCard({
 } = post || {};
 
 // ✅ Add this line directly after:
-const effectiveFlags = postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {});
+const effectiveFlags = applyPostRandomizationExclusions(
+  postFlags && Object.keys(postFlags).length > 0 ? postFlags : (flags || {}),
+  post
+);
 const likeButtonRef = useRef(null);
 const [videoMuted, setVideoMuted] = useState(!!post.videoAutoplayMuted);
 const userHasUnmutedRef = useRef(!post.videoAutoplayMuted);

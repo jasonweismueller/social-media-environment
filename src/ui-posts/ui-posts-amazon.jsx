@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { displayReviewDateForAmazon, buildDeterministicAssignmentMap } from "../utils";
+import { applyPostRandomizationExclusions } from "../utils";
 import { AMAZON_REVIEWER_NAMES } from "./names";
 
 function asNum(value, fallback = 0) {
@@ -139,7 +140,7 @@ function ReviewCard({
   participantSeed,
   onDisplayedPostSnapshot,
   alwaysExpandText = false,
-  flags,
+  flags: flagsProp,
   runSeed,
   app,
   assignedReviewer,
@@ -147,6 +148,11 @@ function ReviewCard({
   // `revealIndex`/`post-reveal-in` for the full rationale, mirrored here.
   revealIndex = null,
 }) {
+  // Per-post opt-outs from feed-wide randomization (posts.randomize_exclude).
+  const flags = useMemo(
+    () => applyPostRandomizationExclusions(flagsProp, review),
+    [flagsProp, review?.randomizeExclude]
+  );
   const id = getReviewId(review);
   const randNamesOn = !!flags?.randomize_names;
   const author = randNamesOn && assignedReviewer ? assignedReviewer : getReviewAuthor(review);

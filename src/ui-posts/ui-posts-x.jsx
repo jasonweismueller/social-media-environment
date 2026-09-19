@@ -20,6 +20,7 @@ import {
   fallbackEngagementStats,
   resolvePostAuthorType,
 } from "../utils";
+import { applyPostRandomizationExclusions } from "../utils";
 
 import { FB_FEMALE_NAMES, FB_MALE_NAMES } from "./names";
 
@@ -246,7 +247,7 @@ export function PostCard({
   onAction,
   disabled,
   registerViewRef,
-  flags = {},
+  flags: flagsProp = {},
   app,
   projectId,
   feedId,
@@ -267,6 +268,11 @@ export function PostCard({
   // addition later rather than a structural change.
   suppressDisplayedSnapshot = false,
 }) {
+  // Per-post opt-outs from feed-wide randomization (posts.randomize_exclude).
+  const flags = useMemo(
+    () => applyPostRandomizationExclusions(flagsProp, post),
+    [flagsProp, post?.randomizeExclude]
+  );
   const id = String(post?.id || "");
   const randNamesOn = !!flags?.randomize_names;
   const randAvatarOn = !!(flags?.randomize_avatars ?? flags?.randomize_avatar);
