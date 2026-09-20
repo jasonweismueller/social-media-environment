@@ -110,7 +110,7 @@ const TAP_MAX_MS = 400;
    precision and accessibility. What's rendered here is pixel-for-pixel the
    same CSS (`getImageCropStyle`) used for the real participant-facing post
    — this preview IS what a participant will see, not an approximation of it. */
-function ImageCropper({
+export function ImageCropper({
   src,
   alt = "",
   focalX = 50,
@@ -118,6 +118,9 @@ function ImageCropper({
   zoom = 1,
   onChange,
   disabled = false,
+  // Circular frame (for avatars): the round mask IS the final avatar, so the
+  // admin frames exactly what participants will see.
+  round = false,
 }) {
   const wrapRef = useRef(null);
   const [dragging, setDragging] = useState(false);
@@ -387,11 +390,11 @@ function ImageCropper({
         tabIndex={disabled || !src ? -1 : 0}
         style={{
           width: "100%",
-          maxWidth: 420,
+          maxWidth: round ? 240 : 420,
           margin: "8px 0",
           aspectRatio: "1 / 1",
           position: "relative",
-          borderRadius: 12,
+          borderRadius: round ? "50%" : 12,
           overflow: "hidden",
           background: "var(--admin-surface-alt)",
           userSelect: "none",

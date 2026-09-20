@@ -12,7 +12,8 @@ import { PostCard } from "../ui-posts";
 import { MediaFieldset } from "./components-admin-media-instagram";
 import { randomAvatarByKind } from "../avatar-utils";
 import { EditorSection, Field, Group, RadioGroup, PreviewPane, Toggle, RandomizeExcludeField } from "./components-admin-editor-ui";
-import { normalizeRandomizeExclude } from "../utils";
+import { normalizeRandomizeExclude, normalizeAvatarCrop } from "../utils";
+import { ImageCropper } from "./components-admin-media-instagram";
 import { useToast } from "./ui";
 
 /* ---------------- Avatar (neutral) ---------------- */
@@ -262,7 +263,12 @@ export function AdminPostEditor({
                   } else if (mode === "upload") {
                     url = "";
                   }
-                  setEditing({ ...editing, avatarMode: mode, avatarUrl: url });
+                  setEditing({
+                    ...editing,
+                    avatarMode: mode,
+                    avatarUrl: url,
+                    avatarCrop: mode === "url" || mode === "upload" ? editing.avatarCrop : null,
+                  });
                 }}
               >
                 <option value="random">Random avatar</option>
@@ -287,7 +293,7 @@ export function AdminPostEditor({
               <input
                 className="input"
                 value={editing.avatarUrl || ""}
-                onChange={(e) => setEditing({ ...editing, avatarUrl: e.target.value })}
+                onChange={(e) => setEditing({ ...editing, avatarUrl: e.target.value, avatarCrop: null })}
               />
             </Field>
           )}
@@ -312,6 +318,7 @@ export function AdminPostEditor({
                       ...ed,
                       avatarMode: "url",
                       avatarUrl: cdnUrl,
+                      avatarCrop: null,
                     }));
                     toast.success("Avatar uploaded");
                   } catch (err) {
@@ -323,6 +330,23 @@ export function AdminPostEditor({
                 }}
               />
             </Field>
+          )}
+
+          {editing.avatarMode === "url" && /^https?:\/\//i.test(editing.avatarUrl || "") && (
+            <Group
+              label="Frame the photo"
+              hint="The circle is exactly what participants see. Drag to reposition, scroll or pinch to zoom. For a wide logo, zoom in on the part that reads at a glance (the icon, or a stacked name) — a full wide wordmark can't be legible in a ~34px circle. Applies to this post's own photo only (not randomized avatars)."
+            >
+              <ImageCropper
+                round
+                src={editing.avatarUrl}
+                alt="Avatar framing"
+                focalX={editing.avatarCrop?.focalX ?? 50}
+                focalY={editing.avatarCrop?.focalY ?? 50}
+                zoom={editing.avatarCrop?.zoom ?? 1}
+                onChange={(c) => setEditing((ed) => ({ ...ed, avatarCrop: normalizeAvatarCrop(c) }))}
+              />
+            </Group>
           )}
         </EditorSection>
 

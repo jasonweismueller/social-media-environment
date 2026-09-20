@@ -55,11 +55,7 @@ import {
 } from "./utils";
 
 import { Feed as IGFeed } from "./ui-posts";
-import {
-  buildRailContacts,
-  LEFT_RAIL_NAV_ITEMS,
-  LEFT_RAIL_ICONS,
-} from "./ui-posts/ui-posts-instagram";
+import { InstagramSurroundings } from "./ui-posts/ui-posts-instagram";
 import {
   ParticipantOverlay,
   ThankYouOverlay,
@@ -384,247 +380,6 @@ function getSurveyCompletionConfig(survey) {
     messageHtml,
     code,
   };
-}
-
-/* ---------- IG rails skeleton ---------- */
-
-function RailBox({ largeAvatar = false }) {
-  return (
-    <div className="ghost-card box" style={{ padding: ".8rem", borderRadius: 14 }}>
-      <div className="ghost-profile" style={{ padding: 0 }}>
-        <div className={`ghost-avatar ${largeAvatar ? "xl online" : ""}`} />
-        <div className="ghost-lines" style={{ flex: 1 }}>
-          <div className="ghost-line w-60" />
-          <div className="ghost-line w-35" />
-        </div>
-      </div>
-      <div className="ghost-row">
-        <div className="ghost-line w-70" />
-      </div>
-      <div className="ghost-row">
-        <div className="ghost-line w-45" />
-      </div>
-    </div>
-  );
-}
-
-function RailBanner({ tall = false }) {
-  return (
-    <div
-      className="ghost-card banner"
-      style={{ height: tall ? 220 : 170, borderRadius: 14 }}
-    />
-  );
-}
-
-function RailList({ rows = 4 }) {
-  return (
-    <div className="ghost-list" style={{ borderRadius: 14, padding: ".55rem" }}>
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="ghost-item icon">
-          <div className="ghost-icon" />
-          <div className="ghost-title" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RailStack({ children }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "14px",
-        width: "100%",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function PageWithRails({ children, flags, runSeed, app, projectId, feedId }) {
-  const [rightCount, setRightCount] = useState(12);
-
-  useEffect(() => {
-    const compute = () => {
-      const railGap = 30;
-      const railH = (window.innerHeight || 900) - railGap;
-      const H_BANNER = 170 + 14;
-      const H_TBANNER = 220 + 14;
-      const H_BOX = 120 + 14;
-      const H_LIST = 110 + 14;
-      const fixedTop = H_TBANNER;
-      let remaining = Math.max(railH - fixedTop - H_BANNER, 0);
-      const patternHeights = [H_BOX, H_LIST, H_BOX];
-      let n = 0;
-      let acc = 0;
-
-      while (acc + patternHeights[n % patternHeights.length] <= remaining) {
-        acc += patternHeights[n % patternHeights.length];
-        n += 1;
-        if (n > 50) break;
-      }
-
-      const safeCount = Math.max(8, Math.min(n, 30));
-      setRightCount(safeCount);
-    };
-
-    compute();
-    window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
-  }, []);
-
-  // Same "this component, not Feed's own internal rails" reasoning as
-  // App-facebook.jsx's PageWithRails — IGFeed (ui-posts-instagram.jsx)
-  // doesn't render any rail markup at all (confirmed: no showRails prop or
-  // double-render risk to guard against here, unlike Facebook's), so this
-  // is the only place "Realistic surroundings" can have any visible effect
-  // for Instagram.
-  const realisticOn = !!flags?.realistic_surroundings;
-  const [suggestions, setSuggestions] = useState([]);
-
-  // Real Instagram's "Suggested for you" is a short, fixed-length list
-  // capped by a "See all" link, not a height-filling list the way
-  // Facebook's own contacts rail is (that one has no equivalent "See all"
-  // escape hatch, so it makes sense for it to fill available space instead)
-  // — matches the real reference screenshot exactly (5 suggestions), and
-  // per direct feedback the earlier height-driven version showed
-  // noticeably more than that on a normal-height screen.
-  const SUGGESTIONS_COUNT = 5;
-  const [messagesPillAvatar, setMessagesPillAvatar] = useState(null);
-
-  useEffect(() => {
-    if (!realisticOn) return undefined;
-    let cancelled = false;
-    (async () => {
-      // Same opt-in avatar sub-toggle as Facebook's rails — off, suggestions
-      // fall back to a blank-circle placeholder instead of a real photo, and
-      // the pool fetch is skipped entirely.
-      const showAvatars = !!flags?.realistic_surroundings_avatars;
-      const [femalePool, malePool] = showAvatars
-        ? await Promise.all([getAvatarPool("female"), getAvatarPool("male")])
-        : [[], []];
-      if (cancelled) return;
-      setSuggestions(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: SUGGESTIONS_COUNT }));
-      // One more, distinctly-seeded pick ("messages-pill", not "rail-
-      // suggest") for the floating Messages pill's avatar below, so it
-      // never happens to mirror whichever contact the suggestions list
-      // itself picked.
-      const pillPick = buildRailContacts({
-        femalePool, malePool, runSeed: `${runSeed || "run"}-messages-pill`, app, projectId, feedId, count: 1,
-      })[0];
-      setMessagesPillAvatar(pillPick?.avatarUrl || null);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [realisticOn, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
-
-  return (
-    <>
-    <div
-      className="page"
-      style={{
-        gridTemplateColumns:
-          "minmax(0,2fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,2.25fr)",
-        columnGap: "var(--gap)",
-      }}
-    >
-      {realisticOn ? (
-        <aside className="rail rail-left rail--content" aria-hidden="true">
-          <div className="rail-real-list rail-real-list--nav">
-            {LEFT_RAIL_NAV_ITEMS.map((label) => (
-              <div key={label} className="rail-real-item">
-                {LEFT_RAIL_ICONS[label]}
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
-        </aside>
-      ) : (
-        <aside className="rail rail-left" aria-hidden="true">
-          <RailStack>
-            <RailBanner tall />
-            <RailBox largeAvatar />
-            <RailList rows={5} />
-            <RailBox />
-            <RailBanner />
-          </RailStack>
-        </aside>
-      )}
-
-      <div className="container feed">{children}</div>
-
-      {realisticOn ? (
-        <aside className="rail rail-right rail--content" aria-hidden="true">
-          <div className="rail-real-title rail-real-title--row">
-            <span>Suggested for you</span>
-            <span className="rail-real-see-all">See all</span>
-          </div>
-          <div className="rail-real-list">
-            {suggestions.map((s) => (
-              <div key={s.id} className="rail-real-item rail-real-item--suggestion">
-                <span className="rail-contact-avatar-wrap">
-                  {s.avatarUrl ? (
-                    <img src={s.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
-                  ) : (
-                    <span className="rail-contact-avatar rail-contact-avatar--blank" />
-                  )}
-                </span>
-                <span className="rail-real-item-text">
-                  <span className="rail-real-item-name">{s.name}</span>
-                  <span className="rail-real-item-secondary">{s.secondary}</span>
-                </span>
-                <span className="rail-real-follow">Follow</span>
-              </div>
-            ))}
-          </div>
-        </aside>
-      ) : (
-        <aside className="rail rail-right" aria-hidden="true">
-          <RailStack>
-            <RailBanner tall />
-            {Array.from({ length: rightCount }).map((_, i) =>
-              i % 3 === 1 ? (
-                <RailList key={i} rows={4} />
-              ) : (
-                <RailBox key={i} largeAvatar={i % 5 === 0} />
-              )
-            )}
-            <RailBanner />
-          </RailStack>
-        </aside>
-      )}
-    </div>
-
-    {/* Real Instagram's floating Direct-Messages pill (bottom-right,
-        matching the real reference screenshot's actual placement) —
-        position:fixed relative to the viewport, not the rail, so it's
-        rendered as a sibling of .page rather than nested inside a rail (a
-        rail's own ghost-mode `filter` would otherwise create a containing
-        block that breaks fixed positioning; real mode resets that, but
-        staying outside avoids depending on it). Deliberately no
-        unread-count badge — see the "no red 1 notification" instruction
-        elsewhere in this session, same reasoning already applied to the
-        left-rail Messages row. */}
-    {realisticOn && (
-      <div className="floating-messages-pill" aria-hidden="true">
-        {LEFT_RAIL_ICONS.Messages}
-        <span>Messages</span>
-        <span className="rail-contact-avatar-wrap">
-          {messagesPillAvatar ? (
-            <img src={messagesPillAvatar} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
-          ) : (
-            <span className="rail-contact-avatar rail-contact-avatar--blank" />
-          )}
-        </span>
-      </div>
-    )}
-    </>
-  );
 }
 
 function elementHasImage(el) {
@@ -3252,7 +3007,7 @@ export default function App() {
                   )}
                 </div>
               ) : requiresFeedStage ? (
-                <PageWithRails flags={flags} runSeed={runSeed} app={APP} projectId={projectId} feedId={activeFeedId}>
+                <InstagramSurroundings flags={flags} runSeed={runSeed} app={APP} projectId={projectId} feedId={activeFeedId} floatingPill>
                   <div
                     style={{
                       position: "relative",
@@ -3272,6 +3027,7 @@ export default function App() {
                     >
                       {canShowFeed ? (
                         <IGFeed
+                          showRails={false}
                           posts={orderedPosts}
                           registerViewRef={registerViewRef}
                           disabled={disabled}
@@ -3451,7 +3207,7 @@ export default function App() {
                         </div>
                       )}
                   </div>
-                </PageWithRails>
+                </InstagramSurroundings>
               ) : null
             }
           />

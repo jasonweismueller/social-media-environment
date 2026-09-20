@@ -1,3 +1,4 @@
+import { CropAvatar } from "./ui-avatar-crop";
 import React, { useRef } from "react";
 import { createPortal } from "react-dom";
 import { neutralAvatarDataUrl } from "../ui-core";
@@ -127,12 +128,7 @@ export function MobileBioSheet({ open, onClose, post, onAction }) {
         />
 
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <img
-            src={bio.avatarUrl || neutralAvatarDataUrl(60)}
-            width={60}
-            height={60}
-            style={{ borderRadius: "999px", objectFit: "cover" }}
-          />
+          <CropAvatar src={bio.avatarUrl || neutralAvatarDataUrl(60)} size={60} crop={bio.avatarUrl ? bio.avatarCrop : null} />
 
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>

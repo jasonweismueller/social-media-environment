@@ -1,3 +1,4 @@
+import { CropAvatar } from "./ui-avatar-crop";
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
 import { neutralAvatarDataUrl } from "../ui-core";
@@ -54,6 +55,7 @@ const prettyUrl = (u) => u?.replace(/^https?:\/\//, "").replace(/\/$/, "");
 export function BioHoverCard({
   author,
   avatarUrl,
+  avatarCrop,
   bio,
   verified,
   anchorEl,
@@ -121,12 +123,7 @@ export function BioHoverCard({
       }}
     >
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        <img
-          src={avatarUrl || neutralAvatarDataUrl(60)}
-          width={60}
-          height={60}
-          style={{ borderRadius: "999px", objectFit: "cover" }}
-        />
+        <CropAvatar src={avatarUrl || neutralAvatarDataUrl(60)} size={60} crop={avatarUrl ? avatarCrop : null} />
 
         <div style={{ maxWidth: 260 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>

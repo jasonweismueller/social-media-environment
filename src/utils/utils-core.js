@@ -46,6 +46,23 @@ export function getImageCropStyle({ focalX = 50, focalY = 50, zoom = 1 } = {}) {
   return style;
 }
 
+// A post's own avatar framing ({focalX, focalY, zoom}, posts.avatar_crop). Returns
+// null for "no custom framing" (missing/invalid/exactly the default centred crop) so
+// callers can keep the original plain-<img> rendering byte-for-byte for every
+// existing post, and only take the cropped path when an admin actually framed one.
+export function normalizeAvatarCrop(value) {
+  let v = value;
+  if (typeof v === "string") {
+    try { v = JSON.parse(v); } catch { return null; }
+  }
+  if (!v || typeof v !== "object") return null;
+  const fx = clamp(Number.isFinite(+v.focalX) ? +v.focalX : 50, 0, 100);
+  const fy = clamp(Number.isFinite(+v.focalY) ? +v.focalY : 50, 0, 100);
+  const z = clamp(Number.isFinite(+v.zoom) ? +v.zoom : 1, IMAGE_CROP_MIN_ZOOM, IMAGE_CROP_MAX_ZOOM);
+  if (fx === 50 && fy === 50 && z === 1) return null;
+  return { focalX: Math.round(fx), focalY: Math.round(fy), zoom: z };
+}
+
 export const abbr =
   (n) =>
     n >= 1e6 ? (n / 1e6).toFixed(1) + "M"

@@ -3,12 +3,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { Modal, neutralAvatarDataUrl, PostText } from "../ui-core";
 import { IGCarousel } from "../ui-core/ui-ig-carousel";
-import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getAvatarPoolForPost, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType, getImageCropStyle } from "../utils";
+import { useInViewAutoplay, displayTimeForPost, getAvatarPool, getAvatarPoolForPost, getImagePool, pickDeterministic, pickUniqueDeterministic, fakeNamesFor, randomizeBioStats, fallbackEngagementStats, ghostCommentVariant, MAX_GHOST_COMMENTS, resolvePostAuthorType, getImageCropStyle, normalizeAvatarCrop } from "../utils";
 import { applyPostRandomizationExclusions } from "../utils";
 import { IG_FEMALE_NAMES, IG_MALE_NAMES, IG_COMPANY_NAMES } from "./names";
 import { MobileSheet, ShareSheet, useSwipeToClose} from "./ui-post-mobile-instagram";
 import { ShareSheetDesktop } from "./ui-post-desktop-instagram";
 import { BioHoverCard } from "./ui-posts-bio-instagram";
+import { CropAvatar } from "./ui-avatar-crop";
 import { MobileBioSheet } from "./ui-posts-bio-mobile-instagram";
 
 console.log("randomizeBioStats imported:", randomizeBioStats);
@@ -540,6 +541,9 @@ const poolNames =
   // show blank instead of the raw stored avatar, so a participant never
   // sees one photo swap to a different person's photo a moment later.
   const effectiveAvatarUrl = randAvatarOn ? (randAvatarUrl || "") : (avatarUrl || "");
+  // Admin framing (posts.avatar_crop) applies only to the post's own avatar — a
+  // randomized pool avatar is already a square headshot and must not be re-cropped.
+  const avatarCrop = randAvatarOn ? null : normalizeAvatarCrop(post?.avatarCrop);
 
   // ---- Image randomization (topic-based; when available) ----
   const [randImageUrl, setRandImageUrl] = useState(null);
@@ -958,6 +962,7 @@ const displayBio = useMemo(() => {
     id: post.id,
     author: displayAuthor,       // NEW
     avatarUrl: effectiveAvatarUrl, // NEW
+    avatarCrop,                    // posts.avatar_crop framing (own avatar only)
     badge: post.badge,             // NEW
     aiGenerated: !!post.aiGenerated,
     bio_posts: post.bio_posts,
@@ -1002,12 +1007,25 @@ const displayBio = useMemo(() => {
       <header className="insta-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           {effectiveAvatarUrl ? (
-       <img
+       avatarCrop ? (
+  <span
+    {...attachBioHover(avatarRef)}
+    style={{ display: "inline-block", width: 34, height: 34, borderRadius: "999px", overflow: "hidden", flex: "0 0 auto", lineHeight: 0, cursor: post.showBio ? "pointer" : "default" }}
+  >
+    <img
+      src={effectiveAvatarUrl}
+      alt=""
+      style={{ width: "100%", height: "100%", display: "block", ...getImageCropStyle(avatarCrop) }}
+    />
+  </span>
+) : (
+<img
   {...attachBioHover(avatarRef)}
   src={effectiveAvatarUrl}
   alt=""
   style={{ width: 34, height: 34, borderRadius: "999px", objectFit: "cover",cursor: post.showBio ? "pointer" : "default"}}
 />
+)
           ) : (
             <div style={{ width: 34, height: 34, borderRadius: "999px", background: "#e5e7eb" }} />
           )}
@@ -1760,13 +1778,7 @@ marginTop: "auto",
               }}
             >
               {effectiveAvatarUrl ? (
-                <img
-                  src={effectiveAvatarUrl}
-                  alt={displayAuthor}
-                  width={32}
-                  height={32}
-                  style={{ borderRadius: "999px", objectFit: "cover" }}
-                />
+                <CropAvatar src={effectiveAvatarUrl} alt={displayAuthor} size={32} crop={avatarCrop} />
               ) : (
                 <div
                   style={{
@@ -1793,13 +1805,7 @@ marginTop: "auto",
                   padding: "14px 16px 8px 16px",
                 }}
               >
-                <img
-                  src={effectiveAvatarUrl || neutralAvatarDataUrl(32)}
-                  alt={displayAuthor}
-                  width={32}
-                  height={32}
-                  style={{ borderRadius: "999px", objectFit: "cover" }}
-                />
+                <CropAvatar src={effectiveAvatarUrl || neutralAvatarDataUrl(32)} alt={displayAuthor} size={32} crop={effectiveAvatarUrl ? avatarCrop : null} />
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
@@ -2072,6 +2078,7 @@ marginTop: "auto",
     anchorEl={hoverTargetEl}
     author={displayAuthor}
     avatarUrl={effectiveAvatarUrl}
+    avatarCrop={avatarCrop}
     bio={displayBio}        
     verified={!!post.badge}
     hideHover={hideHover}
@@ -2098,7 +2105,259 @@ marginTop: "auto",
 }
 
 /* ---------------- Feed (IG) ---------------- */
-export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed, submitButtonLabel = "Submit" }) {
+/* ---------- IG rails: ghost skeleton pieces + shared surroundings wrapper ---------- */
+
+function RailBox({ largeAvatar = false }) {
+  return (
+    <div className="ghost-card box" style={{ padding: ".8rem", borderRadius: 14 }}>
+      <div className="ghost-profile" style={{ padding: 0 }}>
+        <div className={`ghost-avatar ${largeAvatar ? "xl online" : ""}`} />
+        <div className="ghost-lines" style={{ flex: 1 }}>
+          <div className="ghost-line w-60" />
+          <div className="ghost-line w-35" />
+        </div>
+      </div>
+      <div className="ghost-row">
+        <div className="ghost-line w-70" />
+      </div>
+      <div className="ghost-row">
+        <div className="ghost-line w-45" />
+      </div>
+    </div>
+  );
+}
+
+function RailBanner({ tall = false }) {
+  return (
+    <div
+      className="ghost-card banner"
+      style={{ height: tall ? 220 : 170, borderRadius: 14 }}
+    />
+  );
+}
+
+function RailList({ rows = 4 }) {
+  return (
+    <div className="ghost-list" style={{ borderRadius: 14, padding: ".55rem" }}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="ghost-item icon">
+          <div className="ghost-icon" />
+          <div className="ghost-title" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RailStack({ children }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "14px",
+        width: "100%",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// `floatingPill` is opt-in: the real participant page (App-instagram.jsx) turns it on,
+// but Feed's own default rendering (the admin Feed Preview) leaves it off — the pill is
+// position:fixed, so inside a preview modal it would escape the modal and cover the
+// whole admin page.
+export function InstagramSurroundings({ children, flags, runSeed, app, projectId, feedId, floatingPill = false }) {
+  const [rightCount, setRightCount] = useState(12);
+
+  useEffect(() => {
+    const compute = () => {
+      const railGap = 30;
+      const railH = (window.innerHeight || 900) - railGap;
+      const H_BANNER = 170 + 14;
+      const H_TBANNER = 220 + 14;
+      const H_BOX = 120 + 14;
+      const H_LIST = 110 + 14;
+      const fixedTop = H_TBANNER;
+      let remaining = Math.max(railH - fixedTop - H_BANNER, 0);
+      const patternHeights = [H_BOX, H_LIST, H_BOX];
+      let n = 0;
+      let acc = 0;
+
+      while (acc + patternHeights[n % patternHeights.length] <= remaining) {
+        acc += patternHeights[n % patternHeights.length];
+        n += 1;
+        if (n > 50) break;
+      }
+
+      const safeCount = Math.max(8, Math.min(n, 30));
+      setRightCount(safeCount);
+    };
+
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+
+  // Shared by the real participant page (App-instagram.jsx, which passes Feed
+  // showRails={false} so Feed doesn't render a second copy) and by Feed itself
+  // when mounted standalone (showRails, the default — the admin Feed Preview),
+  // same pattern Facebook's/X's Feed already use. This used to live only in
+  // App-instagram.jsx, which is why the admin preview never showed Instagram's
+  // surroundings even with the toggle on.
+  const realisticOn = !!flags?.realistic_surroundings;
+  const [suggestions, setSuggestions] = useState([]);
+
+  // Real Instagram's "Suggested for you" is a short, fixed-length list
+  // capped by a "See all" link, not a height-filling list the way
+  // Facebook's own contacts rail is (that one has no equivalent "See all"
+  // escape hatch, so it makes sense for it to fill available space instead)
+  // — matches the real reference screenshot exactly (5 suggestions), and
+  // per direct feedback the earlier height-driven version showed
+  // noticeably more than that on a normal-height screen.
+  const SUGGESTIONS_COUNT = 5;
+  const [messagesPillAvatar, setMessagesPillAvatar] = useState(null);
+
+  useEffect(() => {
+    if (!realisticOn) return undefined;
+    let cancelled = false;
+    (async () => {
+      // Same opt-in avatar sub-toggle as Facebook's rails — off, suggestions
+      // fall back to a blank-circle placeholder instead of a real photo, and
+      // the pool fetch is skipped entirely.
+      const showAvatars = !!flags?.realistic_surroundings_avatars;
+      const [femalePool, malePool] = showAvatars
+        ? await Promise.all([getAvatarPool("female"), getAvatarPool("male")])
+        : [[], []];
+      if (cancelled) return;
+      setSuggestions(buildRailContacts({ femalePool, malePool, runSeed, app, projectId, feedId, count: SUGGESTIONS_COUNT }));
+      // One more, distinctly-seeded pick ("messages-pill", not "rail-
+      // suggest") for the floating Messages pill's avatar below, so it
+      // never happens to mirror whichever contact the suggestions list
+      // itself picked.
+      const pillPick = buildRailContacts({
+        femalePool, malePool, runSeed: `${runSeed || "run"}-messages-pill`, app, projectId, feedId, count: 1,
+      })[0];
+      setMessagesPillAvatar(pillPick?.avatarUrl || null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [realisticOn, runSeed, app, projectId, feedId, flags?.realistic_surroundings_avatars]);
+
+  return (
+    <>
+    <div
+      className="page"
+      style={{
+        gridTemplateColumns:
+          "minmax(0,2fr) minmax(var(--feed-min), var(--feed-max)) minmax(0,2.25fr)",
+        columnGap: "var(--gap)",
+      }}
+    >
+      {realisticOn ? (
+        <aside className="rail rail-left rail--content" aria-hidden="true">
+          <div className="rail-real-list rail-real-list--nav">
+            {LEFT_RAIL_NAV_ITEMS.map((label) => (
+              <div key={label} className="rail-real-item">
+                {LEFT_RAIL_ICONS[label]}
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-left" aria-hidden="true">
+          <RailStack>
+            <RailBanner tall />
+            <RailBox largeAvatar />
+            <RailList rows={5} />
+            <RailBox />
+            <RailBanner />
+          </RailStack>
+        </aside>
+      )}
+
+      <div className="container feed">{children}</div>
+
+      {realisticOn ? (
+        <aside className="rail rail-right rail--content" aria-hidden="true">
+          <div className="rail-real-title rail-real-title--row">
+            <span>Suggested for you</span>
+            <span className="rail-real-see-all">See all</span>
+          </div>
+          <div className="rail-real-list">
+            {suggestions.map((s) => (
+              <div key={s.id} className="rail-real-item rail-real-item--suggestion">
+                <span className="rail-contact-avatar-wrap">
+                  {s.avatarUrl ? (
+                    <img src={s.avatarUrl} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+                  ) : (
+                    <span className="rail-contact-avatar rail-contact-avatar--blank" />
+                  )}
+                </span>
+                <span className="rail-real-item-text">
+                  <span className="rail-real-item-name">{s.name}</span>
+                  <span className="rail-real-item-secondary">{s.secondary}</span>
+                </span>
+                <span className="rail-real-follow">Follow</span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : (
+        <aside className="rail rail-right" aria-hidden="true">
+          <RailStack>
+            <RailBanner tall />
+            {Array.from({ length: rightCount }).map((_, i) =>
+              i % 3 === 1 ? (
+                <RailList key={i} rows={4} />
+              ) : (
+                <RailBox key={i} largeAvatar={i % 5 === 0} />
+              )
+            )}
+            <RailBanner />
+          </RailStack>
+        </aside>
+      )}
+    </div>
+
+    {/* Real Instagram's floating Direct-Messages pill (bottom-right,
+        matching the real reference screenshot's actual placement) —
+        position:fixed relative to the viewport, not the rail, so it's
+        rendered as a sibling of .page rather than nested inside a rail (a
+        rail's own ghost-mode `filter` would otherwise create a containing
+        block that breaks fixed positioning; real mode resets that, but
+        staying outside avoids depending on it). Deliberately no
+        unread-count badge — see the "no red 1 notification" instruction
+        elsewhere in this session, same reasoning already applied to the
+        left-rail Messages row. */}
+    {realisticOn && floatingPill && (
+      <div className="floating-messages-pill" aria-hidden="true">
+        {LEFT_RAIL_ICONS.Messages}
+        <span>Messages</span>
+        <span className="rail-contact-avatar-wrap">
+          {messagesPillAvatar ? (
+            <img src={messagesPillAvatar} alt="" className="rail-contact-avatar" loading="lazy" decoding="async" />
+          ) : (
+            <span className="rail-contact-avatar rail-contact-avatar--blank" />
+          )}
+        </span>
+      </div>
+    )}
+    </>
+  );
+}
+
+
+export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, app, projectId, feedId, runSeed, submitButtonLabel = "Submit",
+  // Default true so a standalone mount (the admin Feed Preview) renders the same
+  // left/right surroundings a participant sees. App-instagram.jsx nests this Feed
+  // inside its own <InstagramSurroundings> (which also carries the floating
+  // Messages pill) and passes showRails={false} so the rails aren't drawn twice.
+  showRails = true,
+}) {
   const STEP = 6;
   const FIRST = Math.min(8, posts.length || 0);
   const [visibleCount, setVisibleCount] = useState(FIRST);
@@ -2126,7 +2385,7 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
 
   const renderPosts = useMemo(() => posts.slice(0, visibleCount), [posts, visibleCount]);
 
-  return (
+  const feedBody = (
     <div className="feed-wrap">
       {isMobile && <StoryBar />}
 
@@ -2162,6 +2421,14 @@ export function Feed({ posts, registerViewRef, disabled, log, onSubmit, flags, a
 )}
       </main>
     </div>
+  );
+
+  return showRails ? (
+    <InstagramSurroundings flags={flags} runSeed={runSeed} app={app} projectId={projectId} feedId={feedId}>
+      {feedBody}
+    </InstagramSurroundings>
+  ) : (
+    feedBody
   );
 }
 
