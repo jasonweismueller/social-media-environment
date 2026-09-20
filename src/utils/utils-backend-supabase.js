@@ -163,6 +163,25 @@ export async function supabaseAdminTouch() {
   }
 }
 
+// Subscribes to the Supabase SDK's own auth events (TOKEN_REFRESHED, SIGNED_OUT,
+// ... — also broadcast across tabs). Used by utils-backend.js's
+// startAdminSessionSync() to keep this app's separate localStorage copy of the
+// access token + expiry in step with the token the SDK actually holds, the
+// instant the SDK renews it, instead of whenever the next poll happens to run.
+// The callback must stay synchronous (the SDK holds an internal lock while it
+// runs; awaiting another supabase call inside it can deadlock).
+export function supabaseOnAuthChange(callback) {
+  try {
+    const supabase = getSupabaseClient();
+    const { data } = supabase.auth.onAuthStateChange((event, session) => callback(event, session));
+    return () => {
+      try { data?.subscription?.unsubscribe(); } catch {}
+    };
+  } catch {
+    return () => {};
+  }
+}
+
 // `feeds.id` is a synthetic `<project_id>::<app>::<feed_id>` key, not the
 // bare feed_id — see supabase/README.md "Design decisions" and migration
 // 20260801000011_fix_feed_id_collisions.sql (real feed_ids like "feed_1"

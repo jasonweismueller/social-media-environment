@@ -14,6 +14,7 @@ import {
   supabaseAdminSignIn,
   supabaseAdminSignOut,
   supabaseAdminTouch,
+  supabaseOnAuthChange,
   supabaseSetPasswordFromInvite,
   supabaseSetOwnUsername,
   supabaseListProjects,
@@ -3404,6 +3405,60 @@ export async function touchAdminSession() {
   }
 }
 
+// Rebuilds this app's own admin-session record (the localStorage mirror every
+// getAdmin*() getter reads) from the Supabase SDK's persisted session. The mirror
+// only holds the ACCESS token's expiry (~1 hour) — but the SDK also persists a
+// long-lived refresh token and can silently mint a new access token from it, so
+// "the mirror lapsed" (laptop asleep, tab left idle for an hour, browser
+// restarted) is NOT the same as "the user is signed out". Called on admin-route
+// load before falling back to the login form. Resolves true only if a real,
+// enabled admin session came back. GAS mode has no refresh token, so it's a no-op
+// there (touchAdminSession requires a still-valid local token).
+export async function restoreAdminSession() {
+  try {
+    const res = await touchAdminSession();
+    return !!res?.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Keeps the mirrored access token + expiry in step with the SDK's own silent
+// refresh. Without this, the SDK renewed the token (at ~90s before expiry) while
+// the mirror kept the OLD expiry until the dashboard's next 4-minute poll — so
+// the app could declare the session "expiring"/"expired" (banner, overlay, and
+// getAdminToken() wiping the mirror) for a session the SDK had already renewed.
+// Only ever refreshes an EXISTING mirror (never creates a partial one without
+// role/email — touchAdminSession() owns full creation). Idempotent; returns a
+// stop function. Supabase backend only.
+let _adminSessionSyncStop = null;
+export function startAdminSessionSync() {
+  if (!isSupabaseBackend()) return () => {};
+  if (_adminSessionSyncStop) return _adminSessionSyncStop;
+
+  const unsubscribe = supabaseOnAuthChange((event, session) => {
+    try {
+      if (event === "SIGNED_OUT") {
+        // Signed out in another tab (or the account was disabled): mirror must
+        // follow, or this tab keeps a token the server will now reject.
+        clearAdminSession();
+        return;
+      }
+      if (event !== "TOKEN_REFRESHED" && event !== "SIGNED_IN" && event !== "USER_UPDATED") return;
+      if (!session?.access_token || !session?.expires_at) return;
+      if (!localStorage.getItem(ADMIN_TOKEN_KEY)) return; // no mirror to refresh
+      localStorage.setItem(ADMIN_TOKEN_KEY, session.access_token);
+      localStorage.setItem(ADMIN_TOKEN_EXP_KEY, String(Number(session.expires_at) * 1000));
+    } catch {}
+  });
+
+  _adminSessionSyncStop = () => {
+    try { unsubscribe(); } catch {}
+    _adminSessionSyncStop = null;
+  };
+  return _adminSessionSyncStop;
+}
+
 // Completes an invite/recovery link — AdminSetPassword.jsx (mounted at
 // /admin when isPendingAuthRedirect() is true, utils-core.js) calls this,
 // then touchAdminSession() to bridge the now-real session into this app's
@@ -3445,11 +3500,47 @@ export function getAdminSecondsLeft() {
   return Math.max(0, Math.floor((exp - Date.now()) / 1000));
 }
 
-export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, onExpired } = {}) {
+// `tryRenew` (optional, async, resolves true when the session was renewed): before
+// the watcher shows a warning or declares the session expired it first asks for a
+// silent renewal (touchAdminSession -> the SDK's refresh token), holding the UI
+// while that's in flight, and only surfaces the warning/expired state if the
+// renewal fails. Retried at most every RENEW_RETRY_MS while still needed. Without
+// it (or if renewal genuinely can't succeed — signed out elsewhere, disabled
+// account, refresh token expired, offline) behaviour is exactly as before.
+const RENEW_RETRY_MS = 15000;
+
+export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, onExpired, tryRenew } = {}) {
   let firedExpired = false;
+  let renewing = false;
+  let lastRenewAt = 0;
+  let stopped = false;
+
+  const maybeRenew = () => {
+    if (!tryRenew || renewing) return;
+    if (Date.now() - lastRenewAt < RENEW_RETRY_MS) return;
+    renewing = true;
+    lastRenewAt = Date.now();
+    Promise.resolve()
+      .then(tryRenew)
+      .then((ok) => {
+        if (ok) firedExpired = false;
+      })
+      .catch(() => {})
+      .finally(() => {
+        renewing = false;
+        if (!stopped) tick();
+      });
+  };
 
   const tick = () => {
+    if (stopped) return;
     const left = getAdminSecondsLeft();
+    const needsAttention = left == null || left <= warnAtSec;
+    if (needsAttention) maybeRenew();
+    // Hold the warning/expired UI while a renewal attempt is in flight — most of
+    // the time it succeeds within a moment and the user never sees a flash.
+    if (renewing) return;
+
     if (left == null) {
       if (!firedExpired) {
         firedExpired = true;
@@ -3469,7 +3560,10 @@ export function startSessionWatch({ warnAtSec = 120, tickMs = 1000, onExpiring, 
 
   const id = setInterval(tick, tickMs);
   tick();
-  return () => clearInterval(id);
+  return () => {
+    stopped = true;
+    clearInterval(id);
+  };
 }
 
 export function setAdminSession({ token, ttlSec, role, email, username, aiAnalysisEnabled } = {}) {

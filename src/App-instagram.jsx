@@ -20,6 +20,7 @@ import {
   buildParticipantRow,
   computeFeedId,
   hasAdminSession,
+  restoreAdminSession,
   adminLogout,
   listFeedsFromBackend,
   getFeedIdFromUrl,
@@ -939,6 +940,10 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [events, setEvents] = useState([]);
   const [adminAuthed, setAdminAuthed] = useState(false);
+  // True only while a lapsed local admin session is being silently renewed from the
+  // Supabase refresh token on load (see the restore effect below) — keeps AdminEntry
+  // from flashing the login form for a session that is about to come back.
+  const [adminRestoring, setAdminRestoring] = useState(() => !!onAdmin && !hasAdminSession());
 
   const [vpOff, setVpOff] = useState({ top: 0, bottom: 0 });
   const [showSkeletonLayer, setShowSkeletonLayer] = useState(true);
@@ -1914,7 +1919,20 @@ export default function App() {
   }, [activeFeedId, activeSurveyId, startBoot]);
 
   useEffect(() => {
-    if (onAdmin && hasAdminSession()) setAdminAuthed(true);
+    if (!onAdmin) { setAdminRestoring(false); return undefined; }
+    if (hasAdminSession()) { setAdminAuthed(true); setAdminRestoring(false); return undefined; }
+    // The local record lapsed (idle tab, sleep, restart) — but the Supabase SDK
+    // may still hold a valid refresh token. Try a silent renewal before showing
+    // the login form.
+    let cancelled = false;
+    setAdminRestoring(true);
+    (async () => {
+      const ok = await restoreAdminSession();
+      if (cancelled) return;
+      if (ok) setAdminAuthed(true);
+      setAdminRestoring(false);
+    })();
+    return () => { cancelled = true; };
   }, [onAdmin]);
 
   const shouldShowPreface =
@@ -3217,6 +3235,7 @@ export default function App() {
             element={
               <AdminEntry
                 adminAuthed={adminAuthed}
+                adminRestoring={adminRestoring}
                 onAuth={() => setAdminAuthed(true)}
                 currentApp="ig"
                 posts={posts}

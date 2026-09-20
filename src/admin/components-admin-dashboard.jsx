@@ -750,6 +750,16 @@ export function AdminDashboard({
         setSessExpired(true);
         setSessExpiringSec(0);
       },
+      // Try a silent renewal (Supabase refresh token) BEFORE showing the
+      // "expiring"/"expired" UI — it only appears if that genuinely fails.
+      tryRenew: async () => {
+        const res = await touchAdminSession();
+        if (!res?.ok) return false;
+        const left = getAdminSecondsLeft();
+        if (left != null && left > 120) setSessExpiringSec(null);
+        setSessExpired(false);
+        return true;
+      },
     });
     return stop;
   }, []);
