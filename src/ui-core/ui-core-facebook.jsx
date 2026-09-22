@@ -279,12 +279,59 @@ export function SkeletonFeed() {
   );
 }
 
+// --------------------------- Caption clamping -------------------------------
+// Ported from ui-core-instagram.jsx's PostText fix (2026-09-19, see CLAUDE.md
+// "Instagram caption '… more': inline after the last visible word") — same
+// bug class here: the old CSS line-clamp + absolutely-positioned `.fade-more`
+// put "See more" pinned to the block's right edge, which left a big gap after
+// a short first line and, for a caption with a blank line early on, put
+// "See more" on that blank line instead of after the real last visible word.
+//
+// The collapsed text now stops at the first paragraph break (a blank line)
+// or after FB_TEXT_MAX_LINES lines, whichever comes first, and "See more"
+// renders inline directly after the last visible word — found by measuring,
+// not guessed: a hidden probe (same class/width as the real text) is filled
+// with candidate text + "See more" and binary-searched for the longest
+// prefix that still fits the line budget. Facebook's own line budget (3,
+// matching the pre-existing `.text.clamp{max-height:3em}` CSS) is kept as-is
+// — only the cut point and "See more" placement change, not how much text
+// shows before this fix. Facebook's PostText has no @mention linkification
+// (unlike Instagram's), so there's no HTML to inject beyond a plain escape
+// of the caption itself, and `prefix` here is (as before) a plain string
+// used only for the `${prefix}_text_clamped` event name — Facebook's own
+// caption never has an inline username prefix the way Instagram's does, so
+// nothing analogous to Instagram's `prefix` JSX-element/username handling is
+// ported. "See less" (Facebook-only — real Instagram has no collapse-back
+// affordance, matching ui-core-instagram.jsx's PostText not supporting one)
+// is preserved unchanged.
+const FB_TEXT_MAX_LINES = 3;
+
+function fbEscapeHtmlForProbe(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onAction, prefix, postId }) {
   const pRef = React.useRef(null);
+  const wrapRef = React.useRef(null);
+  const probeRef = React.useRef(null);
   const [needsClamp, setNeedsClamp] = React.useState(false);
   const [wasClamped, setWasClamped] = React.useState(false);
+  // { src, value }: `value` is the truncated text for the exact `text` it was
+  // measured against (null = fits, no truncation). Keyed by src so a stale
+  // cut can never render against a different caption.
+  const [cutState, setCutState] = React.useState({ src: null, value: null });
+  const [, setLayoutTick] = React.useState(0);
   const sentClampRef = React.useRef(false);
+  const lastSigRef = React.useRef("");
+  const lastWidthRef = React.useRef(0);
+  const cut = cutState.src === text ? cutState.value : null;
 
+  // Legacy CSS-clamp overflow check — only relevant while `cut` is null
+  // (first paint, before the measured cut lands, or when measuring isn't
+  // possible at all).
   React.useEffect(() => {
     const el = pRef.current;
     if (!el) return;
@@ -308,10 +355,102 @@ export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onActi
     return () => { ro.disconnect(); window.removeEventListener('resize', check); };
   }, [text, expanded, onClamp]);
 
+  // Re-measure when the text's width changes or webfonts finish loading.
+  React.useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const bump = () => setLayoutTick((t) => t + 1);
+    const ro = new ResizeObserver(() => {
+      if (wrap.clientWidth !== lastWidthRef.current) bump();
+    });
+    ro.observe(wrap);
+    if (document.fonts?.ready) document.fonts.ready.then(bump).catch(() => {});
+    return () => ro.disconnect();
+  }, []);
+
+  // Measure + decide the cut, before paint. No dependency array on purpose:
+  // the signature check below makes re-runs on an unchanged caption a no-op.
+  React.useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const probe = probeRef.current;
+    if (expanded || !wrap || !probe || typeof getComputedStyle !== "function") return;
+
+    const width = wrap.clientWidth;
+    lastWidthRef.current = width;
+    const fontsReady = document.fonts?.status === "loaded" ? "1" : "0";
+    const sig = JSON.stringify([text, width, fontsReady]);
+    if (sig === lastSigRef.current && cutState.src === text) return;
+    lastSigRef.current = sig;
+    if (!width) return;
+
+    const norm = String(text ?? "").replace(/\r\n?/g, "\n").replace(/^\s+/, "");
+    const blank = norm.search(/\n[ \t]*\n/);
+    const para = (blank === -1 ? norm : norm.slice(0, blank)).replace(/\s+$/, "");
+    const hasRest = blank !== -1 && norm.slice(blank).trim().length > 0;
+
+    const cs = getComputedStyle(probe);
+    const lineH = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+    const limit = lineH * FB_TEXT_MAX_LINES + 1;
+    const moreHtml = '<span class="more-inline">… <span class="see-more">See more</span></span>';
+    const fits = (n, withMore) => {
+      probe.innerHTML = fbEscapeHtmlForProbe(para.slice(0, n)) + (withMore ? moreHtml : "");
+      return probe.scrollHeight <= limit;
+    };
+
+    let next = null; // null = whole text fits, show it as-is
+    if (hasRest || !fits(para.length, false)) {
+      // Largest prefix length that still fits FB_TEXT_MAX_LINES lines
+      // together with the inline "… See more".
+      let lo = 0;
+      let hi = para.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (fits(mid, true)) lo = mid;
+        else hi = mid - 1;
+      }
+      let n = lo;
+      // Prefer ending on a word boundary over slicing a word in half.
+      if (n < para.length && n > 0 && !/\s/.test(para[n]) && !/\s/.test(para[n - 1])) {
+        const ws = Math.max(para.lastIndexOf(" ", n - 1), para.lastIndexOf("\n", n - 1));
+        if (ws > 0 && n - ws <= 24) n = ws;
+      }
+      // Never split a surrogate pair (emoji).
+      if (n > 0 && /[\uD800-\uDBFF]/.test(para[n - 1])) n -= 1;
+      next = para.slice(0, n).replace(/\s+$/, "");
+    }
+    probe.innerHTML = "";
+
+    setCutState((prev) =>
+      prev.src === text && prev.value === next ? prev : { src: text, value: next }
+    );
+    if (next != null) {
+      setWasClamped(true);
+      if (!sentClampRef.current) {
+        sentClampRef.current = true;
+        onClamp?.();
+        onAction?.(prefix ? `${prefix}_text_clamped` : "text_clamped", { post_id: postId });
+      }
+    }
+  });
+
+  const showInlineMore = !expanded && cut != null;
+  const expand = (e) => { e.preventDefault(); e.stopPropagation(); onExpand(); };
+
   return (
-    <div className="text-wrap">
-      <p ref={pRef} className={`text ${!expanded ? "clamp" : ""}`}>{text}</p>
-      {!expanded && needsClamp && (
+    <div className="text-wrap" ref={wrapRef}>
+      <p ref={pRef} className={`text ${!expanded && cut == null ? "clamp" : ""} ${needsClamp && cut == null ? "needs" : ""}`}>
+        {showInlineMore ? cut : text}
+        {showInlineMore && (
+          <span className="more-inline">
+            <span aria-hidden="true">… </span>
+            <button type="button" className="see-more" onClick={expand}>
+              See more
+            </button>
+          </span>
+        )}
+      </p>
+
+      {!expanded && cut == null && needsClamp && (
         <div className="fade-more">
           <span className="dots" aria-hidden="true">…</span>
           <button
@@ -323,6 +462,7 @@ export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onActi
           </button>
         </div>
       )}
+
       {expanded && wasClamped && (
         <button
           type="button"
@@ -332,6 +472,26 @@ export function PostText({ text, expanded, onExpand, onCollapse, onClamp, onActi
           See less
         </button>
       )}
+
+      {/* Off-screen measuring copy — see the comment above PostText. */}
+      <span
+        ref={probeRef}
+        aria-hidden="true"
+        className="text"
+        style={{
+          margin: 0,
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          visibility: "hidden",
+          pointerEvents: "none",
+          display: "block",
+          whiteSpace: "pre-wrap",
+          overflow: "hidden",
+          height: "auto",
+        }}
+      />
     </div>
   );
 }

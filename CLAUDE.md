@@ -2487,3 +2487,125 @@ default *global* scope and revokes every session — or refresh-token reuse acro
 `admin-session-lost` from the platform picker → login form, label gone. **Not verified**: a real logged-in
 switch on real Supabase, the real cross-tab sign-out path, the cache-key fix against real colliding feeds.
 Working tree was on `production` (no staging soak unless routed through `main`).
+
+## New: "Download post images (.zip)" — one PNG per post, for OSF uploads (2026-09-22)
+
+Direct request: "Export PDF" (Feeds → Sharing & export) opens the browser print dialog against a
+hand-built HTML reimplementation of a post (`buildRenderedFeedExportHtml`, not the real component —
+so it can drift from what a participant actually sees) and produces one long document, not a folder
+of images ready to drop into an OSF repository for research-transparency purposes. Investigated
+before building anything: confirmed the PDF export's slowness/flakiness is structural, not just
+perception — it writes HTML into a hidden iframe and calls `print()` after a fixed ~700ms timeout
+with no wait for images to actually finish loading, so a feed with several post images is racing the
+print dialog against network requests.
+
+**New "Download post images (.zip)" button, same "Sharing & export" card.** `FeedImageZipExporter`
+(`components-admin-dashboard.jsx`) renders **every post of the current feed at once**, off-screen
+(`position:fixed; left:-99999px` — deliberately not `display:none`, which would skip layout/paint
+entirely and give html-to-image a zero-size node), using the **real, currently-bundled top-level
+`PostCard`** for the current app (`import { PostCard } from "../ui-posts"`) — the same per-app
+dispatch every other admin preview (`FeedPreviewModal`, `SurveyPreviewModal`) already goes through,
+not a second hand-rolled template. Each post is wrapped in a minimal version of its app's real layout
+context (`.page > .container.feed` for FB/IG/X, `.amz-reviews-list` for Amazon, both at a fixed
+600px content width) so the real CSS custom properties and card styling apply without needing the
+full rails/sidebar chrome. Waits for every `<img>` under the container to settle (load or error,
+capped at 8s each so one stuck/CORS-blocked image can't stall the batch) before rasterizing.
+
+**Rasterization + packaging**: two new dependencies, `html-to-image` (DOM→PNG, chosen over
+`html2canvas` — actively maintained, handles web fonts/computed styles more reliably) and `jszip`.
+Each post's wrapper `<div>` is rasterized via `toBlob(node, {pixelRatio:2, backgroundColor:"#fff",
+cacheBust:true})`, filed into a `JSZip` instance as `NN_<display-name>.png` (same `getPostDisplayName`
+naming this file's own `Export PDF`/CSV paths already use, so filenames match what an admin already
+sees elsewhere), zipped, and downloaded via an object-URL `<a download>` — no server round-trip.
+
+**Deliberately non-randomized, per the request's own explicit caveat**: `flags={}` and no
+`assignedAuthor`/`assignedAvatarUrl` are passed, so every post renders its own raw stored author/
+avatar/text/image — the one sane "canonical image per post" choice for a feed with `randomize_*`
+flags on, not an attempt to capture what any specific randomized participant saw.
+`alwaysExpandText={true}` so no post is cut off with a "See more" in the exported image, and
+`suppressDisplayedSnapshot` so this doesn't write anything into the admin's own
+"displayed post snapshot" localStorage (the mechanism real participant delivery uses for post-
+reminder questions).
+
+**Known limitation, not fixed**: a video post rasterizes to whatever frame the `<video>` element
+happens to be showing (its poster, since `disabled` prevents autoplay) — fine for a poster-backed
+video, but not a deliberate "capture frame N" feature.
+
+**Verified live**, dev server confirmed working: harness-mounted the real `PostCard` (via
+`../ui-posts`, cache-busted dynamic import of the exact Vite dep URLs the app's own bundle resolves,
+not a reimplementation) for Facebook and Amazon, wrapped exactly as `FeedImageZipExporter` wraps
+them — confirmed both render correctly (real avatar/name/text/action-row for FB, real letter-avatar/
+stars/verified-badge for Amazon). Ran the full pipeline end-to-end for Facebook: `toBlob` produced
+real, non-trivial PNGs (57KB/38KB for two fabricated posts), `JSZip` bundled them into a real zip
+(96KB), and — round-tripped the zip back open, decoded a PNG via a real `<img>` element (`naturalWidth
+1200` at pixelRatio 2 × 600px content width, confirming the raster size matches the intended layout
+width) and screenshotted it: a correctly-rendered, full-fidelity Facebook post card image. Both
+touched files parse clean. **Not verified**: rasterizing Instagram or X specifically (the harness hung
+on a `toBlob` call for the Amazon test the second time, likely this sandbox's icon-font/`@font-face`
+embedding step stalling on an unreachable font URL when the tab is backgrounded — not reproduced for
+Facebook, and the DOM-render half was still confirmed correct for Amazon before that), the zip
+filename/CSV-name-collision-sanitization path against real unicode/special-character post names
+beyond the sanitizer's own logic read, and an actual click-through by a real logged-in admin — same
+standing no-login limitation as everywhere else in this file. Worth a real click on
+`staging.studyfeed.org` across all four platforms, and specifically a feed with a video post, before
+fully trusting this beyond what's confirmed above.
+
+## Facebook caption "See more": ported Instagram's inline-after-last-word fix (2026-09-22)
+
+Direct follow-up to "Instagram caption '… more': inline after the last visible word" (2026-09-19,
+above) — same request, same bug class, ported to Facebook's own `PostText`
+(`ui-core-facebook.jsx`). Facebook's version had the identical root cause as Instagram's pre-fix
+version: pure CSS `-webkit-line-clamp`-style truncation (`max-height:3em`) with a separately,
+absolutely-positioned `.fade-more` "See more" pinned to the block's bottom-right corner — so a short
+first sentence left a big gap before "See more," and a caption with an early blank line could put
+"See more" on that blank line instead of after the real last visible word.
+
+**Ported the same measured-cut mechanism**, adapted for two real differences from Instagram's
+version, not a blind copy:
+- **3-line budget, not 2** — Facebook's existing `.text.clamp{max-height:3em}` (3 lines) is kept
+  exactly as-is (`FB_TEXT_MAX_LINES = 3`); only *where* the cut lands and *how* "See more" is
+  positioned change, not how much text shows before this fix.
+- **No @mention linkification** — Facebook's `PostText` never had Instagram's `linkifyMentions`/
+  `.ig-mention` click handling, so the ported version has none either; the only HTML injected into
+  the measuring probe (and the real inline-more span) is the plain caption text, escaped via a new
+  local `fbEscapeHtmlForProbe` (a small, real safety improvement over Instagram's version, which
+  injects raw text — the escape is a no-op for any normal caption and only changes behavior for text
+  literally containing `<`/`>`/`&`, which now renders as the literal characters the old plain-JSX
+  `{text}` rendering already showed, instead of being risked as HTML).
+- **`prefix` keeps its existing, different meaning** — Facebook's `PostText` already used `prefix` as
+  a plain *string* for the `${prefix}_text_clamped` event name (never as a rendered username element
+  the way Instagram's `prefix` is) — confirmed via grep that Facebook's one real call site never
+  passes it, so this is unchanged, dead-but-typed behavior, not something this pass needed to touch.
+- **"See less" preserved** — real Instagram has no collapse-back affordance once expanded (confirmed:
+  `ui-core-instagram.jsx`'s `PostText` doesn't even destructure the `onCollapse` prop its own caller
+  passes), but real Facebook does, and Facebook's editor/admin config already relies on it — the
+  ported version keeps the existing `wasClamped`/`onCollapse` "See less" button, now set by either the
+  legacy CSS-overflow check or the new measured cut, whichever fires.
+
+New `.more-inline{white-space:nowrap}` added to `styles-facebook.css` (unscoped — no existing
+`.more-inline` class collision, and no Facebook equivalent of Instagram's `.ig-caption-row` wrapper to
+scope under), mirroring Instagram's `.ig-caption-row .ig-more-inline` rule for the same reason: keeps
+"…" and "See more" from wrapping onto separate lines.
+
+**Verified live**, dev server confirmed working, via the real bundled `PostCard`
+(`ui-posts-facebook.jsx`, through `../ui-posts`, not a reimplementation), mounted with fabricated
+posts and screenshotted: (1) the exact reported bug pattern — a short first sentence followed by a
+blank line, then more text — now shows "See more" inline immediately after the sentence, no gap, no
+landing on the blank line (screenshotted before/after comparison); clicking "See more" correctly
+expands to the full multi-paragraph text with a working "See less" that collapses it back exactly to
+the original truncated state (both screenshotted). (2) A long single-paragraph caption with no blank
+line (the ordinary case) still fills the full 3-line budget and cuts on a word boundary, confirming
+the line-budget itself wasn't accidentally shortened by this change. (3) A short caption that already
+fits shows no "See more" and is otherwise unchanged. Both touched files parse clean
+(`@babel/parser`) and `styles-facebook.css`'s braces balance. **Not verified**: an actual
+click-through by a real logged-in admin/participant, mobile width, dark mode, or Facebook's own
+comment-text rendering (a separate code path, not `PostText`, out of scope for this change) — same
+standing no-login limitation as everywhere else in this file. X has its own separate `PostText`
+(`ui-core-x.jsx`) with the same underlying CSS-clamp-only gap — not touched, not requested.
+
+**Deploy status, both entries above**: this session's working tree is on the `production` branch,
+nothing committed/pushed by Claude (this repo's standing pattern). The image-export feature adds two
+new npm dependencies (`html-to-image`, `jszip`) — worth routing through `main` → staging first so the
+build (`npm run build`, which this sandbox can't run — see "Build/dev notes") gets a real check before
+`production`/`studyfeed.org`, same recommendation this file makes for every other first-draft
+multi-file change landing on this branch.

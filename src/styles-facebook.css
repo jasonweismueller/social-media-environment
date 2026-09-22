@@ -138,6 +138,12 @@ a:hover{text-decoration:underline}
 .fade-more::before{content:"";position:absolute;right:100%;top:0;width:6ch;height:100%;background:linear-gradient(90deg, rgba(255,255,255,0), var(--card))}
 .dots{font:inherit;line-height:inherit;display:inline}
 
+/* Inline "… See more" that PostText (ui-core-facebook.jsx) places directly
+   after the last visible word of a truncated post — ported from Instagram's
+   identical fix (2026-09-19, see CLAUDE.md). nowrap keeps the ellipsis and
+   "See more" together on one line instead of splitting across a wrap. */
+.more-inline{white-space:nowrap}
+
 
 /* Facebook-like "See more" */
 .see-more {

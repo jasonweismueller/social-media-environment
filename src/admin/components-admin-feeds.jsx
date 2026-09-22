@@ -321,6 +321,8 @@ export function AdminFeedsPanel({
   onRefreshPosts,
   onExportPostsJson,
   onExportFeedPdf,
+  onExportFeedImages,
+  exportingFeedImages,
   onImportPostsJson,
   onOpenNewPost,
   onEditPost,
@@ -679,6 +681,16 @@ export function AdminFeedsPanel({
                         title="Export this feed as a printable PDF using the rendered post layout"
                       >
                         Export PDF
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={onExportFeedImages}
+                        disabled={!selectedFeedId || !posts?.length || exportingFeedImages}
+                        busy={exportingFeedImages}
+                        title="Download one PNG per post (non-randomized, as stored) as a zip — e.g. for an OSF upload"
+                      >
+                        {exportingFeedImages ? "Preparing…" : "Download post images (.zip)"}
                       </Button>
                       <label className="btn ghost" title="Import posts from a JSON backup" style={{ cursor: "pointer" }}>
                         Import Feed

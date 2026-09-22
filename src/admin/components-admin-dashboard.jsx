@@ -30,6 +30,9 @@ import {
 } from "../utils";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { toBlob as domNodeToPngBlob } from "html-to-image";
+import JSZip from "jszip";
+import { PostCard } from "../ui-posts";
 
 import "./ui/tokens.css";
 import { Modal, LoadingOverlay } from "../ui-core";
@@ -434,6 +437,181 @@ function exportFeedAsPdf(args) {
       iframe.contentWindow?.print();
     } catch {}
   }, 700);
+}
+
+/* ------------------- Feed export as a folder of post images --------------
+ * Direct request: "Export PDF" (above) opens the browser's print dialog
+ * against a hand-built HTML reimplementation of a post (see
+ * buildRenderedFeedExportHtml) — not the real component, so it drifts from
+ * what a participant actually sees, and the print-dialog mechanism itself
+ * is a manual, one-long-document, easy-to-get-wrong step, not a folder of
+ * individual images ready to upload to an OSF repository. This gives each
+ * post its own PNG file, rendered from the REAL, currently-bundled
+ * PostCard (same component/CSS the live feed uses), zipped into one
+ * download.
+ *
+ * Deliberately non-randomized: `flags={}` and no assignedAuthor/
+ * assignedAvatarUrl are passed, so every post renders with its own raw
+ * stored author/avatar/text/image, not whatever a live participant with
+ * randomization on would have seen — the only sane "one canonical image
+ * per post" choice when a feed has randomize_* flags on, and the obvious
+ * limitation the request itself already called out.
+ */
+const FEED_IMAGE_EXPORT_WIDTH = 600;
+
+function sanitizeForFilename(raw, fallback) {
+  const s = String(raw ?? "").trim();
+  const cleaned = s.replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_").replace(/_{2,}/g, "_").replace(/^_+|_+$/g, "");
+  return cleaned || fallback;
+}
+
+// Waits for every <img> already in the DOM under `root` to finish loading
+// (success or error — a broken/CORS-blocked image shouldn't hang the whole
+// export, it just rasterizes as whatever the browser paints for it), capped
+// at `timeoutMs` per image so one stuck request can't stall the batch.
+function waitForImagesToSettle(root, timeoutMs = 8000) {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  return Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise((resolve) => {
+          if (img.complete) { resolve(); return; }
+          const done = () => { img.removeEventListener("load", done); img.removeEventListener("error", done); resolve(); };
+          img.addEventListener("load", done);
+          img.addEventListener("error", done);
+          setTimeout(done, timeoutMs);
+        })
+    )
+  );
+}
+
+// Mounted (briefly) by handleExportFeedImages below. Renders every post of
+// the feed at once, off-screen (not display:none — that would skip layout/
+// paint entirely, which html-to-image needs), rasterizes each to a PNG via
+// html-to-image, zips them with JSZip, triggers the download, then reports
+// back via onDone/onError so the caller can unmount it.
+function FeedImageZipExporter({ posts, appName, projectId, feedId, feedName, postNames, onDone, onError }) {
+  const containerRef = useRef(null);
+  const postRefs = useRef(new Map());
+  const startedRef = useRef(false);
+
+  const appKey = String(appName || "fb").toLowerCase();
+  const isAmz = appKey === "amz" || appKey === "amazon";
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const root = containerRef.current;
+        if (!root) throw new Error("Export container not mounted");
+
+        // Two rAFs: one for React's own post-mount layout, one more so any
+        // font/CSS-variable-driven reflow (the admin theme bridges --card/
+        // --text/etc onto .admin-shell, but this container renders OUTSIDE
+        // .admin-shell on purpose, so it picks up each app's own real
+        // :root tokens, not the admin's) has settled before we measure it.
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await waitForImagesToSettle(root);
+        if (cancelled) return;
+
+        const zip = new JSZip();
+        const usedNames = new Set();
+
+        for (let i = 0; i < posts.length; i++) {
+          const post = posts[i];
+          const node = postRefs.current.get(post?.id ?? i);
+          if (!node) continue;
+
+          const blob = await domNodeToPngBlob(node, {
+            pixelRatio: 2,
+            backgroundColor: "#ffffff",
+            cacheBust: true,
+          });
+          if (cancelled) return;
+          if (!blob) continue;
+
+          const rawName = getPostDisplayName(post, postNames) || post?.id || `post_${i + 1}`;
+          let base = `${String(i + 1).padStart(2, "0")}_${sanitizeForFilename(rawName, `post_${i + 1}`)}`;
+          let name = `${base}.png`;
+          let n = 2;
+          while (usedNames.has(name)) { name = `${base}_${n}.png`; n += 1; }
+          usedNames.add(name);
+
+          zip.file(name, blob);
+        }
+
+        if (cancelled) return;
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        if (cancelled) return;
+
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${sanitizeForFilename(feedName || feedId || "feed", "feed")}_images.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+        onDone?.(usedNames.size);
+      } catch (e) {
+        console.error("Feed image export failed:", e);
+        if (!cancelled) onError?.(e);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        left: -99999,
+        top: 0,
+        width: FEED_IMAGE_EXPORT_WIDTH + 40,
+        background: "#ffffff",
+        padding: 20,
+        // Not visibility:hidden/display:none — both skip layout in a way
+        // that leaves html-to-image with a zero-size node to rasterize.
+        pointerEvents: "none",
+      }}
+    >
+      {posts.map((post, idx) => (
+        <div
+          key={post?.id ?? idx}
+          ref={(el) => { if (el) postRefs.current.set(post?.id ?? idx, el); else postRefs.current.delete(post?.id ?? idx); }}
+          className={isAmz ? "amz-reviews-list" : "page"}
+          style={{ width: FEED_IMAGE_EXPORT_WIDTH, background: "#ffffff", marginBottom: idx < posts.length - 1 ? 24 : 0 }}
+        >
+          <div className={isAmz ? "" : "container feed"} style={{ width: "100%" }}>
+            <PostCard
+              post={post}
+              onAction={() => {}}
+              disabled
+              registerViewRef={() => {}}
+              alwaysExpandText
+              flags={{}}
+              app={appKey}
+              projectId={projectId}
+              feedId={feedId}
+              runSeed="feed-image-export"
+              participantSeed="feed-image-export"
+              suppressDisplayedSnapshot
+              revealIndex={null}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // fetchParticipantsStats / getFeedFlagsFromBackend / setFeedFlagsOnBackend
@@ -1469,6 +1647,23 @@ export function AdminDashboard({
     });
   };
 
+  const [imageExportJob, setImageExportJob] = useState(null);
+
+  const handleExportFeedImages = () => {
+    if (imageExportJob) return;
+    if (!posts?.length) { toast.error("This feed has no posts to export."); return; }
+    const row = feeds.find((f) => f.feed_id === feedId);
+    toast.info(`Preparing ${posts.length} post image${posts.length === 1 ? "" : "s"}…`);
+    setImageExportJob({
+      posts,
+      appName: APP,
+      projectId: projectId || "global",
+      feedId,
+      feedName: row?.name || feedId,
+      postNames,
+    });
+  };
+
   const handleImportPostsJson = async (file) => {
     if (!file) return;
     try {
@@ -1656,6 +1851,8 @@ export function AdminDashboard({
               onRefreshPosts={handleRefreshPosts}
               onExportPostsJson={handleExportPostsJson}
               onExportFeedPdf={handleExportFeedPdf}
+              onExportFeedImages={handleExportFeedImages}
+              exportingFeedImages={!!imageExportJob}
               onImportPostsJson={handleImportPostsJson}
               onOpenNewPost={openNew}
               onEditPost={openEdit}
@@ -1785,6 +1982,20 @@ export function AdminDashboard({
             </div>
           </div>
         </div>
+      )}
+
+      {imageExportJob && (
+        <FeedImageZipExporter
+          {...imageExportJob}
+          onDone={(count) => {
+            toast.success(`Downloaded ${count} post image${count === 1 ? "" : "s"} as a zip.`);
+            setImageExportJob(null);
+          }}
+          onError={() => {
+            toast.error("Couldn't export the feed as images. Please try again.");
+            setImageExportJob(null);
+          }}
+        />
       )}
     </div>
   );
