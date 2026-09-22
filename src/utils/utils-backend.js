@@ -3432,6 +3432,10 @@ export async function restoreAdminSession() {
 // role/email — touchAdminSession() owns full creation). Idempotent; returns a
 // stop function. Supabase backend only.
 let _adminSessionSyncStop = null;
+// Set while THIS tab is deliberately signing out (adminLogout), so the SIGNED_OUT
+// the SDK then emits isn't mistaken for a session lost behind the user's back.
+let _adminLoggingOut = false;
+export const ADMIN_SESSION_LOST_EVENT = "admin-session-lost";
 export function startAdminSessionSync() {
   if (!isSupabaseBackend()) return () => {};
   if (_adminSessionSyncStop) return _adminSessionSyncStop;
@@ -3439,9 +3443,15 @@ export function startAdminSessionSync() {
   const unsubscribe = supabaseOnAuthChange((event, session) => {
     try {
       if (event === "SIGNED_OUT") {
-        // Signed out in another tab (or the account was disabled): mirror must
-        // follow, or this tab keeps a token the server will now reject.
+        // Signed out in another tab (or the account was disabled, or the SDK's
+        // refresh token was rejected): mirror must follow, or this tab keeps a
+        // token the server will now reject. Also tell the UI (AdminEntry listens)
+        // — without that the React tree kept rendering the dashboard as if still
+        // signed in, with every backend read silently coming back empty.
         clearAdminSession();
+        if (!_adminLoggingOut) {
+          try { window.dispatchEvent(new Event(ADMIN_SESSION_LOST_EVENT)); } catch {}
+        }
         return;
       }
       if (event !== "TOKEN_REFRESHED" && event !== "SIGNED_IN" && event !== "USER_UPDATED") return;
@@ -3785,8 +3795,15 @@ export async function adminLoginUser(email, password) {
 
 export async function adminLogout() {
   if (isSupabaseBackend()) {
-    clearAdminSession();
-    return await supabaseAdminSignOut();
+    _adminLoggingOut = true;
+    try {
+      clearAdminSession();
+      return await supabaseAdminSignOut();
+    } finally {
+      // The SDK's SIGNED_OUT is delivered asynchronously — keep the flag up a
+      // moment longer so the sync listener still sees it.
+      setTimeout(() => { _adminLoggingOut = false; }, 1500);
+    }
   }
 
   const admin_token = getAdminToken();
@@ -4001,12 +4018,17 @@ export async function assignExperimentGroup({
 }
 
 /* --------------------- Feeds listing (Admin switcher) --------------------- */
-export async function listFeedsFromBackend({ projectId = getProjectId(), signal } = {}) {
+// `throwOnError` (opt-in, used by the admin dashboard): rethrow a failed Supabase read
+// instead of returning [] — an empty array is indistinguishable from "this
+// project genuinely has no feeds", which hid a dead/rejected admin session as a
+// normal-looking empty dashboard.
+export async function listFeedsFromBackend({ projectId = getProjectId(), signal, throwOnError = false } = {}) {
   if (isSupabaseBackend()) {
     try {
       return await supabaseListFeeds({ projectId, app: getApp() });
     } catch (e) {
       console.warn("listFeedsFromBackend (supabase) failed:", e);
+      if (throwOnError) throw e;
       return [];
     }
   }
@@ -5872,12 +5894,14 @@ export async function setWipePolicyOnBackend(wipeOnChange, { projectId = getProj
 }
 
 /* ============================ Project helpers (backend) ============================ */
-export async function listProjectsFromBackend({ signal } = {}) {
+// `throwOnError`: same opt-in as listFeedsFromBackend above.
+export async function listProjectsFromBackend({ signal, throwOnError = false } = {}) {
   if (isSupabaseBackend()) {
     try {
       return await supabaseListProjects();
     } catch (e) {
       console.warn("listProjectsFromBackend (supabase) failed:", e);
+      if (throwOnError) throw e;
       return [];
     }
   }

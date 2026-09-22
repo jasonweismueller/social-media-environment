@@ -120,11 +120,6 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
                 <div>
                   <div style={{ fontSize: "var(--admin-text-md)", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--admin-text)" }}>
                     {p.label}
-                    {p.app === currentApp && (
-                      <span style={{ fontSize: "var(--admin-text-2xs)", fontWeight: 600, color: "var(--admin-muted)", marginLeft: 8 }}>
-                        (currently loaded)
-                      </span>
-                    )}
                   </div>
                   <div style={{ fontSize: "var(--admin-text-xs)", color: "var(--admin-muted)", marginTop: 2 }}>{p.blurb}</div>
                 </div>

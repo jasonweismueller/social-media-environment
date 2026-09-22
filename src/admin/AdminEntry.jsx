@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import AdminLogin from "./components-admin-login";
 import AdminSetPassword from "./AdminSetPassword";
@@ -7,7 +7,7 @@ import { AdminProjectPicker } from "./AdminProjectPicker";
 import { AdminPlatformPicker } from "./AdminPlatformPicker";
 import { AdminUsersPage } from "./components-admin-users";
 import { ToastProvider, ConfirmProvider, PromptProvider, ErrorBoundary } from "./ui";
-import { isPendingAuthRedirect, startAdminSessionSync } from "../utils";
+import { isPendingAuthRedirect, startAdminSessionSync, ADMIN_SESSION_LOST_EVENT } from "../utils";
 
 /**
  * Owns the whole `/admin/*` sub-tree: login gate, then
@@ -24,6 +24,26 @@ export function AdminEntry({ adminAuthed, adminRestoring = false, onAuth, curren
   // platform picker and Users page have no keep-alive of their own, so without
   // this they'd lapse ~1h after login even though the SDK renewed the token).
   useEffect(() => startAdminSessionSync(), []);
+
+  // The Supabase session ended behind this tab's back (signed out in another
+  // tab, refresh token rejected, account disabled). The sync above has already
+  // cleared the local copy; without this the dashboard kept rendering as
+  // "signed in" while every backend read silently came back empty — the state
+  // that used to need a manual log out / log in to escape. Go straight to the
+  // login screen instead. Fires once per authenticated stretch.
+  const sessionLostHandledRef = useRef(false);
+  useEffect(() => {
+    if (adminAuthed) sessionLostHandledRef.current = false;
+  }, [adminAuthed]);
+  useEffect(() => {
+    const onLost = () => {
+      if (!adminAuthed || sessionLostHandledRef.current) return;
+      sessionLostHandledRef.current = true;
+      onLogout?.();
+    };
+    window.addEventListener(ADMIN_SESSION_LOST_EVENT, onLost);
+    return () => window.removeEventListener(ADMIN_SESSION_LOST_EVENT, onLost);
+  }, [adminAuthed, onLogout]);
 
   // A freshly-clicked invite/recovery email link always takes priority over
   // the normal login gate, even if adminAuthed happens to already be true

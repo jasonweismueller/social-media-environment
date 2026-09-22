@@ -453,9 +453,15 @@ function msToMinSec(n) {
 }
 
 /* ---------------------------- Posts local cache --------------------------- */
+// Keyed by platform too: bare feed ids (feed_1, feed_2 …) repeat across Facebook/
+// Instagram/Amazon/X inside the same project, and an unpublished feed's checksum is
+// "" on every platform — so the old project+feed-only key let one platform's cached
+// posts satisfy another platform's lookup (wrong-platform posts in the editor/preview).
+// `v2` also orphans every entry written under the old, colliding key shape.
+const postsCacheKey = (projectId, feedId) => `posts_v2::${app}::${projectId || "global"}::${feedId}`;
 function getCachedPosts(projectId, feedId, checksum) {
   try {
-    const k = `posts::${projectId || "global"}::${feedId}`;
+    const k = postsCacheKey(projectId, feedId);
     const meta = JSON.parse(localStorage.getItem(`${k}::meta`) || "null");
     if (!meta || meta.checksum !== checksum) return null;
     const data = JSON.parse(localStorage.getItem(k) || "null");
@@ -466,7 +472,7 @@ function getCachedPosts(projectId, feedId, checksum) {
 }
 function setCachedPosts(projectId, feedId, checksum, posts) {
   try {
-    const k = `posts::${projectId || "global"}::${feedId}`;
+    const k = postsCacheKey(projectId, feedId);
     localStorage.setItem(k, JSON.stringify(posts || []));
     localStorage.setItem(`${k}::meta`, JSON.stringify({ checksum, t: Date.now() }));
   } catch {}
@@ -815,12 +821,36 @@ export function AdminDashboard({
     setProjectsLoading(true);
 
     try {
-      const list = await listProjectsFromBackend({ signal: ctrl.signal }).catch(() => []);
+      let loadFailed = false;
+      const list = await listProjectsFromBackend({ signal: ctrl.signal, throwOnError: true }).catch(() => {
+        loadFailed = true;
+        return [];
+      });
 
       if (ctrl.signal.aborted) return;
 
       const projList = Array.isArray(list) ? list : [];
+
+      // A failed (or empty) project read used to fall through to the "global"
+      // fallback below and PERSIST it — silently overwriting the project the admin
+      // had just picked, and rendering a normal-looking empty dashboard. Check
+      // whether the admin session is actually still valid first: if not, say so
+      // (the "Session expired" dialog offers a re-login); either way leave the
+      // selected project untouched instead of replacing it with "global".
+      if (loadFailed || projList.length === 0) {
+        const res = await touchAdminSession().catch(() => ({ ok: false }));
+        if (ctrl.signal.aborted) return;
+        if (!res?.ok) setSessExpired(true);
+        if (loadFailed) {
+          setProjectsError("Failed to load projects from the backend. Please try again.");
+          return;
+        }
+      }
+
       setProjects(projList);
+      // No readable projects: keep whatever project is already selected rather than
+      // swapping in (and persisting) a "global" placeholder.
+      if (projList.length === 0) return;
 
       let fromUrl = "";
       try {
@@ -869,11 +899,18 @@ export function AdminDashboard({
 
     try {
       const effPid = pidForBackend(projectId);
-      const list = await listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal });
+      const list = await listFeedsFromBackend({ projectId: effPid, signal: ctrl.signal, throwOnError: true });
 
       if (ctrl.signal.aborted) return;
 
       const feedsList = Array.isArray(list) ? list : [];
+      if (feedsList.length === 0) {
+        // An empty list is only believable if the session is real — a rejected
+        // session reads as "no feeds" too. Surface it instead of a blank dashboard.
+        const res = await touchAdminSession().catch(() => ({ ok: false }));
+        if (ctrl.signal.aborted) return;
+        if (!res?.ok) setSessExpired(true);
+      }
       setFeeds(feedsList);
 
       // Auto-selects the first feed in the list — matches AdminSurveysPanel's

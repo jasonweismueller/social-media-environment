@@ -2451,3 +2451,39 @@ Direct report: the admin session "keeps expiring so fast all the time." Not a se
 **What still expires it, by design**: a session the *server* has ended — the Supabase project's refresh-token lifetime / "Time-box user sessions" / "Inactivity timeout" (Auth → Sessions, latter two Pro-plan features), a disabled account, sign-out in another tab, or password change. **Those are security settings and were not read or changed** (no `config.toml` in the repo; they live in the Supabase dashboard). If sessions still die at a fixed interval after this ships, that's where to look; JWT expiry (Project Settings → API/JWT, default 1h) no longer matters much now that the refresh token keeps it alive.
 
 **Verified live** (dev server, real functions, only the Supabase `/auth/v1/token`, `/rest/v1/profiles`, `/auth/v1/logout` endpoints mocked): lapsed mirror + valid refresh token → old check `hasAdminSession()===false` (and it wiped the mirror), `restoreAdminSession()` → true after exactly one refresh + one profile call, full mirror rebuilt (new token, +3600s, role `owner`, email/username). SDK self-refresh with **no app poll** → mirror token/expiry followed immediately, role/email kept, no partial mirror created when none existed, `SIGNED_OUT` cleared it, `startAdminSessionSync` idempotent. `startSessionWatch`, 9 scenarios: renewal succeeds (expired / 30s-left / slow 600ms) → no warning UI ever; renewal fails → `expired`/`expiring` still surface; retry throttled to 1 attempt; healthy session → no renewal attempted; throws → treated as failure; no `tryRenew` → old behaviour. `AdminEntry` renders nothing while `adminRestoring`, the login form otherwise. Signed-out `restoreAdminSession()` → false, zero network calls. `/admin?app={ig,fb,x,amz}` all boot the edited Apps and show the login form when signed out. **Not verified**: a real >1h idle session against the real Supabase (the mock proves the app-side logic, not the server's refresh-token policy), the actual `AdminEntry`→dashboard path after a restore inside a full `App-*.jsx` boot (parse-checked + the pieces above tested separately; no admin login available), or multi-tab behaviour beyond the SDK's own broadcast.
+
+## Admin platform switch: silent "ghost session" failures made visible, posts cache scoped by platform, "(currently loaded)" removed (2026-09-21)
+
+Direct report: switching Facebook ↔ Instagram (different project) left the dashboard with no feeds and no
+token until a manual log out / log in; the live preview sometimes showed the wrong platform's posts; and the
+"(currently loaded)" tag on the platform list was unwanted.
+
+**Root cause of the token loss: NOT found.** Reproduced the exact switch (real `?app=` bundle reload) with a
+seeded Supabase-SDK session + mirror: the SDK session, mirror and bundle all carry over correctly, so the app
+itself does not drop the session on a switch. What *is* confirmed is the failure mode that looks like "token
+gone": the SDK session is rejected by the server (or gone) while the local mirror (`admin_token_v1`) still says
+signed in, every read (`listProjectsFromBackend`/`listFeedsFromBackend` swallow errors into `[]`) returns empty,
+and the dashboard then **fell back to `"global"` and persisted it**, overwriting the picked project
+(reproduced: `current_project_id` `proj_a` → `global`). Whatever invalidates the session upstream (refresh-token
+policy in Supabase Auth → Sessions, a global `signOut()` from another tab — `supabaseAdminSignOut` uses the
+default *global* scope and revokes every session — or refresh-token reuse across tabs) is still unconfirmed.
+**If it recurs, get the browser console + the failing `/auth/v1/token` request from the moment it happens.**
+
+**Changes:**
+- `listFeedsFromBackend`/`listProjectsFromBackend` gained opt-in `throwOnError`. The dashboard's `loadProjects`/
+  `loadFeeds` use it; on failure or an empty result they call `touchAdminSession()` and, if the session is
+  actually dead, show the existing "Session expired → Go to login" dialog. A failed/empty project read no longer
+  replaces/persists the selected project with `"global"`.
+- `startAdminSessionSync` now also dispatches `admin-session-lost` (`ADMIN_SESSION_LOST_EVENT`) on the SDK's
+  `SIGNED_OUT` unless this tab is the one logging out (`_adminLoggingOut` flag in `adminLogout`); `AdminEntry`
+  listens and calls `onLogout` → login screen, instead of leaving a signed-in-looking UI over a dead session.
+- Dashboard posts cache key was `posts::<project>::<feed>` (no platform; bare feed ids repeat across platforms
+  and an unpublished feed's checksum is `""` everywhere) → now `posts_v2::<app>::<project>::<feed>`. Most likely
+  cause of the wrong-platform posts in the editor/live preview (not reproduced end to end).
+- `AdminPlatformPicker`: removed the "(currently loaded)" label (the same-bundle fast path stays, invisibly).
+
+**Verified** (dev server, fake JWT so the server rejects it): project stays `proj_a` (was overwritten to
+`global`), "Session expired" dialog appears, "Go to login" reaches the login form with both stores cleared,
+`admin-session-lost` from the platform picker → login form, label gone. **Not verified**: a real logged-in
+switch on real Supabase, the real cross-tab sign-out path, the cache-key fix against real colliding feeds.
+Working tree was on `production` (no staging soak unless routed through `main`).
