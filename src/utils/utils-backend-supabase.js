@@ -163,6 +163,47 @@ export async function supabaseAdminTouch() {
   }
 }
 
+// save-survey/admin-users/ai-study-report all rely entirely on
+// functions.invoke attaching the signed-in admin's JWT automatically from
+// the SDK's own current session — there is no admin_token-equivalent
+// fallback the way GAS calls have (see each call site's own comment). A
+// client-side session that's gone stale or desynced from the SDK (root
+// cause still unconfirmed — see CLAUDE.md's "admin platform switch: ghost
+// session" entries) leaves functions.invoke with nothing valid to attach,
+// surfacing as a 401 "missing Authorization bearer token" or "invalid or
+// expired session" instead of an ordinary request failure. Every one of
+// these functions used to have no chance to recover from that the way
+// AdminDashboard's own reads (loadFeeds/loadProjects) already do via
+// touchAdminSession() — a save could fail outright on a session that a
+// plain retry would have silently fixed. One renewal attempt
+// (supabaseAdminTouch, which calls supabase.auth.getSession() and lets the
+// SDK refresh in place if the refresh token is still valid) plus a single
+// retry recovers that common case without losing whatever the caller was
+// trying to do. Reads the error body via a clone so the original response
+// stream is left untouched for the caller's own existing `.json()` parse.
+async function invokeEdgeFunctionWithAuthRetry(name, body) {
+  const supabase = getSupabaseClient();
+  let result = await supabase.functions.invoke(name, { body });
+
+  if (result.error) {
+    let msg = result.error.message || String(result.error);
+    try {
+      const parsed = await result.error.context?.clone?.().json?.();
+      if (parsed?.err) msg = parsed.err;
+    } catch {}
+
+    const looksLikeDeadSession = /authorization bearer token|expired session/i.test(msg);
+    if (looksLikeDeadSession) {
+      const renewed = await supabaseAdminTouch();
+      if (renewed.ok) {
+        result = await supabase.functions.invoke(name, { body });
+      }
+    }
+  }
+
+  return result;
+}
+
 // Subscribes to the Supabase SDK's own auth events (TOKEN_REFRESHED, SIGNED_OUT,
 // ... — also broadcast across tabs). Used by utils-backend.js's
 // startAdminSessionSync() to keep this app's separate localStorage copy of the
@@ -524,10 +565,10 @@ export async function supabaseLinkSurveyToFeeds({ surveyId, feedIds, projectId, 
 // Authorization header for functions.invoke, so no admin_token-equivalent
 // needs to be passed explicitly.
 export async function supabaseSaveSurvey({ survey, projectId, app }) {
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase.functions.invoke("save-survey", {
-    body: { definition: survey, project_id: projectId, app },
+  const { data, error } = await invokeEdgeFunctionWithAuthRetry("save-survey", {
+    definition: survey,
+    project_id: projectId,
+    app,
   });
 
   if (error) {
@@ -1419,8 +1460,7 @@ export async function supabaseUpdateSurveyResponseAnswers({ surveyId, sessionId,
 // function itself, not just by the frontend's hasAdminRole("owner") gate).
 // functions.invoke attaches the signed-in admin's JWT automatically.
 async function invokeAdminUsers(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("admin-users", { body: payload });
+  const { data, error } = await invokeEdgeFunctionWithAuthRetry("admin-users", payload);
 
   if (error) {
     let msg = error.message || String(error);
@@ -1533,17 +1573,14 @@ export async function supabaseSetUserProjectAccess(userId, entries) {
 // background regardless of whether this call's own connection survives.
 // Callers must poll supabasePollAiReportJob(job_id) for the real result.
 export async function supabaseGenerateAiStudyReport({ markdown, csv, csvFilename, model, surveyId, responseCount, extraContext }) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("ai-study-report", {
-    body: {
-      markdown,
-      csv: csv || "",
-      csv_filename: csvFilename || "",
-      model,
-      survey_id: surveyId || null,
-      response_count: Number.isFinite(responseCount) ? responseCount : null,
-      extra_context: extraContext || "",
-    },
+  const { data, error } = await invokeEdgeFunctionWithAuthRetry("ai-study-report", {
+    markdown,
+    csv: csv || "",
+    csv_filename: csvFilename || "",
+    model,
+    survey_id: surveyId || null,
+    response_count: Number.isFinite(responseCount) ? responseCount : null,
+    extra_context: extraContext || "",
   });
 
   if (error) {
@@ -1594,9 +1631,9 @@ export async function supabaseListAiReportJobHistory({ limit = 20 } = {}) {
 // still mid-submission (no batch id yet), it's just a select; only once a
 // batch id exists does it make one quick status request to Anthropic.
 export async function supabaseGetAiReportJob(jobId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("ai-study-report", {
-    body: { action: "poll", job_id: jobId },
+  const { data, error } = await invokeEdgeFunctionWithAuthRetry("ai-study-report", {
+    action: "poll",
+    job_id: jobId,
   });
 
   if (error) {
@@ -1616,9 +1653,8 @@ export async function supabaseGetAiReportJob(jobId) {
 // by the Analysis Hub page to show "$X of $10 this month" on load and after
 // every generation, without needing a real report to have just been made.
 export async function supabaseGetAiReportUsage() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.functions.invoke("ai-study-report", {
-    body: { check_only: true },
+  const { data, error } = await invokeEdgeFunctionWithAuthRetry("ai-study-report", {
+    check_only: true,
   });
 
   if (error) {

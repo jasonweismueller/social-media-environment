@@ -2764,3 +2764,43 @@ file's own "Deployment" section, an edit here auto-commits/pushes to `origin/mai
 the Netlify **staging** site, not `studyfeed.org` — reaching production needs `main` merged and pushed
 into `production` as a deliberate promotion step. The live-data cleanup above is independent of that
 and is already in effect on `studyfeed.org` regardless of when the code fix ships.
+
+## Real gap found and fixed: saving a survey (or any admin-users/AI-report action) could fail with a raw "missing Authorization bearer token" instead of trying to recover, unlike Feeds/Projects reads (2026-09-24, later same day)
+
+Direct report, immediately after the fix above: trying to save the just-edited feed sequence failed
+with "! missing Authorization bearer token" — the literal 401 body `save-survey`
+(`supabase/functions/save-survey/index.ts`) returns when `req.headers.get("Authorization")` is empty.
+
+**Root cause**: `save-survey`/`admin-users`/`ai-study-report` are the only three Edge Functions this
+app calls, and all three rely entirely on `supabase.functions.invoke(...)` attaching the signed-in
+admin's JWT automatically from the SDK's own current session — there's no `admin_token`-equivalent
+fallback the way GAS calls have. This session's earlier "ghost session" entries (2026-09-20/21/24,
+just above) already established that the SDK's session can go stale or desync from what the app's UI
+thinks is true, root cause still unconfirmed — and already fixed `AdminDashboard`'s own reads
+(`loadFeeds`/`loadProjects`, in `components-admin-dashboard.jsx`) to attempt a silent
+`touchAdminSession()` renewal before failing. **That fix never reached any of these three write-path
+functions** — they're called from a different file (`utils-backend-supabase.js`, used by the Surveys
+panel and Users/AI-report pages, not `components-admin-dashboard.jsx`) and had no renewal attempt at
+all, so the exact same underlying session desync that reads now recover from silently instead surfaced
+as a raw, cryptic Edge Function error string straight to the toast.
+
+**Fix**: new shared `invokeEdgeFunctionWithAuthRetry(name, body)` (`utils-backend-supabase.js`) — calls
+`supabase.functions.invoke`, and if the result errors with a message matching "authorization bearer
+token" or "expired session" (both 401 bodies every one of these three functions returns), attempts one
+`supabaseAdminTouch()` renewal (the same `getSession()`-triggers-SDK-refresh call
+`AdminDashboard`'s own fix already uses) and retries the call exactly once before giving up. Reads the
+error body via `error.context.clone().json()` so the original response stream is left intact for each
+call site's own existing `.json()` parse on a genuine (non-auth) failure. All 5 `functions.invoke` call
+sites (`supabaseSaveSurvey`, `invokeAdminUsers`, `supabaseGenerateAiStudyReport`,
+`supabaseGetAiReportJob`, `supabaseGetAiReportUsage`) now route through it — each site's own
+subsequent error-parsing/data-shaping is unchanged, since the helper returns the same `{data, error}`
+shape `functions.invoke` itself returns.
+
+**Not verified live this pass** — same browser-navigation tooling denial as the entries above.
+Verified by parse check only. The underlying "what actually kills the SDK session" mystery from the
+2026-09-21 entry is still open; this fix only makes the common case (refresh token still valid, access
+token just wasn't current) recover silently instead of surfacing as a dead end, matching what reads
+already do — it will not help if the refresh token itself is genuinely gone, which still requires a
+real re-login. **Immediate workaround for the report above, before this ships**: refresh the page
+(this re-runs `restoreAdminSession()`, which does the same renewal from scratch) and retry the save —
+if that also fails, log out and back in, then redo the feed-sequence edit before saving again.
