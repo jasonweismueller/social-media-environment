@@ -54,6 +54,7 @@ export const SURVEY_QUESTION_TYPES = {
   SLIDER: "slider",
   INFO: "info",
   POST_REMINDER: "post_reminder",
+  FEED_INTERLUDE: "feed_interlude",
   PAGE_BREAK: "page_break",
 } as const;
 
@@ -557,7 +558,9 @@ export function normalizeQuestion(raw: any = {}): any {
       ? "Page break"
       : type === SURVEY_QUESTION_TYPES.POST_REMINDER
         ? "Please look at this post again before answering."
-        : "Untitled question";
+        : type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+          ? "Please continue to the next part of the study."
+          : "Untitled question";
 
   const text = String(raw.text ?? raw.label ?? defaultText);
   const questionId = sanitizeQuestionId(raw.id, `Q_${uid()}`);
@@ -598,6 +601,14 @@ export function normalizeQuestion(raw: any = {}): any {
     type === SURVEY_QUESTION_TYPES.POST_REMINDER
       ? normalizeRecallDistractorTexts(raw.recall_distractor_texts ?? meta.recall_distractor_texts)
       : normalizeRecallDistractorTexts([]);
+  const interludeFeedId =
+    type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+      ? String(raw.interlude_feed_id ?? meta.interlude_feed_id ?? "")
+      : "";
+  const interludeButtonLabel =
+    type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+      ? String(raw.interlude_button_label ?? meta.interlude_button_label ?? "")
+      : "";
 
   return {
     id: questionId,
@@ -605,9 +616,14 @@ export function normalizeQuestion(raw: any = {}): any {
     text,
     label: text,
     description: String(raw.description || ""),
+    // Mirrors utils-survey.js: a feed interlude is always required — there's
+    // no meaningful "skip this" for a step that sends the participant to a
+    // real, tracked feed and back.
     required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled })
       ? false
-      : !!raw.required || (SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener),
+      : type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? true
+        : !!raw.required || (SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener),
     randomize_options: !!raw.randomize_options,
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
     attention_check_value: String(raw.attention_check_value ?? ""),
@@ -675,6 +691,8 @@ export function normalizeQuestion(raw: any = {}): any {
     reminder_interactive: reminderInteractive,
     recall_enabled: recallEnabled,
     recall_distractor_texts: recallDistractorTexts,
+    interlude_feed_id: interludeFeedId,
+    interlude_button_label: interludeButtonLabel,
     next_delay_seconds: normalizePageDelaySeconds(raw.next_delay_seconds),
     meta: {
       ...meta,
@@ -687,6 +705,12 @@ export function normalizeQuestion(raw: any = {}): any {
             reminder_interactive: reminderInteractive,
             recall_enabled: recallEnabled,
             recall_distractor_texts: recallDistractorTexts,
+          }
+        : {}),
+      ...(type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? {
+            interlude_feed_id: interludeFeedId,
+            interlude_button_label: interludeButtonLabel,
           }
         : {}),
     },
@@ -722,6 +746,12 @@ export function frontendQuestionToBackend(question: any = {}): any {
             reminder_interactive: !!q.reminder_interactive,
             recall_enabled: !!q.recall_enabled,
             recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
+          }
+        : {}),
+      ...(q.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? {
+            interlude_feed_id: String(q.interlude_feed_id ?? ""),
+            interlude_button_label: String(q.interlude_button_label ?? ""),
           }
         : {}),
     },
@@ -828,6 +858,13 @@ export function frontendQuestionToBackend(question: any = {}): any {
         reminder_interactive: !!q.reminder_interactive,
         recall_enabled: !!q.recall_enabled,
         recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
+      };
+
+    case SURVEY_QUESTION_TYPES.FEED_INTERLUDE:
+      return {
+        ...base,
+        interlude_feed_id: String(q.interlude_feed_id ?? ""),
+        interlude_button_label: String(q.interlude_button_label ?? ""),
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:

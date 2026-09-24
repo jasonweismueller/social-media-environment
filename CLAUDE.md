@@ -2804,3 +2804,168 @@ already do — it will not help if the refresh token itself is genuinely gone, w
 real re-login. **Immediate workaround for the report above, before this ships**: refresh the page
 (this re-runs `restoreAdminSession()`, which does the same renewal from scratch) and retry the save —
 if that also fails, log out and back in, then redo the feed-sequence edit before saving again.
+
+## New: "Feed interlude" survey question — sends a participant to a real, tracked feed mid-survey and back (2026-09-24, later)
+
+Direct request: "I first need the survey with a post reminder exposure... at some point in the
+survey, I need to introduce a feed and then afterwards it needs to come back to the survey" — no
+existing mechanism did this. `post_reminder` only ever displays one static/interactive post inline
+inside the survey; `multi_feed_then_survey` only ever shows feeds *before* the survey entirely, as a
+separate top-level phase — neither supports a feed appearing *between* two sets of survey questions,
+with the participant returning afterward. Scoped via `AskUserQuestion` before writing code: the
+returning-feed's own Continue button should behave exactly like every other feed transition (no
+special dwell-time/scroll gating), built as a new page-block/question type (not a generalization of
+`multi_feed_then_survey`), and support any number of interludes in one survey.
+
+**Architecture, mapped with an Explore agent before writing anything**: a new question type,
+`feed_interlude` (`SURVEY_QUESTION_TYPES.FEED_INTERLUDE`), registered through the exact same
+machinery `post_reminder` already uses (`utils-survey.js`'s `makeQuestion`/`normalizeQuestion`/
+`frontendQuestionToBackend`/`makeQuestionByType`, and the TS mirror `survey-sanitize.ts`). Fields:
+`interlude_feed_id` (which feed to send the participant to) and `interlude_button_label` (defaults to
+"Continue"). Always `required: true` — forced in both `makeQuestion`/`normalizeQuestion` and the
+admin editor's type-change logic, since there's no meaningful "skip this" for a step whose entire job
+is sending the participant to a real feed and back. Renders as a plain card (instruction text + a
+button, styled with the same `.survey-nav-btn.survey-nav-btn-primary` class every other primary
+survey button already uses — no new CSS needed in any of the four `styles-*.css` files). The
+response value is a completion marker, `{completed: true, feed_id, completed_at}`, written only once
+by App-*.jsx after the participant actually returns from the feed — never by anything in the survey
+UI itself, so `isQuestionAnswered`'s new FEED_INTERLUDE case (and its `isEmptyRequiredValue` mirrors
+in `ui-survey.jsx`/`-mobile.jsx`) can't be satisfied by merely reaching the page, and per-page "Next"
+validation (already wired to the same required-check) genuinely blocks forward navigation until the
+feed visit is done.
+
+**No schema migration needed** — `interlude_feed_id`/`interlude_button_label` live inside the
+question's own JSON (`meta`, mirroring exactly where `post_reminder`'s `post_id`/`post_feed_id`
+already live), and survey `pages`/`page_blocks` are already a JSONB blob on the `surveys` row. The
+response's `{completed, feed_id, completed_at}` shape likewise just lives inside the existing
+JSONB `responses` blob on `survey_responses`. The **only** backend deploy needed was redeploying the
+`save-survey` Edge Function (it bundles `survey-sanitize.ts`, which — per this file's own standing
+warning — silently strips any field it doesn't know about) to both Supabase projects, production
+(`yrzqnlhbawzuzlrrocfd`) then staging (`hgctbgunlsesygzglbdv`), confirmed via `deno check` first and
+`supabase functions deploy save-survey --project-ref <ref>` after — done directly, unlike frontend
+changes, since Edge Functions deploy independently of the git branch/Netlify/GitHub-Pages pipeline
+this file's "Deployment" section describes.
+
+**The actual mid-survey mechanism (App-facebook.jsx, then ported identically to App-instagram.jsx/
+App-amazon.jsx/App-x.jsx — this file's usual near-duplicate-file shape)**: reuses
+`multi_feed_then_survey`'s existing machinery wholesale rather than building anything new. Clicking
+the interlude's button calls a new `handleEnterFeedInterlude(question)`, which sets a new
+`feedInterlude` state (`{questionId, feedId, resumeFeedId}`, `resumeFeedId` = whatever `activeFeedId`
+already was — the survey's own feed context, if any) and calls the *existing* `advanceToNextFeed`
+verbatim — the exact same reset-and-load function a between-stage transition in a multi-feed sequence
+already uses, so the interlude feed gets identical tracking-state reset (events/posts/viewRefs
+cleared, `feedPhase`/`contentPhase`/`flagsReady`/`assetsReady` reset) for free. `shouldShowSurvey`
+gained `&& !feedInterlude`, swapping `SurveyScreen`(`Mobile`) out for a new top-level render branch —
+a close copy of the existing pre-survey Feed branch (same `PageWithRails`/`InstagramSurroundings`
+wrapper, same skeleton-gating `canShowFeed`/`gateOpen`/`showSkeletonLayer` chrome, reused by widening
+`canShowFeed`'s formula to `(!!feedInterlude || (requiresFeedStage && !feedSubmitted))` — a real
+gotcha caught before shipping: `requiresFeedStage`/`feedSubmitted` are both about the *primary*
+pre-survey feed specifically and are otherwise never true once already mid-survey, which is the only
+time an interlude can fire) — mounting the real, same-name `Feed` component
+(`FBFeed`/`IGFeed`/`XFeed`, or Amazon's own) with a hardcoded "Continue" button and its **own**
+`onSubmit` handler, deliberately not the primary Feed's: the primary handler's guard
+(`if (feedSubmitted || submitted || disabled) return;`) would permanently block a reused instance,
+since `feedSubmitted` is already `true` for the entire time a survey (and therefore any interlude) can
+be showing. The interlude's own `onSubmit` clones the primary handler's tracking body (viewport-exit
+logging, `buildParticipantRow`, `sendToSheet` keyed by the interlude's own `feed_id` — a real,
+independent participant row, exactly like every other feed stage already produces) but branches
+differently at the end: instead of advancing to a further programmed feed stage or revealing the
+survey for the first time, it calls `advanceToNextFeed(resumeFeedId)` again (restoring the
+pre-interlude feed context) or clears feed state to empty (a `survey_only` study with no real prior
+feed), writes the completion marker into `surveyResponses` via the already-existing
+`handleSurveyResponseChange`, and clears `feedInterlude`.
+
+**The one real gap that needed new plumbing**: `SurveyScreen`/`SurveyScreenMobile`'s own
+`currentPageIndex` is plain component state, lost whenever `SurveyScreen` unmounts (i.e., for exactly
+as long as the interlude Feed is showing) — without a fix, returning from an interlude would always
+land back on page 1. Fixed by lifting page tracking one level up: both components gained a new
+`initialPageIndex` prop (generalizing the existing preview-only `initialQuestionId` one-shot-jump
+pattern — a lazy `useState` initializer plus a ref-guarded reset effect that skips its own first mount
+so a freshly-seeded resume value isn't immediately clobbered back to 0) and started actually consuming
+their existing-but-previously-unwired `onPageChange` prop's counterpart at the App level: a new
+`surveyPageIndex` state tracks the survey's current page live, and `surveyResumePageIndex` is set from
+it right when returning from an interlude, then fed back in as `initialPageIndex` on the next
+`SurveyScreen` mount. `surveyResponses` itself already survives fine (it's App-level state, never
+unmounted).
+
+**Interaction tracking, confirmed identical to any other feed visit with zero special-case
+wiring**: `applyPostInteractionEvent`/`buildParticipantRow`/`sendToSheet` are generic to "a Feed
+component was mounted, interacted with, and submitted" — they don't know or care whether the Feed is
+the primary pre-survey one, a `multi_feed_then_survey` stage, or a mid-survey interlude. The interlude
+literally mounts the same top-level `Feed` component every other feed visit does, so likes/comments/
+shares/reports/dwell/scroll are recorded exactly as usual, into their own real participant row.
+
+**Also touched, so an interlude question behaves correctly everywhere else in the app, not just in
+the core survey flow** (grepped every `POST_REMINDER`/`post_reminder` reference in the codebase and
+added a parallel `FEED_INTERLUDE` case wherever it was actually applicable, skipping the ones that are
+genuinely post_reminder-specific like dwell tracking or the recall/decoy UI):
+- `components-admin-surveys-editor.jsx` — a new "Feed interlude" entry in the "Add question" type
+  gallery (`QUESTION_TYPE_CATALOG`, category "structure", new round-trip-detour icon
+  `TypeIconFeedInterlude`), a new `FeedInterludeEditorBlock` (a plain `<select>` over the survey's
+  linked feeds — not the post_id/post_feed_id composite picker `post_reminder` uses, since an
+  interlude points at a whole feed, not one post — plus a button-label text field), the Required
+  toggle hidden for this type (always-on, same reasoning as its forced-true validation), and the
+  existing "stale reference" orphaned-feed warning pattern (from the 2026-09-24 "unlinking a feed"
+  fix earlier this file) reused for a `interlude_feed_id` that no longer matches a linked feed.
+- `components-admin-survey-preview.jsx` (the admin's "Preview" modal) — there's no live feed to swap
+  to inside a modal, so its own `onEnterFeedInterlude` handler marks the question complete instantly
+  instead, so "Force response" preview mode can click through an interlude instead of dead-ending on
+  it (the button would otherwise be a harmless no-op there, since `onEnterFeedInterlude` was
+  previously unpassed).
+- `components-admin-surveys.jsx` — a question-type label ("Feed interlude") and a one-line "Sends
+  participants to feed: `<id>`" description in the ethics-protocol Word/PDF export's per-question
+  coding section, mirroring `post_reminder`'s equivalent line.
+- `components-admin-surveys-editor.jsx`'s "Save to library" button — hidden for `feed_interlude`
+  questions too (both render sites), same reasoning as the existing `post_reminder` exclusion: a
+  question that references one specific feed isn't a meaningful reusable library item across surveys.
+- `utils-backend.js` (`flattenSurveyQuestions`, the function every CSV export *and* the codebook
+  builder sit on top of) — a fixed 3-field row list (`completed`/`feed_id`/`completed_at`, mirroring
+  `REMINDER_DWELL_FIELDS`'s "fixed field list stands in for q.rows" mechanism), so an interlude
+  question gets 3 real CSV/codebook columns instead of one column holding a raw, unreadable
+  `{completed:true,...}` object — the generic `value[row_value]` cell-extraction in
+  `flattenSurveyResponseRecord` already handles this correctly with no further change.
+- `utils-survey-analysis.js` (`classifySurveyQuestions`, used by the power-analysis/reliability
+  tooling) — excluded from the "real scored item" list, alongside INFO/POST_REMINDER/PAGE_BREAK,
+  since a completion marker isn't a measure.
+- `utils-survey-simulate.js` (the survey response simulator) — a real gap caught while auditing, not
+  hypothetical: the simulator's `generateAnswer` had no FEED_INTERLUDE case, so it fell into the
+  generic `default: return ""` branch — an empty string is falsy, so `isQuestionAnswered` would
+  always read it as unanswered, meaning **every simulated survey containing a feed_interlude question
+  would have failed its own required-validation, 100% of the time**. Fixed with an unconditional
+  `{completed:true, feed_id, completed_at}` (no low-effort/attentive distinction to model here, unlike
+  post_reminder's dwell time).
+
+**Deliberately not built, disclosed rather than silently cut**: the interlude Feed's own
+loading-skeleton chrome reuses the primary feed's `canShowFeed`/`gateOpen` gating (so the blur+overlay
+"Preparing your feed…" text is identical) but does **not** replicate the primary feed's separate ghost
+-skeleton shimmer placeholder — that JSX block is a sibling specific to the primary Feed's own render
+branch, not something the interlude branch renders. A real but purely cosmetic gap during the loading
+transition, not a tracking or correctness one.
+
+**Verified**: all 13 touched `.js`/`.jsx` files parse clean (`@babel/parser`); `survey-sanitize.ts`
+type-checks (`deno check`) and is deployed to both Supabase projects (confirmed still linked to
+production afterward, this repo's default). Node-level functional tests against the real, bundled
+`utils-survey.js` (24 checks: `makeQuestion`/`normalizeQuestion` defaults and forced-required,
+frontend↔backend round-trip through `meta` including a meta-only-raw-row fallback simulating a stale
+DB row, `isQuestionAnswered`/`emptyValueForQuestion`, `makeQuestionByType`'s template,
+`isFeedInterludeQuestion`/`getFeedInterludeRequest`/`collectSurveyFeedInterludeFeedIds`, and a full
+`normalizeSurvey` round-trip across two pages finding both interlude questions) and `utils-backend.js`
+(the 3-column CSV/codebook shape, real cell-value extraction for a completed and an unvisited
+response) — all passed. **Not verified**: an actual click-through by a real logged-in admin or
+participant — this sandbox's browser tool refused every `localhost:5173` navigation attempt this
+session (`navOk: false`), the same tooling denial the three entries directly above this one already
+hit and documented; the dev server itself was confirmed reachable via `preview_logs` with zero server
+errors. Worth a real click-through on `staging.studyfeed.org` before trusting this beyond what the
+parse/type/deploy/functional checks above cover — build a short test survey with a `feed_interlude`
+page mid-survey, walk through it as a participant, and confirm: the feed's own Continue button returns
+to the exact same survey page, the interlude's own participant row appears correctly keyed by its
+`feed_id`, and the CSV/codebook show the three new columns.
+
+**Deploy status**: working tree was on the `production` branch at the start of this session (per
+`git status`). Per this file's own "Deployment" section, an edit here auto-commits/pushes to
+`origin/production` and auto-deploys straight to `studyfeed.org` — **no Netlify-staging soak** the way
+`main` gets. The Edge Function redeploy above is already live regardless (Edge Functions aren't part
+of that git-branch pipeline). Given this is a first-draft, unverified-live multi-file feature touching
+all four participant-facing apps, worth deliberately routing the frontend changes through `main` →
+staging first rather than letting them ship straight to production, same recommendation this file
+makes for every other first-draft multi-file change that happens to land on this branch.

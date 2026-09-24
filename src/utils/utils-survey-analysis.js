@@ -437,6 +437,7 @@ export function classifySurveyQuestions(survey) {
         !q?.id ||
         type === SURVEY_QUESTION_TYPES.INFO ||
         type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+        type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE ||
         type === SURVEY_QUESTION_TYPES.PAGE_BREAK
       ) {
         return;

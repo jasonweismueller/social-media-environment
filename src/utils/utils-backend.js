@@ -577,6 +577,21 @@ const REMINDER_NOTE_GROUP_FIELDS = [
   { value: "note_group2_size_shown", label: "Note group 2 size shown" },
 ];
 
+// A feed_interlude question's response is always the completion marker
+// App-*.jsx's returnFromFeedInterlude writes (`{completed, feed_id,
+// completed_at}`, see handleEnterFeedInterlude/the interlude Feed's onSubmit)
+// — one row field per key, same "fixed field list stands in for q.rows"
+// mechanism as REMINDER_DWELL_FIELDS above, so each resolves via the normal
+// `value[row_value]` lookup in flattenSurveyResponseRecord with no special
+// case needed there. The interlude feed's own interactions (likes/comments/
+// dwell/etc.) are a separate participant row keyed by that feed_id — same as
+// any other feed stage — not part of this question's own columns.
+const INTERLUDE_FIELDS = [
+  { value: "completed", label: "Interlude completed" },
+  { value: "feed_id", label: "Interlude feed" },
+  { value: "completed_at", label: "Interlude completed at" },
+];
+
 export function flattenSurveyQuestions(
   definition,
   { labelMode = SURVEY_COLUMN_LABEL_MODE.VARIABLE, resolvePost } = {}
@@ -642,7 +657,9 @@ export function flattenSurveyQuestions(
                   ...REMINDER_DWELL_FIELDS,
                   ...REMINDER_NOTE_GROUP_FIELDS.filter(reminderFieldIsRelevant),
                 ])
-          : Array.isArray(q?.rows) ? q.rows : [];
+          : questionType === "feed_interlude"
+            ? INTERLUDE_FIELDS
+            : Array.isArray(q?.rows) ? q.rows : [];
       const hasRowStructure = rows.length > 0;
 
       if (hasRowStructure) {

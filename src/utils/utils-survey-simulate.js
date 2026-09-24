@@ -376,6 +376,19 @@ function generateAnswer(q, ctx) {
       return out;
     }
 
+    // Always required (see isDisplayOnlyQuestion/normalizeQuestion's
+    // FEED_INTERLUDE carve-out, utils-survey.js) — every simulated
+    // participant, low-effort or not, has to "complete" it to reach the
+    // rest of the survey, exactly like a real one does. There's no
+    // meaningful low-effort/attentive distinction to model here (unlike
+    // post_reminder's dwell time), so this is unconditional.
+    case SURVEY_QUESTION_TYPES.FEED_INTERLUDE:
+      return {
+        completed: true,
+        feed_id: String(q.interlude_feed_id || ""),
+        completed_at: new Date().toISOString(),
+      };
+
     default:
       return "";
   }

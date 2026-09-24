@@ -37,6 +37,8 @@ import { QuestionLibraryPickerModal, SaveToLibraryModal } from "./components-adm
 export const EDITOR_PAGE_BREAK_TYPE = "page_break";
 const POST_REMINDER_TYPE =
   SURVEY_QUESTION_TYPES.POST_REMINDER || "post_reminder";
+const FEED_INTERLUDE_TYPE =
+  SURVEY_QUESTION_TYPES.FEED_INTERLUDE || "feed_interlude";
 
 /* =========================
    Question type catalog — single source of truth for the "Add question"
@@ -157,6 +159,15 @@ export const QUESTION_TYPE_CATALOG = [
     icon: () => TypeIconPostReminder,
   },
   {
+    type: FEED_INTERLUDE_TYPE,
+    category: "structure",
+    label: "Feed interlude",
+    tagline: "Send participants to a real feed, then back",
+    description: "Sends the participant away to a real, fully-interactive feed — tracked exactly like any other feed visit — then brings them back to this exact point in the survey once they click Continue on it.",
+    example: "“Survey → a few questions → a live feed → back to the survey.”",
+    icon: () => TypeIconFeedInterlude,
+  },
+  {
     type: EDITOR_PAGE_BREAK_TYPE,
     category: "structure",
     label: "Page break",
@@ -183,6 +194,7 @@ export const QUESTION_TYPE_SHORT_LABELS = {
   [SURVEY_QUESTION_TYPES.SLIDER]: "Sldr",
   [SURVEY_QUESTION_TYPES.INFO]: "Info",
   [POST_REMINDER_TYPE]: "Post",
+  [FEED_INTERLUDE_TYPE]: "Feed",
 };
 
 export const INSERTABLE_TYPES = QUESTION_TYPE_CATALOG.map((item) => item.type);
@@ -675,6 +687,8 @@ export function cloneQuestionForDuplicate(sourceQuestion, existingIds) {
     recall_distractor_texts: normalizeRecallDistractorTextsForEditor(
       sourceQuestion?.recall_distractor_texts
     ),
+    interlude_feed_id: String(sourceQuestion?.interlude_feed_id ?? ""),
+    interlude_button_label: String(sourceQuestion?.interlude_button_label ?? ""),
   };
 
   if (shouldAutoRewriteRowValues(copiedQuestion)) {
@@ -705,6 +719,7 @@ export function isCountedQuestionType(type) {
   return (
     type !== SURVEY_QUESTION_TYPES.INFO &&
     type !== POST_REMINDER_TYPE &&
+    type !== FEED_INTERLUDE_TYPE &&
     type !== EDITOR_PAGE_BREAK_TYPE
   );
 }
@@ -3832,6 +3847,23 @@ function TypeIconPageBreak(props) {
   );
 }
 
+// A round-trip detour glyph (out and back) — used for the "Feed interlude"
+// question type, which sends the participant away to a real feed and then
+// back into the survey, rather than showing content inline like Info/Post
+// reminder do.
+function TypeIconFeedInterlude(props) {
+  return (
+    <TypeIconBase {...props}>
+      <rect x="3" y="9" width="6" height="6" rx="1.2" />
+      <rect x="15" y="9" width="6" height="6" rx="1.2" />
+      <path d="M9 10.5 C11 6.5, 13 6.5, 15 10.5" />
+      <path d="M15 13.5 C13 17.5, 11 17.5, 9 13.5" />
+      <polyline points="13.2,9.2 15,10.5 13.6,12.4" />
+      <polyline points="10.8,14.8 9,13.5 10.4,11.6" />
+    </TypeIconBase>
+  );
+}
+
 /* =========================
    Add-question type gallery — the modal that opens on every "+ Add
    question" click (border-hover trigger and the empty-questions-list
@@ -5425,6 +5457,10 @@ function QuestionActions({
   onSaveToLibrary,
 }) {
   const isDisplayOnly = isEditorDisplayOnlyType(q);
+  // Always required (utils-survey.js forces it on save regardless) — the
+  // toggle would silently do nothing, so it's hidden rather than left
+  // interactive-but-inert.
+  const isAlwaysRequired = q?.type === FEED_INTERLUDE_TYPE;
 
   return (
     <TopField label="Actions">
@@ -5441,7 +5477,7 @@ function QuestionActions({
           onDragEnd={onDragEnd}
         />
 
-        {!isDisplayOnly && (
+        {!isDisplayOnly && !isAlwaysRequired && (
           <RequiredToggleButton
             active={!!q.required}
             onClick={() => updateQuestion(index, { required: !q.required })}
@@ -5486,7 +5522,7 @@ function QuestionActions({
           <CopyIcon size={16} />
         </IconOnlyButton>
 
-        {onSaveToLibrary && q?.type !== POST_REMINDER_TYPE && (
+        {onSaveToLibrary && q?.type !== POST_REMINDER_TYPE && q?.type !== FEED_INTERLUDE_TYPE && (
           <IconOnlyButton
             onClick={() => onSaveToLibrary(index)}
             title="Save to library"
@@ -5826,7 +5862,7 @@ function CollapsedQuestionRow({
         >
           <CopyIcon size={11} />
         </IconOnlyButton>
-        {onSaveToLibrary && q?.type !== POST_REMINDER_TYPE && (
+        {onSaveToLibrary && q?.type !== POST_REMINDER_TYPE && q?.type !== FEED_INTERLUDE_TYPE && (
           <IconOnlyButton
             onClick={() => onSaveToLibrary(index)}
             title="Save to library"
@@ -5969,6 +6005,84 @@ function PostReminderEditorBlock({
             )}
           </div>
         )}
+      </FieldBlock>
+    </>
+  );
+}
+
+// A feed interlude sends the participant to a whole real feed — not one
+// specific post the way post_reminder does — so its own picker is just
+// "which of the survey's linked feeds," not the post_id/post_feed_id
+// composite picker PostReminderEditor uses. `feedId` is left orphaned (not
+// silently cleared) if it no longer appears in `linkedFeeds` — same
+// "flag it, don't hide it" pattern this codebase already established for
+// stale feed_sequence_ids/visible_in_feeds references (see the 2026-09-24
+// "unlinking a feed left stale references" fix) — an admin who unlinks a
+// feed this interlude depends on needs to notice and fix it, not have the
+// question silently start pointing at nothing.
+function FeedInterludeEditorBlock({
+  linkedFeeds,
+  feedId,
+  buttonLabel,
+  onFeedIdChange,
+  onButtonLabelChange,
+}) {
+  const safeLinkedFeeds = Array.isArray(linkedFeeds) ? linkedFeeds : [];
+  const cleanFeedId = String(feedId || "").trim();
+  const isOrphaned =
+    !!cleanFeedId && !safeLinkedFeeds.some((f) => String(f?.feed_id || "") === cleanFeedId);
+
+  return (
+    <>
+      <FieldBlock
+        label="Feed to visit"
+        hint="Participants are sent to this feed — with the exact same interactions, tracking, and randomization as any other feed visit — then return to this exact point in the survey once they click that feed's own Continue button."
+      >
+        {safeLinkedFeeds.length === 0 && !isOrphaned ? (
+          <div
+            style={{
+              border: "1px solid var(--admin-border)",
+              borderRadius: 10,
+              padding: 12,
+              background: "var(--admin-surface-alt)",
+              color: "var(--admin-muted)",
+              fontSize: 13,
+            }}
+          >
+            Link this survey to feeds first. Then you can choose which one participants are sent to
+            here.
+          </div>
+        ) : (
+          <SelectInput value={cleanFeedId} onChange={onFeedIdChange}>
+            <option value="">Choose a feed…</option>
+            {isOrphaned && (
+              <option value={cleanFeedId}>{`⚠ ${cleanFeedId} — no longer linked to this survey`}</option>
+            )}
+            {safeLinkedFeeds.map((f) => {
+              const fid = String(f?.feed_id || "");
+              return (
+                <option key={fid} value={fid}>
+                  {f?.name || fid}
+                </option>
+              );
+            })}
+          </SelectInput>
+        )}
+
+        {isOrphaned && (
+          <div style={{ fontSize: 12, color: "var(--admin-warning-ink)", marginTop: 4 }}>
+            This feed was unlinked from the survey — choose another one, or re-link it on the Setup
+            tab.
+          </div>
+        )}
+      </FieldBlock>
+
+      <FieldBlock label="Button label (optional)" hint="Shown on the button participants click. Defaults to “Continue” when left blank.">
+        <TextInput
+          value={buttonLabel}
+          onChange={onButtonLabelChange}
+          placeholder="Continue"
+        />
       </FieldBlock>
     </>
   );
@@ -6244,7 +6358,11 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
     text: q.text || next.text,
     required: isEditorDisplayOnlyType({ type: nextType, recall_enabled: nextRecallEnabled })
       ? false
-      : !!q.required,
+      // A feed interlude is always required — see utils-survey.js's
+      // identical FEED_INTERLUDE carve-out.
+      : nextType === FEED_INTERLUDE_TYPE
+        ? true
+        : !!q.required,
     visible_if: q.visible_if || null,
     visible_in_feeds: normalizeVisibleInFeeds(q.visible_in_feeds),
     feed_overrides: normalizeFeedOverridesMap(q.feed_overrides),
@@ -6271,6 +6389,9 @@ function computeQuestionAfterTypeChange(q, nextType, index) {
       nextType === POST_REMINDER_TYPE
         ? normalizeRecallDistractorTextsForEditor(q.recall_distractor_texts)
         : normalizeRecallDistractorTextsForEditor([]),
+    interlude_feed_id: nextType === FEED_INTERLUDE_TYPE ? String(q.interlude_feed_id || "") : "",
+    interlude_button_label:
+      nextType === FEED_INTERLUDE_TYPE ? String(q.interlude_button_label || "") : "",
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(nextType) ? !!q.is_attention_check : false,
     attention_check_value:
@@ -6350,8 +6471,20 @@ function renderTypeSpecificFields({
   updateQuestion,
   reminderFeedIds,
   availablePostsForQuestion,
+  linkedFeeds,
 }) {
   switch (type) {
+    case FEED_INTERLUDE_TYPE:
+      return (
+        <FeedInterludeEditorBlock
+          linkedFeeds={linkedFeeds}
+          feedId={q.interlude_feed_id}
+          buttonLabel={q.interlude_button_label}
+          onFeedIdChange={(v) => updateQuestion(index, { interlude_feed_id: v })}
+          onButtonLabelChange={(v) => updateQuestion(index, { interlude_button_label: v })}
+        />
+      );
+
     case POST_REMINDER_TYPE:
       return (
         <PostReminderEditorBlock
@@ -6829,6 +6962,7 @@ function QuestionCard({
         updateQuestion,
         reminderFeedIds,
         availablePostsForQuestion,
+        linkedFeeds,
       })}
 
       <QuestionAdvancedFeedTools

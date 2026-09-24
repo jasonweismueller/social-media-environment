@@ -233,6 +233,22 @@ export function SurveyPreviewModal({
     toast.success("Preview complete — no data was recorded.");
   }, [toast]);
 
+  // A feed_interlude's real "Continue" click swaps to a live, tracked Feed
+  // at the App-*.jsx level (see App-facebook.jsx's handleEnterFeedInterlude)
+  // — there's no live feed session to swap to inside this modal, so preview
+  // just marks it complete immediately, mirroring how post_reminder's own
+  // interactive/recall answers write straight into `responses` here rather
+  // than needing a real participant session. Lets "Force response" preview
+  // click through a feed_interlude instead of dead-ending on it.
+  const handleEnterFeedInterlude = useCallback((question) => {
+    if (!question?.id) return;
+    handleChange(question.id, {
+      completed: true,
+      feed_id: String(question?.interlude_feed_id || ""),
+      completed_at: new Date().toISOString(),
+    });
+  }, [handleChange]);
+
   const handlePageValidationFail = useCallback((pageErrors, message) => {
     setErrors((prev) => ({ ...prev, ...(pageErrors || {}) }));
     setErrorMsg(message || "");
@@ -386,6 +402,7 @@ export function SurveyPreviewModal({
           enforceRequired={forceResponse}
           allowPageJump
           initialQuestionId={initialQuestionId}
+          onEnterFeedInterlude={handleEnterFeedInterlude}
           // This preview has no real live feed a participant ever viewed —
           // without this, a post-reminder question's real PostCard (reused
           // as-is here) would write its normal "displayed post snapshot" to

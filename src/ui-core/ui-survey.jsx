@@ -185,6 +185,7 @@ function isNumberedQuestion(question) {
   return (
     question?.type !== SURVEY_QUESTION_TYPES.INFO &&
     question?.type !== SURVEY_QUESTION_TYPES.POST_REMINDER &&
+    question?.type !== SURVEY_QUESTION_TYPES.FEED_INTERLUDE &&
     question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
 }
@@ -243,6 +244,14 @@ function isEmptyRequiredValue(question, value, responses) {
     // isQuestionAnswered exactly: only `selected_option` counts.
     if (question.type === SURVEY_QUESTION_TYPES.POST_REMINDER) {
       return !value.selected_option;
+    }
+
+    // Mirrors isQuestionAnswered's identical FEED_INTERLUDE case
+    // (utils-survey.js) — only a real `completed` marker (written by
+    // App-*.jsx once the participant actually returns from the interlude
+    // feed) counts, not merely having *some* value object.
+    if (question.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE) {
+      return !value.completed;
     }
 
     return Object.keys(value).length === 0;
@@ -1432,6 +1441,54 @@ const PostReminderCard = memo(function PostReminderCard({
   );
 });
 
+// A feed_interlude question doesn't render any feed content itself — the
+// real, fully-tracked feed is rendered at the App-*.jsx top level (the same
+// mechanism multi_feed_then_survey's between-stage feeds already use), not
+// nested inside the survey UI. This card is just the "step" the participant
+// sees on the survey page: instructions + a button that hands control up to
+// App-*.jsx (onEnterFeedInterlude) to make that swap happen. Once the
+// participant returns (clicks the interlude feed's own Continue button),
+// App-*.jsx writes `{completed:true, feed_id, completed_at}` as this
+// question's response (see isQuestionAnswered's FEED_INTERLUDE case,
+// utils-survey.js) and this card reflects that back as a plain "done" state
+// — there's nothing left for the participant to do here, by design (an
+// interlude can't be un-completed and replayed from inside the survey).
+const FeedInterludeCard = memo(function FeedInterludeCard({
+  question,
+  value,
+  onEnterFeedInterlude,
+}) {
+  const completed = !!(value && typeof value === "object" && value.completed);
+  const feedId = String(question?.interlude_feed_id || "").trim();
+  const buttonLabel = String(question?.interlude_button_label || "").trim() || "Continue";
+
+  const handleClick = useCallback(() => {
+    onEnterFeedInterlude?.(question);
+  }, [onEnterFeedInterlude, question]);
+
+  return (
+    <div className="survey-feed-interlude">
+      {!feedId ? (
+        <div className="survey-error-banner">
+          This step isn't configured yet — no feed has been chosen for it.
+        </div>
+      ) : completed ? (
+        <div className="survey-question-description" style={{ marginTop: 0 }}>
+          ✓ You've completed this part of the study.
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="survey-nav-btn survey-nav-btn-primary"
+          onClick={handleClick}
+        >
+          {buttonLabel}
+        </button>
+      )}
+    </div>
+  );
+});
+
 export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
   question,
   questionId,
@@ -1446,12 +1503,14 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
   participantSeed,
   otherText,
   disableReminderSnapshot = false,
+  onEnterFeedInterlude,
 }) {
   const qType = question?.type;
   const stepTickFractions =
     qType === SURVEY_QUESTION_TYPES.SLIDER ? getSliderStepTickFractions(question) : [];
   const isInfo = qType === SURVEY_QUESTION_TYPES.INFO;
   const isPostReminder = qType === SURVEY_QUESTION_TYPES.POST_REMINDER;
+  const isFeedInterlude = qType === SURVEY_QUESTION_TYPES.FEED_INTERLUDE;
 
   const choiceItems = useMemo(() => {
     if (Array.isArray(question?.choices)) return question.choices;
@@ -1551,10 +1610,10 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
       className={`survey-question ${
         isInfo ? "survey-question-info" : ""
       } ${isPostReminder ? "survey-question-post-reminder" : ""} ${
-        error ? "has-error" : ""
-      }`}
+        isFeedInterlude ? "survey-question-feed-interlude" : ""
+      } ${error ? "has-error" : ""}`}
     >
-      {!isInfo && !isPostReminder && (
+      {!isInfo && !isPostReminder && !isFeedInterlude && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
             <span className="survey-question-number">{index + 1}.</span>
@@ -1566,7 +1625,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
         </div>
       )}
 
-      {!isInfo && !isPostReminder && question.description ? (
+      {!isInfo && !isPostReminder && !isFeedInterlude && question.description ? (
         <div className="survey-question-description">{question.description}</div>
       ) : null}
 
@@ -1589,6 +1648,20 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
           onChange={onChange}
           disableReminderSnapshot={disableReminderSnapshot}
         />
+      )}
+
+      {isFeedInterlude && (
+        <>
+          <div
+            className="survey-info-block"
+            dangerouslySetInnerHTML={{ __html: question.text || "" }}
+          />
+          <FeedInterludeCard
+            question={question}
+            value={value}
+            onEnterFeedInterlude={onEnterFeedInterlude}
+          />
+        </>
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -1884,6 +1957,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
     prev.participantSeed === next.participantSeed &&
     prev.otherText === next.otherText &&
     prev.disableReminderSnapshot === next.disableReminderSnapshot &&
+    prev.onEnterFeedInterlude === next.onEnterFeedInterlude &&
     (prev.value === next.value ||
       shallowEqualArray(prev.value, next.value) ||
       shallowEqualObject(prev.value, next.value))
@@ -1922,8 +1996,25 @@ export function SurveyScreen({
   // group's reminder shows just because they happen to reference the same
   // underlying feed+post.
   disableReminderSnapshot = false,
+  // Real-delivery-only (App-*.jsx): the page to resume on, used specifically
+  // when this component remounts after a feed_interlude question sent the
+  // participant away to a real feed and back — SurveyScreen's own
+  // currentPageIndex is plain component state, lost on unmount, so without
+  // this the participant would land back on page 1 instead of the interlude
+  // question's own page. Same one-shot-jump shape as initialQuestionId
+  // above (preview's analogous mechanism), just App-level rather than
+  // preview-only. null (the default) means "no resume — start at page 1",
+  // so every other caller is unaffected.
+  initialPageIndex = null,
+  // Real-delivery-only (App-*.jsx): called when the participant clicks a
+  // feed_interlude question's button — App-*.jsx owns what actually happens
+  // (swap to the real Feed, track it, and come back), this component only
+  // ever forwards the click.
+  onEnterFeedInterlude,
 }) {
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [currentPageIndex, setCurrentPageIndex] = useState(() =>
+    Number.isInteger(initialPageIndex) && initialPageIndex >= 0 ? initialPageIndex : 0
+  );
   const [delayRemaining, setDelayRemaining] = useState(0);
   // Fully self-contained, same pattern as SurveyPrefaceFlow's consent-decline
   // overlay above — no backend write, no callback out to App-*.jsx. Once set,
@@ -1983,7 +2074,18 @@ export function SurveyScreen({
       .filter((page) => page.questions.length > 0);
   }, [renderedPages, responses, feedId, survey?.experiment_assigned_group_id]);
 
+  // Resets to page 1 whenever the survey or active feed genuinely changes —
+  // but NOT on this component's own first mount, so a fresh mount that was
+  // seeded with `initialPageIndex` (the feed_interlude resume case) isn't
+  // immediately clobbered back to 0. The ref captures whatever
+  // (survey_id, feedId) pair was already current at mount, so this only
+  // ever fires on a real subsequent change, exactly like before for every
+  // caller that doesn't pass initialPageIndex.
+  const pageResetKeyRef = useRef(`${survey?.survey_id || ""}::${feedId || ""}`);
   useEffect(() => {
+    const key = `${survey?.survey_id || ""}::${feedId || ""}`;
+    if (key === pageResetKeyRef.current) return;
+    pageResetKeyRef.current = key;
     setCurrentPageIndex(0);
   }, [survey?.survey_id, feedId]);
 
@@ -2365,7 +2467,8 @@ const isNextDelayed =
           {currentPage.questions.map((q, idx) => {
             const isUnnumbered =
               q?.type === SURVEY_QUESTION_TYPES.INFO ||
-              q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
+              q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+              q?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE;
 
             const displayIndex = isUnnumbered
               ? null
@@ -2395,6 +2498,7 @@ const isNextDelayed =
                 participantSeed={participantSeed}
                 otherText={otherText}
                 disableReminderSnapshot={disableReminderSnapshot}
+                onEnterFeedInterlude={onEnterFeedInterlude}
               />
             );
           })}

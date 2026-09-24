@@ -1140,6 +1140,22 @@ export default function App() {
   const [surveyErrorMsg, setSurveyErrorMsg] = useState("");
   const [prefaceCompleted, setPrefaceCompleted] = useState(false);
 
+  // feed_interlude support (a survey question that sends the participant to
+  // a real, fully-tracked feed mid-survey and back — see utils-survey.js's
+  // "Feed interlude helpers"). Non-null while the participant is away at
+  // that feed: {questionId, feedId, resumeFeedId} — resumeFeedId is whatever
+  // activeFeedId already was (the survey's own feed context, if any) so it
+  // can be restored on return. surveyPageIndex tracks SurveyScreen's own
+  // current page live (via its onPageChange prop, previously unused);
+  // surveyResumePageIndex is set once, right before SurveyScreen remounts
+  // after an interlude, so it resumes on the same page instead of resetting
+  // to page 1 — SurveyScreen's own currentPageIndex is plain component
+  // state and doesn't survive being unmounted while the interlude feed
+  // shows.
+  const [feedInterlude, setFeedInterlude] = useState(null);
+  const [surveyPageIndex, setSurveyPageIndex] = useState(0);
+  const [surveyResumePageIndex, setSurveyResumePageIndex] = useState(null);
+
   const isDirectSurveyLaunch = !onAdmin && !!String(activeSurveyId || "").trim();
 
   // A feed accidentally linked to a delivery_mode:"survey_only" survey should
@@ -2367,6 +2383,10 @@ export default function App() {
     hasEntered &&
     !submitted &&
     !!linkedSurvey &&
+    // A feed_interlude question hands control to the interlude Feed branch
+    // below instead — see handleEnterFeedInterlude/the "feedInterlude ?"
+    // render branch.
+    !feedInterlude &&
     (
       isSurveyOnlyMode
         ? surveyOnlyReady ||
@@ -2863,6 +2883,27 @@ export default function App() {
     return true;
   }, [loadStudyContent]);
 
+  // Fired by a feed_interlude question's own "Continue" click (threaded down
+  // through SurveyScreen(Mobile)'s onEnterFeedInterlude prop). Reuses
+  // advanceToNextFeed verbatim — the exact same reset+load machinery a
+  // between-stage transition in multi_feed_then_survey already uses — so
+  // the interlude feed gets identical loading chrome and tracking-state
+  // reset for free. shouldShowSurvey flips false the moment feedInterlude
+  // is set (see its own condition above), swapping SurveyScreen out for the
+  // interlude Feed render branch below.
+  const handleEnterFeedInterlude = useCallback(async (question) => {
+    if (feedInterlude) return;
+    const feedId = String(question?.interlude_feed_id || "").trim();
+    if (!feedId) return;
+
+    setFeedInterlude({
+      questionId: question.id,
+      feedId,
+      resumeFeedId: activeFeedId || "",
+    });
+    await advanceToNextFeed(feedId);
+  }, [feedInterlude, activeFeedId, advanceToNextFeed]);
+
   const ioRef = useRef(null);
   const viewRefs = useRef(new Map());
   const elToId = useRef(new WeakMap());
@@ -2912,9 +2953,13 @@ export default function App() {
 
   const canShowFeed =
     hasEntered &&
-    requiresFeedStage &&
     feedPhase === "ready" &&
-    !feedSubmitted;
+    // A feed_interlude's own Feed render branch reuses this exact readiness
+    // gate (same skeleton/gating chrome as the primary pre-survey feed) —
+    // requiresFeedStage/feedSubmitted are both about the *primary* feed
+    // stage specifically and are irrelevant once already mid-survey, which
+    // is the only time an interlude can be active.
+    (!!feedInterlude || (requiresFeedStage && !feedSubmitted));
 
   const gateOpen = canShowFeed && flagsReady && assetsReady && minDelayDone;
 
@@ -3086,6 +3131,19 @@ export default function App() {
     surveyPhase === "loading" &&
     !shouldShowSurvey;
 
+  // Interlude counterpart of preparingFeedOverlay above — same idea, just
+  // gated on feedInterlude instead of requiresFeedStage/!feedSubmitted
+  // (irrelevant once already mid-survey, which is the only time an
+  // interlude can be active).
+  const preparingInterludeFeedOverlay =
+    !onAdmin &&
+    !!feedInterlude &&
+    (contentPhase === "loading" ||
+      feedPhase === "loading" ||
+      !flagsReady ||
+      !assetsReady ||
+      !minDelayDone);
+
   const showBootError =
     !onAdmin && bootPhase === "error" && !hasEntered && !shouldShowPreface;
 
@@ -3114,7 +3172,17 @@ export default function App() {
       submitted ||
       (requiresFeedStage && !flagsReady) ||
       (requiresFeedStage && !assetsReady) ||
-      (requiresFeedStage && !minDelayDone));
+      (requiresFeedStage && !minDelayDone) ||
+      // Same loading-chrome treatment while a feed_interlude's own feed is
+      // still loading — requiresFeedStage's clauses above don't cover this
+      // (survey_only mode has requiresFeedStage=false, and an interlude can
+      // happen there too).
+      (!!feedInterlude &&
+        (contentPhase === "loading" ||
+          feedPhase !== "ready" ||
+          !flagsReady ||
+          !assetsReady ||
+          !minDelayDone)));
 
   useEffect(() => {
     dbgGroup("overlay selectors", {
@@ -3151,12 +3219,14 @@ export default function App() {
   useEffect(() => {
     let routeBranch = "none";
     if (shouldShowSurvey) routeBranch = "survey";
+    else if (feedInterlude) routeBranch = "feed_interlude";
     else if (shouldShowPreface) routeBranch = "preface";
     else if (showSurveyOnlyLoadingOverlay) routeBranch = "survey_only_loading";
     else if (requiresFeedStage) routeBranch = "feed_stage";
     dbg("route branch", { routeBranch });
   }, [
     shouldShowSurvey,
+    feedInterlude,
     shouldShowPreface,
     showSurveyOnlyLoadingOverlay,
     requiresFeedStage,
@@ -3166,6 +3236,13 @@ export default function App() {
     loadingStudyOverlay ? { title: "Loading study…", subtitle: "Checking the study setup" } :
     showSurveyOnlyLoadingOverlay ? { title: "Loading questions…", subtitle: "Preparing the survey" } :
     preparingFeedOverlay ? {
+      title: "Preparing your feed…",
+      subtitle:
+        flags.randomize_avatars || flags.randomize_images
+          ? "Almost ready..."
+          : "Loading the feed.",
+    } :
+    preparingInterludeFeedOverlay ? {
       title: "Preparing your feed…",
       subtitle:
         flags.randomize_avatars || flags.randomize_images
@@ -3277,6 +3354,9 @@ export default function App() {
                       onPageValidationFail={handleSurveyPageValidationFail}
                       onClearBanner={clearSurveyBanner}
                       submitting={surveyPhase === "submitting"}
+                      onPageChange={setSurveyPageIndex}
+                      initialPageIndex={surveyResumePageIndex}
+                      onEnterFeedInterlude={handleEnterFeedInterlude}
                     />
                   ) : (
                     <SurveyScreen
@@ -3294,9 +3374,164 @@ export default function App() {
                       onPageValidationFail={handleSurveyPageValidationFail}
                       onClearBanner={clearSurveyBanner}
                       submitting={surveyPhase === "submitting"}
+                      onPageChange={setSurveyPageIndex}
+                      initialPageIndex={surveyResumePageIndex}
+                      onEnterFeedInterlude={handleEnterFeedInterlude}
                     />
                   )}
                 </div>
+              ) : feedInterlude ? (
+                <PageWithRails flags={flags} runSeed={runSeed} app={APP} projectId={projectId} feedId={activeFeedId}>
+                  <div
+                    style={{
+                      position: "relative",
+                      minHeight: "calc(100vh - var(--vp-top, 0px))",
+                    }}
+                  >
+                    <div
+                      aria-hidden={!canShowFeed}
+                      style={{
+                        opacity: canShowFeed ? (gateOpen ? 1 : 0) : 0,
+                        pointerEvents: gateOpen ? "auto" : "none",
+                        transition: "opacity 320ms ease",
+                        position: showSkeletonLayer ? "absolute" : "relative",
+                        inset: showSkeletonLayer ? 0 : "auto",
+                        zIndex: 1,
+                      }}
+                    >
+                      {canShowFeed ? (
+                        <FBFeed
+                          posts={orderedPosts}
+                          registerViewRef={registerViewRef}
+                          disabled={disabled}
+                          log={log}
+                          showComposer={false}
+                          loading={false}
+                          showRails={false}
+                          flags={flags}
+                          runSeed={runSeed}
+                          app={APP}
+                          projectId={projectId}
+                          submitButtonLabel="Continue"
+                          feedId={activeFeedId}
+                          avatarPools={avatarPools}
+                          participantSeed={participantId || sessionIdRef.current}
+                          onDisplayedPostSnapshot={handleDisplayedPostSnapshot}
+                          onSubmit={async () => {
+                            if (disabled) return;
+                            setDisabled(true);
+                            setSubmittingToSurvey(true);
+
+                            const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                              ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+                              : 0.5;
+                            const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                              ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                              : ENTER_FRAC;
+
+                            for (const [post_id, elNode] of viewRefs.current) {
+                              const m = measureVis(post_id);
+                              if (!m) continue;
+                              const { vis_frac } = m;
+                              const isImg = elementHasImage(elNode);
+                              const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+                              if (vis_frac >= TH) {
+                                log("vp_exit", {
+                                  post_id,
+                                  vis_frac,
+                                  reason: "submit",
+                                  feed_id: activeFeedId || null,
+                                });
+                              }
+                            }
+
+                            const ts = now();
+                            submitTsRef.current = ts;
+
+                            const submitEvent = {
+                              session_id: sessionIdRef.current,
+                              participant_id: participantId || null,
+                              timestamp_iso: fmtTime(ts),
+                              elapsed_ms: ts - t0Ref.current,
+                              ts_ms: ts,
+                              action: "feed_submit",
+                              feed_id: activeFeedId || null,
+                              project_id: projectId || null,
+                            };
+
+                            const eventsWithSubmit = [...events, submitEvent];
+                            const feed_id = activeFeedId || null;
+                            const feed_checksum = computeFeedId(posts);
+
+                            const row = buildParticipantRow({
+                              session_id: sessionIdRef.current,
+                              participant_id: participantId,
+                              events: eventsWithSubmit,
+                              posts,
+                              feed_id,
+                              feed_checksum,
+                              survey_id: linkedSurvey?.survey_id || "",
+                              participantSeed: participantId || sessionIdRef.current,
+                            });
+
+                            const displayedPostSnapshots = orderedPosts
+                              .map((post) =>
+                                displayedPostSnapshotsRef.current.get(`${feed_id || ""}::${post.id}`)
+                              )
+                              .filter(Boolean);
+                            row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
+                            row.experiment_group_id = linkedSurvey?.experiment_assigned_group_id || "";
+
+                            const header = buildMinimalHeader(posts);
+                            if (!header.includes("displayed_posts_json")) {
+                              header.push("displayed_posts_json");
+                            }
+                            if (!header.includes("experiment_group_id")) {
+                              header.push("experiment_group_id");
+                            }
+
+                            const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+
+                            if (!ok) {
+                              showToast("Sync failed. Please try again.");
+                              setSubmittingToSurvey(false);
+                              setDisabled(false);
+                              return;
+                            }
+
+                            // Same "return from interlude" sequence
+                            // regardless of platform — see App-facebook.jsx's
+                            // own comment on handleEnterFeedInterlude for why
+                            // this reuses advanceToNextFeed rather than a
+                            // bespoke reset.
+                            const interlude = feedInterlude;
+                            const resumeFeedId = interlude?.resumeFeedId || "";
+                            if (resumeFeedId) {
+                              await advanceToNextFeed(resumeFeedId);
+                            } else {
+                              setEvents([]);
+                              setPosts([]);
+                              setActiveFeedId("");
+                              viewRefs.current?.clear?.();
+                            }
+
+                            if (interlude?.questionId) {
+                              handleSurveyResponseChange(interlude.questionId, {
+                                completed: true,
+                                feed_id: interlude.feedId,
+                                completed_at: new Date().toISOString(),
+                              });
+                            }
+                            setSurveyResumePageIndex(surveyPageIndex);
+                            setFeedInterlude(null);
+                            setSubmittingToSurvey(false);
+                            setDisabled(false);
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                </PageWithRails>
               ) : shouldShowPreface ? (
                 <div className="survey-page">
                   {surveyBoot ? (

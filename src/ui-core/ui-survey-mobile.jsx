@@ -185,6 +185,7 @@ function isNumberedQuestion(question) {
   return (
     question?.type !== SURVEY_QUESTION_TYPES.INFO &&
     question?.type !== SURVEY_QUESTION_TYPES.POST_REMINDER &&
+    question?.type !== SURVEY_QUESTION_TYPES.FEED_INTERLUDE &&
     question?.type !== SURVEY_QUESTION_TYPES.PAGE_BREAK
   );
 }
@@ -238,6 +239,14 @@ function isEmptyRequiredValue(q, value, responses) {
     // isQuestionAnswered exactly: only `selected_option` counts.
     if (q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER) {
       return !obj.selected_option;
+    }
+
+    // Mirrors isQuestionAnswered's identical FEED_INTERLUDE case
+    // (utils-survey.js) — only a real `completed` marker (written by
+    // App-*.jsx once the participant actually returns from the interlude
+    // feed) counts, not merely having *some* value object.
+    if (q?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE) {
+      return !obj.completed;
     }
 
     return Object.keys(obj).length === 0;
@@ -1048,16 +1057,18 @@ function MobileQuestionWrapper({ question, index, error, children }) {
   const isInfo = question?.type === SURVEY_QUESTION_TYPES.INFO;
   const isPostReminder =
     question?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
+  const isFeedInterlude =
+    question?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE;
 
   return (
     <div
       className={`survey-question ${
         isInfo ? "survey-question-info" : ""
       } ${isPostReminder ? "survey-question-post-reminder" : ""} ${
-        error ? "has-error" : ""
-      }`}
+        isFeedInterlude ? "survey-question-feed-interlude" : ""
+      } ${error ? "has-error" : ""}`}
     >
-      {!isInfo && !isPostReminder && (
+      {!isInfo && !isPostReminder && !isFeedInterlude && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
             <span className="survey-question-number">{index + 1}.</span>
@@ -1069,7 +1080,7 @@ function MobileQuestionWrapper({ question, index, error, children }) {
         </div>
       )}
 
-      {!isInfo && !isPostReminder && question.description ? (
+      {!isInfo && !isPostReminder && !isFeedInterlude && question.description ? (
         <div
           className="survey-question-description"
           dangerouslySetInnerHTML={{ __html: question.description || "" }}
@@ -1081,6 +1092,14 @@ function MobileQuestionWrapper({ question, index, error, children }) {
           className="survey-info-block"
           dangerouslySetInnerHTML={{ __html: question.text || "" }}
         />
+      ) : isFeedInterlude ? (
+        <>
+          <div
+            className="survey-info-block"
+            dangerouslySetInnerHTML={{ __html: question.text || "" }}
+          />
+          {children}
+        </>
       ) : (
         children
       )}
@@ -1361,6 +1380,47 @@ function MobileMatrixMulti({ question, value, onChange }) {
   );
 }
 
+// Mobile counterpart of FeedInterludeCard (ui-survey.jsx) — see that
+// component's own comment for the full rationale. Identical behavior, kept
+// as a separate component per this file's own established "each survey
+// renderer is a full, independent copy" convention (mirrors PostReminderCard/
+// PostReminderCardMobile).
+const FeedInterludeCardMobile = memo(function FeedInterludeCardMobile({
+  question,
+  value,
+  onEnterFeedInterlude,
+}) {
+  const completed = !!(value && typeof value === "object" && value.completed);
+  const feedId = String(question?.interlude_feed_id || "").trim();
+  const buttonLabel = String(question?.interlude_button_label || "").trim() || "Continue";
+
+  const handleClick = useCallback(() => {
+    onEnterFeedInterlude?.(question);
+  }, [onEnterFeedInterlude, question]);
+
+  return (
+    <div className="survey-feed-interlude">
+      {!feedId ? (
+        <div className="survey-error-banner">
+          This step isn't configured yet — no feed has been chosen for it.
+        </div>
+      ) : completed ? (
+        <div className="survey-question-description" style={{ marginTop: 0 }}>
+          ✓ You've completed this part of the study.
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="survey-nav-btn survey-nav-btn-primary"
+          onClick={handleClick}
+        >
+          {buttonLabel}
+        </button>
+      )}
+    </div>
+  );
+});
+
 export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRendererMobile({
   question,
   questionId,
@@ -1375,6 +1435,7 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
   participantSeed,
   otherText,
   disableReminderSnapshot = false,
+  onEnterFeedInterlude,
 }) {
   const qType = question?.type;
   const stepTickFractions =
@@ -1406,6 +1467,14 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
           value={value}
           onChange={onChange}
           disableReminderSnapshot={disableReminderSnapshot}
+        />
+      )}
+
+      {qType === SURVEY_QUESTION_TYPES.FEED_INTERLUDE && (
+        <FeedInterludeCardMobile
+          question={question}
+          value={value}
+          onEnterFeedInterlude={onEnterFeedInterlude}
         />
       )}
 
@@ -1549,8 +1618,15 @@ export function SurveyScreenMobile({
   initialQuestionId = null,
   // See ui-survey.jsx's SurveyScreen for the rationale — mirrored here.
   disableReminderSnapshot = false,
+  // See ui-survey.jsx's SurveyScreen for the rationale — mirrored here
+  // (resume page after a feed_interlude round-trip, and the callback that
+  // hands the interlude click up to App-*.jsx).
+  initialPageIndex = null,
+  onEnterFeedInterlude,
 }) {
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [currentPageIndex, setCurrentPageIndex] = useState(() =>
+    Number.isInteger(initialPageIndex) && initialPageIndex >= 0 ? initialPageIndex : 0
+  );
   const [delayRemaining, setDelayRemaining] = useState(0);
   // See ui-survey.jsx's SurveyScreen for the rationale — fully self-contained,
   // same pattern as SurveyPrefaceFlow's consent-decline overlay, no backend
@@ -1604,7 +1680,14 @@ export function SurveyScreenMobile({
       .filter((page) => page.questions.length > 0);
   }, [renderedPages, responses, feedId, survey?.experiment_assigned_group_id]);
 
+  // See ui-survey.jsx's SurveyScreen for the rationale — skips its own first
+  // mount so a fresh mount seeded via initialPageIndex isn't immediately
+  // reset back to page 1.
+  const pageResetKeyRef = useRef(`${survey?.survey_id || ""}::${feedId || ""}`);
   useEffect(() => {
+    const key = `${survey?.survey_id || ""}::${feedId || ""}`;
+    if (key === pageResetKeyRef.current) return;
+    pageResetKeyRef.current = key;
     setCurrentPageIndex(0);
   }, [survey?.survey_id, feedId]);
 
@@ -1965,7 +2048,8 @@ export function SurveyScreenMobile({
           {currentPage.questions.map((q, idx) => {
             const isUnnumbered =
               q?.type === SURVEY_QUESTION_TYPES.INFO ||
-              q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER;
+              q?.type === SURVEY_QUESTION_TYPES.POST_REMINDER ||
+              q?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE;
 
             const displayIndex = isUnnumbered
               ? null
@@ -1995,6 +2079,7 @@ export function SurveyScreenMobile({
                 participantSeed={participantSeed}
                 otherText={otherText}
                 disableReminderSnapshot={disableReminderSnapshot}
+                onEnterFeedInterlude={onEnterFeedInterlude}
               />
             );
           })}

@@ -31,6 +31,7 @@ export const SURVEY_QUESTION_TYPES = {
   SLIDER: "slider",
   INFO: "info",
   POST_REMINDER: "post_reminder",
+  FEED_INTERLUDE: "feed_interlude",
   PAGE_BREAK: "page_break",
 };
 
@@ -844,6 +845,43 @@ export function surveyNeedsFeedContext(survey, fallbackFeedId = "") {
 }
 
 /* =========================
+   Feed interlude helpers — a FEED_INTERLUDE question sends the participant
+   away from the survey to a real, fully-interactive, fully-tracked feed
+   (App-*.jsx's handleEnterFeedInterlude/the interlude Feed render branch),
+   then back to the same survey page once they click that feed's own
+   Continue button. Unlike a post_reminder (which only ever *displays* a
+   single post inline), this is a real detour through the live Feed
+   component — these helpers are just for locating/validating the
+   question's target feed, not for anything about feed *content*.
+   ========================= */
+
+export function isFeedInterludeQuestion(question) {
+  return question?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE;
+}
+
+export function getFeedInterludeRequest(question) {
+  const normalized = normalizeQuestion(question);
+  if (!isFeedInterludeQuestion(normalized)) return null;
+
+  const feedId = String(normalized.interlude_feed_id ?? "").trim();
+  if (!feedId) return null;
+
+  return {
+    feed_id: feedId,
+    button_label: String(normalized.interlude_button_label ?? "").trim(),
+  };
+}
+
+export function collectSurveyFeedInterludeFeedIds(survey) {
+  return uniqueStringArray(
+    surveyQuestions(survey)
+      .filter(isFeedInterludeQuestion)
+      .map((q) => getFeedInterludeRequest(q)?.feed_id)
+      .filter(Boolean)
+  );
+}
+
+/* =========================
    Question mapping
    ========================= */
 
@@ -857,7 +895,9 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
       ? "Page break"
       : safeType === SURVEY_QUESTION_TYPES.POST_REMINDER
         ? "Please look at this post again before answering."
-        : "Untitled question";
+        : safeType === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+          ? "Please continue to the next part of the study."
+          : "Untitled question";
 
   const text = String(overrides.text ?? overrides.label ?? defaultText);
   const questionId = sanitizeQuestionId(overrides.id, `Q_${uid()}`);
@@ -878,8 +918,14 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     text,
     label: text,
     description: overrides.description || "",
+    // A feed interlude can't be optional — there's no meaningful "skip
+    // this" for a step whose whole job is sending the participant to a
+    // real, tracked feed and back; it's always required, the same way a
+    // screener always is below.
     required: isDisplayOnlyQuestion({ type: safeType, recall_enabled: !!overrides.recall_enabled })
       ? false
+      : safeType === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? true
       // A screener can't be optional — there'd be nothing to disqualify on if
       // it were left blank — so marking a question as a screener forces
       // required on, the same way recall_enabled forces it on for a
@@ -926,6 +972,12 @@ export function makeQuestion(type = SURVEY_QUESTION_TYPES.TEXT, overrides = {}) 
     reminder_interactive: !!overrides.reminder_interactive,
     recall_enabled: !!overrides.recall_enabled,
     recall_distractor_texts: normalizeRecallDistractorTexts(overrides.recall_distractor_texts),
+    // FEED_INTERLUDE-only — the feed the participant is sent to when they
+    // click through this question, and the label on that button. Stored
+    // unconditionally, like post_id/post_label above, meaningless for other
+    // types.
+    interlude_feed_id: String(overrides.interlude_feed_id ?? ""),
+    interlude_button_label: String(overrides.interlude_button_label ?? ""),
     next_delay_seconds: normalizePageDelaySeconds(overrides.next_delay_seconds),
     meta: asObject(overrides.meta),
   };
@@ -941,7 +993,9 @@ export function normalizeQuestion(raw = {}) {
       ? "Page break"
       : type === SURVEY_QUESTION_TYPES.POST_REMINDER
         ? "Please look at this post again before answering."
-        : "Untitled question";
+        : type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+          ? "Please continue to the next part of the study."
+          : "Untitled question";
 
   const text = String(raw.text ?? raw.label ?? defaultText);
   const questionId = sanitizeQuestionId(raw.id, `Q_${uid()}`);
@@ -1004,6 +1058,16 @@ export function normalizeQuestion(raw = {}) {
       ? normalizeRecallDistractorTexts(raw.recall_distractor_texts ?? meta.recall_distractor_texts)
       : normalizeRecallDistractorTexts([]);
 
+  const interludeFeedId =
+    type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+      ? String(raw.interlude_feed_id ?? meta.interlude_feed_id ?? "")
+      : "";
+
+  const interludeButtonLabel =
+    type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+      ? String(raw.interlude_button_label ?? meta.interlude_button_label ?? "")
+      : "";
+
   return {
     id: questionId,
     type,
@@ -1012,7 +1076,9 @@ export function normalizeQuestion(raw = {}) {
     description: String(raw.description || ""),
     required: isDisplayOnlyQuestion({ type, recall_enabled: recallEnabled })
       ? false
-      : !!raw.required || (SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener),
+      : type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? true
+        : !!raw.required || (SCREENER_ELIGIBLE_TYPES.includes(type) && !!raw.is_screener),
     randomize_options: !!raw.randomize_options,
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!raw.is_attention_check,
@@ -1101,6 +1167,8 @@ export function normalizeQuestion(raw = {}) {
     reminder_interactive: reminderInteractive,
     recall_enabled: recallEnabled,
     recall_distractor_texts: recallDistractorTexts,
+    interlude_feed_id: interludeFeedId,
+    interlude_button_label: interludeButtonLabel,
     next_delay_seconds: normalizePageDelaySeconds(raw.next_delay_seconds),
     meta: {
       ...meta,
@@ -1113,6 +1181,12 @@ export function normalizeQuestion(raw = {}) {
             reminder_interactive: reminderInteractive,
             recall_enabled: recallEnabled,
             recall_distractor_texts: recallDistractorTexts,
+          }
+        : {}),
+      ...(type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? {
+            interlude_feed_id: interludeFeedId,
+            interlude_button_label: interludeButtonLabel,
           }
         : {}),
     },
@@ -1148,6 +1222,12 @@ export function frontendQuestionToBackend(question = {}) {
             reminder_interactive: !!q.reminder_interactive,
             recall_enabled: !!q.recall_enabled,
             recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
+          }
+        : {}),
+      ...(q.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE
+        ? {
+            interlude_feed_id: String(q.interlude_feed_id ?? ""),
+            interlude_button_label: String(q.interlude_button_label ?? ""),
           }
         : {}),
     },
@@ -1273,6 +1353,17 @@ export function frontendQuestionToBackend(question = {}) {
         reminder_interactive: !!q.reminder_interactive,
         recall_enabled: !!q.recall_enabled,
         recall_distractor_texts: normalizeRecallDistractorTexts(q.recall_distractor_texts),
+      };
+
+    case SURVEY_QUESTION_TYPES.FEED_INTERLUDE:
+      return {
+        ...base,
+        // Always required (base.required already resolves to true via
+        // normalizeQuestion's own FEED_INTERLUDE case) — there's no
+        // meaningful "skip this" for a step that sends the participant to a
+        // real, tracked feed and back.
+        interlude_feed_id: String(q.interlude_feed_id ?? ""),
+        interlude_button_label: String(q.interlude_button_label ?? ""),
       };
 
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
@@ -1909,6 +2000,13 @@ export function makeQuestionByType(type) {
         post_feed_id: "",
       });
 
+    case SURVEY_QUESTION_TYPES.FEED_INTERLUDE:
+      return makeQuestion(type, {
+        label: "Please continue to the next part of the study.",
+        interlude_feed_id: "",
+        interlude_button_label: "",
+      });
+
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
       return makeQuestion(type, {
         label: "Next page",
@@ -2031,6 +2129,7 @@ export function emptyValueForQuestion(q) {
 
     case SURVEY_QUESTION_TYPES.INFO:
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
+    case SURVEY_QUESTION_TYPES.FEED_INTERLUDE:
     case SURVEY_QUESTION_TYPES.PAGE_BREAK:
       return null;
 
@@ -2161,6 +2260,13 @@ export function isQuestionAnswered(q, value, responses) {
     // exempts every other post_reminder from required/answered checks.
     case SURVEY_QUESTION_TYPES.POST_REMINDER:
       return !!(value && typeof value === "object" && value.selected_option);
+
+    // Set only once the participant has actually visited the interlude's
+    // feed and clicked its own Continue button (see App-*.jsx's
+    // handleEnterFeedInterlude/onSubmit) — never by anything in the survey
+    // UI itself, so this can't be satisfied by merely reaching the page.
+    case SURVEY_QUESTION_TYPES.FEED_INTERLUDE:
+      return !!(value && typeof value === "object" && value.completed);
 
     // A choice flagged is_other needs its companion free-text specification
     // filled in too, not just the radio picked — otherwise "Other" would

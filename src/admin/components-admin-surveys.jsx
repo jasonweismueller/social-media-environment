@@ -77,6 +77,8 @@ import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
 
 const POST_REMINDER_TYPE =
   SURVEY_QUESTION_TYPES?.POST_REMINDER || "post_reminder";
+const FEED_INTERLUDE_TYPE =
+  SURVEY_QUESTION_TYPES?.FEED_INTERLUDE || "feed_interlude";
 
 const DEFAULT_PARTICIPANT_INFORMATION_TITLE = "Participant Information";
 const DEFAULT_CONSENT_TITLE = "Participant Consent";
@@ -300,6 +302,10 @@ function summarizeChoicesHtml(question = {}) {
     return `<div><strong>Post reminder source:</strong> ${escapeHtml(question?.post_label || question?.post_id || "Selected post")} ${question?.post_feed_id ? `from ${escapeHtml(question.post_feed_id)}` : ""}</div>`;
   }
 
+  if (type === FEED_INTERLUDE_TYPE) {
+    return `<div><strong>Sends participants to feed:</strong> ${escapeHtml(question?.interlude_feed_id || "Not configured")}</div>`;
+  }
+
   return "";
 }
 
@@ -316,6 +322,7 @@ function questionTypeLabel(type = "") {
     slider: "Slider",
     info: "Information text",
     post_reminder: "Post reminder",
+    feed_interlude: "Feed interlude",
     page_break: "Page break",
   };
   return labels[type] || type || "Question";
