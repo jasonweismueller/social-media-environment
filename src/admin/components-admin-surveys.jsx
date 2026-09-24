@@ -2487,7 +2487,7 @@ export function AdminSurveysPanel({
 
       const currentDeliveryMode = normalizeDeliveryMode(prev?.delivery_mode);
 
-      return {
+      let result = {
         ...prev,
         linked_feed_ids: next,
         // Survey-only can still keep linked_feed_ids as post-reminder context,
@@ -2501,6 +2501,62 @@ export function AdminSurveysPanel({
                 ? DELIVERY_MODE_MULTI_FEED_THEN_SURVEY
                 : currentDeliveryMode),
       };
+
+      // Unlinking a feed (not adding one) can leave it as a stale reference
+      // in two other places that don't derive from linked_feed_ids on their
+      // own: an experiment group's own feed_sequence_ids override, and a
+      // question's visible_in_feeds/feed_overrides. Both used to silently
+      // keep the removed id forever — invisible and un-removable in their
+      // own sub-editors, since those only ever render checkboxes for the
+      // *current* linked feeds, which inflated "Display logic (N)" counts
+      // and left a feed sequence with no way to drop the old feed. Pruned
+      // here, at the one place a feed actually gets unlinked, rather than
+      // leaving it for whoever next opens each sub-editor.
+      if (exists) {
+        const groups = Array.isArray(result.experiment_groups) ? result.experiment_groups : [];
+        if (
+          groups.some(
+            (g) => Array.isArray(g?.feed_sequence_ids) && g.feed_sequence_ids.includes(nextFeedId)
+          )
+        ) {
+          result = {
+            ...result,
+            experiment_groups: groups.map((g) =>
+              Array.isArray(g?.feed_sequence_ids) && g.feed_sequence_ids.includes(nextFeedId)
+                ? { ...g, feed_sequence_ids: g.feed_sequence_ids.filter((fid) => fid !== nextFeedId) }
+                : g
+            ),
+          };
+        }
+
+        const questions = flattenSurveyPagesForEditor(result);
+        const hasStaleQuestionRef = questions.some(
+          (q) =>
+            (Array.isArray(q?.visible_in_feeds) && q.visible_in_feeds.includes(nextFeedId)) ||
+            (q?.feed_overrides && Object.prototype.hasOwnProperty.call(q.feed_overrides, nextFeedId))
+        );
+        if (hasStaleQuestionRef) {
+          const cleanedQuestions = questions.map((q) => {
+            const hasVisibility =
+              Array.isArray(q?.visible_in_feeds) && q.visible_in_feeds.includes(nextFeedId);
+            const hasOverride =
+              q?.feed_overrides && Object.prototype.hasOwnProperty.call(q.feed_overrides, nextFeedId);
+            if (!hasVisibility && !hasOverride) return q;
+            const nextOverrides = { ...(q.feed_overrides || {}) };
+            delete nextOverrides[nextFeedId];
+            return {
+              ...q,
+              visible_in_feeds: hasVisibility
+                ? q.visible_in_feeds.filter((fid) => fid !== nextFeedId)
+                : q.visible_in_feeds,
+              feed_overrides: nextOverrides,
+            };
+          });
+          result = buildSurveyPagesFromFlatQuestions(result, cleanedQuestions);
+        }
+      }
+
+      return result;
     });
   }
   function moveLinkedFeed(feedIdToMove, direction) {

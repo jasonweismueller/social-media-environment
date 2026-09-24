@@ -4577,6 +4577,15 @@ function BipolarRowTableEditor({ items, onChange, questionId, columns = null }) 
 function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
   const safeFeeds = Array.isArray(availableFeeds) ? availableFeeds : [];
   const selected = new Set(normalizeVisibleInFeeds(value));
+  // A feed can be unlinked from the survey after a question already scoped
+  // itself to it via visible_in_feeds — the checkbox list below only ever
+  // iterates availableFeeds (the survey's *current* linked feeds), so a
+  // stale id like that would otherwise sit invisibly in the stored array
+  // forever (inflating the "Display logic (N)" count above with no
+  // matching, uncheckable box). Surfaced as its own "no longer linked" row
+  // instead, same pattern as ExperimentGroupsEditor's feed-sequence list.
+  const safeFeedIds = new Set(safeFeeds.map((f) => String(f?.feed_id || "").trim()));
+  const orphanedFeedIds = Array.from(selected).filter((fid) => !safeFeedIds.has(fid));
 
   function toggleFeed(feedId) {
     const next = new Set(selected);
@@ -4593,7 +4602,7 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
     onChange([]);
   }
 
-  if (safeFeeds.length === 0) {
+  if (safeFeeds.length === 0 && orphanedFeedIds.length === 0) {
     return (
       <div
         style={{
@@ -4696,6 +4705,41 @@ function FeedVisibilityEditor({ availableFeeds, value, onChange }) {
             </label>
           );
         })}
+        {orphanedFeedIds.map((feedId) => (
+          <div
+            key={feedId}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              padding: "6px 2px",
+            }}
+          >
+            <span style={{ color: "var(--admin-danger)", fontSize: 13 }}>
+              ⚠ {feedId} — no longer linked to this survey
+            </span>
+            <button
+              type="button"
+              className="admin-btn"
+              onClick={() => toggleFeed(feedId)}
+              title="Remove this unlinked feed"
+              style={{
+                padding: "4px 8px",
+                borderRadius: 6,
+                border: "1px solid var(--admin-danger)",
+                background: "var(--admin-surface)",
+                color: "var(--admin-danger)",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -7413,6 +7457,14 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
             const feedSeq = group.feed_sequence_ids || [];
             const isExpanded = expandedGroupIds.has(group.id);
             const feedById = new Map(safeLinkedFeeds.map((f) => [String(f.feed_id), f]));
+            // A feed can be removed from a survey's own linked-feed list after a
+            // group already referenced it in feed_sequence_ids — the checkbox
+            // list below only ever iterates safeLinkedFeeds, so a stale id like
+            // that would otherwise be permanently invisible and un-removable
+            // (summary still shows its raw id, via the `|| fid` fallback below,
+            // but nothing on screen lets the admin uncheck it). Surfaced as its
+            // own "no longer linked" row further down instead.
+            const orphanedFeedIdsInSeq = feedSeq.filter((fid) => !feedById.has(fid));
             const summary = feedSeq.length
               ? feedSeq.map((fid) => feedById.get(fid)?.name || fid).join(" → ")
               : "Survey's default feed sequence";
@@ -7437,7 +7489,7 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                   </IconOnlyButton>
                 </div>
 
-                {safeLinkedFeeds.length > 0 && (
+                {(safeLinkedFeeds.length > 0 || orphanedFeedIdsInSeq.length > 0) && (
                   <div style={{ borderTop: "1px solid var(--admin-border-subtle)", padding: "6px 8px", background: "var(--admin-surface-alt)" }}>
                     <button
                       type="button"
@@ -7453,13 +7505,18 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                         padding: "2px 0",
                         cursor: "pointer",
                         fontSize: 11,
-                        color: feedSeq.length ? "var(--admin-info-ink)" : "var(--admin-muted)",
+                        color: orphanedFeedIdsInSeq.length
+                          ? "var(--admin-danger)"
+                          : feedSeq.length
+                            ? "var(--admin-info-ink)"
+                            : "var(--admin-muted)",
                         textAlign: "left",
                       }}
                     >
                       <span style={{ fontWeight: 700 }}>{isExpanded ? "▾" : "▸"} Feed sequence:</span>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {summary}
+                        {orphanedFeedIdsInSeq.length ? " ⚠" : ""}
                       </span>
                     </button>
 
@@ -7521,6 +7578,36 @@ function ExperimentGroupsEditor({ survey, onSurveyChange, linkedFeeds = [] }) {
                                   </button>
                                 </div>
                               )}
+                            </div>
+                          );
+                        })}
+                        {orphanedFeedIdsInSeq.map((fid) => {
+                          const orderIndex = feedSeq.indexOf(fid);
+                          return (
+                            <div
+                              key={fid}
+                              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}
+                            >
+                              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, minWidth: 0, color: "var(--admin-danger)" }}>
+                                <span
+                                  style={{
+                                    fontSize: 11, fontWeight: 700, color: "var(--admin-danger)", background: "var(--admin-danger-soft)",
+                                    border: "1px solid var(--admin-danger-border)", borderRadius: 999, padding: "1px 6px",
+                                  }}
+                                >
+                                  {orderIndex + 1}
+                                </span>
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  ⚠ {fid} — no longer linked to this survey
+                                </span>
+                              </span>
+                              <IconOnlyButton
+                                onClick={() => toggleGroupFeed(groupIndex, fid)}
+                                title="Remove this unlinked feed from the sequence"
+                                danger
+                              >
+                                <TrashIcon size={11} />
+                              </IconOnlyButton>
                             </div>
                           );
                         })}

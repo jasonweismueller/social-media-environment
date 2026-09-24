@@ -2700,3 +2700,67 @@ unaffected); `SurveyPreviewModal` now passes `width={1040}` (was 880) and `maxHe
 fixed 720px cap). Not verified live this pass — same browser-navigation tooling denial as the two
 entries directly above; verified by parse check and by confirming `.survey-shell`'s own 980px max-width
 against the new 1040px modal width (enough room for its padding).
+
+## Real bug fixed: unlinking a feed from a survey left it as a stale, un-removable reference in per-group feed sequences and in questions' "Display logic" (2026-09-24)
+
+Direct report on "Virtual Influencer Paper - Study 3" (`survey_x3rpf08tbsmu5fzndh`, `proj_7`): (1) a
+per-group feed sequence in the Study overview modal kept showing a feed that had since been unlinked
+from the survey, with no way to remove it; (2) a post-reminder question's "Display logic" pill showed
+"(4)" although only two feeds were actually checked.
+
+**Root cause, the same one behind both reports**: `toggleFeed` (`components-admin-surveys.jsx`), the
+one function that actually removes a feed from `linked_feed_ids`, only ever recomputed the *survey's
+own* top-level `feed_sequence_ids` — it never touched two other places that reference feed ids
+independently: an experiment group's own `feed_sequence_ids` override (`ExperimentGroupsEditor`,
+`components-admin-surveys-editor.jsx`) and a question's `visible_in_feeds`
+(`FeedVisibilityEditor`/`QuestionAdvancedFeedTools`, same file). Both of those editors only ever
+render a checkbox per **currently-linked** feed (`safeLinkedFeeds.map(...)`), so once a feed is
+unlinked, any stale id left behind in a group's or question's own array has literally no checkbox to
+uncheck — invisible and permanently stuck, exactly "I can't remove it."
+
+**Confirmed live against this exact survey** (read-only queries first): `linked_feed_ids` = `[feed_2,
+feed_4, feed_6, feed_1, feed_10]`. The `REMINDER_MI` post-reminder question's `visible_in_feeds` was
+`[feed_7, feed_1, feed_3, feed_10]` — 4 entries, hence "(4)" — of which only `feed_1`/`feed_10` are
+still linked; `feed_7`/`feed_3` are leftovers from before those feeds were unlinked. `REMINDER_INT`
+had the same shape (`[feed_7, feed_1, feed_3]`, only `feed_1` still valid). This survey currently has
+no `experiment_groups` at all (confirmed via `jsonb_object_keys`), so the per-group feed-sequence
+report was either against unsaved local edits or a group that's since been removed — the underlying
+code bug is the same either way and reproduces for any survey with experiment groups.
+
+**Fix, two parts**:
+- **Prevent recurrence**: `toggleFeed` now prunes the removed feed id from every experiment group's
+  `feed_sequence_ids` and from every question's `visible_in_feeds`/`feed_overrides` (via the same
+  `flattenSurveyPagesForEditor`/`buildSurveyPagesFromFlatQuestions` round trip this file already uses
+  elsewhere to touch questions from outside `SurveyEditor`'s own local state), in the same survey
+  update that removes it from `linked_feed_ids` — only when a feed is actually being unlinked, not
+  when one is added. This also automatically covers the pre-existing "orphaned feed" cleanup panel
+  (Setup tab), since its Remove button already calls `toggleFeed`.
+- **Make existing stale data visible and fixable**: `ExperimentGroupsEditor` and `FeedVisibilityEditor`
+  now compute which of a group's/question's stored feed ids aren't in the current linked-feed list and
+  render those separately as a "⚠ `<id>` — no longer linked to this survey" row with its own Remove
+  button (same interaction as the pre-existing survey-level orphaned-feed panel), instead of only ever
+  iterating the current linked-feed list. `ExperimentGroupsEditor`'s per-group section now also renders
+  when a group has orphaned ids even if the survey currently has zero linked feeds (previously gated
+  entirely behind `safeLinkedFeeds.length > 0`).
+
+**Live production data cleanup, done directly per user confirmation**: removed the two confirmed-stale
+ids from `REMINDER_MI` (`visible_in_feeds` → `[feed_1, feed_10]`) and `REMINDER_INT` (→ `[feed_1]`) via
+a scoped `supabase db query --linked` update, verified before/after and against page/question counts
+and `linked_feed_ids`/`feed_sequence_ids` staying untouched. No experiment-group data existed to clean
+up on this survey (see above).
+
+**Not verified live this pass** — same browser-navigation tooling denial as the three entries directly
+above (`localhost:5173` navigation was refused all session; the dev server itself was up). Verified by
+parse check on both touched files and by the live, read-before/read-after production-DB round trip
+above, which independently proves the exact bug (stale ids surviving an unlink) and the exact fix
+shape (their removal) at the data level — not a substitute for actually clicking the new "Remove" rows
+in a live admin session. Worth a real click-through on `staging.studyfeed.org`: unlink a feed from a
+survey that has a post-reminder question scoped to it or an experiment group with a feed-sequence
+override, and confirm the stale reference now shows with a working Remove control (or, after the next
+unlink, doesn't appear at all).
+
+**Deploy status**: working tree was on `main` at the start of this session (per `git status`). Per this
+file's own "Deployment" section, an edit here auto-commits/pushes to `origin/main` and auto-deploys to
+the Netlify **staging** site, not `studyfeed.org` — reaching production needs `main` merged and pushed
+into `production` as a deliberate promotion step. The live-data cleanup above is independent of that
+and is already in effect on `studyfeed.org` regardless of when the code fix ships.
