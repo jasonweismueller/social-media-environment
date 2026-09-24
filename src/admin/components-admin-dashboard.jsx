@@ -1009,20 +1009,33 @@ export function AdminDashboard({
 
       const projList = Array.isArray(list) ? list : [];
 
-      // A failed (or empty) project read used to fall through to the "global"
-      // fallback below and PERSIST it — silently overwriting the project the admin
-      // had just picked, and rendering a normal-looking empty dashboard. Check
-      // whether the admin session is actually still valid first: if not, say so
-      // (the "Session expired" dialog offers a re-login); either way leave the
-      // selected project untouched instead of replacing it with "global".
-      if (loadFailed || projList.length === 0) {
+      // A failed project read used to fall through to the "global" fallback
+      // below and PERSIST it — silently overwriting the project the admin had
+      // just picked, and rendering a normal-looking empty dashboard.
+      //
+      // Deliberately gated on `loadFailed` (the read actually THREW) only —
+      // an earlier version of this also fired on a merely EMPTY list, which
+      // was wrong: a real account can genuinely have zero projects (or, for
+      // the sibling case in loadFeeds below, zero feeds on a given platform
+      // — feeds are scoped per app, so a project that's mostly a Facebook
+      // study can easily have no Instagram feeds at all). That over-eager
+      // check made "Session expired" pop up for admins who had just logged
+      // in and switched to a platform with nothing on it yet — a real
+      // reported regression (2026-09-24). An empty-but-successful read needs
+      // no session check at all; only a genuine failure is worth asking
+      // "is this actually a dead session, or just a real backend error?".
+      if (loadFailed) {
         const res = await touchAdminSession().catch(() => ({ ok: false }));
         if (ctrl.signal.aborted) return;
-        if (!res?.ok) setSessExpired(true);
-        if (loadFailed) {
+        if (!res?.ok) {
+          setSessExpired(true);
+        } else {
+          // Session is fine — this was a real, ordinary failure (network
+          // blip, backend error), not worth the scarier "Session expired"
+          // wording.
           setProjectsError("Failed to load projects from the backend. Please try again.");
-          return;
         }
+        return;
       }
 
       setProjects(projList);
@@ -1081,14 +1094,17 @@ export function AdminDashboard({
 
       if (ctrl.signal.aborted) return;
 
+      // Deliberately no session check just because this list is empty — a
+      // project can genuinely have zero feeds on a given platform (feeds are
+      // scoped per app, so a mostly-Facebook project can easily have no
+      // Instagram feeds at all yet). An earlier version of this treated any
+      // empty result as possible evidence of a dead session and showed
+      // "Session expired" for it — a real reported regression (2026-09-24):
+      // it fired the instant an admin switched to a platform/project with
+      // nothing on it yet, even with a perfectly healthy session. A thrown
+      // error (below, in the catch block) is the only signal worth checking
+      // the session over.
       const feedsList = Array.isArray(list) ? list : [];
-      if (feedsList.length === 0) {
-        // An empty list is only believable if the session is real — a rejected
-        // session reads as "no feeds" too. Surface it instead of a blank dashboard.
-        const res = await touchAdminSession().catch(() => ({ ok: false }));
-        if (ctrl.signal.aborted) return;
-        if (!res?.ok) setSessExpired(true);
-      }
       setFeeds(feedsList);
 
       // Auto-selects the first feed in the list — matches AdminSurveysPanel's
@@ -1142,11 +1158,16 @@ export function AdminDashboard({
       } catch {}
     } catch (e) {
       const isAbort = e?.name === "AbortError";
-      setFeedsError(
-        isAbort
-          ? "Feed loading was interrupted. You can try again."
-          : "Failed to load feeds from the backend. Please try again."
-      );
+      if (isAbort) {
+        setFeedsError("Feed loading was interrupted. You can try again.");
+      } else {
+        // A real failure (not just an empty list, see above) — worth asking
+        // whether the session is actually the cause before showing a plain
+        // "try again" error.
+        const res = await touchAdminSession().catch(() => ({ ok: false }));
+        if (!res?.ok) setSessExpired(true);
+        else setFeedsError("Failed to load feeds from the backend. Please try again.");
+      }
     } finally {
       if (feedsAbortRef.current === ctrl) feedsAbortRef.current = null;
       setFeedsLoading(false);

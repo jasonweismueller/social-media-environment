@@ -599,10 +599,19 @@ body:not(.admin-mode) .top-rail-placeholder { display: grid !important; }
   display: grid;
   place-items: center;
   padding: 16px;
+  /* Was a leftover Instagram-brand pink/red gradient (rgba(237,73,86,…) /
+     rgba(214,41,118,…)) — the same class of per-bundle admin re-theme the
+     2026-08-22 "legacy Instagram-only admin gradient theme removed" fix
+     targeted on the dashboard's <h1>/<h2>, just on this selector instead,
+     which that pass didn't touch. Reported directly: the login page (same
+     login, same session, for every platform — see CLAUDE.md "Admin
+     platform switch") visibly looked like a different app depending purely
+     on which bundle happened to be loaded. Matched to Facebook/Amazon/X's
+     existing neutral gradient so the login screen is identical everywhere. */
   background:
-    radial-gradient(1200px 600px at 10% -20%, rgba(237,73,86,.16), transparent 60%),
-    radial-gradient(1200px 600px at 110% 120%, rgba(214,41,118,.14), transparent 60%),
-    linear-gradient(#fcf7f9, #f7f1f4);
+    radial-gradient(1200px 600px at 10% -20%, rgba(37, 99, 235, 0.10), transparent 60%),
+    radial-gradient(1200px 600px at 110% 120%, rgba(16, 185, 129, 0.10), transparent 60%),
+    linear-gradient(#f8fafc, #f3f4f6);
 }
 
 .admin-login-wrap .card.admin-login-card {

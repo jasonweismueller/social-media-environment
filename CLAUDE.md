@@ -2609,3 +2609,94 @@ new npm dependencies (`html-to-image`, `jszip`) — worth routing through `main`
 build (`npm run build`, which this sandbox can't run — see "Build/dev notes") gets a real check before
 `production`/`studyfeed.org`, same recommendation this file makes for every other first-draft
 multi-file change landing on this branch.
+
+## Real bug fixed: the 2026-09-21 "ghost session" fix over-fired — "Session expired" for a perfectly healthy session that just had an empty feed/project list (2026-09-24)
+
+Direct report: logged in, picked a project, switched to Instagram — got "Session expired. Please
+re-authenticate to continue." immediately, despite having just logged in.
+
+**Root cause, confirmed by re-reading the exact change that introduced it**: the previous entry
+above ("Admin platform switch: silent 'ghost session' failures made visible…", 2026-09-21) made
+`loadFeeds`/`loadProjects` call `touchAdminSession()` and show the "Session expired" dialog whenever
+`listFeedsFromBackend`/`listProjectsFromBackend` came back **empty** — reasoning that an empty list
+might be indistinguishable from a rejected session. That reasoning was wrong: an empty list is
+**not** unusual or suspicious on its own — `feeds`/`projects` scope by `app`, so a project that's
+mostly a Facebook study can easily and correctly have zero Instagram feeds, especially right after
+switching to a platform for the first time (exactly what was reported: "went to one project and the
+Instagram app"). Every such empty-but-legitimate load now triggered an extra live
+`touchAdminSession()` call and, if that call had any transient hiccup of its own (or simply because
+firing it unnecessarily on every single empty state increases the odds of hitting one), showed a
+real, scary "Session expired" dialog over a session that was never actually dead. This is the
+opposite failure mode from what the 2026-09-21 fix was solving (a dead session silently looking like
+an empty dashboard) — now a healthy session could look like a dead one.
+
+**Fix**: the session check now fires only on an **actual thrown error** from the backend read (a
+real network/RLS/auth failure — the `throwOnError` mechanism added in the same 2026-09-21 pass is
+kept, just wired to the right branch), never merely because the list is empty.
+- `loadProjects`: the `loadFailed || projList.length === 0` check narrowed to `loadFailed` only.
+- `loadFeeds`: the empty-list check removed entirely (a project having zero feeds on the current
+  platform is exactly the "No feeds yet, + New feed" empty state the UI already has); the session
+  check moved into the function's own `catch` block instead (a real thrown error), which — a second,
+  smaller bug found while fixing the first — **hadn't had any session check at all before**, so a
+  genuine dead-session failure while loading feeds previously just showed a plain "Failed to load
+  feeds" error rather than the correct "Session expired" dialog. Both directions are correct now: an
+  empty read is silent (no popup, no check), a failed read distinguishes "session's actually dead"
+  from "real but unrelated backend error" and shows the right message for each.
+
+**The original underlying mystery — what actually killed the token in the report that prompted the
+2026-09-21 entry — is still not confirmed**, and this fix doesn't claim to have found it; it only
+removes a real, confirmed false-positive that was making innocent empty states look like session
+death. A genuine dead-session report (the "Try to refresh"/"Go to login" dialog appearing when
+`listFeedsFromBackend`/`listProjectsFromBackend` or `touchAdminSession()` itself is actually
+throwing, not just returning `[]`) is still worth chasing with the browser console + the failing
+`/auth/v1/token` request, per that entry's own ask.
+
+**Not verified live this pass** — this sandbox's browser tool refused every `localhost:5173`
+navigation attempt this session (repeated "navigation … was denied or failed", a tooling/permission
+gate, not a code issue — the dev server itself was confirmed up and serving via `preview_logs`).
+Verified instead by re-reading both rewritten functions branch-by-branch against the exact reported
+scenario (empty result → no session check fires at all now) and a parse check
+(`@babel/parser`). Worth a real click-through — switch platforms right after logging in, on a
+project/platform combination with zero feeds — on `staging.studyfeed.org` before fully trusting this
+beyond the code-level re-read.
+
+## Real bug fixed: Instagram's admin login page had a leftover pink/red Meta-brand gradient background (2026-09-24)
+
+Direct report, alongside the session-expiry bug above: the login page itself "has more of a Facebook
+theme" then, after logging out, "more of a pink theme (Instagram)" — asked directly whether this
+meant two separate logins/sessions per app.
+
+**Answer, stated directly**: no — login and session storage were never namespaced by app (see
+`utils-backend.js`'s own comment on `ADMIN_TOKEN_KEY`: "Deliberately NOT namespaced by `${APP}`"),
+confirmed again by this session's own read of the same code. One login, one session, shared across
+all four platform bundles. What actually differed was purely **visual**: `.admin-login-wrap`'s
+background gradient was still hardcoded per-stylesheet, and Instagram's copy (`styles-instagram.css`)
+was still using real Instagram-brand pink/red tones (`rgba(237,73,86,…)` / `rgba(214,41,118,…)`) —
+the exact same class of leftover per-bundle admin re-theme the 2026-08-22 "legacy Instagram-only
+admin gradient theme removed" fix already found and removed once, on the dashboard's `<h1>`/`<h2>`
+text — that earlier pass just never touched this selector, since it's a plain top-level
+`.admin-login-wrap` rule, not part of either of the two `body.admin-mode`-scoped sections that fix
+specifically targeted.
+
+**Fix**: Instagram's `.admin-login-wrap` background gradient now matches Facebook/Amazon/X's
+existing neutral indigo/green gradient exactly (they were already byte-identical to each other; only
+Instagram's copy had drifted). The login page now looks the same regardless of which bundle happens
+to be loaded — consistent with the rest of this file's admin-design-system unification work.
+
+**Not verified live this pass** — same browser-navigation tooling gate as the entry above. Verified
+by direct diff of all four platforms' `.admin-login-wrap` CSS blocks (confirmed FB/AMZ/X already
+byte-identical, only Instagram differed) and a brace-balance check on the edited file. Worth a quick
+visual check on `staging.studyfeed.org` — load `/admin` once per platform and confirm the background
+is now identical everywhere.
+
+## Survey preview modal widened/heightened to fit its own real content (2026-09-24)
+
+Direct request: "make the survey preview window bigger." Root cause worth noting: the modal (880px
+wide, capped at the shared `Modal.jsx` default `maxHeight: min(88vh, 720px)`) was actually narrower
+than the real survey content it previews — `.survey-shell{max-width:980px}` — so it was squeezing the
+real layout, not just leaving it with no extra room. `Modal.jsx` gained an optional `maxHeight` prop
+(default unchanged, `min(88vh, 720px)`, so every other dialog — confirm/prompt/post-editor/etc. — is
+unaffected); `SurveyPreviewModal` now passes `width={1040}` (was 880) and `maxHeight="92vh"` (was the
+fixed 720px cap). Not verified live this pass — same browser-navigation tooling denial as the two
+entries directly above; verified by parse check and by confirming `.survey-shell`'s own 980px max-width
+against the new 1040px modal width (enough room for its padding).

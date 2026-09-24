@@ -257,7 +257,15 @@ export function SurveyPreviewModal({
       title="Survey preview"
       subtitle={survey?.name || "Untitled survey"}
       onClose={onClose}
-      width={880}
+      // Was 880/the shared default 720px-tall cap — narrower and shorter
+      // than the real survey content itself ever renders (`.survey-shell`'s
+      // own `max-width:980px`), so the preview was squeezing the real
+      // layout rather than showing it at its natural size. Widened past
+      // that (1040, leaving room for the modal's own padding) and given a
+      // taller, viewport-relative cap instead of the fixed 720px other
+      // (typically much shorter) dialogs use — direct request, 2026-09-24.
+      width={1040}
+      maxHeight="92vh"
       bodyRef={modalBodyRef}
     >
       <div

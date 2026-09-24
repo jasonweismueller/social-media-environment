@@ -37,7 +37,7 @@ const FOCUSABLE_SELECTOR =
  * that by giving it the real viewport to lay out against, same as the live
  * participant page.
  */
-export function Modal({ title, subtitle, onClose, children, footer, width = 480, bodyRef, fullScreen = false }) {
+export function Modal({ title, subtitle, onClose, children, footer, width = 480, maxHeight = "min(88vh, 720px)", bodyRef, fullScreen = false }) {
   const anchorRef = useRef(null);
   const dialogRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
@@ -147,7 +147,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
           width: "100%",
           maxWidth: fullScreen ? "100%" : width,
           height: fullScreen ? "100%" : undefined,
-          maxHeight: fullScreen ? "100%" : "min(88vh, 720px)",
+          maxHeight: fullScreen ? "100%" : maxHeight,
           display: "flex",
           flexDirection: "column",
           background: "var(--admin-surface)",
