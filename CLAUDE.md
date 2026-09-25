@@ -2969,3 +2969,89 @@ of that git-branch pipeline). Given this is a first-draft, unverified-live multi
 all four participant-facing apps, worth deliberately routing the frontend changes through `main` →
 staging first rather than letting them ship straight to production, same recommendation this file
 makes for every other first-draft multi-file change that happens to land on this branch.
+
+## Two participant-facing UX fixes, plus another round on the "ghost session"/missing-auth-token bug (2026-09-25)
+
+**Two direct-feedback fixes, both post_reminder/survey-navigation UX, not correctness bugs**:
+1. The Facebook Community Note intervention's "Rate it" button/"Learn more" button and its inline
+   note-text URL link still showed a pointer cursor on hover even when the post is non-interactive
+   (`disabled` — e.g. inside a post-reminder question). Root cause: the shared `.btn` CSS class
+   hardcodes `cursor:pointer` unconditionally (no `:disabled` override), and the note's `<a>` link had
+   no disabled styling at all — both already correctly no-op'd the click itself
+   (`if (disabled) return`), but nothing told the participant that before they hovered.
+   `components-ui-interventions.jsx`: added an inline `cursor: disabled ? "default" : "pointer"`
+   override on the "Rate it" (`NoteIntervention`) and "Learn more" (`LabelIntervention`) buttons, and
+   muted the note link's color/underline/cursor when disabled. (`NoteDetailsCard`'s own "View
+   details"/Yes-Somewhat-No buttons have the identical `.btn` gap but are unreachable while disabled —
+   the modal that holds them can only open via a path already gated on `!disabled` — so left alone.)
+2. A survey page's `next_delay_seconds` used to show the "Next" button greyed-out with a live
+   countdown (`Next (5)`) — direct feedback that a visibly disabled, ticking button reads as pressure
+   to hurry, not "wait here." Changed (`ui-survey.jsx` and its independent `ui-survey-mobile.jsx`
+   copy) so the button is simply not rendered while `isNextDelayed`, reappearing enabled the instant
+   the delay elapses. No other UI referenced `isNextDelayed`/`delayRemaining` besides this one button
+   in each file.
+
+**Not verified live** — this sandbox's browser tool refused every `localhost:5173` navigation attempt
+this session (the dev server itself came up fine per `preview_logs` — a tooling/permission gate, not a
+code issue, matching several entries directly above this one hitting the identical wall). Verified by
+parse check (`@babel/parser`, both files) and by re-reading `disabled`'s actual plumbing
+(`disabled={!interactive}` passed into `PostCard` in `ui-survey.jsx`, confirming this is genuinely the
+"non-interactive condition" the report described) and confirming no other JSX in either survey file
+reads `isNextDelayed`/`delayRemaining`. Worth a real click-through on `staging.studyfeed.org`: hover the
+note link/"Rate it" in a non-interactive post reminder, and step through a page with
+`next_delay_seconds` set.
+
+**Third report, a continuation of the "ghost session" trail (2026-09-20/21/24 entries above)**:
+switching from one project+platform to a different project+platform (Instagram → a different project's
+Facebook — a genuine cross-bundle reload, not just a client-side route change), then editing and saving
+a survey, failed with the raw `save-survey` 401 body, "missing Authorization bearer token" — exactly
+the failure the 2026-09-24 `invokeEdgeFunctionWithAuthRetry` entry was meant to catch and silently
+recover from. It didn't, here: that retry only fires *after* a first failed attempt, and its own
+renewal step (`supabaseAdminTouch` → `getSession()`) depends on the same underlying session state as
+the failing call — if the SDK's session hadn't actually settled yet, the retry could hit the identical
+wall. Root cause of *why* the session wasn't settled is still not conclusively pinned down (same
+"unconfirmed" caveat every prior entry in this trail carries), but a real, confirmed gap was found in
+the boot path that makes it more likely: `App-{facebook,instagram,amazon,x}.jsx`'s admin-boot effect
+only ever called `restoreAdminSession()`/`touchAdminSession()` when the local `admin_token_v1` mirror
+had already lapsed (`if (hasAdminSession()) { ...skip straight to authed... }`) — on a fresh bundle
+load (switching project *and* platform reloads a different bundle entirely, a brand-new Supabase
+client instance), if the mirror still looked unexpired, **nothing on this new page ever touched the
+SDK's own session at all** — the app trusted a token mirror without ever confirming the new client
+instance's own session/auto-refresh state was actually in order.
+
+**Fix, two layers**:
+- `App-{facebook,instagram,amazon,x}.jsx`'s admin-boot effect (identical in all four, the same
+  near-duplicate-file shape this file already warns about): when the mirror still looks valid, it now
+  still shows the dashboard immediately (no restore-latency flash — unchanged UX) but also fires
+  `touchAdminSession()` in the background unconditionally, on every fresh bundle load. This is cheap
+  (a local `getSession()` plus one `profiles` select) and means every admin boot — mirror-valid or not —
+  now genuinely confirms/refreshes the real SDK session at least once, instead of only doing so on the
+  lapsed-mirror path.
+- `invokeEdgeFunctionWithAuthRetry` (`utils-backend-supabase.js`, backs `save-survey`/`admin-users`/
+  `ai-study-report`): now fetches the access token itself via `getSession()` and passes it as an
+  explicit `Authorization` header on every call (including the first attempt), rather than leaving it
+  entirely to `functions.invoke()`'s own internal per-request session lookup — removes one layer of
+  "trust the SDK resolved this at exactly the right moment" from the critical path. If no token is
+  available at all before the first attempt, a renewal is tried up front instead of firing a request
+  already known to fail. The existing post-failure retry (one `supabaseAdminTouch()` + one retry) is
+  kept as a second line of defense, now also using the freshly-fetched header rather than repeating the
+  original bare call.
+
+**Verified**: confirmed directly against the installed `@supabase/supabase-js@2.111.0` bundle (not
+guessed) that `functions.invoke()`'s per-call `headers` option is merged *last* (`Object.assign({},
+defaultHeaders, callHeaders)`), so an explicitly-passed `Authorization` header reliably overrides
+whatever the client's own internal resolution would have produced — the explicit-header change is
+mechanically sound, not just plausible. Also traced `getSession()`'s own implementation
+(`await this.initializePromise` → `__loadSession()`) confirming it does correctly await the client's
+async init and does proactively refresh a near-expiry token, which is *why* the exact trigger for the
+original "missing" state couldn't be nailed down further from static reading alone — the boot-time fix
+closes the most concrete, confirmed gap (a fresh client instance that nothing ever explicitly touched)
+regardless of the deeper mechanism. All 5 touched files (`App-facebook.jsx`, `App-instagram.jsx`,
+`App-amazon.jsx`, `App-x.jsx`, `utils-backend-supabase.js`) parse clean (`@babel/parser`). **Not
+verified live** — same browser-navigation tooling denial as the two fixes above; no way in this sandbox
+to reproduce the actual cross-project-and-platform switch + save sequence the report described. Worth
+a real click-through on `staging.studyfeed.org`: switch project and platform together, go straight to
+Surveys, edit and save without any other action in between — if "missing Authorization bearer token"
+still surfaces, that's a strong signal the root cause is something this fix's two layers don't reach,
+and the browser console + the failing `/auth/v1/token` (or `/functions/v1/save-survey`) request at the
+moment of failure is the next thing to capture.

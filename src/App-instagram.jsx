@@ -21,6 +21,7 @@ import {
   computeFeedId,
   hasAdminSession,
   restoreAdminSession,
+  touchAdminSession,
   adminLogout,
   listFeedsFromBackend,
   getFeedIdFromUrl,
@@ -1927,7 +1928,17 @@ export default function App() {
 
   useEffect(() => {
     if (!onAdmin) { setAdminRestoring(false); return undefined; }
-    if (hasAdminSession()) { setAdminAuthed(true); setAdminRestoring(false); return undefined; }
+    if (hasAdminSession()) {
+      // See App-facebook.jsx's identical block for the full reasoning: keep
+      // the instant mirror-based show, but also confirm/refresh the real
+      // SDK session in the background on every fresh bundle load, so a
+      // switch that reloads a different bundle can't leave a stale access
+      // token undetected until the first write 401s.
+      setAdminAuthed(true);
+      setAdminRestoring(false);
+      touchAdminSession().catch(() => {});
+      return undefined;
+    }
     // The local record lapsed (idle tab, sleep, restart) — but the Supabase SDK
     // may still hold a valid refresh token. Try a silent renewal before showing
     // the login form.

@@ -21,6 +21,7 @@ import {
   computeFeedId,
   hasAdminSession,
   restoreAdminSession,
+  touchAdminSession,
   adminLogout,
   listFeedsFromBackend,
   getFeedIdFromUrl,
@@ -2235,7 +2236,23 @@ export default function App() {
 
   useEffect(() => {
     if (!onAdmin) { setAdminRestoring(false); return undefined; }
-    if (hasAdminSession()) { setAdminAuthed(true); setAdminRestoring(false); return undefined; }
+    if (hasAdminSession()) {
+      // Show the dashboard immediately from the local mirror (no
+      // restore-latency flash) — but still confirm/refresh the *real* SDK
+      // session in the background. A fresh bundle load (switching project
+      // and platform at once reloads a different bundle entirely) creates a
+      // brand-new Supabase client; trusting the mirror alone, with nothing
+      // ever touching the SDK's own session on this new client, left a
+      // stale/un-refreshed access token free to sit unnoticed until the
+      // first write (save-survey, etc.) 401'd with "missing Authorization
+      // bearer token" — see CLAUDE.md's "ghost session" entries.
+      // touchAdminSession() is cheap (a local getSession() + one profiles
+      // select) and closes that gap without adding a boot-time flash.
+      setAdminAuthed(true);
+      setAdminRestoring(false);
+      touchAdminSession().catch(() => {});
+      return undefined;
+    }
     // The local record lapsed (idle tab, sleep, restart) — but the Supabase SDK
     // may still hold a valid refresh token. Try a silent renewal before showing
     // the login form.

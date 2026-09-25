@@ -175,15 +175,39 @@ export async function supabaseAdminTouch() {
 // these functions used to have no chance to recover from that the way
 // AdminDashboard's own reads (loadFeeds/loadProjects) already do via
 // touchAdminSession() — a save could fail outright on a session that a
-// plain retry would have silently fixed. One renewal attempt
-// (supabaseAdminTouch, which calls supabase.auth.getSession() and lets the
-// SDK refresh in place if the refresh token is still valid) plus a single
-// retry recovers that common case without losing whatever the caller was
-// trying to do. Reads the error body via a clone so the original response
-// stream is left untouched for the caller's own existing `.json()` parse.
+// plain retry would have silently fixed.
+//
+// Two layers, both defensive (App-*.jsx's admin-boot effect now also
+// proactively calls touchAdminSession() on every fresh bundle load, which is
+// the more likely real fix for the "switched project+platform, then a save
+// 401'd" report — see that effect's own comment):
+// 1. The Authorization header is fetched and attached explicitly (via
+//    getSession(), which awaits the SDK's own init/refresh) rather than left
+//    to functions.invoke()'s internal, harder-to-reason-about default-header
+//    resolution — removes one layer of "trust the SDK got the timing right."
+//    If there's no token at all yet, a renewal is attempted before the
+//    first network call, not just after it fails.
+// 2. On a genuine 401 the retry from before is kept: one supabaseAdminTouch()
+//    renewal (getSession() + lets the SDK refresh in place if the refresh
+//    token is still valid) plus a single retry with the freshly-fetched
+//    header. Reads the error body via a clone so the original response
+//    stream is left untouched for the caller's own existing `.json()` parse.
 async function invokeEdgeFunctionWithAuthRetry(name, body) {
   const supabase = getSupabaseClient();
-  let result = await supabase.functions.invoke(name, { body });
+
+  const currentAuthHeader = async () => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : undefined;
+  };
+
+  let headers = await currentAuthHeader();
+  if (!headers) {
+    const renewed = await supabaseAdminTouch();
+    if (renewed.ok) headers = await currentAuthHeader();
+  }
+
+  let result = await supabase.functions.invoke(name, { body, headers });
 
   if (result.error) {
     let msg = result.error.message || String(result.error);
@@ -196,7 +220,8 @@ async function invokeEdgeFunctionWithAuthRetry(name, body) {
     if (looksLikeDeadSession) {
       const renewed = await supabaseAdminTouch();
       if (renewed.ok) {
-        result = await supabase.functions.invoke(name, { body });
+        headers = await currentAuthHeader();
+        result = await supabase.functions.invoke(name, { body, headers });
       }
     }
   }
