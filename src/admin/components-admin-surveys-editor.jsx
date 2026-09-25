@@ -2323,6 +2323,14 @@ export function buildSavedQuestion(q, index) {
       cleanQ.type === POST_REMINDER_TYPE
         ? normalizeRecallDistractorTextsForEditor(cleanQ.recall_distractor_texts)
         : normalizeRecallDistractorTextsForEditor([]),
+    // Same "must survive the round trip through save-survey's sanitizer"
+    // requirement post_id/post_label/post_feed_id already have above — see
+    // survey-sanitize.ts's own `raw.interlude_feed_id ?? meta.interlude_feed_id`
+    // fallback, which this field (both top-level and in meta) must satisfy.
+    interlude_feed_id:
+      cleanQ.type === FEED_INTERLUDE_TYPE ? String(cleanQ.interlude_feed_id || "") : "",
+    interlude_button_label:
+      cleanQ.type === FEED_INTERLUDE_TYPE ? String(cleanQ.interlude_button_label || "") : "",
     meta:
       cleanQ.type === POST_REMINDER_TYPE
         ? {
@@ -2333,7 +2341,13 @@ export function buildSavedQuestion(q, index) {
             recall_enabled: !!cleanQ.recall_enabled,
             recall_distractor_texts: normalizeRecallDistractorTextsForEditor(cleanQ.recall_distractor_texts),
           }
-        : cleanQ.meta || {},
+        : cleanQ.type === FEED_INTERLUDE_TYPE
+          ? {
+              ...(cleanQ.meta || {}),
+              interlude_feed_id: String(cleanQ.interlude_feed_id || ""),
+              interlude_button_label: String(cleanQ.interlude_button_label || ""),
+            }
+          : cleanQ.meta || {},
     randomize_options: false,
     is_attention_check:
       ATTENTION_CHECK_ELIGIBLE_TYPES.includes(cleanQ.type) && !!cleanQ.is_attention_check,
