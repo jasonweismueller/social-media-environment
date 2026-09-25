@@ -1068,10 +1068,12 @@ function MobileQuestionWrapper({ question, index, error, children }) {
         isFeedInterlude ? "survey-question-feed-interlude" : ""
       } ${error ? "has-error" : ""}`}
     >
-      {!isInfo && !isPostReminder && !isFeedInterlude && (
+      {!isInfo && !isPostReminder && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
-            <span className="survey-question-number">{index + 1}.</span>
+            {isFeedInterlude ? null : (
+              <span className="survey-question-number">{index + 1}.</span>
+            )}
             <div
               className="survey-question-title-content"
               dangerouslySetInnerHTML={{ __html: question.text || "" }}
@@ -1080,7 +1082,7 @@ function MobileQuestionWrapper({ question, index, error, children }) {
         </div>
       )}
 
-      {!isInfo && !isPostReminder && !isFeedInterlude && question.description ? (
+      {!isInfo && !isPostReminder && question.description ? (
         <div
           className="survey-question-description"
           dangerouslySetInnerHTML={{ __html: question.description || "" }}
@@ -1092,14 +1094,6 @@ function MobileQuestionWrapper({ question, index, error, children }) {
           className="survey-info-block"
           dangerouslySetInnerHTML={{ __html: question.text || "" }}
         />
-      ) : isFeedInterlude ? (
-        <>
-          <div
-            className="survey-info-block"
-            dangerouslySetInnerHTML={{ __html: question.text || "" }}
-          />
-          {children}
-        </>
       ) : (
         children
       )}
@@ -1385,40 +1379,35 @@ function MobileMatrixMulti({ question, value, onChange }) {
 // as a separate component per this file's own established "each survey
 // renderer is a full, independent copy" convention (mirrors PostReminderCard/
 // PostReminderCardMobile).
-const FeedInterludeCardMobile = memo(function FeedInterludeCardMobile({
-  question,
-  value,
-  onEnterFeedInterlude,
-}) {
+// No button of its own — entering the interlude is triggered by the page's
+// own single nav button (see pendingFeedInterludeQuestion below), not by a
+// second button embedded in the question card. See ui-survey.jsx's own
+// FeedInterludeCard for the full rationale.
+const FeedInterludeCardMobile = memo(function FeedInterludeCardMobile({ question, value }) {
   const completed = !!(value && typeof value === "object" && value.completed);
   const feedId = String(question?.interlude_feed_id || "").trim();
-  const buttonLabel = String(question?.interlude_button_label || "").trim() || "Continue";
 
-  const handleClick = useCallback(() => {
-    onEnterFeedInterlude?.(question);
-  }, [onEnterFeedInterlude, question]);
-
-  return (
-    <div className="survey-feed-interlude">
-      {!feedId ? (
+  if (!feedId) {
+    return (
+      <div className="survey-feed-interlude">
         <div className="survey-error-banner">
           This step isn't configured yet — no feed has been chosen for it.
         </div>
-      ) : completed ? (
+      </div>
+    );
+  }
+
+  if (completed) {
+    return (
+      <div className="survey-feed-interlude">
         <div className="survey-question-description" style={{ marginTop: 0 }}>
           ✓ You've completed this part of the study.
         </div>
-      ) : (
-        <button
-          type="button"
-          className="survey-nav-btn survey-nav-btn-primary"
-          onClick={handleClick}
-        >
-          {buttonLabel}
-        </button>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return null;
 });
 
 export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRendererMobile({
@@ -1471,11 +1460,7 @@ export const SurveyQuestionRendererMobile = memo(function SurveyQuestionRenderer
       )}
 
       {qType === SURVEY_QUESTION_TYPES.FEED_INTERLUDE && (
-        <FeedInterludeCardMobile
-          question={question}
-          value={value}
-          onEnterFeedInterlude={onEnterFeedInterlude}
-        />
+        <FeedInterludeCardMobile question={question} value={value} />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -1751,6 +1736,18 @@ export function SurveyScreenMobile({
   );
   const isNextDelayed =
     !isLastPage && currentPageDelaySeconds > 0 && delayRemaining > 0;
+
+  // Mirrors ui-survey.jsx's identical pendingFeedInterludeQuestion — see its
+  // own comment for the full rationale.
+  const pendingFeedInterludeQuestion = useMemo(
+    () =>
+      currentPage?.questions?.find(
+        (q) =>
+          q?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE &&
+          !(responses?.[q.id] && typeof responses[q.id] === "object" && responses[q.id].completed)
+      ) || null,
+    [currentPage, responses]
+  );
 
   useLayoutEffect(() => {
     scrollSurveyPageToTop();
@@ -2104,7 +2101,20 @@ export function SurveyScreenMobile({
               </div>
 
               <div className="survey-nav-right">
-                {!isLastPage ? (
+                {pendingFeedInterludeQuestion ? (
+                  // See ui-survey.jsx's identical comment — one nav button
+                  // hands off to the interlude directly instead of a second,
+                  // separate "Continue" button in the question card above.
+                  <button
+                    type="button"
+                    className="survey-nav-btn survey-nav-btn-primary"
+                    onClick={() => onEnterFeedInterlude?.(pendingFeedInterludeQuestion)}
+                    disabled={submitting}
+                  >
+                    {String(pendingFeedInterludeQuestion.interlude_button_label || "").trim() ||
+                      "Continue"}
+                  </button>
+                ) : !isLastPage ? (
                   // Deliberately hidden (not shown greyed-out with a countdown)
                   // while a page delay is active — see ui-survey.jsx's identical
                   // comment for the reasoning.
@@ -2132,14 +2142,26 @@ export function SurveyScreenMobile({
             </div>
           ) : (
             <div className="survey-submit-wrap">
-              <button
-                type="button"
-                className="btn primary survey-submit-btn"
-                onClick={handleSubmitClick}
-                disabled={submitting}
-              >
-                {submitting ? "Submitting..." : "Submit survey"}
-              </button>
+              {pendingFeedInterludeQuestion ? (
+                <button
+                  type="button"
+                  className="btn primary survey-submit-btn"
+                  onClick={() => onEnterFeedInterlude?.(pendingFeedInterludeQuestion)}
+                  disabled={submitting}
+                >
+                  {String(pendingFeedInterludeQuestion.interlude_button_label || "").trim() ||
+                    "Continue"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn primary survey-submit-btn"
+                  onClick={handleSubmitClick}
+                  disabled={submitting}
+                >
+                  {submitting ? "Submitting..." : "Submit survey"}
+                </button>
+              )}
             </div>
           )}
         </div>

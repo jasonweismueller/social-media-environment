@@ -1445,48 +1445,44 @@ const PostReminderCard = memo(function PostReminderCard({
 // real, fully-tracked feed is rendered at the App-*.jsx top level (the same
 // mechanism multi_feed_then_survey's between-stage feeds already use), not
 // nested inside the survey UI. This card is just the "step" the participant
-// sees on the survey page: instructions + a button that hands control up to
-// App-*.jsx (onEnterFeedInterlude) to make that swap happen. Once the
-// participant returns (clicks the interlude feed's own Continue button),
-// App-*.jsx writes `{completed:true, feed_id, completed_at}` as this
-// question's response (see isQuestionAnswered's FEED_INTERLUDE case,
+// sees on the survey page: instructions, plus a status line once relevant.
+// Once the participant returns (via the interlude feed's own Continue
+// button), App-*.jsx writes `{completed:true, feed_id, completed_at}` as
+// this question's response (see isQuestionAnswered's FEED_INTERLUDE case,
 // utils-survey.js) and this card reflects that back as a plain "done" state
 // — there's nothing left for the participant to do here, by design (an
 // interlude can't be un-completed and replayed from inside the survey).
-const FeedInterludeCard = memo(function FeedInterludeCard({
-  question,
-  value,
-  onEnterFeedInterlude,
-}) {
+// No button of its own — entering the interlude is triggered by the page's
+// own single nav button (see pendingFeedInterludeQuestion below), not by a
+// second button embedded in the question card. This just reflects status:
+// nothing to show once configured and not yet completed (the nav button
+// alone communicates the call to action), an error if misconfigured, or a
+// plain "done" state once completed.
+const FeedInterludeCard = memo(function FeedInterludeCard({ question, value }) {
   const completed = !!(value && typeof value === "object" && value.completed);
   const feedId = String(question?.interlude_feed_id || "").trim();
-  const buttonLabel = String(question?.interlude_button_label || "").trim() || "Continue";
 
-  const handleClick = useCallback(() => {
-    onEnterFeedInterlude?.(question);
-  }, [onEnterFeedInterlude, question]);
-
-  return (
-    <div className="survey-feed-interlude">
-      {!feedId ? (
+  if (!feedId) {
+    return (
+      <div className="survey-feed-interlude">
         <div className="survey-error-banner">
           This step isn't configured yet — no feed has been chosen for it.
         </div>
-      ) : completed ? (
+      </div>
+    );
+  }
+
+  if (completed) {
+    return (
+      <div className="survey-feed-interlude">
         <div className="survey-question-description" style={{ marginTop: 0 }}>
           ✓ You've completed this part of the study.
         </div>
-      ) : (
-        <button
-          type="button"
-          className="survey-nav-btn survey-nav-btn-primary"
-          onClick={handleClick}
-        >
-          {buttonLabel}
-        </button>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return null;
 });
 
 export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
@@ -1613,10 +1609,12 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
         isFeedInterlude ? "survey-question-feed-interlude" : ""
       } ${error ? "has-error" : ""}`}
     >
-      {!isInfo && !isPostReminder && !isFeedInterlude && (
+      {!isInfo && !isPostReminder && (
         <div className="survey-question-title">
           <div className="survey-question-title-inner">
-            <span className="survey-question-number">{index + 1}.</span>
+            {isFeedInterlude ? null : (
+              <span className="survey-question-number">{index + 1}.</span>
+            )}
             <div
               className="survey-question-title-content"
               dangerouslySetInnerHTML={{ __html: question.text || "" }}
@@ -1625,7 +1623,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
         </div>
       )}
 
-      {!isInfo && !isPostReminder && !isFeedInterlude && question.description ? (
+      {!isInfo && !isPostReminder && question.description ? (
         <div className="survey-question-description">{question.description}</div>
       ) : null}
 
@@ -1651,17 +1649,7 @@ export const SurveyQuestionRenderer = memo(function SurveyQuestionRenderer({
       )}
 
       {isFeedInterlude && (
-        <>
-          <div
-            className="survey-info-block"
-            dangerouslySetInnerHTML={{ __html: question.text || "" }}
-          />
-          <FeedInterludeCard
-            question={question}
-            value={value}
-            onEnterFeedInterlude={onEnterFeedInterlude}
-          />
-        </>
+        <FeedInterludeCard question={question} value={value} />
       )}
 
       {qType === SURVEY_QUESTION_TYPES.TEXT && (
@@ -2160,6 +2148,25 @@ export function SurveyScreen({
 const isNextDelayed =
   !isLastPage && currentPageDelaySeconds > 0 && delayRemaining > 0;
 
+  // A page with an unanswered feed_interlude question gets a single nav
+  // button in the ordinary Next/Submit slot, rather than a second button
+  // embedded in the question card — clicking it enters the interlude
+  // directly instead of validating/advancing the page (see goNext below).
+  // Once the participant returns and this question's response carries a
+  // real `completed` marker, the button reverts to normal Next/Submit
+  // behavior — so it can't be skipped past, per direct feedback that a
+  // separate, in-card "Continue" button sitting apart from the page's own
+  // nav button read as an odd, easy-to-miss extra step.
+  const pendingFeedInterludeQuestion = useMemo(
+    () =>
+      currentPage?.questions?.find(
+        (q) =>
+          q?.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE &&
+          !(responses?.[q.id] && typeof responses[q.id] === "object" && responses[q.id].completed)
+      ) || null,
+    [currentPage, responses]
+  );
+
 
   useLayoutEffect(() => {
     scrollSurveyPageToTop();
@@ -2525,7 +2532,26 @@ const isNextDelayed =
               </div>
 
               <div className="survey-nav-right">
-                {!isLastPage ? (
+                {pendingFeedInterludeQuestion ? (
+                  // A page with an unanswered feed_interlude question gets
+                  // this one button in the ordinary Next/Submit slot instead
+                  // of a second, separate "Continue" button embedded in the
+                  // question card above — clicking it hands off to the feed
+                  // directly (onEnterFeedInterlude) rather than validating/
+                  // advancing the page. Once the participant returns and
+                  // this question's response carries a real `completed`
+                  // marker, this reverts to the normal Next/Submit button
+                  // below on the next render.
+                  <button
+                    type="button"
+                    className="survey-nav-btn survey-nav-btn-primary"
+                    onClick={() => onEnterFeedInterlude?.(pendingFeedInterludeQuestion)}
+                    disabled={submitting}
+                  >
+                    {String(pendingFeedInterludeQuestion.interlude_button_label || "").trim() ||
+                      "Continue"}
+                  </button>
+                ) : !isLastPage ? (
                   // Deliberately hidden (not shown greyed-out with a countdown)
                   // while a page delay is active — a visibly disabled, ticking
                   // "Next" button reads as pressure to hurry rather than as
@@ -2555,14 +2581,26 @@ const isNextDelayed =
             </div>
           ) : (
             <div className="survey-submit-wrap">
-              <button
-                type="button"
-                className="btn primary survey-submit-btn"
-                onClick={handleSubmitClick}
-                disabled={submitting}
-              >
-                {submitting ? "Submitting..." : "Submit survey"}
-              </button>
+              {pendingFeedInterludeQuestion ? (
+                <button
+                  type="button"
+                  className="btn primary survey-submit-btn"
+                  onClick={() => onEnterFeedInterlude?.(pendingFeedInterludeQuestion)}
+                  disabled={submitting}
+                >
+                  {String(pendingFeedInterludeQuestion.interlude_button_label || "").trim() ||
+                    "Continue"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn primary survey-submit-btn"
+                  onClick={handleSubmitClick}
+                  disabled={submitting}
+                >
+                  {submitting ? "Submitting..." : "Submit survey"}
+                </button>
+              )}
             </div>
           )}
         </div>

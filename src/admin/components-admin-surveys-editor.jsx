@@ -6095,7 +6095,10 @@ function FeedInterludeEditorBlock({
         )}
       </FieldBlock>
 
-      <FieldBlock label="Button label (optional)" hint="Shown on the button participants click. Defaults to “Continue” when left blank.">
+      <FieldBlock
+        label="Button label (optional)"
+        hint="Shown on the survey page's own Next/Submit button while this step is pending — there's no separate button on the question itself. Defaults to “Continue” when left blank."
+      >
         <TextInput
           value={buttonLabel}
           onChange={onButtonLabelChange}

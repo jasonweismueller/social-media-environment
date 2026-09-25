@@ -2254,7 +2254,7 @@ export default function App() {
   useEffect(() => {
     if (
       onAdmin ||
-      isSurveyOnlyMode ||
+      (isSurveyOnlyMode && !feedInterlude) ||
       !hasEntered ||
       feedPhase !== "ready" ||
       submitted
@@ -2285,6 +2285,7 @@ export default function App() {
       setMinDelayDone(true);
     }
   }, [
+    feedInterlude,
     onAdmin,
     isSurveyOnlyMode,
     hasEntered,
@@ -2317,7 +2318,7 @@ export default function App() {
   useEffect(() => {
     if (
       onAdmin ||
-      isSurveyOnlyMode ||
+      (isSurveyOnlyMode && !feedInterlude) ||
       !hasEntered ||
       feedPhase !== "ready" ||
       submitted
@@ -2445,7 +2446,8 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [onAdmin, isSurveyOnlyMode, hasEntered, feedPhase, submitted, posts, flags]);
+  }, [onAdmin, isSurveyOnlyMode,
+    feedInterlude, hasEntered, feedPhase, submitted, posts, flags]);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -2695,7 +2697,7 @@ export default function App() {
 
   useEffect(() => {
     if (
-      isSurveyOnlyMode ||
+      (isSurveyOnlyMode && !feedInterlude) ||
       !hasEntered ||
       feedPhase !== "ready" ||
       submitted ||
@@ -2803,6 +2805,7 @@ export default function App() {
       window.removeEventListener("beforeunload", onHide);
     };
   }, [
+    feedInterlude,
     isSurveyOnlyMode,
     orderedPosts,
     hasEntered,
