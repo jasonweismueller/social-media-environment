@@ -41,7 +41,11 @@ function NoteRichText({ text, onLinkClick, disabled }) {
           <a
             key={i}
             href={href}
-            style={{ color: "#1877F2", textDecoration: "underline" }}
+            style={{
+              color: disabled ? "var(--muted, #6b7280)" : "#1877F2",
+              textDecoration: disabled ? "none" : "underline",
+              cursor: disabled ? "default" : "pointer",
+            }}
             onClick={(e) => {
               e.preventDefault();      // 🚫 stop navigation
               e.stopPropagation();     // 🚫 stop modal open
@@ -495,7 +499,13 @@ function NoteIntervention({ post, view, onAction, participantSeed, disabled }) {
         {/* rating row */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ fontSize: 14, color: "var(--text, #374151)" }}>Do you find this helpful?</div>
-          <button type="button" className="btn" disabled={disabled} onClick={() => openModal("rate_it_button")}>
+          <button
+            type="button"
+            className="btn"
+            disabled={disabled}
+            style={{ cursor: disabled ? "default" : "pointer" }}
+            onClick={() => openModal("rate_it_button")}
+          >
             Rate it
           </button>
         </div>
@@ -530,6 +540,7 @@ function LabelIntervention({ post, onAction, disabled }) {
         <button
           className="btn"
           disabled={disabled}
+          style={{ cursor: disabled ? "default" : "pointer" }}
           onClick={() => {
             if (disabled) return;
             onAction?.("intervention_learn_more", { post_id: post.id });

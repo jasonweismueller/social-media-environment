@@ -2526,14 +2526,21 @@ const isNextDelayed =
 
               <div className="survey-nav-right">
                 {!isLastPage ? (
-                 <button
-  type="button"
-  className="survey-nav-btn survey-nav-btn-primary"
-  onClick={goNext}
-  disabled={submitting || isNextDelayed}
->
-  {isNextDelayed ? `Next (${delayRemaining})` : "Next"}
-</button>
+                  // Deliberately hidden (not shown greyed-out with a countdown)
+                  // while a page delay is active — a visibly disabled, ticking
+                  // "Next" button reads as pressure to hurry rather than as
+                  // "wait here," per direct feedback. It reappears, enabled,
+                  // the instant the delay elapses.
+                  isNextDelayed ? null : (
+                    <button
+                      type="button"
+                      className="survey-nav-btn survey-nav-btn-primary"
+                      onClick={goNext}
+                      disabled={submitting}
+                    >
+                      Next
+                    </button>
+                  )
                 ) : (
                   <button
                     type="button"

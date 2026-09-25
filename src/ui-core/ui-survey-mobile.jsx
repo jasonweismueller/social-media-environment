@@ -2105,14 +2105,19 @@ export function SurveyScreenMobile({
 
               <div className="survey-nav-right">
                 {!isLastPage ? (
-                  <button
-                    type="button"
-                    className="survey-nav-btn survey-nav-btn-primary"
-                    onClick={goNext}
-                    disabled={submitting || isNextDelayed}
-                  >
-                    {isNextDelayed ? `Next (${delayRemaining})` : "Next"}
-                  </button>
+                  // Deliberately hidden (not shown greyed-out with a countdown)
+                  // while a page delay is active — see ui-survey.jsx's identical
+                  // comment for the reasoning.
+                  isNextDelayed ? null : (
+                    <button
+                      type="button"
+                      className="survey-nav-btn survey-nav-btn-primary"
+                      onClick={goNext}
+                      disabled={submitting}
+                    >
+                      Next
+                    </button>
+                  )
                 ) : (
                   <button
                     type="button"
