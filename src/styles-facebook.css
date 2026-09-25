@@ -82,6 +82,14 @@ a:hover{text-decoration:underline}
 .btn:hover{background:#f9fafb}
 .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
 .btn.primary:hover{background:var(--blue-ink)}
+/* A disabled <button> still matches :hover in most browsers (the disabled
+   attribute alone doesn't suppress CSS hover-matching) — without this, a
+   non-interactive post's "Rate it"/"Learn more" button (components-ui-
+   interventions.jsx) visibly shifted color on hover despite the click being
+   a no-op, which read as "this is actually clickable." Higher specificity
+   than .btn:hover/.btn.primary:hover so it wins regardless of variant. */
+.btn:disabled:hover{background:#fff}
+.btn.primary:disabled:hover{background:var(--blue)}
 
 /* Default container */
 .container{max-width:700px;margin:0 auto;padding:12px}
