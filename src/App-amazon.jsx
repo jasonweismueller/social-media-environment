@@ -3130,105 +3130,115 @@ export default function App() {
                             setDisabled(true);
                             setSubmittingToSurvey(true);
 
-                            const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
-                              ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
-                              : 0.5;
-                            const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
-                              ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
-                              : ENTER_FRAC;
+                            // See App-facebook.jsx's identical try/catch/
+                            // finally for the full rationale — without it,
+                            // any thrown exception here (not just a
+                            // sendToSheet failure) left the participant
+                            // stuck on the interlude feed under a permanent
+                            // spinner with no way back and no visible error.
+                            try {
+                              const ENTER_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION))
+                                ? clamp(Number(VIEWPORT_ENTER_FRACTION), 0, 1)
+                                : 0.5;
+                              const IMG_FRAC = Number.isFinite(Number(VIEWPORT_ENTER_FRACTION_IMAGE))
+                                ? clamp(Number(VIEWPORT_ENTER_FRACTION_IMAGE), 0, 1)
+                                : ENTER_FRAC;
 
-                            for (const [post_id, elNode] of viewRefs.current) {
-                              const m = measureVis(post_id);
-                              if (!m) continue;
-                              const { vis_frac } = m;
-                              const isImg = elementHasImage(elNode);
-                              const TH = isImg ? IMG_FRAC : ENTER_FRAC;
-                              if (vis_frac >= TH) {
-                                log("vp_exit", {
-                                  post_id,
-                                  vis_frac,
-                                  reason: "submit",
-                                  feed_id: activeFeedId || null,
+                              for (const [post_id, elNode] of viewRefs.current) {
+                                const m = measureVis(post_id);
+                                if (!m) continue;
+                                const { vis_frac } = m;
+                                const isImg = elementHasImage(elNode);
+                                const TH = isImg ? IMG_FRAC : ENTER_FRAC;
+                                if (vis_frac >= TH) {
+                                  log("vp_exit", {
+                                    post_id,
+                                    vis_frac,
+                                    reason: "submit",
+                                    feed_id: activeFeedId || null,
+                                  });
+                                }
+                              }
+
+                              const ts = now();
+                              submitTsRef.current = ts;
+
+                              const submitEvent = {
+                                session_id: sessionIdRef.current,
+                                participant_id: participantId || null,
+                                timestamp_iso: fmtTime(ts),
+                                elapsed_ms: ts - t0Ref.current,
+                                ts_ms: ts,
+                                action: "feed_submit",
+                                feed_id: activeFeedId || null,
+                                project_id: projectId || null,
+                              };
+
+                              const eventsWithSubmit = [...events, submitEvent];
+                              const feed_id = activeFeedId || null;
+                              const feed_checksum = computeFeedId(posts);
+
+                              const row = buildParticipantRow({
+                                session_id: sessionIdRef.current,
+                                participant_id: participantId,
+                                events: eventsWithSubmit,
+                                posts,
+                                feed_id,
+                                feed_checksum,
+                                survey_id: linkedSurvey?.survey_id || "",
+                                participantSeed: participantId || sessionIdRef.current,
+                              });
+
+                              const displayedPostSnapshots = orderedPosts
+                                .map((post) =>
+                                  displayedPostSnapshotsRef.current.get(`${feed_id || ""}::${post.id}`)
+                                )
+                                .filter(Boolean);
+                              row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
+                              row.experiment_group_id = linkedSurvey?.experiment_assigned_group_id || "";
+
+                              const header = buildMinimalHeader(posts);
+                              if (!header.includes("displayed_posts_json")) {
+                                header.push("displayed_posts_json");
+                              }
+                              if (!header.includes("experiment_group_id")) {
+                                header.push("experiment_group_id");
+                              }
+
+                              const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
+
+                              if (!ok) {
+                                showToast("Sync failed. Please try again.");
+                                return;
+                              }
+
+                              const interlude = feedInterlude;
+                              const resumeFeedId = interlude?.resumeFeedId || "";
+                              if (resumeFeedId) {
+                                await advanceToNextFeed(resumeFeedId);
+                              } else {
+                                setEvents([]);
+                                setPosts([]);
+                                setActiveFeedId("");
+                                viewRefs.current?.clear?.();
+                              }
+
+                              if (interlude?.questionId) {
+                                handleSurveyResponseChange(interlude.questionId, {
+                                  completed: true,
+                                  feed_id: interlude.feedId,
+                                  completed_at: new Date().toISOString(),
                                 });
                               }
-                            }
-
-                            const ts = now();
-                            submitTsRef.current = ts;
-
-                            const submitEvent = {
-                              session_id: sessionIdRef.current,
-                              participant_id: participantId || null,
-                              timestamp_iso: fmtTime(ts),
-                              elapsed_ms: ts - t0Ref.current,
-                              ts_ms: ts,
-                              action: "feed_submit",
-                              feed_id: activeFeedId || null,
-                              project_id: projectId || null,
-                            };
-
-                            const eventsWithSubmit = [...events, submitEvent];
-                            const feed_id = activeFeedId || null;
-                            const feed_checksum = computeFeedId(posts);
-
-                            const row = buildParticipantRow({
-                              session_id: sessionIdRef.current,
-                              participant_id: participantId,
-                              events: eventsWithSubmit,
-                              posts,
-                              feed_id,
-                              feed_checksum,
-                              survey_id: linkedSurvey?.survey_id || "",
-                              participantSeed: participantId || sessionIdRef.current,
-                            });
-
-                            const displayedPostSnapshots = orderedPosts
-                              .map((post) =>
-                                displayedPostSnapshotsRef.current.get(`${feed_id || ""}::${post.id}`)
-                              )
-                              .filter(Boolean);
-                            row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
-                            row.experiment_group_id = linkedSurvey?.experiment_assigned_group_id || "";
-
-                            const header = buildMinimalHeader(posts);
-                            if (!header.includes("displayed_posts_json")) {
-                              header.push("displayed_posts_json");
-                            }
-                            if (!header.includes("experiment_group_id")) {
-                              header.push("experiment_group_id");
-                            }
-
-                            const ok = await sendToSheet(header, row, eventsWithSubmit, feed_id);
-
-                            if (!ok) {
-                              showToast("Sync failed. Please try again.");
+                              setSurveyResumePageIndex(surveyPageIndex);
+                              setFeedInterlude(null);
+                            } catch (e) {
+                              dbgWarn("Feed interlude return failed:", e);
+                              showToast("Something went wrong. Please try again.");
+                            } finally {
                               setSubmittingToSurvey(false);
                               setDisabled(false);
-                              return;
                             }
-
-                            const interlude = feedInterlude;
-                            const resumeFeedId = interlude?.resumeFeedId || "";
-                            if (resumeFeedId) {
-                              await advanceToNextFeed(resumeFeedId);
-                            } else {
-                              setEvents([]);
-                              setPosts([]);
-                              setActiveFeedId("");
-                              viewRefs.current?.clear?.();
-                            }
-
-                            if (interlude?.questionId) {
-                              handleSurveyResponseChange(interlude.questionId, {
-                                completed: true,
-                                feed_id: interlude.feedId,
-                                completed_at: new Date().toISOString(),
-                              });
-                            }
-                            setSurveyResumePageIndex(surveyPageIndex);
-                            setFeedInterlude(null);
-                            setSubmittingToSurvey(false);
-                            setDisabled(false);
                           }}
                         />
                       ) : null}
