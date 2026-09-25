@@ -49,6 +49,7 @@ import {
   isSurveyColumnEditableViaCsv,
   applySurveyColumnValue,
   updateSurveyResponseAnswers,
+  collectSurveyFeedInterludeFeedIds,
 } from "../utils";
 import { PageHeader, Card, Table, Th, Td, Tr, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconNote, IconWarning } from "./ui";
 import { StatCard } from "./components-admin-participants-feed";
@@ -2463,9 +2464,22 @@ export function SurveyParticipantsPage({
   // feed_then_survey/multi_feed_then_survey only) — this page never did.
   const isSurveyOnlyDelivery =
     String(survey?.delivery_mode || "").trim().toLowerCase() === "survey_only";
+  // Real exception to the above: a feed_interlude question sends the
+  // participant to a real, fully-tracked feed mid-survey and back, even
+  // under survey_only delivery — a genuine participants row exists for that
+  // feed, same as feed_then_survey/multi_feed_then_survey. downloadFeedSurveyCsv
+  // (loadMultiFeedParticipantSurveyRoster) already only includes feeds that
+  // actually turned out to have real participant rows, so unlocking this for
+  // a survey_only study can't produce columns for a feed nobody visited —
+  // it's safe to widen, not just theoretically desirable.
+  const surveyHasInterludeFeeds = useMemo(
+    () => collectSurveyFeedInterludeFeedIds(survey).length > 0,
+    [survey]
+  );
+  const feedSurveyCsvBlockedBySurveyOnly = isSurveyOnlyDelivery && !surveyHasInterludeFeeds;
 
   const downloadFeedSurveyCsv = async () => {
-    if (!surveyId || !feedIdsForSurvey.length || isSurveyOnlyDelivery) return;
+    if (!surveyId || !feedIdsForSurvey.length || feedSurveyCsvBlockedBySurveyOnly) return;
     try {
       setDownloadingFeedCsv(true);
 
@@ -2734,7 +2748,7 @@ export function SurveyParticipantsPage({
               <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
                 Download Survey CSV
               </Button>
-              {feedIdsForSurvey.length > 0 && !isSurveyOnlyDelivery && (
+              {feedIdsForSurvey.length > 0 && !feedSurveyCsvBlockedBySurveyOnly && (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -2787,7 +2801,7 @@ export function SurveyParticipantsPage({
           <Button size="sm" variant="secondary" onClick={downloadCsv} busy={downloading} disabled={!surveyId}>
             Download Survey CSV
           </Button>
-          {feedIdsForSurvey.length > 0 && !isSurveyOnlyDelivery && (
+          {feedIdsForSurvey.length > 0 && !feedSurveyCsvBlockedBySurveyOnly && (
             <Button
               size="sm"
               variant="secondary"

@@ -38,6 +38,7 @@ import {
   resolveReminderPostLookup,
   triggerHtmlPrintDialog,
   fetchFeedFlags,
+  collectSurveyFeedInterludeFeedIds,
 } from "../utils";
 
 import {
@@ -2767,6 +2768,21 @@ export function AdminSurveysPanel({
     [survey]
   );
 
+  // A survey_only study normally never has anyone actually visit a linked
+  // feed (they're purely post_reminder content sources — see the
+  // "Download feed + survey CSV" button's own gating comment below), but a
+  // feed_interlude question is a real exception: it sends the participant to
+  // a real, fully-tracked feed mid-survey and back (App-*.jsx's
+  // handleEnterFeedInterlude), producing a genuine participants row for that
+  // feed just like feed_then_survey/multi_feed_then_survey do. Gates the
+  // merged CSV button back on for exactly this case — handleDownloadMultiFeedCsv
+  // and loadMultiFeedParticipantSurveyRoster already only include feeds that
+  // actually turned out to have real participant rows, so this can't produce
+  // fabricated engagement columns for a feed nobody visited.
+  const surveyHasInterludeFeeds = useMemo(
+    () => collectSurveyFeedInterludeFeedIds(survey).length > 0,
+    [survey]
+  );
 
   async function handleDownloadMultiFeedCsv() {
     if (!survey?.survey_id) {
@@ -3241,9 +3257,15 @@ export function AdminSurveysPanel({
                         and loadMultiFeedParticipantSurveyRoster already handles
                         a single-element feedIds array correctly (it just
                         produces one "feed1_..." column group) — genuinely no
-                        multi-feed-specific behavior being relied on here. */}
+                        multi-feed-specific behavior being relied on here.
+                        Also now shown for DELIVERY_MODE_SURVEY_ONLY when the
+                        survey has a feed_interlude question — see
+                        surveyHasInterludeFeeds' own comment above for why a
+                        survey_only study can still have a real feed visit
+                        worth exporting. */}
                     {(deliveryMode === DELIVERY_MODE_FEED_THEN_SURVEY ||
-                      deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY) &&
+                      deliveryMode === DELIVERY_MODE_MULTI_FEED_THEN_SURVEY ||
+                      (deliveryMode === DELIVERY_MODE_SURVEY_ONLY && surveyHasInterludeFeeds)) &&
                       selectedFeedIds.length > 0 && (
                       <button
                         type="button"
