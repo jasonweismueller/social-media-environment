@@ -908,6 +908,8 @@ export function normalizeQuestionForEditor(q = {}, index = 0) {
     recall_distractor_texts: normalizeRecallDistractorTextsForEditor(
       q?.recall_distractor_texts ?? q?.meta?.recall_distractor_texts
     ),
+    interlude_feed_id: String(q?.interlude_feed_id ?? q?.meta?.interlude_feed_id ?? ""),
+    interlude_button_label: String(q?.interlude_button_label ?? q?.meta?.interlude_button_label ?? ""),
     is_attention_check: ATTENTION_CHECK_ELIGIBLE_TYPES.includes(type) && !!q?.is_attention_check,
     attention_check_value: String(q?.attention_check_value ?? ""),
     is_screener: SCREENER_ELIGIBLE_TYPES.includes(type) && !!q?.is_screener,
@@ -2167,6 +2169,8 @@ export function makeBackendQuestionFromType(type, index = 0) {
     reminder_interactive: !!base?.reminder_interactive,
     recall_enabled: !!base?.recall_enabled,
     recall_distractor_texts: normalizeRecallDistractorTextsForEditor(base?.recall_distractor_texts),
+    interlude_feed_id: String(base?.interlude_feed_id ?? ""),
+    interlude_button_label: String(base?.interlude_button_label ?? ""),
     meta: base?.meta || {},
   };
 
