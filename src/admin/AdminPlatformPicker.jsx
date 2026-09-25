@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getProjectId } from "../utils";
+import { getProjectId, touchAdminSession } from "../utils";
 import "./ui/tokens.css";
 import { Card, PageHeader, Button, IconFacebook, IconInstagram, IconCart, IconX, IconChevronRight, ThemeToggle, LogoutButton } from "./ui";
 
@@ -30,7 +30,7 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
 
   if (!projectId) return null;
 
-  const pick = (app) => {
+  const pick = async (app) => {
     if (app === currentApp) {
       navigate("/admin/dashboard");
       return;
@@ -46,6 +46,22 @@ export function AdminPlatformPicker({ currentApp, onLogout }) {
     // so the freshly-loaded bundle's router matched the platform picker
     // again instead of the dashboard — the exact "click Instagram, land
     // back on the platform list, click it again" bug this was reported as.
+    //
+    // Settle the real Supabase session BEFORE tearing this page down —
+    // this is a genuine cross-bundle hard reload (a brand-new Supabase
+    // client on the next page), and a background refresh that's still
+    // in flight on THIS page at the exact moment of navigation (the
+    // dashboard's own 4-minute keep-alive tick, or the SDK's own internal
+    // auto-refresh timer) risks leaving an unsettled/about-to-rotate
+    // session behind. supabase-js rotates the refresh token on every
+    // renewal and revokes the whole session if a stale, already-rotated
+    // refresh token is ever presented again — exactly what a half-finished
+    // refresh straddling this reload could produce, and exactly what
+    // "genuinely dead, only a fresh login fixes it" looks like (see
+    // CLAUDE.md's "ghost session" trail). Awaiting one more
+    // touchAdminSession() here guarantees whatever's persisted to
+    // localStorage right before the reload is fully up to date.
+    await touchAdminSession().catch(() => {});
     const url = new URL(window.location.href);
     url.searchParams.set("app", app);
     url.searchParams.set("project", projectId);

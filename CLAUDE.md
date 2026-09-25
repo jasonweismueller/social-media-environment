@@ -3055,3 +3055,75 @@ Surveys, edit and save without any other action in between — if "missing Autho
 still surfaces, that's a strong signal the root cause is something this fix's two layers don't reach,
 and the browser console + the failing `/auth/v1/token` (or `/functions/v1/save-survey`) request at the
 moment of failure is the next thing to capture.
+
+## "Ghost session" continued: confirmed the fix above deployed and still didn't help; found a likely real cause (refresh-token race across the hard reload) and a targeted fix at the actual choke point (2026-09-25, later)
+
+Direct report, same day, with the browser Network tab and console attached: switched project and
+platform together, edited a survey, hit Save — `POST .../functions/v1/save-survey` came back **401**,
+body `"missing Authorization bearer token"`, exactly the failure the fix directly above this entry was
+supposed to catch.
+
+**First, ruled out the obvious "did it even deploy" question — confirmed it did, directly, not
+assumed.** Fetched the exact live files the report's own Network tab named
+(`index-oWRv2mWZ.js` → `main-facebook-CzUKjGxD.js` → `AdminEntry-DdlNFh0N.js`) straight from
+`studyfeed.org`, matched their hashes to what a fresh `git log`/GitHub Actions check showed as the
+latest deployed commit (`95013c5`, "Deploy to GitHub Pages" completed successfully), and found the
+exact minified `invokeEdgeFunctionWithAuthRetry` function inside `AdminEntry-DdlNFh0N.js` byte-for-byte
+matching the fix's logic (explicit `getSession()`-sourced header, pre-flight renewal, post-failure
+retry). **This eliminated "stale deploy/CDN cache" as an explanation** — the code that ran for this
+report really was the fixed version, and it still got no token from `getSession()` on the first
+attempt, the pre-flight renewal, *and* the post-failure retry. That's a real, fully-dead client-side
+session at that moment, not a timing race the retry logic could paper over.
+
+**Re-examined the boot-time half of the fix and found it was likely never adding real protection for
+this exact scenario.** `App-facebook.jsx`'s new "always touch on a valid mirror" boot effect fires once
+when the admin-gated route mounts — but `AdminDashboard` (`components-admin-dashboard.jsx`) already had
+its own `silentRefresh()` effect that calls `touchAdminSession()` **immediately on mount**, and had for
+some time before this session (the 4-minute `setInterval` version documented as "an actively-open admin
+tab effectively never sees the expiry flow at all"). For the reported flow — switch project+platform →
+land straight on `/admin/dashboard` — that pre-existing effect was already doing what the new boot-time
+touch was meant to add. The new touch isn't wrong to keep (it covers admin routes that never mount
+`AdminDashboard`, e.g. landing on Users), but it wasn't the fix this bug needed.
+
+**The more likely real mechanism, given all of the above**: this app has *several* independent places
+that can trigger a real Supabase token refresh via `getSession()` — `AdminDashboard`'s 4-minute
+keep-alive tick, the SDK's own built-in `autoRefreshToken` timer, and (now) two explicit
+`touchAdminSession()` calls at boot. Supabase Auth **rotates the refresh token on every renewal** and
+will **revoke the entire session** if a stale, already-rotated refresh token is ever presented again
+(replay/reuse detection — a real security feature, not a bug in Supabase). The one moment in this app
+where that's most likely to bite is exactly the reported trigger: `AdminPlatformPicker.pick()`'s
+cross-bundle switch does a hard `window.location.href = ...` reload — if the *old* page's own
+background refresh (from either of the mechanisms above) is still in flight, or has just rotated the
+token, at the exact instant the page is torn down and a *brand-new* Supabase client boots on the next
+page, the new page can end up reading a stale copy of the refresh token from `localStorage` right as
+its own fresh `getSession()` tries to use it — a classic refresh-token-rotation race across a hard page
+boundary. This is consistent with every symptom collected across this whole "ghost session" thread
+(2026-09-20/21/24/25): only a *real* re-login fixes it (a password sign-in mints a wholly fresh token
+family, sidestepping any stale copy); it doesn't manifest as a clean `SIGNED_OUT` → login-screen
+redirect (a revoked-via-reuse-detection session doesn't necessarily flow through the SDK's normal
+`onAuthStateChange` `SIGNED_OUT` event the way an explicit `signOut()` does); and it's tied specifically
+to the hard-reload action, not to plain idle time.
+
+**Fix — settle the session immediately before the one real hard-reload choke point**, rather than
+adding more scattered touch calls after the fact. Confirmed via grep that
+`AdminPlatformPicker.jsx`'s cross-bundle branch is the **only** `window.location.href = ...` assignment
+anywhere in the admin code (`AdminProjectPicker`'s own project switch is a plain client-side
+`navigate()`, never a hard reload) — so it's the single real choke point for this exact class of bug.
+`pick()` is now `async` and `await touchAdminSession().catch(() => {})` right before constructing the
+reload URL — this forces any pending refresh to complete and its result to be fully written to
+`localStorage` *before* the page is torn down, so the next page's fresh Supabase client can only ever
+read an already-settled, current token — instead of racing an in-flight or just-rotated one. Best-effort
+(swallows a failure and proceeds with the reload regardless, same as before), so this can't newly block
+a platform switch that used to work.
+
+**Verified**: `AdminPlatformPicker.jsx` parses clean (`@babel/parser`); confirmed via grep it's the only
+hard-reload site in the admin flow, so this is a complete fix for *this* trigger, not a partial one.
+**Not verified live** — same standing limitation as the entry directly above (no admin credentials to
+click through with, and this specific race is inherently about page-teardown timing, which isn't
+something a static read alone can prove one way or the other). If "missing Authorization bearer token"
+still recurs after this ships, the refresh-token-rotation-race theory can be confirmed or ruled out
+directly: open the Network tab, filter for `token?grant_type=refresh_token`, and check for a **400**
+response with a body mentioning "Already Used" or "Invalid Refresh Token" around the time of the
+failure — that would be conclusive proof of reuse-detection revocation, and the next fix would need to
+address the redundant refresh triggers themselves (the dashboard's own 4-minute poll duplicates what
+`autoRefreshToken` already does) rather than adding another touch call.
