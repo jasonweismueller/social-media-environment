@@ -28,6 +28,16 @@ export function getSupabaseClient() {
     );
   }
 
+  // Investigated (2026-09-25) whether passing `{ auth: { lock: navigatorLock } }`
+  // here would help the "ghost session"/"missing Authorization bearer token"
+  // saga (CLAUDE.md): it would not. The installed @supabase/auth-js's own
+  // lib/locks.js header comment states the auth client no longer invokes any
+  // lock primitive at all — it dedupes concurrent refresh calls onto a
+  // shared in-flight promise within one client instance, and relies on the
+  // GoTrue server to resolve cross-tab/cross-instance races. `navigatorLock`
+  // is kept only for direct callers that want their own Web-Locks-backed
+  // mutex; passing it to `createClient` is explicitly documented as having
+  // no effect. Not added.
   _client = createClient(url, anonKey);
   return _client;
 }

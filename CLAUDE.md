@@ -3127,3 +3127,87 @@ response with a body mentioning "Already Used" or "Invalid Refresh Token" around
 failure — that would be conclusive proof of reuse-detection revocation, and the next fix would need to
 address the redundant refresh triggers themselves (the dashboard's own 4-minute poll duplicates what
 `autoRefreshToken` already does) rather than adding another touch call.
+
+## "Ghost session," a simpler trigger found: a plain same-page hard refresh (Cmd+R) could silently leave a dead SDK session behind a "logged in" UI, and the auth-retry helper made it worse by calling the Edge Function anyway with no header at all (2026-09-25, later still)
+
+Direct report, simpler than any prior trigger in this thread: log in → project → platform → survey →
+edit → save (works) → plain Cmd+R on the exact same URL (no platform/project change, so the 2026-09-25
+`AdminPlatformPicker.pick()` fix above doesn't apply — there's no JS hook to run before an OS-initiated
+hard reload) → edit → save → raw `save-survey` 401, "missing Authorization bearer token."
+
+**Confirmed two real, independent bugs by reading the actual installed `@supabase/supabase-js@2.111.0` /
+`@supabase/auth-js` source directly, not just this app's code:**
+
+1. **This project's anon key is a new-format `sb_publishable_…` key** (checked `.env`/`.env.production`
+   directly). `node_modules/@supabase/supabase-js/dist/index.mjs:339-369`: for a call built with
+   `{omitApiKeyAsBearer: true}` (which `functionsFetch` — i.e. every `functions.invoke` — always is,
+   `:702`), a new-format key is **never** used as a Bearer fallback; if the SDK's own session token is
+   null, `fetchWithAuth` sends the request with **no `Authorization` header at all** (confirmed reading
+   the literal `if (bearer) headers.set(...)` — a falsy bearer just skips the line). `supabase/functions/
+   save-survey/index.ts:44-47` returns exactly that raw string for exactly that condition. This explains
+   the error text precisely: it isn't a wrong/expired token being rejected, it's *no header reaching the
+   function at all*.
+2. **`invokeEdgeFunctionWithAuthRetry` (added in the entry directly above this one) had a real gap**:
+   when `currentAuthHeader()` returned nothing AND the follow-up `supabaseAdminTouch()` renewal also
+   failed (i.e., the SDK genuinely has no session, not a timing race), the function fell through to
+   `supabase.functions.invoke(name, { body, headers: undefined })` anyway instead of bailing out — sending
+   the exact tokenless request that produces bug 1's raw error, instead of failing with something the
+   caller could show the user.
+3. **Separately, `App-{facebook,instagram,amazon,x}.jsx`'s admin-boot effect (the "always touch on a
+   valid mirror" background check added in the same prior entry) discarded its result entirely**
+   (`touchAdminSession().catch(() => {})`) — even a **resolved** `{ok:false}` (SDK has no session) was
+   silently thrown away, not just a thrown exception. So the one place already checking "is the real SDK
+   session actually alive" on every fresh page load learned the answer was "no" and did nothing with it —
+   the dashboard kept rendering as authed from the local mirror (which only tracks a ~1h access-token
+   window, unaware the underlying SDK session is gone), until the next save hit bug 2.
+
+**Why this specific trigger (plain hard refresh) and not just "idle for a while"**: unconfirmed — same
+standing caveat as every entry in this thread; this pass didn't chase why the SDK ends up with no session
+across a same-page reload, only closed the two confirmed gaps in how the app *reacts* once that's already
+true. (One avenue investigated and ruled out: passing `{ auth: { lock: navigatorLock } }` to `createClient`
+would not help — `node_modules/@supabase/auth-js/dist/module/lib/locks.js`'s own header comment says this
+exact installed version's auth client no longer invokes any lock primitive at all; it dedupes concurrent
+refreshes onto a shared in-flight promise per instance and leaves cross-tab/cross-instance races to the
+GoTrue server. `navigatorLock` is kept only for direct callers wanting their own Web-Locks mutex — passing
+it to the client is explicitly documented as a no-op. Not added.)
+
+**Fixes**:
+- `utils-backend-supabase.js`'s `invokeEdgeFunctionWithAuthRetry`: if no Authorization header can be
+  obtained even after the renewal attempt, **never** call `functions.invoke` — return
+  `{data: null, error: new Error("Your session has ended. Please log in again.")}` immediately and
+  dispatch the same `admin-session-lost` event `startAdminSessionSync` uses (mirrored by string value,
+  not imported — this file deliberately has no dependency on `utils-backend.js`, see its own header
+  comment, and the reverse import already exists). Every call site (`supabaseSaveSurvey`,
+  `invokeAdminUsers`, the three `ai-study-report` calls) already does `error.message || String(error)`
+  plus an optional-chained `error.context?.json?.()` for its own error parsing, so a plain `Error` with
+  no `.context` degrades cleanly to the new message with no call-site changes needed.
+- All four `App-*.jsx` boot effects: the background `touchAdminSession()` result is now actually used.
+  One retry after a 1.5s delay (a transient network hiccup right after a hard refresh shouldn't force a
+  re-login by itself — the identical false-positive risk the "over-fired" entry above this one already
+  had to walk back for a different check) before concluding the session is genuinely gone; if still
+  `{ok:false}`, clears the local mirror and dispatches `admin-session-lost`, which `AdminEntry`'s existing
+  listener already turns into a real login screen.
+
+**Verified**: confirmed the exact `isNewApiKey`/`allowKeyAsBearer`/`fetchWithAuth` logic (bug 1) by reading
+`node_modules/@supabase/supabase-js/dist/index.mjs` directly, and the anon key's `sb_publishable_…` prefix
+directly from `.env`. Functionally tested the real, bundled `invokeEdgeFunctionWithAuthRetry` in isolation
+(via `supabaseSaveSurvey`, esbuild-transformed with `getSupabaseClient` stubbed to a controllable fake): a
+dead-session scenario (both `getSession()` calls return no session) now returns the clear error, makes
+**zero** `functions.invoke` calls, and dispatches `admin-session-lost` — where before this fix it would
+have called `invoke` anyway; a healthy-session regression case still calls `invoke` exactly once with the
+correct `Authorization: Bearer <token>` header, unchanged. All six touched files
+(`utils-backend-supabase.js`, `utils-supabase-client.js`, `App-{facebook,instagram,amazon,x}.jsx`) parse
+clean (`@babel/parser`). **Not verified**: an actual click-through reproducing the exact reported sequence
+(log in → save → hard refresh → save again) — this sandbox's browser tool refused every `localhost:5173`
+navigation attempt this session (dev server itself confirmed up via `preview_logs`), the same tooling
+denial the several entries above this one already hit. Worth a real click-through on
+`staging.studyfeed.org`: reproduce the exact sequence and confirm the second save either succeeds or shows
+a clean "please log in again" — never the raw "missing Authorization bearer token" text again regardless
+of which of the two failure modes it was.
+
+**Deploy status**: working tree was on the `production` branch when this was written (per `git status`) —
+per this file's own "Deployment" section, `production` auto-commits/pushes straight to `origin/production`
+and GitHub Actions deploys it directly to `studyfeed.org`, no Netlify-staging soak the way `main` gets.
+Given this is an unverified-live fix to core admin auth plumbing touching all four participant-facing
+apps' boot sequences, worth routing through `main` → staging first rather than letting it auto-deploy
+straight to production.

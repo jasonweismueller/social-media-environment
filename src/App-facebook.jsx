@@ -22,6 +22,8 @@ import {
   hasAdminSession,
   restoreAdminSession,
   touchAdminSession,
+  clearAdminSession,
+  ADMIN_SESSION_LOST_EVENT,
   adminLogout,
   listFeedsFromBackend,
   getFeedIdFromUrl,
@@ -2250,7 +2252,28 @@ export default function App() {
       // select) and closes that gap without adding a boot-time flash.
       setAdminAuthed(true);
       setAdminRestoring(false);
-      touchAdminSession().catch(() => {});
+      // The result used to be discarded (`.catch(() => {})`), so a genuinely
+      // dead SDK session (refresh token rejected, account disabled, signed
+      // out elsewhere) produced no signal at all here — the dashboard kept
+      // rendering as authed from the still-valid local mirror, and the first
+      // save afterward 401'd with the raw, cryptic "missing Authorization
+      // bearer token" instead of a real "please log in again" prompt. A
+      // single failed touch isn't trusted outright (a transient network
+      // blip right after a hard refresh shouldn't force a re-login — see
+      // CLAUDE.md's "over-fired" ghost-session entry for the identical
+      // false-positive risk in a different check); one retry after a short
+      // delay before concluding the session is actually gone.
+      (async () => {
+        let res = await touchAdminSession().catch((e) => ({ ok: false, err: String(e?.message || e) }));
+        if (!res?.ok) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          res = await touchAdminSession().catch((e) => ({ ok: false, err: String(e?.message || e) }));
+        }
+        if (!res?.ok) {
+          clearAdminSession();
+          try { window.dispatchEvent(new Event(ADMIN_SESSION_LOST_EVENT)); } catch {}
+        }
+      })();
       return undefined;
     }
     // The local record lapsed (idle tab, sleep, restart) — but the Supabase SDK

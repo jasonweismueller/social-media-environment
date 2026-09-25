@@ -13,6 +13,12 @@
 import { getSupabaseClient } from "./utils-supabase-client";
 import { normalizeRandomizeExclude, normalizeAvatarCrop } from "./utils-core";
 
+// Mirrors utils-backend.js's exported ADMIN_SESSION_LOST_EVENT constant by
+// value, not by import — utils-backend.js already imports from this file
+// (see the header comment above), so importing back would be circular. Keep
+// this string in sync with that constant if it ever changes.
+const ADMIN_SESSION_LOST_EVENT = "admin-session-lost";
+
 async function fetchAdminProfile(supabase, userId) {
   const { data, error } = await supabase
     .from("profiles")
@@ -205,6 +211,23 @@ async function invokeEdgeFunctionWithAuthRetry(name, body) {
   if (!headers) {
     const renewed = await supabaseAdminTouch();
     if (renewed.ok) headers = await currentAuthHeader();
+  }
+
+  if (!headers) {
+    // Still no token after a renewal attempt: the SDK genuinely has no
+    // session (not a timing race functions.invoke's own header resolution
+    // could win). Calling invoke anyway sends the request with NO
+    // Authorization header at all — this project's anon key is a new-format
+    // `sb_publishable_...` key, which supabase-js deliberately never falls
+    // back to as a bearer token for Edge Function calls, so the request
+    // reaches save-survey/admin-users/ai-study-report with nothing to
+    // authenticate it and comes back as the raw, confusing "missing
+    // Authorization bearer token" 401. Fail fast instead with a clear
+    // message and tell the rest of the app the session is gone (mirrors
+    // startAdminSessionSync's own SIGNED_OUT handling) so the user sees a
+    // real "please log in again" prompt instead of a cryptic save error.
+    try { window.dispatchEvent(new Event(ADMIN_SESSION_LOST_EVENT)); } catch {}
+    return { data: null, error: new Error("Your session has ended. Please log in again.") };
   }
 
   let result = await supabase.functions.invoke(name, { body, headers });

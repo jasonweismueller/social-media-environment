@@ -22,6 +22,8 @@ import {
   hasAdminSession,
   restoreAdminSession,
   touchAdminSession,
+  clearAdminSession,
+  ADMIN_SESSION_LOST_EVENT,
   adminLogout,
   listFeedsFromBackend,
   getFeedIdFromUrl,
@@ -1966,7 +1968,22 @@ export default function App() {
       // token undetected until the first write 401s.
       setAdminAuthed(true);
       setAdminRestoring(false);
-      touchAdminSession().catch(() => {});
+      // See App-facebook.jsx's identical block for the full reasoning: the
+      // result used to be discarded, silently leaving a genuinely dead SDK
+      // session looking authed until the first save 401'd with a cryptic
+      // raw error; one retry after a short delay before concluding the
+      // session is actually gone and surfacing a real re-login prompt.
+      (async () => {
+        let res = await touchAdminSession().catch((e) => ({ ok: false, err: String(e?.message || e) }));
+        if (!res?.ok) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          res = await touchAdminSession().catch((e) => ({ ok: false, err: String(e?.message || e) }));
+        }
+        if (!res?.ok) {
+          clearAdminSession();
+          try { window.dispatchEvent(new Event(ADMIN_SESSION_LOST_EVENT)); } catch {}
+        }
+      })();
       return undefined;
     }
     // The local record lapsed (idle tab, sleep, restart) — but the Supabase SDK
