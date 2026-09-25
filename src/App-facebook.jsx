@@ -3177,10 +3177,31 @@ export default function App() {
   // Interlude counterpart of preparingFeedOverlay above — same idea, just
   // gated on feedInterlude instead of requiresFeedStage/!feedSubmitted
   // (irrelevant once already mid-survey, which is the only time an
-  // interlude can be active).
+  // interlude can be active). `!feedInterlude.returning` scopes this to the
+  // outbound leg only (participant → interlude feed) — the inbound leg
+  // (interlude feed → survey) uses returningFromInterludeOverlay below
+  // instead, since "Preparing your feed…" reads as wrong messaging on the
+  // way back to a survey, per direct feedback.
   const preparingInterludeFeedOverlay =
     !onAdmin &&
     !!feedInterlude &&
+    !feedInterlude.returning &&
+    (contentPhase === "loading" ||
+      feedPhase === "loading" ||
+      !flagsReady ||
+      !assetsReady ||
+      !minDelayDone);
+
+  // Inbound leg of a feed_interlude return — the participant already saw
+  // and submitted the interlude feed; this brief window is just the app
+  // reloading the resumed feed context so SurveyScreen has what it needs
+  // (posts/flags for e.g. a post_reminder elsewhere on the page). Mirrors
+  // loadingNextStageOverlay's own "quiet" treatment below (the ordinary
+  // feed→survey transition), since this is the same kind of transition and
+  // usually resolves in well under a second.
+  const returningFromInterludeOverlay =
+    !onAdmin &&
+    !!feedInterlude?.returning &&
     (contentPhase === "loading" ||
       feedPhase === "loading" ||
       !flagsReady ||
@@ -3235,6 +3256,8 @@ export default function App() {
       shouldShowPreface,
       showSurveyOnlyLoadingOverlay,
       preparingFeedOverlay,
+      preparingInterludeFeedOverlay,
+      returningFromInterludeOverlay,
       loadingNextStageOverlay,
       submittingToSurveyOverlay,
       shouldShowSurvey,
@@ -3250,6 +3273,8 @@ export default function App() {
     shouldShowPreface,
     showSurveyOnlyLoadingOverlay,
     preparingFeedOverlay,
+    preparingInterludeFeedOverlay,
+    returningFromInterludeOverlay,
     loadingNextStageOverlay,
     submittingToSurveyOverlay,
     shouldShowSurvey,
@@ -3295,7 +3320,13 @@ export default function App() {
     // Both quiet — this whole click-to-survey transition often resolves in
     // well under a second, and a title/subtitle overlay just flashes there
     // unreadably (see LoadingOverlay's `quiet` prop / .quiet-transition-
-    // backdrop CSS for the full rationale).
+    // backdrop CSS for the full rationale). returningFromInterludeOverlay is
+    // the feed_interlude counterpart of loadingNextStageOverlay — same
+    // transition (a feed handing back off to the survey), same quiet
+    // treatment, per direct feedback that this leg previously reused
+    // preparingInterludeFeedOverlay's "Preparing your feed…" copy, which is
+    // backwards for a participant already on their way back to the survey.
+    returningFromInterludeOverlay ? { quiet: true } :
     loadingNextStageOverlay ? { quiet: true } :
     submittingToSurveyOverlay ? { quiet: true } :
     null;
@@ -3560,8 +3591,18 @@ export default function App() {
                               // regardless of platform — see App-facebook.jsx's
                               // own comment on handleEnterFeedInterlude for why
                               // this reuses advanceToNextFeed rather than a
-                              // bespoke reset.
+                              // bespoke reset. Flipping `returning` first (before
+                              // advanceToNextFeed's own setFeedPhase("loading")
+                              // etc.) lets preparingInterludeFeedOverlay vs.
+                              // returningFromInterludeOverlay (below) tell "on
+                              // my way to the interlude feed" apart from "on my
+                              // way back to the survey" — same loading chrome,
+                              // different, more accurate copy/quietness for each
+                              // direction, per direct feedback that "Preparing
+                              // your feed…" read as wrong messaging while
+                              // heading back to the survey.
                               const interlude = feedInterlude;
+                              setFeedInterlude((prev) => (prev ? { ...prev, returning: true } : prev));
                               const resumeFeedId = interlude?.resumeFeedId || "";
                               if (resumeFeedId) {
                                 await advanceToNextFeed(resumeFeedId);

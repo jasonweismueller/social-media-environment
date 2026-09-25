@@ -3118,6 +3118,17 @@ export default function App() {
   const preparingInterludeFeedOverlay =
     !onAdmin &&
     !!feedInterlude &&
+    !feedInterlude.returning &&
+    (contentPhase === "loading" ||
+      feedPhase === "loading" ||
+      !flagsReady ||
+      !assetsReady ||
+      !minDelayDone);
+
+  // See App-facebook.jsx's identical addition for the full rationale.
+  const returningFromInterludeOverlay =
+    !onAdmin &&
+    !!feedInterlude?.returning &&
     (contentPhase === "loading" ||
       feedPhase === "loading" ||
       !flagsReady ||
@@ -3179,6 +3190,8 @@ export default function App() {
       shouldShowPreface,
       showSurveyOnlyLoadingOverlay,
       preparingFeedOverlay,
+      preparingInterludeFeedOverlay,
+      returningFromInterludeOverlay,
       loadingNextStageOverlay,
       submittingToSurveyOverlay,
       shouldShowSurvey,
@@ -3194,6 +3207,8 @@ export default function App() {
     shouldShowPreface,
     showSurveyOnlyLoadingOverlay,
     preparingFeedOverlay,
+    preparingInterludeFeedOverlay,
+    returningFromInterludeOverlay,
     loadingNextStageOverlay,
     submittingToSurveyOverlay,
     shouldShowSurvey,
@@ -3239,7 +3254,10 @@ export default function App() {
     // Both quiet — this whole click-to-survey transition often resolves in
     // well under a second, and a title/subtitle overlay just flashes there
     // unreadably (see LoadingOverlay's `quiet` prop / .quiet-transition-
-    // backdrop CSS for the full rationale).
+    // backdrop CSS for the full rationale). returningFromInterludeOverlay is
+    // the feed_interlude counterpart — see App-facebook.jsx's identical
+    // change for the full rationale.
+    returningFromInterludeOverlay ? { quiet: true } :
     loadingNextStageOverlay ? { quiet: true } :
     submittingToSurveyOverlay ? { quiet: true } :
     null;
@@ -3491,7 +3509,11 @@ export default function App() {
                                 return;
                               }
 
+                              // See App-facebook.jsx's identical addition for
+                              // the full rationale (preparingInterludeFeedOverlay
+                              // vs. returningFromInterludeOverlay).
                               const interlude = feedInterlude;
+                              setFeedInterlude((prev) => (prev ? { ...prev, returning: true } : prev));
                               const resumeFeedId = interlude?.resumeFeedId || "";
                               if (resumeFeedId) {
                                 await advanceToNextFeed(resumeFeedId);

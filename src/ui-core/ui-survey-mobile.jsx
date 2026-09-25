@@ -1884,6 +1884,38 @@ export function SurveyScreenMobile({
     visiblePages.length,
   ]);
 
+  // Once-only auto-advance past a just-completed feed_interlude page — see
+  // ui-survey.jsx's SurveyScreen for the full rationale (mirrored here
+  // verbatim, same near-duplicate-file shape as the rest of this component).
+  const autoAdvancedInterludeRef = useRef(false);
+  useEffect(() => {
+    if (autoAdvancedInterludeRef.current) return;
+    if (!Number.isInteger(initialPageIndex) || initialPageIndex < 0) return;
+    if (!currentPage) return;
+    const justCompletedInterlude = currentPage.questions.some(
+      (q) =>
+        q.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE &&
+        responses?.[q.id] &&
+        typeof responses[q.id] === "object" &&
+        responses[q.id].completed
+    );
+    if (!justCompletedInterlude) return;
+    autoAdvancedInterludeRef.current = true;
+    if (isLastPage) return;
+    const validation = validateCurrentPage();
+    if (!validation.ok) return;
+    if (blockOnScreenerFailure(currentPage.questions)) return;
+    setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
+  }, [
+    currentPage,
+    responses,
+    initialPageIndex,
+    isLastPage,
+    validateCurrentPage,
+    blockOnScreenerFailure,
+    visiblePages.length,
+  ]);
+
   // Submit only ever fires from the last page's own button — see the nav
   // markup below and ui-survey.jsx's SurveyScreen for the full rationale.
   const handleSubmitClick = useCallback(() => {

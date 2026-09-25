@@ -2323,6 +2323,49 @@ const isNextDelayed =
   visiblePages.length,
 ]);
 
+  // Once-only: a fresh mount seeded via `initialPageIndex` means App-*.jsx
+  // just brought the participant back from a feed_interlude's own feed —
+  // landing back on that same page (now showing "✓ You've completed this
+  // part of the study.", FeedInterludeCard above) reads as a dead end rather
+  // than a natural continuation, per direct feedback. If that page's
+  // feed_interlude question now carries a real `completed` marker and the
+  // rest of the page (any other required questions sharing it) already
+  // validates, skip straight past it — same validation `goNext` runs, just
+  // without its `isNextDelayed` gate: the participant already spent real
+  // time away on the interlude feed, so re-imposing a page dwell timer here
+  // would penalize exactly the participants who returned promptly. If the
+  // page isn't fully valid yet (a real, if unusual, case — another required
+  // question shares the page), it's left alone so the normal Next button can
+  // surface the remaining validation errors.
+  const autoAdvancedInterludeRef = useRef(false);
+  useEffect(() => {
+    if (autoAdvancedInterludeRef.current) return;
+    if (!Number.isInteger(initialPageIndex) || initialPageIndex < 0) return;
+    if (!currentPage) return;
+    const justCompletedInterlude = currentPage.questions.some(
+      (q) =>
+        q.type === SURVEY_QUESTION_TYPES.FEED_INTERLUDE &&
+        responses?.[q.id] &&
+        typeof responses[q.id] === "object" &&
+        responses[q.id].completed
+    );
+    if (!justCompletedInterlude) return;
+    autoAdvancedInterludeRef.current = true;
+    if (isLastPage) return;
+    const validation = validateCurrentPage();
+    if (!validation.ok) return;
+    if (blockOnScreenerFailure(currentPage.questions)) return;
+    setCurrentPageIndex((prev) => Math.min(prev + 1, visiblePages.length - 1));
+  }, [
+    currentPage,
+    responses,
+    initialPageIndex,
+    isLastPage,
+    validateCurrentPage,
+    blockOnScreenerFailure,
+    visiblePages.length,
+  ]);
+
   // Submit only ever fires from the last page's own button (see the nav
   // markup below) — validateSurveyResponses (utils-survey.js, called by
   // App-*.jsx's onSubmit) covers required-ness for the whole survey, but has
