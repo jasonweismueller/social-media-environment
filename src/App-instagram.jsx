@@ -3182,18 +3182,21 @@ export default function App() {
                                 participantSeed: participantId || sessionIdRef.current,
                               });
 
-                              const displayedPostSnapshots = orderedPosts
-                                .map((post) =>
-                                  displayedPostSnapshotsRef.current.get(`${feed_id || ""}::${post.id}`)
-                                )
-                                .filter(Boolean);
-                              row.displayed_posts_json = JSON.stringify(displayedPostSnapshots);
+                              // Unlike Facebook/X/Amazon, App-instagram.jsx's
+                              // own primary-feed submit (below) never wires
+                              // up a displayedPostSnapshotsRef/
+                              // onDisplayedPostSnapshot mechanism at all —
+                              // ui-posts-instagram.jsx's PostCard has no such
+                              // prop to call it with. This was ported here
+                              // from App-facebook.jsx anyway, referencing a
+                              // ref that was never declared in this file,
+                              // which threw a ReferenceError on every return
+                              // from an interlude — matching the primary
+                              // feed's own (working) submit pattern instead
+                              // of introducing a new, unsupported mechanism.
                               row.experiment_group_id = linkedSurvey?.experiment_assigned_group_id || "";
 
                               const header = buildMinimalHeader(posts);
-                              if (!header.includes("displayed_posts_json")) {
-                                header.push("displayed_posts_json");
-                              }
                               if (!header.includes("experiment_group_id")) {
                                 header.push("experiment_group_id");
                               }
