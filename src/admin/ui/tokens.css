@@ -405,3 +405,200 @@ html[data-admin-theme="dark"] body:has(.admin-shell) {
     transform: rotate(360deg);
   }
 }
+
+/* ==========================================================================
+   Mobile shell — breakpoint, safe-area, touch targets
+   ==========================================================================
+   880px is the ONE canonical width breakpoint for admin *layout shape*
+   changes (sidebar → bottom tab bar, list+detail → full-screen drill-down,
+   table → card list) — kept as a single number referenced consistently
+   here, in `useIsMobile.js` (`ADMIN_MOBILE_BREAKPOINT`), and at every call
+   site below, rather than each component picking its own. The existing
+   640px convention already used by the post-editor/survey-editor field
+   grids (`.grid-2`/`.grid-3` in each platform's styles-*.css) is left as-is
+   for that narrower, content-density purpose — the two breakpoints answer
+   different questions ("what nav/structure should this page use" vs "how
+   many columns fit this specific field row") and don't need to match. */
+
+/* components-admin-surveys-editor.jsx: dim (not remove — layout in the
+   flex/grid row that holds it stays identical either way) the drag-handle
+   grip icon under a coarse pointer. HTML5 `draggable` never activates via
+   touch on iOS/Android, so the handle is dead weight there; every question
+   row that has one also already has working move-up/down arrow buttons as
+   the real touch reorder mechanism (page/page-block/experiment-group
+   reordering doesn't yet — a disclosed, accepted gap for this pass). */
+@media (hover: none) and (pointer: coarse) {
+  .admin-drag-handle { opacity: 0.35; }
+}
+
+/* Small fixed-pixel paired-field grids (Min/Max, Left/Right label, etc.) in
+   the survey editor — collapses to one column below 640px, matching the
+   same breakpoint the post-editor's own `.grid-2`/`.grid-3` already use for
+   the identical purpose. `!important` because the column template is set
+   inline. */
+@media (max-width: 640px) {
+  .admin-editor-field-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Bump every icon-only round control (IconPillButton/LogoutButton/
+   ThemeToggle) to a real ≥44px touch target under a coarse pointer —
+   these were fixed at 34×34 with no distinction between mouse and touch
+   input. `(pointer:coarse)` rather than the width breakpoint deliberately:
+   an iPad or a future native wrapper is always coarse-pointer regardless of
+   viewport width, and this should apply there too. `!important` is needed
+   because these components set width/height inline. */
+@media (hover: none) and (pointer: coarse) {
+  .admin-shell .admin-tap-44 {
+    width: 44px !important;
+    height: 44px !important;
+  }
+}
+
+/* Popover.jsx: bottom-sheet presentation on mobile instead of a small
+   floating panel — the standard native pattern for a menu/picker on a
+   phone, and sidesteps needing per-menu viewport-overflow math entirely
+   (the sheet is always full-width). A translucent backdrop is added here
+   (Popover.jsx doesn't render one in desktop/floating mode, since a
+   pointerdown-outside listener already handles dismissal there — the
+   backdrop is purely a mobile affordance signalling "this is a modal
+   sheet", and still closes on tap via the same outside-click handler). */
+@media (max-width: 880px) {
+  .admin-popover-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 999;
+    animation: admin-fade-in var(--admin-duration-base) var(--admin-ease) both;
+  }
+  .admin-popover-panel--sheet {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: var(--admin-radius-xl) var(--admin-radius-xl) 0 0 !important;
+    border: none !important;
+    border-top: 1px solid var(--admin-border-subtle) !important;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom)) !important;
+    z-index: 1000;
+    animation: admin-sheet-in var(--admin-duration-base) var(--admin-ease) both !important;
+    transform-origin: bottom !important;
+  }
+  .admin-popover-panel--sheet::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--admin-border);
+    margin: 0 auto 12px;
+  }
+}
+@keyframes admin-sheet-in {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* OverflowMenu.jsx items: real touch feedback (`:active`/`:focus-visible`),
+   replacing a mouseenter/mouseleave-only background swap that never fired
+   on tap. */
+.admin-overflow-item:hover,
+.admin-overflow-item:active,
+.admin-overflow-item:focus-visible {
+  background: var(--admin-surface-alt);
+  outline: none;
+}
+.admin-overflow-item--danger:hover,
+.admin-overflow-item--danger:active,
+.admin-overflow-item--danger:focus-visible {
+  background: var(--admin-danger-soft);
+}
+
+/* Modal.jsx: force every admin modal to a true edge-to-edge full-screen
+   sheet on mobile regardless of its `width`/`fullScreen` prop — a centered
+   fixed-width box (the default) has nowhere near enough room on a phone,
+   and this is one CSS-level change every existing modal (post editor via
+   `../ui-core` Modal is a SEPARATE component/CSS system, handled per
+   platform stylesheet instead — see styles-*.css) picks up automatically.
+   `!important` overrides the component's inline width/height/radius. */
+@media (max-width: 880px) {
+  .admin-modal-backdrop {
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+  }
+  .admin-modal-dialog {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Table.jsx: opt-in (`.admin-table--responsive`, only on tables whose <Td>
+   calls were given a `label` — see Table.jsx) row-to-card transform. A
+   table not opted in keeps the existing horizontal-scroll behavior
+   unchanged. Standard accessible responsive-table pattern: rows become
+   cards, cells become labeled key/value lines via `data-label` +
+   `::before`. */
+@media (max-width: 880px) {
+  .admin-table--responsive table,
+  .admin-table--responsive thead,
+  .admin-table--responsive tbody,
+  .admin-table--responsive th,
+  .admin-table--responsive tr {
+    display: block;
+    width: 100%;
+  }
+  .admin-table--responsive thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .admin-table--responsive tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--admin-border-subtle);
+    border-radius: var(--admin-radius-md);
+    padding: 4px 12px;
+    background: var(--admin-surface);
+  }
+  .admin-table--responsive td {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--admin-border-subtle);
+    padding: 8px 0 !important;
+    text-align: right;
+  }
+  .admin-table--responsive tr > td:last-child {
+    border-bottom: none;
+  }
+  .admin-table--responsive td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    margin-right: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--admin-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    text-align: left;
+  }
+  .admin-table--responsive td:not([data-label]) {
+    justify-content: flex-start;
+  }
+}

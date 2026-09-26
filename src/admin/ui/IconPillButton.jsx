@@ -10,7 +10,7 @@ export function IconPillButton({ onClick, title, children }) {
       title={title}
       aria-label={title}
       onClick={onClick}
-      className="admin-btn"
+      className="admin-btn admin-tap-44"
       style={{
         width: 34,
         height: 34,

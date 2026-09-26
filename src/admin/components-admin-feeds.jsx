@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { pravatar, hasAdminRole, APP } from "../utils";
-import { Card, Table, Th, Td, Tr, Toggle, Button, IconButton, Tabs, PageHeader, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus, IconEye } from "./ui";
+import { Card, Table, Th, Td, Tr, Toggle, Button, IconButton, Tabs, PageHeader, RoleGate, EmptyState, IconFeed, IconNote, IconPencil, IconTrash, IconPlus, IconEye, useIsAdminMobile, MobileBackBar } from "./ui";
 import { FeedParticipantsPage, StatCard } from "./components-admin-participants-feed";
 import { FeedPreviewModal } from "./components-admin-feed-preview";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
@@ -370,10 +370,25 @@ export function AdminFeedsPanel({
   };
 
   const { feedsSlot, feedsAddSlot } = useContext(AdminTreeSlotsContext);
+  const isMobile = useIsAdminMobile();
 
   const handleDeleteSelectedFeed = () => {
     onDeleteFeed(feeds.find((f) => f.feed_id === selectedFeedId) || { feed_id: selectedFeedId, name: selectedFeedName });
   };
+
+  const feedListContentEl = (
+    <FeedListContent
+      feeds={feeds}
+      feedsLoading={feedsLoading}
+      selectedFeedId={selectedFeedId}
+      onSelectFeed={onSelectFeed}
+      onSaveFeed={onSaveFeed}
+      isSaving={isSaving}
+      deletingFeed={deletingFeed}
+      onDeleteSelectedFeed={handleDeleteSelectedFeed}
+      onRenameFeed={onRenameFeed}
+    />
+  );
 
   return (
     <>
@@ -384,24 +399,17 @@ export function AdminFeedsPanel({
           </RoleGate>,
           feedsAddSlot
         )}
-      {feedsSlot &&
-        createPortal(
-          <FeedListContent
-            feeds={feeds}
-            feedsLoading={feedsLoading}
-            selectedFeedId={selectedFeedId}
-            onSelectFeed={onSelectFeed}
-            onSaveFeed={onSaveFeed}
-            isSaving={isSaving}
-            deletingFeed={deletingFeed}
-            onDeleteSelectedFeed={handleDeleteSelectedFeed}
-            onRenameFeed={onRenameFeed}
-          />,
-          feedsSlot
-        )}
+      {/* Desktop: portaled into AdminShell's sidebar (feedsSlot). Mobile:
+          AdminShell renders no sidebar at all (feedsSlot is null there), so
+          the list instead renders inline below, full-width, only when
+          nothing is selected yet — this is the mobile drill-down's "list"
+          screen. */}
+      {feedsSlot && createPortal(feedListContentEl, feedsSlot)}
 
       <div style={{ minWidth: 0 }}>
-        {!selectedFeedId && (
+        {!selectedFeedId && isMobile && feedListContentEl}
+
+        {!selectedFeedId && !isMobile && (
           <EmptyState
             icon={IconFeed}
             title="No feed selected"
@@ -411,7 +419,11 @@ export function AdminFeedsPanel({
 
         {selectedFeedId && (
           <>
-            <PageHeader title={selectedFeedName || selectedFeedId} subtitle={`ID: ${selectedFeedId}`} />
+            {isMobile ? (
+              <MobileBackBar title={selectedFeedName || selectedFeedId} subtitle="Feeds" onBack={() => onSelectFeed("")} />
+            ) : (
+              <PageHeader title={selectedFeedName || selectedFeedId} subtitle={`ID: ${selectedFeedId}`} />
+            )}
 
             <Tabs
               ariaLabel="Feed detail sections"
@@ -479,7 +491,7 @@ export function AdminFeedsPanel({
                       message={`Use the + button above to add the first one, or import a backup JSON from Settings.`}
                     />
                   ) : (
-                    <Table style={{ tableLayout: "fixed" }}>
+                    <Table className="admin-table--responsive" style={{ tableLayout: "fixed" }}>
                       <thead>
                         <tr>
                           <Th style={{ width: "6%" }} />
@@ -510,14 +522,14 @@ export function AdminFeedsPanel({
                                   />
                                 </div>
                               </Td>
-                              <Td style={{ fontFamily: "monospace" }}>
+                              <Td label="Post" style={{ fontFamily: "monospace" }}>
                                 {postLabel ? (
                                   <FitText title={postLabel}>{postLabel}</FitText>
                                 ) : (
                                   <span className="subtle">—</span>
                                 )}
                               </Td>
-                              <Td style={{ fontWeight: 600 }}>
+                              <Td label="Author" style={{ fontWeight: 600 }}>
                                 {authorLabel ? (
                                   <FitText title={authorLabel}>
                                     {authorLabel}
@@ -527,17 +539,17 @@ export function AdminFeedsPanel({
                                   <span className="subtle">—</span>
                                 )}
                               </Td>
-                              <Td>
+                              <Td label="Text">
                                 {p.text ? (
                                   <FitText title={p.text}>{p.text}</FitText>
                                 ) : (
                                   <span className="subtle">—</span>
                                 )}
                               </Td>
-                              <Td>
+                              <Td label="Time">
                                 {p.time ? p.time : <span className="subtle">—</span>}
                               </Td>
-                              <Td>
+                              <Td label="Media">
                                 {p.videoMode !== "none" ? "video" : p.imageMode !== "none" ? "image" : <span className="subtle">none</span>}
                               </Td>
                               <Td>

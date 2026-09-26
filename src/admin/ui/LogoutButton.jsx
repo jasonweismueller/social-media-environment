@@ -18,7 +18,7 @@ export function LogoutButton({ onLogout }) {
       onClick={onLogout}
       title="Log out"
       aria-label="Log out"
-      className="admin-btn"
+      className="admin-btn admin-tap-44"
       style={{
         flexShrink: 0,
         display: "flex",

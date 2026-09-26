@@ -5,9 +5,9 @@ import React from "react";
  * abstraction. Keeps consistent cell padding/border across admin pages
  * without changing how rows/cells are composed by callers.
  */
-export function Table({ children, style }) {
+export function Table({ children, style, className }) {
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div className={className} style={{ overflowX: "auto" }}>
       <table
         style={{
           width: "100%",
@@ -44,9 +44,13 @@ export function Th({ children, style, dense, ...rest }) {
   );
 }
 
-export function Td({ children, style, dense, ...rest }) {
+// `label` is only consumed by the `.admin-table--responsive` mobile card
+// transform (tokens.css: `td[data-label]::before`) — a plain <td> with no
+// label renders identically to before on every table that hasn't opted in.
+export function Td({ children, style, dense, label, ...rest }) {
   return (
     <td
+      data-label={label}
       style={{
         padding: dense ? "5px 10px" : "10px",
         borderBottom: "1px solid var(--admin-border-subtle)",

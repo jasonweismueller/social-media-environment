@@ -18,6 +18,14 @@ import { createPortal } from "react-dom";
  * variables scoped to `.admin-shell` — a panel portaled past that boundary
  * renders with no background/border/shadow and a colorless toggle track.
  */
+const POPOVER_MOBILE_BP = 880;
+// Kept in sync with tokens.css's `--admin-*` breakpoint comment — Popover
+// can't read a CSS custom property from JS, so this is the one place that
+// value is duplicated as a number (matches ADMIN_MOBILE_BREAKPOINT in
+// useIsMobile.js).
+const PANEL_MIN_WIDTH = 220;
+const VIEWPORT_MARGIN = 12;
+
 export function Popover({ trigger, children, align = "start", open, onOpenChange }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = typeof open === "boolean";
@@ -26,6 +34,7 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
   const panelRef = useRef(null);
   const [coords, setCoords] = useState(null);
   const [portalTarget, setPortalTarget] = useState(null);
+  const [isMobileSheet, setIsMobileSheet] = useState(false);
 
   function setOpen(next) {
     if (onOpenChange) onOpenChange(next);
@@ -39,12 +48,33 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
     function updatePosition() {
       const el = triggerRef.current;
       if (!el) return;
+
+      const mobile = window.innerWidth <= POPOVER_MOBILE_BP;
+      setIsMobileSheet(mobile);
+      if (mobile) {
+        // A bottom sheet is always full-width/pinned-to-bottom via CSS
+        // (`.admin-popover-panel--sheet` in tokens.css) — no coordinate math
+        // needed, and none of it would be meaningful against a phone-width
+        // viewport anyway.
+        setCoords({});
+        return;
+      }
+
       const rect = el.getBoundingClientRect();
-      setCoords(
-        align === "end"
-          ? { top: rect.bottom + 6, right: window.innerWidth - rect.right }
-          : { top: rect.bottom + 6, left: rect.left }
-      );
+      // Clamp so the panel can never render partially off-screen — the
+      // un-clamped version (`rect.left`/`window.innerWidth - rect.right`)
+      // overflows whenever the trigger sits close to a viewport edge,
+      // which a narrow admin sidebar/toolbar makes common even on desktop.
+      const maxLeft = Math.max(VIEWPORT_MARGIN, window.innerWidth - PANEL_MIN_WIDTH - VIEWPORT_MARGIN);
+      if (align === "end") {
+        const right = Math.min(
+          Math.max(VIEWPORT_MARGIN, window.innerWidth - rect.right),
+          window.innerWidth - PANEL_MIN_WIDTH - VIEWPORT_MARGIN
+        );
+        setCoords({ top: rect.bottom + 6, right: Math.max(VIEWPORT_MARGIN, right) });
+      } else {
+        setCoords({ top: rect.bottom + 6, left: Math.min(Math.max(VIEWPORT_MARGIN, rect.left), maxLeft) });
+      }
     }
 
     updatePosition();
@@ -90,26 +120,32 @@ export function Popover({ trigger, children, align = "start", open, onOpenChange
         coords &&
         portalTarget &&
         createPortal(
-          <div
-            ref={panelRef}
-            style={{
-              position: "fixed",
-              top: coords.top,
-              left: coords.left,
-              right: coords.right,
-              zIndex: 1000,
-              minWidth: 220,
-              background: "var(--admin-surface)",
-              border: "1px solid var(--admin-border-subtle)",
-              borderRadius: "var(--admin-radius-md)",
-              boxShadow: "var(--admin-shadow-lg)",
-              padding: 10,
-              animation: `admin-pop-in var(--admin-duration-fast) var(--admin-ease) both`,
-              transformOrigin: "top",
-            }}
-          >
-            {children}
-          </div>,
+          <>
+            {isMobileSheet && (
+              <div className="admin-popover-backdrop" onClick={() => setOpen(false)} />
+            )}
+            <div
+              ref={panelRef}
+              className={isMobileSheet ? "admin-popover-panel--sheet" : undefined}
+              style={{
+                position: "fixed",
+                top: coords.top,
+                left: coords.left,
+                right: coords.right,
+                zIndex: 1000,
+                minWidth: PANEL_MIN_WIDTH,
+                background: "var(--admin-surface)",
+                border: "1px solid var(--admin-border-subtle)",
+                borderRadius: "var(--admin-radius-md)",
+                boxShadow: "var(--admin-shadow-lg)",
+                padding: 10,
+                animation: `admin-pop-in var(--admin-duration-fast) var(--admin-ease) both`,
+                transformOrigin: "top",
+              }}
+            >
+              {children}
+            </div>
+          </>,
           portalTarget
         )}
     </>

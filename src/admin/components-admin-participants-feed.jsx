@@ -1856,7 +1856,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
         ) : perPostList.length === 0 ? (
           <EmptyState compact icon={IconNote} title="No data yet" message="Per-post interaction totals will appear here once there are submissions." />
         ) : (
-          <Table>
+          <Table className="admin-table--responsive">
             <thead>
               <tr>
                 <Th>Post ID</Th>
@@ -1884,26 +1884,26 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
             <tbody>
               {perPostList.map((p) => (
                 <Tr key={p.id}>
-                  <Td style={{ fontFamily: "monospace" }}>{p.id}</Td>
-                  <Td>{p.name || "—"}</Td>
+                  <Td label="Post ID" style={{ fontFamily: "monospace" }}>{p.id}</Td>
+                  <Td label="Name">{p.name || "—"}</Td>
                   {AMZ ? (
                     <>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reviewHelpful || 0)}</Td>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reviewReadMore || 0)}</Td>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reviewReported || p.reported || 0)}</Td>
+                      <Td label="Helpful" style={{ textAlign: "right" }}>{nfCompact.format(p.reviewHelpful || 0)}</Td>
+                      <Td label="Read more" style={{ textAlign: "right" }}>{nfCompact.format(p.reviewReadMore || 0)}</Td>
+                      <Td label="Reported" style={{ textAlign: "right" }}>{nfCompact.format(p.reviewReported || p.reported || 0)}</Td>
                     </>
                   ) : (
                     <>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reacted)}</Td>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.expandable)}</Td>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.expanded)}</Td>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.commented)}</Td>
-                      {IG && <Td style={{ textAlign: "right" }}>{nfCompact.format(p.saved)}</Td>}
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.shared)}</Td>
-                      <Td style={{ textAlign: "right" }}>{nfCompact.format(p.reported)}</Td>
+                      <Td label="Reacted" style={{ textAlign: "right" }}>{nfCompact.format(p.reacted)}</Td>
+                      <Td label="Expandable" style={{ textAlign: "right" }}>{nfCompact.format(p.expandable)}</Td>
+                      <Td label="Expanded" style={{ textAlign: "right" }}>{nfCompact.format(p.expanded)}</Td>
+                      <Td label="Commented" style={{ textAlign: "right" }}>{nfCompact.format(p.commented)}</Td>
+                      {IG && <Td label="Saved" style={{ textAlign: "right" }}>{nfCompact.format(p.saved)}</Td>}
+                      <Td label="Shared" style={{ textAlign: "right" }}>{nfCompact.format(p.shared)}</Td>
+                      <Td label="Reported" style={{ textAlign: "right" }}>{nfCompact.format(p.reported)}</Td>
                     </>
                   )}
-                  <Td style={{ textAlign: "right" }}>{sShort(p.avgDwellS)}</Td>
+                  <Td label="Avg dwell (s)" style={{ textAlign: "right" }}>{sShort(p.avgDwellS)}</Td>
                 </Tr>
               ))}
             </tbody>
@@ -1916,7 +1916,7 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
           <EmptyState compact icon={IconNote} title="No submissions yet" message="Real or simulated participant rows will appear here." />
         ) : (
           <>
-            <Table style={{ tableLayout: "fixed" }}>
+            <Table className="admin-table--responsive" style={{ tableLayout: "fixed" }}>
               <colgroup>
                 <col style={{ width: "28%" }} />
                 <col style={{ width: "26%" }} />
@@ -1936,16 +1936,16 @@ function filterCsvKeysForCurrentFeed(keys = [], posts = []) {
               <tbody>
                 {visible.map((r) => (
                   <Tr key={r.session_id}>
-                    <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <Td label="Participant" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {r.participant_id || "—"}
                     </Td>
-                    <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <Td label="Submitted At" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {r.submitted_at_iso || "—"}
                     </Td>
-                    <Td style={{ textAlign: "right" }}>
+                    <Td label="Time to submit" style={{ textAlign: "right" }}>
                       {ms(r.ms_enter_to_submit)}
                     </Td>
-                    <Td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <Td label="Flags" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {(qualityFlagsBySession.get(r.session_id) || []).map((f) => (
                         <span
                           key={f.key}

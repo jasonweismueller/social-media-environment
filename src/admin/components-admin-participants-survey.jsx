@@ -1292,7 +1292,7 @@ function GroupComparisonSection({ comparison }) {
       {comparison.numericComparisons.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Measures — mean ± SD (n)</div>
-          <Table>
+          <Table className="admin-table--responsive">
             <thead>
               <tr>
                 <Th>Measure</Th>
@@ -1305,11 +1305,11 @@ function GroupComparisonSection({ comparison }) {
             <tbody>
               {visibleNumeric.map((c) => (
                 <Tr key={c.key}>
-                  <Td>{c.label}</Td>
+                  <Td label="Measure">{c.label}</Td>
                   {c.perGroup.map((g, i) => (
-                    <Td key={i}>{g.n ? `${fmtNum(g.mean)} ± ${fmtNum(g.sd)} (n=${g.n})` : "—"}</Td>
+                    <Td key={i} label={comparison.groups[i]?.name || "Group"}>{g.n ? `${fmtNum(g.mean)} ± ${fmtNum(g.sd)} (n=${g.n})` : "—"}</Td>
                   ))}
-                  <Td>
+                  <Td label="Test">
                     {!c.test ? (
                       "—"
                     ) : c.test.type === "welch_t" ? (

@@ -68,6 +68,8 @@ import {
   IconIndentDecrease,
   IconTextColor,
   IconHighlighter,
+  useIsAdminMobile,
+  MobileBackBar,
 } from "./ui";
 import { SurveyParticipantsPage } from "./components-admin-participants-survey";
 import { AdminTreeSlotsContext, TreeAddButton } from "./AdminShell";
@@ -3036,6 +3038,23 @@ export function AdminSurveysPanel({
     return () => clearTimeout(timer);
   }, [copiedLinkState]);
 
+  const isMobile = useIsAdminMobile();
+  const surveyListContentEl = (
+    <SurveyListContent
+      surveys={surveys}
+      loading={loading}
+      selectedSurveyId={selectedSurveyId}
+      onSelectSurvey={handleSelectSurvey}
+      onSaveSurvey={handleSaveSurvey}
+      isSaving={savingSurvey}
+      showSaveButton={!!survey}
+      onDeleteSelectedSurvey={handleDeleteSurvey}
+      deletingSurvey={deletingSurvey}
+      showDeleteButton={!!survey?.survey_id}
+      onRenameSurvey={renameSurvey}
+    />
+  );
+
   return (
     <>
       {surveysAddSlot &&
@@ -3043,26 +3062,16 @@ export function AdminSurveysPanel({
           <TreeAddButton onClick={handleCreateSurvey} title="New survey" />,
           surveysAddSlot
         )}
-      {surveysSlot &&
-        createPortal(
-          <SurveyListContent
-            surveys={surveys}
-            loading={loading}
-            selectedSurveyId={selectedSurveyId}
-            onSelectSurvey={handleSelectSurvey}
-            onSaveSurvey={handleSaveSurvey}
-            isSaving={savingSurvey}
-            showSaveButton={!!survey}
-            onDeleteSelectedSurvey={handleDeleteSurvey}
-            deletingSurvey={deletingSurvey}
-            showDeleteButton={!!survey?.survey_id}
-            onRenameSurvey={renameSurvey}
-          />,
-          surveysSlot
-        )}
+      {/* Desktop: portaled into AdminShell's sidebar. Mobile: AdminShell
+          renders no sidebar (surveysSlot is null), so the list renders
+          inline below instead, full-width, as the mobile drill-down's
+          "list" screen. */}
+      {surveysSlot && createPortal(surveyListContentEl, surveysSlot)}
 
       <div style={{ minWidth: 0 }}>
-        {!survey && (
+        {!survey && isMobile && surveyListContentEl}
+
+        {!survey && !isMobile && (
           <EmptyState
             icon={IconClipboard}
             title="No survey selected"
@@ -3072,6 +3081,13 @@ export function AdminSurveysPanel({
 
         {survey && (
           <>
+            {isMobile ? (
+              <MobileBackBar
+                title={survey.name || survey.survey_id || "New survey"}
+                subtitle="Surveys"
+                onBack={() => handleSelectSurvey(null)}
+              />
+            ) : (
             <PageHeader
               title={survey.name || survey.survey_id || "New survey"}
               subtitle={`${linkedFeedCount} linked feed${linkedFeedCount === 1 ? "" : "s"} · ${pageCount} page${pageCount === 1 ? "" : "s"}`}
@@ -3094,6 +3110,7 @@ export function AdminSurveysPanel({
                 </>
               }
             />
+            )}
 
             <Tabs
               ariaLabel="Survey editor sections"
@@ -3163,8 +3180,14 @@ export function AdminSurveysPanel({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(220px, 1fr) minmax(220px, 1fr)",
-                  gap: "0 16px",
+                  // auto-fit instead of a fixed 2-column template — matches
+                  // the same convention StatCard rows already use elsewhere
+                  // in this admin (`repeat(auto-fit, minmax(...))`), and
+                  // collapses to one column below ~460px with no media
+                  // query needed (the old fixed 2-column version had no
+                  // fallback at all, so it overflowed/clipped on a phone).
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "12px 16px",
                 }}
               >
                 <FieldBlock

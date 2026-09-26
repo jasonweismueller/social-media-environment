@@ -26,6 +26,7 @@ import {
   IconAlignRight,
   IconTextColor,
   IconHighlighter,
+  useIsAdminMobile,
 } from "./ui";
 import { SurveyPreviewModal } from "./components-admin-survey-preview";
 import { QuestionLibraryPickerModal, SaveToLibraryModal } from "./components-admin-question-library";
@@ -2896,6 +2897,7 @@ function DragHandle({ onDragStart, onDragEnd }) {
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       title="Drag to reorder"
+      className="admin-drag-handle"
       style={{
         width: INPUT_HEIGHT,
         height: INPUT_HEIGHT,
@@ -3640,8 +3642,13 @@ function RichTextEditor({ value, onChange, placeholder = "Question text" }) {
 // deleted entirely.
 function InsertAtBorderButton({ position = "top", onOpenPicker, inline = false }) {
   const [hovered, setHovered] = useState(false);
+  // On mobile there's no hover state to reveal this on — default to visible
+  // (matching `inline`'s own always-visible behavior) instead of a
+  // permanently low-opacity, easy-to-miss target that a mouse user would
+  // only ever see once they happen to hover the gap between two questions.
+  const isMobile = useIsAdminMobile();
   const isTop = position === "top";
-  const isActive = inline || hovered;
+  const isActive = inline || hovered || isMobile;
 
   return (
     <div
@@ -4441,6 +4448,7 @@ function ItemTableEditor({
         {safeItems.map((item, i) => (
           <div
             key={`${prefix}_${i}`}
+            className="admin-editor-field-row"
             style={{
               display: "grid",
               gridTemplateColumns: "160px 1fr auto",
@@ -4563,6 +4571,7 @@ function BipolarRowTableEditor({ items, onChange, questionId, columns = null }) 
         {safeItems.map((item, i) => (
           <div
             key={`bipolar_row_${i}`}
+            className="admin-editor-field-row"
             style={{
               display: "grid",
               gridTemplateColumns: "160px 1fr 1fr auto",
@@ -6286,7 +6295,7 @@ function BipolarEditorBlock({ rows, questionId, min, max, onRowsChange, onMinCha
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, alignItems: "end" }}>
+      <div className="admin-editor-field-row" style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, alignItems: "end" }}>
         <FieldBlock label="Min">
           <NumberInput value={min} min={1} max={100} onChange={onMinChange} />
         </FieldBlock>
@@ -6313,7 +6322,7 @@ function SliderEditorBlock({
   const stepDoesNotFit = safeStep > 1 && (safeMax - safeMin) % safeStep !== 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
+      <div className="admin-editor-field-row" style={{ display: "grid", gridTemplateColumns: "120px 120px 1fr 1fr", gap: 12, alignItems: "end" }}>
         <FieldBlock label="Min">
           <NumberInput value={min} min={0} max={100} onChange={onMinChange} />
         </FieldBlock>
@@ -6331,7 +6340,7 @@ function SliderEditorBlock({
         </FieldBlock>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "end" }}>
+      <div className="admin-editor-field-row" style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "end" }}>
         <FieldBlock label="Step">
           <NumberInput value={safeStep} min={1} max={100} onChange={onStepChange} />
         </FieldBlock>
@@ -6461,7 +6470,7 @@ function TextEditorBlock({ numericOnly, numericMin, numericMax, onNumericOnlyCha
       />
 
       {numericOnly && (
-        <div style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, marginTop: 10 }}>
+        <div className="admin-editor-field-row" style={{ display: "grid", gridTemplateColumns: "120px 120px", gap: 12, marginTop: 10 }}>
           <FieldBlock label="Min (optional)">
             <NumberInput
               value={numericMin ?? ""}
@@ -7164,6 +7173,7 @@ function CompactDragHandle({ onDragStart, onDragEnd }) {
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       title="Drag to reorder"
+      className="admin-drag-handle"
       style={{
         width: 18,
         height: 18,

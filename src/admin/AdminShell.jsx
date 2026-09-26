@@ -1,6 +1,16 @@
 import React, { createContext, useEffect, useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
-import { IconFeed, IconClipboard, IconSparkle, ThemeToggle, LogoutButton } from "./ui";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import {
+  IconFeed,
+  IconClipboard,
+  IconSparkle,
+  ThemeToggle,
+  LogoutButton,
+  useIsAdminMobile,
+  BottomTabBar,
+  BottomTabBarItem,
+  Popover,
+} from "./ui";
 import { getAdminAiAnalysisEnabled } from "../utils";
 
 // Absolute paths (not relative "feeds"/"surveys") — relative NavLink targets
@@ -243,6 +253,9 @@ export function AdminShell({
   children,
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const isMobile = useIsAdminMobile();
+  const [moreOpen, setMoreOpen] = useState(false);
   const [feedsSlotEl, setFeedsSlotEl] = useState(null);
   const [surveysSlotEl, setSurveysSlotEl] = useState(null);
   const [feedsAddSlotEl, setFeedsAddSlotEl] = useState(null);
@@ -269,6 +282,138 @@ export function AdminShell({
   useEffect(() => {
     setExpandedKey(activeKey);
   }, [activeKey]);
+
+  // Mobile shell: bottom tab bar (Feeds/Surveys/More) + full-screen content,
+  // instead of the permanent 288px sidebar below. The Feeds/Surveys *list*
+  // itself is no longer portaled here on mobile (there's no `<aside>` for
+  // AdminTreeSlotsContext's slot refs to attach to, so `feedsSlot`/
+  // `surveysSlot` stay null) — AdminFeedsPanel/AdminSurveysPanel render
+  // their list inline, full-width, whenever the portal slot is unavailable
+  // (see those files' own `feedsSlot ? createPortal(...) : ...` branches).
+  // Each panel owns its own drill-down (list vs. detail) via its existing,
+  // already-decoupled selection state — AdminShell doesn't need to know
+  // which item is selected, only which top-level section is active, so
+  // this stays a small, self-contained addition rather than new global
+  // navigation state.
+  if (isMobile) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        <AdminTreeSlotsContext.Provider
+          value={{
+            feedsSlot: null,
+            surveysSlot: null,
+            feedsAddSlot: null,
+            surveysAddSlot: null,
+          }}
+        >
+          <main
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "calc(16px + env(safe-area-inset-top)) 16px 84px",
+            }}
+          >
+            {children}
+          </main>
+        </AdminTreeSlotsContext.Provider>
+
+        <BottomTabBar>
+          <BottomTabBarItem
+            icon={<IconFeed size={20} />}
+            label="Feeds"
+            active={isFeedsActive}
+            onClick={() => navigate(FEEDS_PATH)}
+          />
+          <BottomTabBarItem
+            icon={<IconClipboard size={20} />}
+            label="Surveys"
+            active={isSurveysActive}
+            onClick={() => navigate(SURVEYS_PATH)}
+          />
+          <Popover
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+            align="end"
+            trigger={
+              <BottomTabBarItem
+                icon={<span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>⋯</span>}
+                label="More"
+                active={moreOpen || isAnalysisActive}
+                onClick={() => setMoreOpen((v) => !v)}
+              />
+            }
+          >
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+              {title && (
+                <div
+                  style={{
+                    padding: "4px 10px 10px",
+                    fontSize: "var(--admin-text-sm)",
+                    fontWeight: 700,
+                    color: "var(--admin-text)",
+                    borderBottom: "1px solid var(--admin-border-subtle)",
+                    marginBottom: 4,
+                  }}
+                >
+                  {title}
+                  {subtitle && (
+                    <div style={{ fontWeight: 500, fontSize: "var(--admin-text-2xs)", color: "var(--admin-muted)", marginTop: 2 }}>
+                      {subtitle}
+                    </div>
+                  )}
+                </div>
+              )}
+              {projectSwitcher && <div style={{ padding: "0 4px 8px" }}>{projectSwitcher}</div>}
+              {aiAnalysisEnabled && (
+                <button
+                  type="button"
+                  className="admin-overflow-item"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    navigate(ANALYSIS_PATH);
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 10px",
+                    borderRadius: "var(--admin-radius-sm)",
+                    border: "none",
+                    background: isAnalysisActive ? "var(--admin-accent-soft)" : "transparent",
+                    color: isAnalysisActive ? "var(--admin-accent-ink)" : "var(--admin-text)",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <IconSparkle size={16} /> AI Analysis
+                </button>
+              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 10px 4px" }}>
+                {backTo ? (
+                  <Link
+                    to={backTo}
+                    onClick={() => setMoreOpen(false)}
+                    style={{ fontSize: "var(--admin-text-sm)", fontWeight: 700, color: "var(--admin-muted)", textDecoration: "none" }}
+                  >
+                    {backLabel}
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <ThemeToggle />
+                  <LogoutButton onLogout={onLogout} />
+                </span>
+              </div>
+            </div>
+          </Popover>
+        </BottomTabBar>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -31,7 +31,7 @@ import {
 } from "../utils";
 import { isSupabaseBackend } from "../utils/utils-supabase-client";
 import "./ui/tokens.css";
-import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser, ThemeToggle, LogoutButton } from "./ui";
+import { Card, PageHeader, Button, Badge, Toggle, Modal, useToast, useConfirm, EmptyState, IconUser, ThemeToggle, LogoutButton, useIsAdminMobile, MobileBackBar } from "./ui";
 
 const ROLE_OPTIONS = [
   { value: "viewer", label: "Viewer", hint: "Read-only access" },
@@ -597,6 +597,7 @@ export function AdminUsersPage({ onLogout }) {
   const confirm = useConfirm();
   const me = getAdminEmail?.() || "";
   const backendHasAccessControl = isSupabaseBackend();
+  const isMobile = useIsAdminMobile();
 
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -641,8 +642,12 @@ export function AdminUsersPage({ onLogout }) {
   }, [load]);
 
   useEffect(() => {
-    if (!selectedEmail && users.length) setSelectedEmail(me && users.some((u) => u.email === me) ? me : users[0].email);
-  }, [users, me, selectedEmail]);
+    // On mobile, leave selection empty so the drill-down starts on the user
+    // list (a native app never opens straight into a random detail screen)
+    // — desktop keeps auto-selecting someone, since it always has room to
+    // show a detail pane regardless.
+    if (!selectedEmail && users.length && !isMobile) setSelectedEmail(me && users.some((u) => u.email === me) ? me : users[0].email);
+  }, [users, me, selectedEmail, isMobile]);
 
   const accessByUser = useMemo(() => {
     const m = new Map();
@@ -777,7 +782,14 @@ export function AdminUsersPage({ onLogout }) {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0,1fr)", gap: 20, alignItems: "start" }}>
+        <div
+          style={
+            isMobile
+              ? { display: "block" }
+              : { display: "grid", gridTemplateColumns: "300px minmax(0,1fr)", gap: 20, alignItems: "start" }
+          }
+        >
+          {(!isMobile || !selectedUser) && (
           <div>
             {loading && users.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--admin-muted)", padding: "8px 4px" }}>Loading…</div>
@@ -827,8 +839,17 @@ export function AdminUsersPage({ onLogout }) {
               })
             )}
           </div>
+          )}
 
+          {(!isMobile || selectedUser) && (
           <div style={{ minWidth: 0 }}>
+            {isMobile && selectedUser && (
+              <MobileBackBar
+                title={selectedUser.username || selectedUser.email}
+                subtitle="Users"
+                onBack={() => setSelectedEmail("")}
+              />
+            )}
             {!selectedUser ? (
               <Card>
                 <EmptyState icon={IconUser} title="No user selected" message="Pick a user from the list to view or edit their access." />
@@ -933,6 +954,7 @@ export function AdminUsersPage({ onLogout }) {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 

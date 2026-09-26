@@ -34,11 +34,13 @@ export function OverflowMenu({ items = [], title = "More actions" }) {
               setOpen(false);
               item.onClick?.();
             }}
+            className={`admin-overflow-item${item.danger ? " admin-overflow-item--danger" : ""}`}
             style={{
               display: "block",
               width: "100%",
               textAlign: "left",
-              padding: "8px 10px",
+              padding: "10px 10px",
+              minHeight: 40,
               borderRadius: "var(--admin-radius-sm)",
               border: "none",
               background: "transparent",
@@ -48,14 +50,6 @@ export function OverflowMenu({ items = [], title = "More actions" }) {
               cursor: item.disabled ? "not-allowed" : "pointer",
               opacity: item.disabled ? 0.5 : 1,
               transition: "background var(--admin-duration-fast) var(--admin-ease)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = item.danger
-                ? "var(--admin-danger-soft)"
-                : "var(--admin-surface-alt)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
             }}
           >
             {item.label}

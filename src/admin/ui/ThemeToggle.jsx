@@ -19,7 +19,7 @@ export function ThemeToggle({ size = 34 }) {
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       aria-pressed={isDark}
-      className="admin-btn"
+      className="admin-btn admin-tap-44"
       style={{
         flexShrink: 0,
         display: "flex",

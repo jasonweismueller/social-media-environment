@@ -109,6 +109,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
 
   const node = (
     <div
+      className="admin-modal-backdrop"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
@@ -143,6 +144,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}
         tabIndex={-1}
+        className="admin-modal-dialog"
         style={{
           width: "100%",
           maxWidth: fullScreen ? "100%" : width,
@@ -185,7 +187,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 480,
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="admin-btn"
+            className="admin-btn admin-tap-44"
             style={{
               display: "flex",
               alignItems: "center",

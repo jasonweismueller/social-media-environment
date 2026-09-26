@@ -49,3 +49,6 @@ export { PromptProvider, usePrompt } from "./PromptDialog";
 export { useAdminTheme } from "./useAdminTheme";
 export { ThemeToggle } from "./ThemeToggle";
 export { LogoutButton } from "./LogoutButton";
+export { useIsAdminMobile, ADMIN_MOBILE_BREAKPOINT } from "./useIsMobile";
+export { MobileBackBar } from "./MobileBackBar";
+export { BottomTabBar, BottomTabBarItem } from "./BottomTabBar";

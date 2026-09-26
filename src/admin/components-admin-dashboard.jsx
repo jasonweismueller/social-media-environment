@@ -1229,6 +1229,14 @@ export function AdminDashboard({
   }, [isSaving]);
 
   const selectFeed = async (id) => {
+    // Mobile's "‹ Back to Feeds" (MobileBackBar) calls this with "" to
+    // return to the list — short-circuit before the posts fetch below,
+    // which has nothing meaningful to load for a cleared selection.
+    if (!id) {
+      setFeedId("");
+      setFeedName("");
+      return;
+    }
     const row = feeds.find((f) => String(f.feed_id) === String(id));
     setFeedId(id);
     setFeedName(row?.name || id);
