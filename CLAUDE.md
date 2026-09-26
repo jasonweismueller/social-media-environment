@@ -3211,3 +3211,163 @@ and GitHub Actions deploys it directly to `studyfeed.org`, no Netlify-staging so
 Given this is an unverified-live fix to core admin auth plumbing touching all four participant-facing
 apps' boot sequences, worth routing through `main` → staging first rather than letting it auto-deploy
 straight to production.
+
+## New: "Add to Home Screen" PWA shell for the admin (2026-09-27)
+
+Direct request: run the admin on an iPhone as an installable app, admin side first, no App Store
+intent. Scoped via `AskUserQuestion` against three options (Capacitor native wrapper, a PWA, or a
+full native rewrite) — PWA chosen, pointed at production (`studyfeed.org`).
+
+Purely additive — `index.html` (`<link rel="manifest">` + Apple's `apple-mobile-web-app-*` meta
+tags + `apple-touch-icon` links), `public/manifest.webmanifest` (`start_url: /admin?app=fb`,
+`display: standalone`, indigo theme color matching the admin's own `--admin-accent`), and
+`public/icons/icon-{152,167,180,192,512}.png` (a simple indigo "SF" mark, rasterized locally via
+macOS `qlmanage`/`sips` — no external asset pipeline available in this sandbox). No service
+worker/offline caching, deliberately — the admin always needs a live Supabase connection, so
+there's nothing useful to cache and a stale cached bundle would be a worse failure mode than no
+offline support at all.
+
+**Known limitation stated plainly at the time**: a home-screen web app has its own isolated
+storage on iOS (not shared with Safari), so it needs its own separate login — and the admin
+dashboard itself had zero responsive/mobile handling at the time this shipped, so the installed
+icon opened onto a genuinely unusable squeezed-desktop layout. That gap is what the very next
+entry below addresses.
+
+**Not verified live** — same standing limitation as most of this file: no admin login available,
+and installing a home-screen icon isn't something this sandbox's tooling can exercise at all
+(it requires a real physical device). Verified only that the manifest JSON parses, the icons
+rasterize correctly at every target size, and `index.html`'s structure stays well-formed.
+
+## Mobile-responsive redesign of the entire admin dashboard, built to wrap as a native app later (2026-09-27)
+
+Direct follow-up, same day: "the entire mobile version admin dashboard... is kind of unusable at
+the moment... design it in a way it could later also work as a native app nicely." Planned via
+three parallel `Explore` research agents (mapping the shared design system/`AdminShell`, the main
+Feeds/Surveys/Participants/Users pages, and the 9,808-line survey/post editors) before writing any
+code, then a `AskUserQuestion` on the navigation model. Confirmed **zero** existing responsive
+handling anywhere in `src/admin/` before this (no `@media` width query, no mobile hook, no touch
+handling at all) — every prior "UI/UX modernization" phase in this file was a desktop-only pass.
+
+**Navigation model, confirmed with the user**: a bottom tab bar (Feeds / Surveys / More) with
+full-screen drill-down — the standard iOS pattern, chosen specifically because it maps directly
+onto a native `TabView`/`NavigationStack` shape if this is ever wrapped in Capacitor or similar,
+per the user's explicit "should also work as a native app" ask. **Users isn't a tab** — confirmed
+via a direct code read that `/admin/users` is a separate top-level page (reached from the project
+picker's "Manage users" button), not part of a project's Feeds/Surveys nav tree, so it got its own
+independent mobile drill-down treatment rather than being forced into the tab bar.
+
+**One canonical breakpoint** (`880px`, `useIsAdminMobile()`/`ADMIN_MOBILE_BREAKPOINT` in new
+`src/admin/ui/useIsMobile.js`, mirrored as a plain number in `Popover.jsx` and in `tokens.css`'s own
+comment — CSS custom properties can't gate a media query) for layout-*shape* decisions (nav, drill-
+down, table→card), kept separate from the pre-existing `640px` convention already used by the post-
+editor/survey-editor field grids (`.grid-2`/`.grid-3`), which answers a different question (how many
+columns fit one field row) and didn't need to change.
+
+**`src/admin/ui/` additions/changes**: new `BottomTabBar`/`BottomTabBarItem` (the mobile nav shell,
+safe-area-bottom padded) and `MobileBackBar` (the "‹ Back to Feeds/Surveys/Users" affordance shown
+atop a drilled-into detail view). `Popover.jsx` gained real viewport-edge clamping (it previously
+had none — `rect.left`/`window.innerWidth - rect.right` with no bound, confirmed to overflow
+off-screen whenever a trigger sits near an edge, on desktop too) and, under the mobile breakpoint,
+renders as a bottom sheet instead of a small floating box — reused directly for AdminShell's "More"
+menu rather than building a second sheet mechanism. `OverflowMenu.jsx`'s row hover used
+`onMouseEnter`/`onMouseLeave` inline handlers, which never fire on tap — replaced with real CSS
+`:hover`/`:active`/`:focus-visible` classes. `Modal.jsx` gained `admin-modal-backdrop`/
+`admin-modal-dialog` classNames so `tokens.css` can force every admin modal (regardless of its own
+`width`/`fullScreen` prop — this automatically covers `SurveyPreviewModal`'s hardcoded 1040px box
+with zero call-site changes) to a true edge-to-edge sheet under the breakpoint. `Table.jsx`'s `Td`
+gained an opt-in `label` prop (`data-label`) powering a `.admin-table--responsive` row→card CSS
+transform — opt-in specifically so tables that haven't been migrated keep their existing
+horizontal-scroll behavior unchanged rather than silently breaking. `IconPillButton`/`LogoutButton`/
+`ThemeToggle`/`Modal`'s close button all gained a shared `admin-tap-44` class bumping them to a real
+44px touch target under `(hover:none) and (pointer:coarse)` — deliberately a pointer-type query, not
+a width query, so a coarse-pointer device (iPad, or a future native wrapper) gets correct touch
+targets regardless of viewport width; ordinary `Button` sizes were deliberately left alone (changing
+a shared `sm`/`md` height ripples into every dense table-action button across the whole app, well
+beyond this pass's scope).
+
+**`AdminShell.jsx`**: below 880px, the fixed 288px sidebar grid is replaced entirely by the bottom
+tab bar + full-width content; the "More" tab opens the mobile-sheet `Popover` with AI Analysis (when
+enabled), the project switcher, theme toggle, and logout — desktop's layout is completely untouched
+above the breakpoint (an early `if (isMobile) return (...)` branch, not a rewrite of the desktop
+JSX). The existing `AdminTreeSlotsContext` portal mechanism (Feeds/Surveys panels portal their list
+into the sidebar) still exists for desktop; on mobile the context provides `null` slots, and each
+panel falls back to rendering its list inline instead (see below) — confirmed via direct code
+reads that `feedsSlot && createPortal(...)` already safely no-ops when the slot is null, so this
+needed no defensive change in `createPortal` call sites themselves.
+
+**Feeds/Surveys/Users drill-down**: confirmed via direct reads (not assumed) that all three panels
+already have local, router-decoupled selection state (`selectedFeedId`/`selectedSurveyId`/
+`selectedUser`) with an existing `{!selected && (...)} / {selected && (...)}` conditional — exactly
+the shape a drill-down needs, requiring no new state or router plumbing. Each panel now renders its
+list inline (full-width) when nothing is selected on mobile, or a `MobileBackBar` + the existing
+detail JSX when something is. Two real, small bugs fixed while wiring this in: `selectFeed(id)`
+(`components-admin-dashboard.jsx`) tried to fetch posts for a cleared (`""`) selection on "back" —
+added an early-return guard; `AdminUsersPage`'s auto-select-first-user effect (pre-existing, runs on
+every load) is now gated to desktop only, so mobile correctly starts on the user list instead of
+jumping straight into a random detail screen.
+
+**Responsive tables**: applied the new `.admin-table--responsive` + `label` treatment to the four
+worst offenders confirmed by the research pass — Feeds' 7-column Posts table (`tableLayout:fixed`
+with a shrink-to-fit `FitText`, would have just kept shrinking font at 375px), Participants' per-
+post-interactions and latest-submissions tables, and the survey Participants' group-comparison
+Measures table (column count grows with experiment-group count). Lower-traffic tables elsewhere
+were deliberately left on plain horizontal-scroll (the `Table` primitive's pre-existing default) —
+disclosed scope trim, not an oversight.
+
+**Post editor modal** (`../ui-core` Modal — a separate component/CSS system from the admin's own
+`Modal.jsx`, shared with every participant-facing comment/share sheet): investigated its existing
+`calc(100vw - 48px)`/`90vh` sizing before changing anything and found it already reasonably
+mobile-adapted (it has to be — real participants use it on phones daily), so rather than forcing it
+fully edge-to-edge everywhere, added a narrower `@media (max-width:480px)` rule (all four
+`styles-{facebook,instagram,amazon,x}.css`, mechanical/identical per this repo's own near-duplicate-
+file convention) making it genuinely edge-to-edge with safe-area padding only at true phone widths,
+leaving the already-working tablet/desktop sizing untouched.
+
+**Survey editor** (`components-admin-surveys-editor.jsx`, touched *mechanically only* — className/
+CSS additions, no JSX restructuring, respecting this file's own documented fragility): confirmed via
+grep that question and question-option-item reordering already have working move-up/down arrow-
+button fallbacks alongside their HTML5 `draggable` handles — the real, disclosed gap is that **page**
+reordering (`PageCardHeader`, used by the Study Outline modal) has drag as its *only* mechanism, no
+touch equivalent exists, and adding one was judged too risky to rush into this same pass given the
+file's own fragility warnings and this sandbox's inability to click-test the result — left as an
+accepted, stated limitation rather than a silent gap. Where arrow buttons do exist, the drag-handle
+grip icon is now dimmed (not removed — same layout either way) under `(pointer:coarse)`, since HTML5
+`draggable` never activates via touch and a fully-opaque, apparently-interactive handle that just
+does nothing on tap is worse than a visibly de-emphasized one. `InsertAtBorderButton` (the "+" that
+appears between questions) used to be low-opacity until *hover* — on mobile there's no hover to
+reveal it, so it's now always visible there (matching its own existing `inline` variant's behavior).
+Six small fixed-pixel paired-field grids (Min/Max, Left/Right label, etc., 120–160px columns) now
+collapse to one column under 640px via a new shared `admin-editor-field-row` class, matching the
+same breakpoint the post editors' own `.grid-2`/`.grid-3` already use.
+
+**Verified**: every touched `.jsx`/`.js` file parses clean (`@babel/parser`) and every touched
+`.css` file's braces balance, including a full consolidated pass across all ~24 touched files run
+together at the end. Traced the rules-of-hooks safety of each new `useIsAdminMobile()` call site
+directly (confirmed no conditional early return precedes it in any of the three panel components).
+**Not verified live** — this sandbox's browser tool refused every `localhost:5173` navigation
+attempt this session across multiple retries and a fresh tab (the dev server itself was confirmed
+up via `preview_logs`, `vite` ready with no errors) — the same tooling denial several entries above
+this one already hit and documented, not something this change caused. No live component-mount
+verification (the usual fallback this file documents using repeatedly) was possible either, for the
+same reason. This is a larger unverified-live surface than usual for this file — worth a real,
+careful click-through on `staging.studyfeed.org` at an actual phone width (or in Safari's device
+simulator) before trusting this beyond the static checks above: the bottom tab bar and drill-down
+on Feeds/Surveys/Users, the "More" sheet, a table rendering as cards, a modal (especially
+`SurveyPreviewModal`) going full-screen, and the post editor at 375px width.
+
+**Deliberately deferred, disclosed rather than silently cut**: real touch-based drag-and-drop
+(page reordering specifically, per above) — arrow buttons remain the accepted interim mechanism
+everywhere else; card-transform for tables beyond the four listed; deeper screen-specific polish
+for the AI Analysis/power-analysis tooling beyond what it inherits from the shared primitives;
+actually building a native wrapper (Capacitor/WKWebView) — this pass is CSS/React only, structured
+so that step is a smaller lift later (safe-area insets already in place throughout, the tab bar +
+push/pop navigation already shaped like a native `TabView`/`NavigationStack`, bottom sheets instead
+of floating popovers, no hover-dependent functionality left anywhere touched).
+
+**Deploy status**: working tree was moved from `production` to `main` *before* this work started
+(a deliberate first step, given the size of this change and this file's own repeated recommendation
+to route large unverified changes through `main`'s Netlify-staging soak rather than straight to
+`production`) — confirmed via `git status`/`git log` at the start of this session. `main` auto-
+commits/pushes to `origin/main` → Netlify staging, not `studyfeed.org` directly; reaching production
+needs a deliberate `main` → `production` merge/promotion later, per this file's own "Deployment"
+section.
